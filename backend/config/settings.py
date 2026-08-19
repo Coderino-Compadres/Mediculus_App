@@ -12,6 +12,9 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -24,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ["DJANGO_DEBUG"]
+DEBUG = os.environ["DJANGO_DEBUG"].lower() == "true"
 
 ALLOWED_HOSTS = []
 
@@ -75,9 +78,23 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ['USER_DB_NAME'],
+        'USER': os.environ['USER_DB_USER'],
+        'PASSWORD': os.environ['USER_DB_PASSWORD'],
+        'HOST': os.environ['USER_DB_HOST'],
+        'PORT': os.environ.get('USER_DB_PORT', '5432'),
+        'OPTIONS': {'sslmode': 'require'},
+    },
+    'medical': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ['MEDICAL_DB_NAME'],
+        'USER': os.environ['MEDICAL_DB_USER'],
+        'PASSWORD': os.environ['MEDICAL_DB_PASSWORD'],
+        'HOST': os.environ['MEDICAL_DB_HOST'],
+        'PORT': os.environ.get('MEDICAL_DB_PORT', '5432'),
+        'OPTIONS': {'sslmode': 'require'},
+    },
 }
 
 
