@@ -29,9 +29,19 @@ SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ["DJANGO_DEBUG"].lower() == "true"
 
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if os.environ.get('DJANGO_ALLOWED_HOSTS') else []
+def _csv_env(name):
+    return [item.strip() for item in os.environ.get(name, '').split(',') if item.strip()]
 
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if os.environ.get('CORS_ALLOWED_ORIGINS') else []
+ALLOWED_HOSTS = _csv_env('DJANGO_ALLOWED_HOSTS')
+
+CORS_ALLOWED_ORIGINS = _csv_env('CORS_ALLOWED_ORIGINS')
+
+CSRF_TRUSTED_ORIGINS = _csv_env('CSRF_TRUSTED_ORIGINS')
+
+# Only safe when every request reaches the app through a proxy that overwrites
+# this header (Azure App Service does). Turn off for a directly-reachable server.
+if (os.environ.get('DJANGO_USE_PROXY_SSL_HEADER') or 'true').lower() == 'true':
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -44,6 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
+    'core',
 ]
 
 MIDDLEWARE = [
@@ -80,6 +91,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+# Azure Postgres requires SSL; a local dev container doesn't support it.
+# `or` rather than a .get() default: the shipped .env.example sets an empty value.
+DB_SSLMODE = os.environ.get('DB_SSLMODE') or 'require'
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -88,7 +103,7 @@ DATABASES = {
         'PASSWORD': os.environ['USER_DB_PASSWORD'],
         'HOST': os.environ['USER_DB_HOST'],
         'PORT': os.environ.get('USER_DB_PORT', '5432'),
-        'OPTIONS': {'sslmode': 'require'},
+        'OPTIONS': {'sslmode': DB_SSLMODE},
     },
     'medical': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -97,9 +112,11 @@ DATABASES = {
         'PASSWORD': os.environ['MEDICAL_DB_PASSWORD'],
         'HOST': os.environ['MEDICAL_DB_HOST'],
         'PORT': os.environ.get('MEDICAL_DB_PORT', '5432'),
-        'OPTIONS': {'sslmode': 'require'},
+        'OPTIONS': {'sslmode': DB_SSLMODE},
     },
 }
+
+DATABASE_ROUTERS = ['core.routers.CoreDatabaseRouter']
 
 
 # Password validation
