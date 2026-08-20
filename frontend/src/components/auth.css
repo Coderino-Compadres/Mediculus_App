@@ -1,5 +1,3 @@
-@import '../styles/theme.css';
-
 .auth-page {
   flex-grow: 1;
   display: flex;
