@@ -33,6 +33,11 @@ ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if os.envi
 
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if os.environ.get('CORS_ALLOWED_ORIGINS') else []
 
+CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if os.environ.get('CSRF_TRUSTED_ORIGINS') else []
+
+# Azure App Service terminates TLS and forwards plain HTTP with this header set.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 
 # Application definition
 
@@ -44,6 +49,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
+    'core',
 ]
 
 MIDDLEWARE = [
@@ -80,6 +86,9 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+# Azure Postgres requires SSL; a local dev container doesn't support it.
+DB_SSLMODE = os.environ.get('DB_SSLMODE', 'require')
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -88,7 +97,7 @@ DATABASES = {
         'PASSWORD': os.environ['USER_DB_PASSWORD'],
         'HOST': os.environ['USER_DB_HOST'],
         'PORT': os.environ.get('USER_DB_PORT', '5432'),
-        'OPTIONS': {'sslmode': 'require'},
+        'OPTIONS': {'sslmode': DB_SSLMODE},
     },
     'medical': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -97,9 +106,11 @@ DATABASES = {
         'PASSWORD': os.environ['MEDICAL_DB_PASSWORD'],
         'HOST': os.environ['MEDICAL_DB_HOST'],
         'PORT': os.environ.get('MEDICAL_DB_PORT', '5432'),
-        'OPTIONS': {'sslmode': 'require'},
+        'OPTIONS': {'sslmode': DB_SSLMODE},
     },
 }
+
+DATABASE_ROUTERS = ['core.routers.CoreDatabaseRouter']
 
 
 # Password validation
