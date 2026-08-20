@@ -44,6 +44,13 @@ Potem Restart w Portalu Azure. Robić to **świadomie**, gdy kolega ma zobaczyć
 
 **`.env` NIE jedzie na Azure** — jest w `.dockerignore`. To plik tylko na moją maszynę. Dlatego zmiana portu czy hosta bazy w `.env` nigdy nie wpływa na Azure i nie trzeba jej tam powtarzać.
 
+Dwie flagi mają default bezpieczny dla Azure, więc w Portalu **nie trzeba ich ustawiać** — nadpisuje je tylko lokalny `.env`:
+
+| Zmienna | Azure (default) | Lokalnie |
+|---|---|---|
+| `DB_SSLMODE` | `require` | `disable` (kontener nie ma SSL) |
+| `DJANGO_USE_PROXY_SSL_HEADER` | `true` | `false` (brak proxy przed serwerem) |
+
 `.env.example` = lista wymaganych kluczy (dokumentacja dla kolegi), bez wartości.
 
 Jeśli chcę lokalnie wycelować w bazę Azure: `cp .env.azure-backup .env`.

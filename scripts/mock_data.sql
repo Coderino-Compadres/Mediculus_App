@@ -43,6 +43,13 @@ INSERT INTO technique (id_technique, name, type, description) VALUES
     (3, 'Technika 5-4-3-2-1',   'DBT', 'Technika uziemiająca wykorzystująca pięć zmysłów.')
 ON CONFLICT (id_technique) DO NOTHING;
 
+-- Explicit ids above leave the identity sequence at 1; without this the first
+-- ORM-created Technique would collide with an existing primary key.
+SELECT setval(
+    pg_get_serial_sequence('technique', 'id_technique'),
+    (SELECT MAX(id_technique) FROM technique)
+);
+
 INSERT INTO diary (id_diary, id_medical, current_mood, current_strongest_emotion, stress_level, energy_level, overall_feeling, situation, situation_place, how_situation_handled, notes) VALUES
     ('e0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'neutralny', 'niepokój',    4, 5, 'w porządku',    'Rozmowa z przełożonym o projekcie', 'praca',   'Głębokie oddychanie przed rozmową',      'Poszło lepiej niż się bałem.'),
     ('e0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000001', 'dobry',     'spokój',      2, 7, 'dobre',         'Spacer wieczorny',                  'park',    'Brak, dzień był spokojny',               NULL),

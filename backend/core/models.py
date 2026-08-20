@@ -19,7 +19,7 @@ class User(models.Model):
         UserRole, db_column='id_user_role', on_delete=models.PROTECT,
         null=True, blank=True, related_name='users',
     )
-    email = models.CharField(max_length=255, null=True, blank=True)
+    email = models.CharField(max_length=255, null=True, blank=True, unique=True)
     password_hash = models.CharField(max_length=255, null=True, blank=True)
     name = models.TextField(null=True, blank=True)
     surname = models.TextField(null=True, blank=True)
@@ -80,11 +80,20 @@ class ParentChild(models.Model):
 
     class Meta:
         db_table = 'parent_child'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['parent', 'child'], name='uniq_parent_child',
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(parent=models.F('child')),
+                name='parent_child_not_self',
+            ),
+        ]
 
 
 class Diary(models.Model):
     id_diary = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    id_medical = models.UUIDField()
+    id_medical = models.UUIDField(db_index=True)
     current_mood = models.TextField(null=True, blank=True)
     current_strongest_emotion = models.TextField(null=True, blank=True)
     stress_level = models.IntegerField(null=True, blank=True)
@@ -134,7 +143,7 @@ class Technique(models.Model):
 
 class Raport(models.Model):
     id_raport = models.BigAutoField(primary_key=True)
-    id_medical = models.UUIDField()
+    id_medical = models.UUIDField(db_index=True)
     technique = models.ForeignKey(
         Technique, db_column='id_technique', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='raports',

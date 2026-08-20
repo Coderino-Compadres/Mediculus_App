@@ -36,13 +36,13 @@ CREATE TABLE IF NOT EXISTS user_role (
 CREATE TABLE IF NOT EXISTS "user" (
     id_user UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     id_user_role UUID,
-    email VARCHAR,
-    password_hash VARCHAR,
+    email VARCHAR(255),
+    password_hash VARCHAR(255),
     name TEXT,
     surname TEXT,
     date_of_birth DATE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_user_user_role
         FOREIGN KEY (id_user_role)
@@ -144,8 +144,8 @@ CREATE TABLE IF NOT EXISTS diary (
     situation_place TEXT,
     how_situation_handled TEXT,
     notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ----------------------------

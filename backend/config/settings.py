@@ -29,14 +29,19 @@ SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ["DJANGO_DEBUG"].lower() == "true"
 
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if os.environ.get('DJANGO_ALLOWED_HOSTS') else []
+def _csv_env(name):
+    return [item.strip() for item in os.environ.get(name, '').split(',') if item.strip()]
 
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if os.environ.get('CORS_ALLOWED_ORIGINS') else []
+ALLOWED_HOSTS = _csv_env('DJANGO_ALLOWED_HOSTS')
 
-CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if os.environ.get('CSRF_TRUSTED_ORIGINS') else []
+CORS_ALLOWED_ORIGINS = _csv_env('CORS_ALLOWED_ORIGINS')
 
-# Azure App Service terminates TLS and forwards plain HTTP with this header set.
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_TRUSTED_ORIGINS = _csv_env('CSRF_TRUSTED_ORIGINS')
+
+# Only safe when every request reaches the app through a proxy that overwrites
+# this header (Azure App Service does). Turn off for a directly-reachable server.
+if (os.environ.get('DJANGO_USE_PROXY_SSL_HEADER') or 'true').lower() == 'true':
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -87,7 +92,8 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
 # Azure Postgres requires SSL; a local dev container doesn't support it.
-DB_SSLMODE = os.environ.get('DB_SSLMODE', 'require')
+# `or` rather than a .get() default: the shipped .env.example sets an empty value.
+DB_SSLMODE = os.environ.get('DB_SSLMODE') or 'require'
 
 DATABASES = {
     'default': {
