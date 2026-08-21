@@ -14,10 +14,16 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Which env file to read, relative to the repo root: '.env.local' (local
+# Postgres container, the default) or '.env.azure' (the shared dev databases on
+# Azure). A missing file is a no-op, which is what we want on Azure App Service,
+# where the values come from Application Settings instead. Real environment
+# variables always win over the file, so a one-off override still works:
+# `DB_SSLMODE=require python manage.py migrate`.
+load_dotenv(BASE_DIR.parent / os.environ.get('DJANGO_ENV_FILE', '.env.local'))
 
 
 # Quick-start development settings - unsuitable for production
