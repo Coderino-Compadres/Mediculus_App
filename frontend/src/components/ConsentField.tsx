@@ -1,4 +1,14 @@
-function ConsentField({ id, label, checked, onChange, error }) {
+import type { ChangeEvent } from 'react'
+
+interface ConsentFieldProps {
+  id: string
+  label: string
+  checked: boolean
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void
+  error?: string | null
+}
+
+function ConsentField({ id, label, checked, onChange, error }: ConsentFieldProps) {
   const errorId = error ? `${id}-error` : undefined
 
   return (

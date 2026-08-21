@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
 import FormField from '../components/FormField'
@@ -30,13 +30,13 @@ function Register() {
     useAuthForm(INITIAL_VALUES)
   const [consents, setConsents] = useState(INITIAL_CONSENTS)
 
-  function handleConsentChange(event) {
-    const { name, checked } = event.target
+  function handleConsentChange(event: ChangeEvent<HTMLInputElement>) {
+    const { name, checked } = event.target as { name: keyof typeof INITIAL_CONSENTS; checked: boolean }
     setConsents((prev) => ({ ...prev, [name]: checked }))
     setStatus('idle')
   }
 
-  function onSubmit(event) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
     handleSubmit(event, (currentValues) => ({
       firstName: validateName(currentValues.firstName, 'imię'),
       lastName: validateName(currentValues.lastName, 'nazwisko'),

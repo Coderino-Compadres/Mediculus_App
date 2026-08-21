@@ -1,7 +1,16 @@
+import type { ReactNode } from 'react'
 import mediculusLogo from '../assets/mediculus-logo.jpeg'
 import './auth.css'
 
-function AuthLayout({ title, subtitle, successMessage, children, footer }) {
+interface AuthLayoutProps {
+  title: string
+  subtitle: string
+  successMessage?: string | null
+  children: ReactNode
+  footer?: ReactNode
+}
+
+function AuthLayout({ title, subtitle, successMessage, children, footer }: AuthLayoutProps) {
   return (
     <div className="auth-page">
       <div className="auth-card">

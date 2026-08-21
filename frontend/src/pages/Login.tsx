@@ -1,3 +1,4 @@
+import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
 import FormField from '../components/FormField'
@@ -10,7 +11,7 @@ function Login() {
     password: '',
   })
 
-  function onSubmit(event) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
     handleSubmit(event, (currentValues) => ({
       email: validateEmail(currentValues.email),
       password: validatePassword(currentValues.password),

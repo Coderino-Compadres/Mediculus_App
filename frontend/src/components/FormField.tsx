@@ -1,4 +1,12 @@
-function FormField({ id, label, error, ...inputProps }) {
+import type { InputHTMLAttributes } from 'react'
+
+interface FormFieldProps extends InputHTMLAttributes<HTMLInputElement> {
+  id: string
+  label: string
+  error?: string | null
+}
+
+function FormField({ id, label, error, ...inputProps }: FormFieldProps) {
   const errorId = error ? `${id}-error` : undefined
 
   return (
