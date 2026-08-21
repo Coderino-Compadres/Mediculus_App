@@ -44,6 +44,26 @@ CORS_ALLOWED_ORIGINS = _csv_env('CORS_ALLOWED_ORIGINS')
 
 CSRF_TRUSTED_ORIGINS = _csv_env('CSRF_TRUSTED_ORIGINS')
 
+# The session cookie is the whole authentication story (see core/authentication.py),
+# so the browser has to be willing to send it on cross-origin fetches.
+CORS_ALLOW_CREDENTIALS = True
+
+# JS has to read the CSRF cookie to echo it back in the X-CSRFToken header,
+# so this one cannot be HttpOnly. The session cookie stays HttpOnly (Django's
+# default) — that is the one worth protecting from XSS.
+CSRF_COOKIE_HTTPONLY = False
+
+# 'true' only when the frontend is served from a different site than the API
+# (e.g. a static host talking to App Service). Browsers reject SameSite=None
+# without Secure, so that pairing is not optional. Default 'false' fits both
+# the vite dev proxy (same-origin) and a frontend served by Django itself.
+if (os.environ.get('DJANGO_CROSS_SITE_COOKIES') or 'false').lower() == 'true':
+    SESSION_COOKIE_SAMESITE = CSRF_COOKIE_SAMESITE = 'None'
+    SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
+else:
+    SESSION_COOKIE_SAMESITE = CSRF_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = not DEBUG
+
 # Only safe when every request reaches the app through a proxy that overwrites
 # this header (Azure App Service does). Turn off for a directly-reachable server.
 if (os.environ.get('DJANGO_USE_PROXY_SSL_HEADER') or 'true').lower() == 'true':
@@ -60,6 +80,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
+    'rest_framework',
     'core',
 ]
 
@@ -125,6 +146,35 @@ DATABASES = {
 DATABASE_ROUTERS = ['core.routers.CoreDatabaseRouter']
 
 
+# Django REST Framework
+# https://www.django-rest-framework.org/api-guide/settings/
+
+# The default permission is IsAuthenticated rather than DRF's own AllowAny, so an
+# endpoint that declares none is closed instead of silently public. The three
+# views that legitimately serve visitors opt out by hand.
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'core.authentication.SessionUserAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'UNAUTHENTICATED_USER': None,
+    # Applied to the login/register endpoints only (core.views.AuthThrottle);
+    # everything else is unthrottled. Counted in the default local-memory cache,
+    # so the budget is per gunicorn worker rather than per deployment — a shared
+    # cache backend is what would make this a real limit.
+    'DEFAULT_THROTTLE_RATES': {'auth': '10/min'},
+}
+
+if not DEBUG:
+    # The browsable API renders core.User objects and form widgets; useful while
+    # developing, needless attack surface once deployed.
+    REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
+        'rest_framework.renderers.JSONRenderer',
+    ]
+
+
 # Password validation
 # https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
 
@@ -147,7 +197,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+# Polish, so that the messages Django itself produces (password validators,
+# DRF field errors) reach the frontend in the same language as its own labels.
+LANGUAGE_CODE = 'pl'
 
 TIME_ZONE = 'UTC'
 
