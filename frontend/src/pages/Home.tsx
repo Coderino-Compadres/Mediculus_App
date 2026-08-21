@@ -4,7 +4,7 @@ import { useAuth } from '../auth/authContext'
 import { EMOTION_COLORS } from '../utils/emotions'
 import type { EmotionName } from '../utils/emotions'
 import type { DayMood, TechniqueSuggestion, TodayEntry } from '../types/dashboard'
-import { ROUTES } from '../routes'
+import { PLACEHOLDER_ROUTES, ROUTES } from '../routes'
 import './home.css'
 
 /**
@@ -27,14 +27,15 @@ const MOCK_TODAY_ENTRY: TodayEntry = {
 
 const MOCK_STREAK_DAYS = 6
 
+/** 7 days ending today; keep every date <= today so the chart never shows a future entry. */
 const MOCK_WEEK: DayMood[] = [
+  { dayLabel: 'Sob', date: '2026-08-15', hasEntry: false },
+  { dayLabel: 'Ndz', date: '2026-08-16', hasEntry: true, dominantEmotion: 'Spokój', intensity: 4 },
   { dayLabel: 'Pon', date: '2026-08-17', hasEntry: true, dominantEmotion: 'Spokój', intensity: 3 },
   { dayLabel: 'Wt', date: '2026-08-18', hasEntry: true, dominantEmotion: 'Lęk', intensity: 6 },
   { dayLabel: 'Śr', date: '2026-08-19', hasEntry: false },
   { dayLabel: 'Czw', date: '2026-08-20', hasEntry: true, dominantEmotion: 'Stres', intensity: 7 },
   { dayLabel: 'Pt', date: '2026-08-21', hasEntry: true, dominantEmotion: 'Lęk', intensity: 8 },
-  { dayLabel: 'Sob', date: '2026-08-22', hasEntry: false },
-  { dayLabel: 'Ndz', date: '2026-08-23', hasEntry: true, dominantEmotion: 'Spokój', intensity: 4 },
 ]
 
 const MOCK_AVERAGE_STRESS = 6.4
@@ -53,25 +54,33 @@ const MOCK_TECHNIQUE: TechniqueSuggestion = {
   matchReason: 'Dopasowane do Twoich ostatnich wpisów — dominuje lęk.',
 }
 
-const CRISIS_SUPPORT_PHONE = 'XXX XXX XXX' // TODO: confirm real support line number
+// TODO: fill in the real support line number before this ships; until then the
+// banner below omits the phone sentence rather than showing a fake number to
+// someone in crisis.
+const CRISIS_SUPPORT_PHONE = ''
 
 // ---- Menu --------------------------------------------------------------------
 
+/** Reuses the placeholder page's own title as the menu label, so a rename only touches routes.ts. */
+function placeholderLabel(path: string): string {
+  return PLACEHOLDER_ROUTES.find((route) => route.path === path)?.title ?? path
+}
+
 const MENU_ITEMS: { label: string; to: string }[] = [
-  { label: 'Dzienniczki', to: ROUTES.journals },
-  { label: 'Raporty', to: ROUTES.reports },
-  { label: 'Analiza', to: ROUTES.analysis },
-  { label: 'Techniki terapeutyczne', to: ROUTES.techniques },
-  { label: 'Profil', to: ROUTES.profile },
+  { label: placeholderLabel(ROUTES.journals), to: ROUTES.journals },
+  { label: placeholderLabel(ROUTES.reports), to: ROUTES.reports },
+  { label: placeholderLabel(ROUTES.analysis), to: ROUTES.analysis },
+  { label: placeholderLabel(ROUTES.techniques), to: ROUTES.techniques },
+  { label: placeholderLabel(ROUTES.profile), to: ROUTES.profile },
   // TODO: not in the mockup, but confirmed as a high-priority feature (US-PT-13)
   // — added as a plain menu entry for now, no escalation logic yet.
-  { label: 'Plan bezpieczeństwa', to: ROUTES.safetyPlan },
+  { label: placeholderLabel(ROUTES.safetyPlan), to: ROUTES.safetyPlan },
   { label: 'Przejdź do części dietetyczno-psychodietetycznej', to: ROUTES.diet },
 ]
 
 function HeaderMenu() {
   const [open, setOpen] = useState(false)
-  const { signOut } = useAuth()
+  const { user, signOut } = useAuth()
   const navigate = useNavigate()
 
   async function onSignOut() {
@@ -104,6 +113,12 @@ function HeaderMenu() {
         <>
           <div className="home-menu-backdrop" onClick={() => setOpen(false)} />
           <nav className="home-menu-dropdown">
+            {user?.email && (
+              <div className="home-menu-account">
+                <p className="home-menu-account-email">{user.email}</p>
+                {user.role && <p className="home-menu-account-role">{user.role}</p>}
+              </div>
+            )}
             {MENU_ITEMS.map((item) => (
               <Link key={item.to} to={item.to} onClick={() => setOpen(false)}>
                 {item.label}
@@ -191,7 +206,7 @@ function MoodChart({ week }: { week: DayMood[] }) {
 
       <div className="mood-chart-bars">
         {week.map((day) => {
-          const hasEntry = day.hasEntry && day.intensity !== undefined
+          const hasEntry = day.hasEntry && day.intensity !== undefined && day.dominantEmotion !== undefined
           const heightPct = hasEntry
             ? Math.max(MIN_BAR_HEIGHT_PCT, (day.intensity as number) * INTENSITY_TO_HEIGHT_SCALE)
             : NO_ENTRY_BAR_HEIGHT_PCT
@@ -280,8 +295,10 @@ function Home() {
       {isStressAlert && (
         <section className="home-crisis-banner">
           <p>
-            Zauważyliśmy, że ostatnio jest Ci trudniej. Możesz zadzwonić pod numer wsparcia{' '}
-            {CRISIS_SUPPORT_PHONE} albo przejść do swojego planu bezpieczeństwa.
+            Zauważyliśmy, że ostatnio jest Ci trudniej.{' '}
+            {CRISIS_SUPPORT_PHONE
+              ? `Możesz zadzwonić pod numer wsparcia ${CRISIS_SUPPORT_PHONE} albo przejść do swojego planu bezpieczeństwa.`
+              : 'Możesz przejść do swojego planu bezpieczeństwa.'}
           </p>
           <Link to={ROUTES.safetyPlan} className="home-crisis-link">
             Plan bezpieczeństwa →
@@ -306,21 +323,6 @@ function Home() {
           W sytuacji kryzysowej skontaktuj się z lekarzem, terapeutą lub telefonem zaufania.
         </p>
       </section>
-
-      <nav className="home-bottom-nav">
-        <Link to={ROUTES.home} className="home-bottom-nav-item home-bottom-nav-item-active">
-          Dziś
-        </Link>
-        <Link to={ROUTES.journals} className="home-bottom-nav-item">
-          Dzienniczki
-        </Link>
-        <Link to={ROUTES.analysis} className="home-bottom-nav-item">
-          Analiza
-        </Link>
-        <Link to={ROUTES.techniques} className="home-bottom-nav-item">
-          Techniki
-        </Link>
-      </nav>
     </div>
   )
 }

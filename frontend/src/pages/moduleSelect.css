@@ -59,13 +59,13 @@
   padding: 32px 28px;
   cursor: pointer;
   font-family: var(--font-body);
-  box-shadow: 0 20px 40px -24px rgba(44, 56, 51, 0.35);
+  box-shadow: 0 20px 40px -24px rgba(var(--shadow-tint), 0.35);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .module-tile:hover {
   transform: translateY(-2px);
-  box-shadow: 0 24px 44px -20px rgba(44, 56, 51, 0.4);
+  box-shadow: 0 24px 44px -20px rgba(var(--shadow-tint), 0.4);
 }
 
 .module-tile h2 {
@@ -93,7 +93,7 @@
 .module-tile-lavender {
   background: var(--color-lavender);
   color: var(--color-graphite);
-  border: 1px solid rgba(44, 56, 51, 0.1);
+  border: 1px solid rgba(var(--shadow-tint), 0.1);
 }
 
 .module-tile-lavender p {

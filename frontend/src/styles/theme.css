@@ -10,6 +10,10 @@
   --color-error-bg: rgba(179, 69, 63, 0.1);
   --color-success-bg: rgba(127, 169, 143, 0.16);
 
+  /* RGB triplet of --color-graphite, for shadow/border rgba() so a tint change is one edit. */
+  --shadow-tint: 44, 56, 51;
+  --shadow-card: 0 12px 30px -20px rgba(var(--shadow-tint), 0.35);
+
   --font-heading: 'Lora', serif;
   --font-body: 'Karla', sans-serif;
   --font-weight-semibold: 600;

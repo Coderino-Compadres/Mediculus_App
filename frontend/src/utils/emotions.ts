@@ -27,5 +27,3 @@ export const EMOTION_COLORS: Record<EmotionName, string> = {
   Bezradność: '#8A93A8',
   Spokój: '#7FA98F',
 }
-
-export const EMOTIONS = Object.keys(EMOTION_COLORS) as EmotionName[]
