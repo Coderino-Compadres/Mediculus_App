@@ -53,8 +53,18 @@ python manage.py createsuperuser        # requires auth_user table -> run migrat
 python manage.py migrate                # applies Django's own built-in app migrations (auth/admin/sessions/contenttypes) to 'default' only
 python manage.py makemigrations core    # after changing backend/core/models.py
 python manage.py makemigrations --check --dry-run   # verify models.py and migrations are in sync (safe, no DB needed)
+python manage.py test core --noinput               # full suite (creates test_user_db + test_medical_db)
+python manage.py test core.tests.test_routers      # router/env-config tests only, no database touched
 ```
-`migrate core --database=default` / `migrate core --database=medical` create the actual domain tables — see the reconciliation caveat above before running either against a real database. No test suite currently exists in the repo.
+`migrate core --database=default` / `migrate core --database=medical` create the actual domain tables — see the reconciliation caveat above before running either against a real database.
+
+**Tests** live in `backend/core/tests/` and use Django's own runner (no pytest, no extra dependency):
+
+- `test_routers.py` — `CoreDatabaseRouter` placement and `allow_migrate` rules, including that operation hints arrive spread as kwargs (`target_db=...`, not `hints={...}`), and that `0002`'s hints still match what the router reads. `SimpleTestCase`, no database.
+- `test_models.py` — routing per model, the pseudonymized `id_medical` join (unknown ids accepted, no cascade across databases), the deliberate `PROTECT`/`SET_NULL`/`CASCADE` choices, the `parent_child` constraints, and that `created_at`/`updated_at` come from `auto_now*` rather than DB defaults. Needs both databases.
+- `test_env_config.py` — imports `config/settings.py` in a subprocess to check that `DJANGO_ENV_FILE` selects the file, real env vars override it, a missing file is survivable (the App Service case), a missing required key hard-fails, `DB_SSLMODE` defaults to `require`, and that no local env file pairs an `azure.com` host with `sslmode=disable`.
+
+Always pass `--noinput`: an aborted run leaves `test_user_db` behind and the next run then blocks on an interactive "delete it?" prompt, producing no output at all. Test databases are built from migrations (not `database_setup.sql`), so `0001` runs for real there rather than faked.
 
 ### Database schema/seed (raw SQL, run against Postgres directly)
 ```bash
