@@ -9,7 +9,7 @@ import datetime
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -469,6 +469,33 @@ class CsrfTests(AuthTestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_a_rejected_request_answers_in_json(self):
+        """Django's own failure view renders HTML, which a fetch() cannot read.
+
+        Without this the frontend has nothing to show but a generic fallback —
+        see core/csrf.py.
+        """
+        response = self.client.post(
+            reverse('core:register'), REGISTRATION, format='json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        self.assertEqual(response.json()['code'], 'csrf_failed')
+        self.assertIn('Odśwież stronę', response.json()['detail'])
+
+    @override_settings(DEBUG=True)
+    def test_the_technical_reason_is_included_while_debugging(self):
+        response = self.client.post(reverse('core:register'), REGISTRATION, format='json')
+
+        self.assertIn('reason', response.json())
+
+    def test_the_technical_reason_is_withheld_in_production(self):
+        """It names configuration ('does not match any trusted origins')."""
+        response = self.client.post(reverse('core:register'), REGISTRATION, format='json')
+
+        self.assertNotIn('reason', response.json())
 
     def test_login_with_a_csrf_token_goes_through(self):
         create_user()

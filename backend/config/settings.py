@@ -48,6 +48,10 @@ CSRF_TRUSTED_ORIGINS = _csv_env('CSRF_TRUSTED_ORIGINS')
 # so the browser has to be willing to send it on cross-origin fetches.
 CORS_ALLOW_CREDENTIALS = True
 
+# Rejected requests get JSON instead of Django's HTML page, because every caller
+# here is a fetch() that cannot read HTML — see core/csrf.py.
+CSRF_FAILURE_VIEW = 'core.csrf.csrf_failure'
+
 # JS has to read the CSRF cookie to echo it back in the X-CSRFToken header,
 # so this one cannot be HttpOnly. The session cookie stays HttpOnly (Django's
 # default) — that is the one worth protecting from XSS.
@@ -206,6 +210,31 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
+
+
+# Logging
+# https://docs.djangoproject.com/en/6.1/topics/logging/
+
+# Django's own default silences the console as soon as DEBUG is off: its handler
+# carries a require_debug_true filter, and the only other one mails admins about
+# ERRORs. A rejected CSRF check is a WARNING, so in production it reached nothing
+# at all — the request 403'd without leaving a trace anywhere. App Service and
+# gunicorn both collect stdout, so send it there unconditionally.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {'format': '{levelname} {name}: {message}', 'style': '{'},
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'simple'},
+    },
+    'loggers': {
+        # propagate=False so DEBUG runs do not print every record twice, once
+        # through this handler and once through the one Django set up.
+        'django': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
+}
 
 
 # Static files (CSS, JavaScript, Images)

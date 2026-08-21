@@ -23,6 +23,7 @@ export default defineConfig(({ mode }) => {
     // origin check fails. The fix is on the Django side: this origin has to be
     // listed in CSRF_TRUSTED_ORIGINS.
     server: {
+      strictPort : true,
       proxy: {
         '/api': apiProxyTarget,
       },
