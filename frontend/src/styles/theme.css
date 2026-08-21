@@ -1,0 +1,17 @@
+:root {
+  --color-sage: #4f7a64;
+  --color-sage-hover: #416754;
+  --color-sage-light: #7fa98f;
+  --color-lavender: #f0edf6;
+  --color-ochre: #e0b45c;
+  --color-graphite: #2c3833;
+  --color-graphite-muted: #5b6a63;
+  --color-error: #b3453f;
+  --color-error-bg: rgba(179, 69, 63, 0.1);
+  --color-success-bg: rgba(127, 169, 143, 0.16);
+
+  --font-heading: 'Lora', serif;
+  --font-body: 'Karla', sans-serif;
+  --font-weight-semibold: 600;
+  --font-weight-regular: 400;
+}
