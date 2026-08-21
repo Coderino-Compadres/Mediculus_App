@@ -4,7 +4,7 @@ import AuthLayout from '../components/AuthLayout'
 import FormField from '../components/FormField'
 import ConsentField from '../components/ConsentField'
 import SelectField, { type SelectOption } from '../components/SelectField'
-import { useAuthForm } from '../hooks/useAuthForm'
+import { useAuthForm, FORM_ERROR } from '../hooks/useAuthForm'
 import { useAuth } from '../auth/authContext'
 import { ACCOUNT_TYPES, REGISTER_FIELDS, register } from '../api/auth'
 import {
@@ -15,6 +15,8 @@ import {
   validateConsent,
   validateDateOfBirth,
   validateAccountType,
+  ageFromDateOfBirth,
+  ADULT_AGE,
 } from '../utils/validation'
 
 const INITIAL_VALUES = {
@@ -44,6 +46,26 @@ const INITIAL_CONSENTS = {
   servicesConsent: false,
 }
 
+/**
+ * The declared account type has to agree with the date of birth.
+ *
+ * Mirrors `_check_age_matches_account_type` in core/serializers.py — the backend
+ * is the one that decides, this is just so the user does not wait for a
+ * round-trip to be told. A guardian is deliberately not age-checked here either.
+ */
+function accountTypeConflict(accountType: string, dateOfBirth: string): string | null {
+  const age = ageFromDateOfBirth(dateOfBirth)
+  if (age === null) return null
+
+  if (accountType === ACCOUNT_TYPES.patient && age < ADULT_AGE) {
+    return 'Podana data urodzenia oznacza osobę niepełnoletnią. Wybierz „konto pacjenta małoletniego” albo popraw datę urodzenia.'
+  }
+  if (accountType === ACCOUNT_TYPES.minorPatient && age >= ADULT_AGE) {
+    return 'Podana data urodzenia oznacza osobę pełnoletnią. Wybierz „konto pacjenta” albo popraw datę urodzenia.'
+  }
+  return null
+}
+
 function Register() {
   const { setUser } = useAuth()
   const navigate = useNavigate()
@@ -68,23 +90,34 @@ function Register() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     void handleSubmit(event, {
-      validate: (currentValues) => ({
-        accountType: validateAccountType(currentValues.accountType),
-        firstName: validateName(currentValues.firstName, 'imię'),
-        lastName: validateName(currentValues.lastName, 'nazwisko'),
-        dateOfBirth: validateDateOfBirth(currentValues.dateOfBirth),
-        email: validateEmail(currentValues.email),
-        password: validatePassword(currentValues.password),
-        confirmPassword: validateConfirmPassword(currentValues.confirmPassword, currentValues.password),
-        dataConsent: validateConsent(
-          consents.dataConsent,
-          'Zgoda na przetwarzanie danych jest wymagana, aby założyć konto.',
-        ),
-        servicesConsent: validateConsent(
-          consents.servicesConsent,
-          'Zgoda na usługi fundacji jest wymagana, aby założyć konto.',
-        ),
-      }),
+      validate: (currentValues) => {
+        const accountType = validateAccountType(currentValues.accountType)
+        const dateOfBirth = validateDateOfBirth(currentValues.dateOfBirth)
+
+        return {
+          accountType,
+          firstName: validateName(currentValues.firstName, 'imię'),
+          lastName: validateName(currentValues.lastName, 'nazwisko'),
+          dateOfBirth,
+          email: validateEmail(currentValues.email),
+          password: validatePassword(currentValues.password),
+          confirmPassword: validateConfirmPassword(currentValues.confirmPassword, currentValues.password),
+          dataConsent: validateConsent(
+            consents.dataConsent,
+            'Zgoda na przetwarzanie danych jest wymagana, aby założyć konto.',
+          ),
+          servicesConsent: validateConsent(
+            consents.servicesConsent,
+            'Zgoda na usługi fundacji jest wymagana, aby założyć konto.',
+          ),
+          // Only worth asking once both halves are individually valid —
+          // otherwise it would contradict the field errors above it.
+          [FORM_ERROR]:
+            accountType || dateOfBirth
+              ? null
+              : accountTypeConflict(currentValues.accountType, currentValues.dateOfBirth),
+        }
+      },
       submit: async (currentValues) => {
         // The backend logs the new account in as part of registering it, so
         // there is no second trip through /login here.

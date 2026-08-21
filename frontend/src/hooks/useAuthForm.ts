@@ -4,6 +4,13 @@ import { toFormErrors } from '../api/auth'
 
 export type FormErrors = Record<string, string | null>
 
+/**
+ * A key in validate()'s result whose message belongs above the form rather than
+ * under one input — for a conflict between two fields, where blaming either one
+ * alone would be arbitrary. Matches how DRF reports `non_field_errors`.
+ */
+export const FORM_ERROR = '_form'
+
 export type AuthFormStatus = 'idle' | 'submitting' | 'success'
 
 interface SubmitOptions<T> {
@@ -37,7 +44,9 @@ export function useAuthForm<T extends Record<string, string>>(initialValues: T) 
     setFormError(null)
 
     const clientErrors = validate(values)
-    setErrors(clientErrors)
+    const { [FORM_ERROR]: crossFieldError, ...fieldErrors } = clientErrors
+    setErrors(fieldErrors)
+    setFormError(crossFieldError ?? null)
     if (Object.values(clientErrors).some(Boolean)) {
       setStatus('idle')
       return

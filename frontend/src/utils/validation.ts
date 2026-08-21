@@ -52,3 +52,23 @@ export function validateAccountType(value: string): string | null {
   if (!value) return 'Wybierz rodzaj konta.'
   return null
 }
+
+/** Where "małoletni" stops. Mirrors ADULT_AGE in core/serializers.py. */
+export const ADULT_AGE = 18
+
+/**
+ * Full years completed today, from the 'YYYY-MM-DD' a date input produces.
+ *
+ * Compares month and day rather than dividing a millisecond difference by a
+ * year: the arithmetic version puts someone born on 29 February a day out.
+ */
+export function ageFromDateOfBirth(value: string): number | null {
+  const born = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(born.getTime())) return null
+
+  const today = new Date()
+  const hadBirthdayThisYear =
+    today.getMonth() > born.getMonth() ||
+    (today.getMonth() === born.getMonth() && today.getDate() >= born.getDate())
+  return today.getFullYear() - born.getFullYear() - (hadBirthdayThisYear ? 0 : 1)
+}

@@ -32,9 +32,23 @@ ACCOUNT_TYPES = {
     ACCOUNT_TYPE_PARENT: {'role': 'rodzic', 'is_child': None},
 }
 
-# Rejects typos and swapped digits ('0202-05-14') without pretending to know
-# what a plausible age is; the account type, not the date, decides who is a minor.
+# Rejects typos and swapped digits ('0202-05-14').
 EARLIEST_DATE_OF_BIRTH = datetime.date(1900, 1, 1)
+
+# Where "małoletni" stops. Named rather than inlined because it is a policy
+# decision, not a fact — RODO art. 8 uses 16 for consent to digital services,
+# so this may well need revisiting per what the foundation decides.
+ADULT_AGE = 18
+
+
+def age_on(date_of_birth, today):
+    """Full years completed by `today`.
+
+    Compares (month, day) tuples rather than dividing by 365.25: the naive
+    version puts someone born on 29 February a day out in non-leap years.
+    """
+    had_birthday_this_year = (today.month, today.day) >= (date_of_birth.month, date_of_birth.day)
+    return today.year - date_of_birth.year - (0 if had_birthday_this_year else 1)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -151,7 +165,40 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {'password_confirm': 'Hasła nie są identyczne.'}
             )
+
+        self._check_age_matches_account_type(attrs)
         return attrs
+
+    def _check_age_matches_account_type(self, attrs):
+        """The declared account type has to agree with the date of birth.
+
+        Without this, `patient.is_child` could say one thing while
+        `user.date_of_birth` says the opposite — and whichever of the two a later
+        feature happens to trust, some of the records would be wrong. Raised as a
+        non-field error because the conflict belongs to the pair, not to either
+        input on its own.
+        """
+        account_type = attrs.get('account_type')
+        date_of_birth = attrs.get('date_of_birth')
+        # Absent when the field itself failed; that error is the one to report.
+        if not account_type or not date_of_birth:
+            return
+
+        expects_minor = ACCOUNT_TYPES[account_type]['is_child']
+        if expects_minor is None:  # a guardian; see the note in ACCOUNT_TYPES
+            return
+
+        is_adult = age_on(date_of_birth, timezone.localdate()) >= ADULT_AGE
+        if not expects_minor and not is_adult:
+            raise serializers.ValidationError(
+                'Podana data urodzenia oznacza osobę niepełnoletnią. Wybierz '
+                '„konto pacjenta małoletniego” albo popraw datę urodzenia.'
+            )
+        if expects_minor and is_adult:
+            raise serializers.ValidationError(
+                'Podana data urodzenia oznacza osobę pełnoletnią. Wybierz '
+                '„konto pacjenta” albo popraw datę urodzenia.'
+            )
 
     def create(self, validated_data):
         now = timezone.now()

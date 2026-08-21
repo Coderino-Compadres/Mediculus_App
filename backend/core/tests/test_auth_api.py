@@ -158,7 +158,13 @@ class AccountTypeTests(AuthTestCase):
         self.assertIs(patient.is_child, False)
 
     def test_minor_patient_gets_a_patient_row_marked_a_child(self):
-        response = self._register('minor_patient')
+        # A minor's date of birth, or the age check would reject the pairing —
+        # which is what AgeAgainstAccountTypeTests covers.
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'account_type': 'minor_patient', 'date_of_birth': '2012-06-01'},
+            format='json',
+        )
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['role'], 'patient')
@@ -190,6 +196,78 @@ class AccountTypeTests(AuthTestCase):
         self.assertIn('account_type', response.data)
 
 
+class AgeAgainstAccountTypeTests(AuthTestCase):
+    """The declared account type has to agree with the date of birth."""
+
+    def setUp(self):
+        super().setUp()
+        for name in ('patient', 'rodzic'):
+            UserRole.objects.get_or_create(name=name)
+        self.today = timezone.localdate()
+
+    def _register(self, account_type, date_of_birth):
+        return self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {
+                'account_type': account_type,
+                'date_of_birth': date_of_birth.isoformat(),
+            },
+            format='json',
+        )
+
+    def _birthday_years_ago(self, years, days_offset=0):
+        """A date of birth whose 18th birthday lands exactly where we want it."""
+        try:
+            born = self.today.replace(year=self.today.year - years)
+        except ValueError:  # 29 February in a non-leap target year
+            born = self.today.replace(year=self.today.year - years, day=28)
+        return born + datetime.timedelta(days=days_offset)
+
+    def test_adult_account_with_a_minors_date_is_rejected(self):
+        response = self._register('patient', self._birthday_years_ago(15))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('niepełnoletnią', str(response.data))
+        self.assertFalse(User.objects.exists())
+
+    def test_minor_account_with_an_adults_date_is_rejected(self):
+        """The mirror case: is_child=True must not be recorded for an adult."""
+        response = self._register('minor_patient', self._birthday_years_ago(40))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('pełnoletnią', str(response.data))
+        self.assertFalse(User.objects.exists())
+
+    def test_the_conflict_is_reported_as_a_non_field_error(self):
+        """It belongs to the pair, so the frontend shows it above the form."""
+        response = self._register('patient', self._birthday_years_ago(15))
+
+        self.assertIn('non_field_errors', response.data)
+
+    def test_turning_eighteen_today_counts_as_an_adult(self):
+        response = self._register('patient', self._birthday_years_ago(18))
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_one_day_short_of_eighteen_is_still_a_minor(self):
+        """Born 18 years ago tomorrow — the birthday has not happened yet."""
+        response = self._register('patient', self._birthday_years_ago(18, days_offset=1))
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_minor_can_register_a_minor_account(self):
+        response = self._register('minor_patient', self._birthday_years_ago(15))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIs(Patient.objects.get(user__email=REGISTRATION['email']).is_child, True)
+
+    def test_a_guardian_is_not_age_checked(self):
+        """Deliberately unenforced — see the note in the summary."""
+        response = self._register('parent', self._birthday_years_ago(15))
+
+        self.assertEqual(response.status_code, 201)
+
+
 class DateOfBirthTests(AuthTestCase):
     def test_the_date_is_stored_and_returned(self):
         response = self.client.post(reverse('core:register'), REGISTRATION, format='json')
@@ -216,8 +294,15 @@ class DateOfBirthTests(AuthTestCase):
         self.assertIn('date_of_birth', response.data)
 
     def test_someone_born_today_is_accepted(self):
-        """The future check must not swallow the boundary."""
-        payload = REGISTRATION | {'date_of_birth': timezone.localdate().isoformat()}
+        """The future check must not swallow the boundary.
+
+        Registered as a minor, since a newborn plainly cannot hold an adult
+        patient account — that pairing is the age check's job, not this one's.
+        """
+        payload = REGISTRATION | {
+            'date_of_birth': timezone.localdate().isoformat(),
+            'account_type': 'minor_patient',
+        }
 
         response = self.client.post(reverse('core:register'), payload, format='json')
 
