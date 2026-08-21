@@ -5,10 +5,13 @@ lives there too. Nothing here reaches medical_db — a new patient's `id_medical
 is generated locally and only referenced from the other database later.
 """
 
+import datetime
+
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
@@ -22,6 +25,8 @@ REGISTRATION = {
     'password_confirm': VALID_PASSWORD,
     'name': 'Jan',
     'surname': 'Testowy',
+    'date_of_birth': '1990-04-17',
+    'account_type': 'patient',
     'data_consent': True,
     'services_consent': True,
 }
@@ -127,6 +132,112 @@ class RegisterTests(AuthTestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertIsNone(response.data['role'])
+
+
+class AccountTypeTests(AuthTestCase):
+    """The form's three account types, as they land in the schema."""
+
+    def setUp(self):
+        super().setUp()
+        for name in ('patient', 'rodzic'):
+            UserRole.objects.get_or_create(name=name)
+
+    def _register(self, account_type):
+        return self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'account_type': account_type}, format='json',
+        )
+
+    def test_adult_patient_gets_a_patient_row_marked_not_a_child(self):
+        response = self._register('patient')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['role'], 'patient')
+        self.assertIs(response.data['is_child'], False)
+        patient = Patient.objects.get(user__email=REGISTRATION['email'])
+        self.assertIs(patient.is_child, False)
+
+    def test_minor_patient_gets_a_patient_row_marked_a_child(self):
+        response = self._register('minor_patient')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['role'], 'patient')
+        self.assertIs(response.data['is_child'], True)
+        self.assertIs(Patient.objects.get(user__email=REGISTRATION['email']).is_child, True)
+
+    def test_guardian_gets_the_rodzic_role_and_no_patient_row(self):
+        """A guardian is not a clinical subject, so they get no id_medical."""
+        response = self._register('parent')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['role'], 'rodzic')
+        self.assertIsNone(response.data['is_child'])
+        self.assertFalse(Patient.objects.filter(user__email=REGISTRATION['email']).exists())
+
+    def test_an_unknown_account_type_is_rejected(self):
+        response = self._register('specjalista')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('account_type', response.data)
+        self.assertFalse(User.objects.exists())
+
+    def test_account_type_is_required(self):
+        payload = {k: v for k, v in REGISTRATION.items() if k != 'account_type'}
+
+        response = self.client.post(reverse('core:register'), payload, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('account_type', response.data)
+
+
+class DateOfBirthTests(AuthTestCase):
+    def test_the_date_is_stored_and_returned(self):
+        response = self.client.post(reverse('core:register'), REGISTRATION, format='json')
+
+        self.assertEqual(response.data['date_of_birth'], '1990-04-17')
+        user = User.objects.get(email=REGISTRATION['email'])
+        self.assertEqual(user.date_of_birth, datetime.date(1990, 4, 17))
+
+    def test_date_of_birth_is_required(self):
+        payload = {k: v for k, v in REGISTRATION.items() if k != 'date_of_birth'}
+
+        response = self.client.post(reverse('core:register'), payload, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('date_of_birth', response.data)
+
+    def test_a_future_date_is_rejected(self):
+        tomorrow = timezone.localdate() + datetime.timedelta(days=1)
+        payload = REGISTRATION | {'date_of_birth': tomorrow.isoformat()}
+
+        response = self.client.post(reverse('core:register'), payload, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('date_of_birth', response.data)
+
+    def test_someone_born_today_is_accepted(self):
+        """The future check must not swallow the boundary."""
+        payload = REGISTRATION | {'date_of_birth': timezone.localdate().isoformat()}
+
+        response = self.client.post(reverse('core:register'), payload, format='json')
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_an_implausibly_early_date_is_rejected(self):
+        payload = REGISTRATION | {'date_of_birth': '0202-05-14'}
+
+        response = self.client.post(reverse('core:register'), payload, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('date_of_birth', response.data)
+
+    def test_a_malformed_date_is_rejected(self):
+        payload = REGISTRATION | {'date_of_birth': '17-04-1990'}
+
+        response = self.client.post(reverse('core:register'), payload, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('date_of_birth', response.data)
 
 
 class LoginTests(AuthTestCase):

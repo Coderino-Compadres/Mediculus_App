@@ -4,6 +4,7 @@ Field names on the wire are snake_case and mirror the columns in `core.models`;
 the frontend maps its camelCase form state onto them in `src/api/auth.ts`.
 """
 
+import datetime
 import uuid
 
 from django.contrib.auth.hashers import check_password, make_password
@@ -15,10 +16,25 @@ from rest_framework import serializers
 
 from .models import Patient, User, UserRole
 
-# The role every self-service registration gets. Specialists and guardians are
-# created by the organization, not through the public form. Matches the row
-# seeded by scripts/mock_data.sql.
-PATIENT_ROLE_NAME = 'patient'
+# What the registration form's "account type" choice means in the schema. Role
+# names match the rows seeded by scripts/mock_data.sql; a specialist account is
+# still created by the organization, not through the public form.
+#
+# A guardian gets no `patient` row at all: they are not a clinical subject, so
+# they have no id_medical and nothing in medical_db can refer to them.
+ACCOUNT_TYPE_PATIENT = 'patient'
+ACCOUNT_TYPE_MINOR_PATIENT = 'minor_patient'
+ACCOUNT_TYPE_PARENT = 'parent'
+
+ACCOUNT_TYPES = {
+    ACCOUNT_TYPE_PATIENT: {'role': 'patient', 'is_child': False},
+    ACCOUNT_TYPE_MINOR_PATIENT: {'role': 'patient', 'is_child': True},
+    ACCOUNT_TYPE_PARENT: {'role': 'rodzic', 'is_child': None},
+}
+
+# Rejects typos and swapped digits ('0202-05-14') without pretending to know
+# what a plausible age is; the account type, not the date, decides who is a minor.
+EARLIEST_DATE_OF_BIRTH = datetime.date(1900, 1, 1)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -26,15 +42,22 @@ class UserSerializer(serializers.ModelSerializer):
 
     id = serializers.UUIDField(source='id_user', read_only=True)
     role = serializers.SerializerMethodField()
+    is_child = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'name', 'surname', 'date_of_birth', 'role']
+        fields = ['id', 'email', 'name', 'surname', 'date_of_birth', 'role', 'is_child']
         read_only_fields = fields
 
     def get_role(self, user):
         # user_role is nullable in the schema, so a user without one is valid.
         return user.user_role.name if user.user_role_id else None
+
+    def get_is_child(self, user):
+        # None means "not a patient at all" (a guardian), which is why this reads
+        # the patient row rather than deriving anything from date_of_birth.
+        patient = Patient.objects.filter(user=user).first()
+        return patient.is_child if patient else None
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -62,6 +85,20 @@ class RegisterSerializer(serializers.Serializer):
         max_length=150,
         error_messages={'blank': 'Podaj nazwisko.', 'required': 'Podaj nazwisko.'},
     )
+    date_of_birth = serializers.DateField(
+        error_messages={
+            'required': 'Podaj datę urodzenia.',
+            'null': 'Podaj datę urodzenia.',
+            'invalid': 'Podaj poprawną datę urodzenia.',
+        },
+    )
+    account_type = serializers.ChoiceField(
+        choices=sorted(ACCOUNT_TYPES), write_only=True,
+        error_messages={
+            'required': 'Wybierz rodzaj konta.',
+            'invalid_choice': 'Wybierz jedną z dostępnych opcji rodzaju konta.',
+        },
+    )
     data_consent = serializers.BooleanField(
         write_only=True,
         error_messages={'required': 'Zgoda na przetwarzanie danych jest wymagana, aby założyć konto.'},
@@ -84,6 +121,15 @@ class RegisterSerializer(serializers.Serializer):
             validate_password(value)
         except DjangoValidationError as exc:
             raise serializers.ValidationError(list(exc.messages)) from exc
+        return value
+
+    def validate_date_of_birth(self, value):
+        # localdate(), not utcnow(): "today" has to mean today where the person
+        # filling the form is, or someone born today is rejected for a few hours.
+        if value > timezone.localdate():
+            raise serializers.ValidationError('Data urodzenia nie może być z przyszłości.')
+        if value < EARLIEST_DATE_OF_BIRTH:
+            raise serializers.ValidationError('Sprawdź datę urodzenia — wygląda na literówkę.')
         return value
 
     def validate_data_consent(self, value):
@@ -109,7 +155,10 @@ class RegisterSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         now = timezone.now()
-        role = UserRole.objects.filter(name=PATIENT_ROLE_NAME).first()
+        account = ACCOUNT_TYPES[validated_data['account_type']]
+        # Looked up by name because user_role is seeded by SQL, not by a
+        # migration: a database without the row yields role=None, not a failure.
+        role = UserRole.objects.filter(name=account['role']).first()
 
         # Both writes land in user_db, so one transaction covers them. Nothing
         # here touches medical_db — patient.id_medical is generated locally and
@@ -122,12 +171,12 @@ class RegisterSerializer(serializers.Serializer):
                     password_hash=make_password(validated_data['password']),
                     name=validated_data['name'],
                     surname=validated_data['surname'],
+                    date_of_birth=validated_data['date_of_birth'],
                     data_consent_at=now,
                     services_consent_at=now,
                 )
-                # is_child is left NULL on purpose: the form collects no date of
-                # birth, so "minor or not" is genuinely unknown at this point.
-                Patient.objects.create(user=user)
+                if account['is_child'] is not None:
+                    Patient.objects.create(user=user, is_child=account['is_child'])
         except IntegrityError as exc:
             # validate_email lost a race with a concurrent signup for the same
             # address; the unique index is the actual arbiter.

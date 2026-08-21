@@ -3,24 +3,41 @@ import { Link, useNavigate } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
 import FormField from '../components/FormField'
 import ConsentField from '../components/ConsentField'
+import SelectField, { type SelectOption } from '../components/SelectField'
 import { useAuthForm } from '../hooks/useAuthForm'
 import { useAuth } from '../auth/authContext'
-import { REGISTER_FIELDS, register } from '../api/auth'
+import { ACCOUNT_TYPES, REGISTER_FIELDS, register } from '../api/auth'
 import {
   validateEmail,
   validatePassword,
   validateName,
   validateConfirmPassword,
   validateConsent,
+  validateDateOfBirth,
+  validateAccountType,
 } from '../utils/validation'
 
 const INITIAL_VALUES = {
+  accountType: '',
   firstName: '',
   lastName: '',
+  dateOfBirth: '',
   email: '',
   password: '',
   confirmPassword: '',
 }
+
+// A guardian's account is not a patient account: it gets no diary of its own,
+// which is why this choice cannot be inferred from the date of birth.
+// Keeps the native picker from offering a future date at all; the client-side
+// check and the backend both still verify it.
+const TODAY = new Date().toISOString().slice(0, 10)
+
+const ACCOUNT_TYPE_OPTIONS: SelectOption[] = [
+  { value: ACCOUNT_TYPES.patient, label: 'Konto pacjenta' },
+  { value: ACCOUNT_TYPES.minorPatient, label: 'Konto pacjenta małoletniego' },
+  { value: ACCOUNT_TYPES.parent, label: 'Konto rodzica lub opiekuna' },
+]
 
 const INITIAL_CONSENTS = {
   dataConsent: false,
@@ -52,8 +69,10 @@ function Register() {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     void handleSubmit(event, {
       validate: (currentValues) => ({
+        accountType: validateAccountType(currentValues.accountType),
         firstName: validateName(currentValues.firstName, 'imię'),
         lastName: validateName(currentValues.lastName, 'nazwisko'),
+        dateOfBirth: validateDateOfBirth(currentValues.dateOfBirth),
         email: validateEmail(currentValues.email),
         password: validatePassword(currentValues.password),
         confirmPassword: validateConfirmPassword(currentValues.confirmPassword, currentValues.password),
@@ -94,6 +113,16 @@ function Register() {
           </p>
         )}
 
+        <SelectField
+          id="accountType"
+          label="Rodzaj konta"
+          options={ACCOUNT_TYPE_OPTIONS}
+          placeholder="Wybierz…"
+          value={values.accountType}
+          onChange={handleChange}
+          error={errors.accountType}
+          disabled={submitting}
+        />
         <FormField
           id="firstName"
           label="Imię"
@@ -112,6 +141,17 @@ function Register() {
           value={values.lastName}
           onChange={handleChange}
           error={errors.lastName}
+          disabled={submitting}
+        />
+        <FormField
+          id="dateOfBirth"
+          label="Data urodzenia"
+          type="date"
+          autoComplete="bday"
+          max={TODAY}
+          value={values.dateOfBirth}
+          onChange={handleChange}
+          error={errors.dateOfBirth}
           disabled={submitting}
         />
         <FormField

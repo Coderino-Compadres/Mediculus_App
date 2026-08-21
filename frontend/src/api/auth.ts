@@ -13,6 +13,7 @@ interface UserPayload {
   surname: string | null
   date_of_birth: string | null
   role: string | null
+  is_child: boolean | null
 }
 
 export interface AuthUser {
@@ -22,6 +23,8 @@ export interface AuthUser {
   lastName: string | null
   dateOfBirth: string | null
   role: string | null
+  /** null for a guardian: they have no patient row at all, so no answer. */
+  isChild: boolean | null
 }
 
 function toAuthUser(payload: UserPayload): AuthUser {
@@ -32,8 +35,18 @@ function toAuthUser(payload: UserPayload): AuthUser {
     lastName: payload.surname,
     dateOfBirth: payload.date_of_birth,
     role: payload.role,
+    isChild: payload.is_child,
   }
 }
+
+/** Mirrors ACCOUNT_TYPES in core/serializers.py — the wire values, not labels. */
+export const ACCOUNT_TYPES = {
+  patient: 'patient',
+  minorPatient: 'minor_patient',
+  parent: 'parent',
+} as const
+
+export type AccountType = (typeof ACCOUNT_TYPES)[keyof typeof ACCOUNT_TYPES]
 
 export interface LoginInput {
   email: string
@@ -41,8 +54,10 @@ export interface LoginInput {
 }
 
 export interface RegisterInput {
+  accountType: string
   firstName: string
   lastName: string
+  dateOfBirth: string
   email: string
   password: string
   confirmPassword: string
@@ -57,8 +72,10 @@ export const LOGIN_FIELDS: Record<string, string> = {
 }
 
 export const REGISTER_FIELDS: Record<string, string> = {
+  account_type: 'accountType',
   name: 'firstName',
   surname: 'lastName',
+  date_of_birth: 'dateOfBirth',
   email: 'email',
   password: 'password',
   password_confirm: 'confirmPassword',
@@ -92,6 +109,8 @@ export async function register(input: RegisterInput): Promise<AuthUser> {
       password_confirm: input.confirmPassword,
       name: input.firstName,
       surname: input.lastName,
+      date_of_birth: input.dateOfBirth,
+      account_type: input.accountType,
       data_consent: input.dataConsent,
       services_consent: input.servicesConsent,
     },

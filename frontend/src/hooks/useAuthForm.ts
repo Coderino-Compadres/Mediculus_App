@@ -21,7 +21,7 @@ export function useAuthForm<T extends Record<string, string>>(initialValues: T) 
   const [status, setStatus] = useState<AuthFormStatus>('idle')
   const [formError, setFormError] = useState<string | null>(null)
 
-  function handleChange(event: ChangeEvent<HTMLInputElement>) {
+  function handleChange(event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = event.target
     setValues((prev) => ({ ...prev, [name]: value }))
     setStatus('idle')
