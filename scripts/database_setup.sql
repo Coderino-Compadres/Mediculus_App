@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS "user" (
     name TEXT,
     surname TEXT,
     date_of_birth DATE,
+    -- When each RODO consent was granted; NULL means never. Timestamps rather
+    -- than booleans because art. 7(1) puts the burden of proof on us.
+    data_consent_at TIMESTAMPTZ,
+    services_consent_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
@@ -97,6 +101,14 @@ CREATE TABLE IF NOT EXISTS parent_child (
         FOREIGN KEY (id_child)
         REFERENCES "user" (id_user)
 );
+
+-- The CREATE TABLE above is IF NOT EXISTS, so it is a no-op on a database that
+-- predates the consent columns. Add them here as well so that re-running this
+-- script upgrades such a database instead of silently skipping them. Mirrors
+-- core/migrations/0004_user_consents.py, whichever of the two runs first.
+ALTER TABLE "user"
+    ADD COLUMN IF NOT EXISTS data_consent_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS services_consent_at TIMESTAMPTZ;
 
 -- Helpful FK indexes
 CREATE INDEX IF NOT EXISTS idx_user_id_user_role

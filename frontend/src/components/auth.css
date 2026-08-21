@@ -65,7 +65,7 @@
   color: var(--color-graphite);
 }
 
-.auth-field input {
+.auth-field input, .auth-field select {
   font-family: var(--font-body);
   font-weight: var(--font-weight-regular);
   font-size: 16px;
@@ -76,13 +76,13 @@
   color: var(--color-graphite);
 }
 
-.auth-field input:focus-visible {
+.auth-field input:focus-visible, .auth-field select:focus-visible {
   outline: none;
   border-color: var(--color-sage);
   box-shadow: 0 0 0 3px rgba(79, 122, 100, 0.18);
 }
 
-.auth-field input[aria-invalid='true'] {
+.auth-field input[aria-invalid='true'], .auth-field select[aria-invalid='true'] {
   border-color: var(--color-error);
 }
 

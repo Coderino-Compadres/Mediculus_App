@@ -24,8 +24,19 @@ class User(models.Model):
     name = models.TextField(null=True, blank=True)
     surname = models.TextField(null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
+    # RODO art. 7(1) puts the burden of proof on us, so the consents collected by
+    # the registration form are stored as the moment they were granted rather
+    # than as a boolean. NULL means "never granted".
+    data_consent_at = models.DateTimeField(null=True, blank=True)
+    services_consent_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # DRF's IsAuthenticated permission duck-types Django's auth user and checks
+    # this attribute. core.User is a plain model, not an AbstractBaseUser, so it
+    # has to answer for itself; an instance is only ever attached to a request by
+    # core.authentication.SessionUserAuthentication, i.e. from a live session.
+    is_authenticated = True
 
     class Meta:
         db_table = 'user'
