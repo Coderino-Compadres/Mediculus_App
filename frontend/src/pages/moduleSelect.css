@@ -1,0 +1,109 @@
+.module-page {
+  flex-grow: 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 40px 20px 56px;
+  background: var(--color-lavender);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.module-header {
+  width: 100%;
+  max-width: 720px;
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.module-logo {
+  width: 72px;
+  height: auto;
+  border-radius: 14px;
+  margin-bottom: 16px;
+}
+
+.module-greeting {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-graphite-muted);
+  margin: 0 0 4px;
+}
+
+.module-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 32px;
+  color: var(--color-graphite);
+  margin: 0 0 8px;
+}
+
+.module-subtitle {
+  font-family: var(--font-body);
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.module-tiles {
+  width: 100%;
+  max-width: 900px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.module-tile {
+  text-align: left;
+  border: none;
+  border-radius: 24px;
+  padding: 32px 28px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  box-shadow: 0 20px 40px -24px rgba(var(--shadow-tint), 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.module-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 44px -20px rgba(var(--shadow-tint), 0.4);
+}
+
+.module-tile h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 22px;
+  margin: 0 0 12px;
+}
+
+.module-tile p {
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.module-tile-sage {
+  background: var(--color-sage);
+  color: #fff;
+}
+
+.module-tile-sage p {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.module-tile-lavender {
+  background: var(--color-lavender);
+  color: var(--color-graphite);
+  border: 1px solid rgba(var(--shadow-tint), 0.1);
+}
+
+.module-tile-lavender p {
+  color: var(--color-graphite-muted);
+}
+
+.module-footnote {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin-top: 32px;
+  text-align: center;
+}
