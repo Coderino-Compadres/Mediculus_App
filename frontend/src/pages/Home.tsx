@@ -1,63 +1,35 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
+import { ApiError } from '../api/client'
+import { fetchHomeDashboard } from '../api/dashboard'
 import { EMOTION_COLORS } from '../utils/emotions'
-import type { EmotionName } from '../utils/emotions'
-import type { DayMood, TechniqueSuggestion, TodayEntry } from '../types/dashboard'
+import type { DayMood, HomeDashboard, TechniqueSuggestion, TodayEntry } from '../types/dashboard'
 import { PLACEHOLDER_ROUTES, ROUTES } from '../routes'
 import './home.css'
 
 /**
  * The rest of the project (Login/Register/App/main) is still plain JS/JSX;
  * this screen and ModuleSelect.tsx are the first two written in TypeScript.
+ *
+ * Everything below the greeting comes from GET /api/dashboard/home/, which
+ * aggregates the signed-in patient's own diary entries — see core/dashboard.py.
  */
 
-// ---- Mock data (no backend yet) -------------------------------------------------
-
-/** Toggle to review the empty vs. saved "Dzisiejszy wpis" widget. */
-const MOCK_HAS_TODAY_ENTRY = true
-
-const MOCK_TODAY_ENTRY: TodayEntry = {
-  moodLabel: 'Źle',
-  emotions: [
-    { emotion: 'Lęk', intensity: 7 },
-    { emotion: 'Stres', intensity: 6 },
-  ],
-}
-
-const MOCK_STREAK_DAYS = 6
-
-/** 7 days ending today; keep every date <= today so the chart never shows a future entry. */
-const MOCK_WEEK: DayMood[] = [
-  { dayLabel: 'Sob', date: '2026-08-15', hasEntry: false },
-  { dayLabel: 'Ndz', date: '2026-08-16', hasEntry: true, dominantEmotion: 'Spokój', intensity: 4 },
-  { dayLabel: 'Pon', date: '2026-08-17', hasEntry: true, dominantEmotion: 'Spokój', intensity: 3 },
-  { dayLabel: 'Wt', date: '2026-08-18', hasEntry: true, dominantEmotion: 'Lęk', intensity: 6 },
-  { dayLabel: 'Śr', date: '2026-08-19', hasEntry: false },
-  { dayLabel: 'Czw', date: '2026-08-20', hasEntry: true, dominantEmotion: 'Stres', intensity: 7 },
-  { dayLabel: 'Pt', date: '2026-08-21', hasEntry: true, dominantEmotion: 'Lęk', intensity: 8 },
-]
-
-const MOCK_AVERAGE_STRESS = 6.4
-const MOCK_AVERAGE_ENERGY = 4.2
 /** Confirmed alarm threshold for "Średni stres" (0-10 scale) — see US-PT-13. */
 const STRESS_ALERT_THRESHOLD = 6
-/**
- * Drives both the "Średni stres" alarm styling and the crisis banner (US-PT-13),
- * so the two can't disagree. A real build computes this from the backend's stress
- * and extreme-emotion averages instead of MOCK_AVERAGE_STRESS.
- */
-const isStressAlert = MOCK_AVERAGE_STRESS >= STRESS_ALERT_THRESHOLD
-
-const MOCK_TECHNIQUE: TechniqueSuggestion = {
-  name: 'Uziemienie 5-4-3-2-1',
-  matchReason: 'Dopasowane do Twoich ostatnich wpisów — dominuje lęk.',
-}
 
 // TODO: fill in the real support line number before this ships; until then the
 // banner below omits the phone sentence rather than showing a fake number to
 // someone in crisis.
 const CRISIS_SUPPORT_PHONE = ''
+
+const DASHBOARD_ERROR = 'Nie udało się wczytać Twoich danych. Spróbuj ponownie.'
+
+/** Polish decimal comma; '—' when the week holds nothing to average. */
+function formatScore(value: number | null): string {
+  return value === null ? '—' : `${value.toFixed(1).replace('.', ',')}/10`
+}
 
 // ---- Menu --------------------------------------------------------------------
 
@@ -136,6 +108,14 @@ function HeaderMenu() {
 
 // ---- Today's entry widget ------------------------------------------------------
 
+/** "Neutralny — Lęk 7/10, Stres 6/10", skipping whichever half the entry left blank. */
+function todaySummary(entry: TodayEntry): string {
+  const emotions = entry.emotions
+    .map((rating) => (rating.intensity === null ? rating.emotion : `${rating.emotion} ${rating.intensity}/10`))
+    .join(', ')
+  return [entry.moodLabel, emotions].filter(Boolean).join(' — ') || 'Wpis zapisany.'
+}
+
 function TodayEntryWidget({ entry }: { entry: TodayEntry | null }) {
   const navigate = useNavigate()
 
@@ -154,17 +134,13 @@ function TodayEntryWidget({ entry }: { entry: TodayEntry | null }) {
     )
   }
 
-  const summary = entry.emotions.map((e) => `${e.emotion} ${e.intensity}/10`).join(', ')
-
   return (
     <div className="today-card">
       <div className="today-card-header">
         <h2>Dzisiejszy wpis</h2>
         <span className="today-badge">Zapisany</span>
       </div>
-      <p className="today-summary">
-        {entry.moodLabel} — {summary}
-      </p>
+      <p className="today-summary">{todaySummary(entry)}</p>
       {/* Edit is only allowed for the same calendar day, until midnight; after that
           the entry is locked. Real enforcement arrives with the backend. */}
       <div className="today-actions">
@@ -184,16 +160,31 @@ function TodayEntryWidget({ entry }: { entry: TodayEntry | null }) {
 /** Below the real-data floor (MIN_BAR_HEIGHT_PCT), so a missing day never looks "worse" than a calm logged one. */
 const NO_ENTRY_BAR_HEIGHT_PCT = 6
 const MIN_BAR_HEIGHT_PCT = 8
+/** A day that was written but rated nothing: a fixed height, because there is no value to draw. */
+const UNRATED_BAR_HEIGHT_PCT = 20
 const INTENSITY_TO_HEIGHT_SCALE = 10
+/** Written, but the emotion is not one of the ten with a colour of their own. */
+const UNRATED_BAR_COLOR = '#b9c0c9'
+const UNRATED_LEGEND_LABEL = 'Inna emocja'
+
+/**
+ * A named emotion with no intensity is normal, not a gap: 'Spokój' and 'Wstyd'
+ * have no scale column of their own, so an entry can say which feeling was
+ * strongest without saying how strong. The tooltip says so rather than implying
+ * the whole entry went unrated.
+ */
+function dayTitle(day: DayMood, intensity: number | null): string {
+  if (!day.hasEntry) return `${day.dayLabel}: brak wpisu`
+  if (!day.dominantEmotion) return `${day.dayLabel}: wpis bez oceny nastroju`
+  if (intensity === null) return `${day.dayLabel}: ${day.dominantEmotion}, bez oceny natężenia`
+  return `${day.dayLabel}: ${day.dominantEmotion} ${intensity}/10`
+}
 
 function MoodChart({ week }: { week: DayMood[] }) {
   const usedEmotions = Array.from(
-    new Set(
-      week
-        .map((d) => d.dominantEmotion)
-        .filter((emotion): emotion is EmotionName => emotion !== undefined),
-    ),
+    new Set(week.map((day) => day.dominantEmotion).filter((emotion) => emotion !== null)),
   )
+  const hasUnnamedEntry = week.some((day) => day.hasEntry && day.dominantEmotion === null)
 
   return (
     <div className="mood-chart-card">
@@ -206,20 +197,25 @@ function MoodChart({ week }: { week: DayMood[] }) {
 
       <div className="mood-chart-bars">
         {week.map((day) => {
-          const hasEntry = day.hasEntry && day.intensity !== undefined && day.dominantEmotion !== undefined
-          const heightPct = hasEntry
-            ? Math.max(MIN_BAR_HEIGHT_PCT, (day.intensity as number) * INTENSITY_TO_HEIGHT_SCALE)
-            : NO_ENTRY_BAR_HEIGHT_PCT
-          const color = hasEntry && day.dominantEmotion ? EMOTION_COLORS[day.dominantEmotion] : undefined
-          const title = hasEntry
-            ? `${day.dayLabel}: ${day.dominantEmotion} ${day.intensity}/10`
-            : `${day.dayLabel}: brak wpisu`
+          const intensity = day.hasEntry ? day.intensity : null
+          const heightPct =
+            intensity !== null
+              ? Math.max(MIN_BAR_HEIGHT_PCT, intensity * INTENSITY_TO_HEIGHT_SCALE)
+              : day.hasEntry
+                ? UNRATED_BAR_HEIGHT_PCT
+                : NO_ENTRY_BAR_HEIGHT_PCT
+          const color = day.dominantEmotion
+            ? EMOTION_COLORS[day.dominantEmotion]
+            : day.hasEntry
+              ? UNRATED_BAR_COLOR
+              : undefined
+          const title = dayTitle(day, intensity)
 
           return (
             <div className="mood-chart-column" key={day.date}>
               <div className="mood-chart-track">
                 <div
-                  className={hasEntry ? 'mood-chart-bar' : 'mood-chart-bar mood-chart-bar-empty'}
+                  className={day.hasEntry ? 'mood-chart-bar' : 'mood-chart-bar mood-chart-bar-empty'}
                   style={{ height: `${heightPct}%`, backgroundColor: color }}
                   title={title}
                 />
@@ -240,6 +236,12 @@ function MoodChart({ week }: { week: DayMood[] }) {
             {emotion}
           </span>
         ))}
+        {hasUnnamedEntry && (
+          <span className="mood-chart-legend-item">
+            <span className="mood-chart-legend-dot" style={{ backgroundColor: UNRATED_BAR_COLOR }} />
+            {UNRATED_LEGEND_LABEL}
+          </span>
+        )}
         <span className="mood-chart-legend-item">
           <span className="mood-chart-legend-dot mood-chart-legend-dot-empty" />
           Brak wpisu
@@ -249,12 +251,78 @@ function MoodChart({ week }: { week: DayMood[] }) {
   )
 }
 
+// ---- Technique suggestion --------------------------------------------------------
+
+function TechniqueCard({ technique }: { technique: TechniqueSuggestion }) {
+  return (
+    <Link to={ROUTES.techniques} className="home-technique-card">
+      <div>
+        <p className="home-technique-label">Propozycja na dziś: {technique.name}</p>
+        <p className="home-technique-reason">{technique.matchReason}</p>
+      </div>
+      <span className="home-technique-arrow">→</span>
+    </Link>
+  )
+}
+
 // ---- Page ------------------------------------------------------------------------
+
+interface DashboardError {
+  message: string
+  /** A refused request (no patient profile) will be refused again — don't offer a retry. */
+  canRetry: boolean
+}
 
 function Home() {
   const { user } = useAuth()
   const firstName = user?.firstName ?? ''
   const today = new Date().toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })
+
+  const [dashboard, setDashboard] = useState<HomeDashboard | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<DashboardError | null>(null)
+  /** Bumped by the retry button; re-runs the effect without duplicating the request logic. */
+  const [reloadKey, setReloadKey] = useState(0)
+
+  // The retry button owns the "loading again" state: setting it inside the
+  // effect would start a second render pass on every mount for nothing.
+  const retry = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    setReloadKey((key) => key + 1)
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    fetchHomeDashboard()
+      .then((data) => {
+        if (!active) return
+        setDashboard(data)
+        setError(null)
+      })
+      .catch((cause: unknown) => {
+        if (!active) return
+        const isApiError = cause instanceof ApiError
+        setDashboard(null)
+        setError({
+          message: (isApiError && cause.formMessage) || DASHBOARD_ERROR,
+          canRetry: !isApiError || cause.status !== 403,
+        })
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [reloadKey])
+
+  const averageStress = dashboard?.averageStress ?? null
+  // Drives both the "Średni stres" alarm styling and the crisis banner (US-PT-13),
+  // so the two cannot disagree.
+  const isStressAlert = averageStress !== null && averageStress >= STRESS_ALERT_THRESHOLD
 
   return (
     <div className="home-page">
@@ -271,48 +339,61 @@ function Home() {
           <p className="home-welcome-greeting">{firstName ? `Dobry dzień, ${firstName}` : 'Dobry dzień'}</p>
           <p className="home-welcome-date">{today}</p>
         </div>
-        <div className="home-streak">
-          <span className="home-streak-count">{MOCK_STREAK_DAYS}</span>
-          <span className="home-streak-label">dni z rzędu</span>
-        </div>
+        {dashboard && (
+          <div className="home-streak">
+            <span className="home-streak-count">{dashboard.streakDays}</span>
+            <span className="home-streak-label">dni z rzędu</span>
+          </div>
+        )}
       </section>
 
-      <TodayEntryWidget entry={MOCK_HAS_TODAY_ENTRY ? MOCK_TODAY_ENTRY : null} />
+      {loading && <div className="home-loading" role="status" aria-busy="true">Wczytywanie Twoich danych…</div>}
 
-      <MoodChart week={MOCK_WEEK} />
-
-      <section className="home-stats">
-        <div className={isStressAlert ? 'home-stat-card home-stat-card-alert' : 'home-stat-card'}>
-          <p className="home-stat-label">Średni stres</p>
-          <p className="home-stat-value">{MOCK_AVERAGE_STRESS.toFixed(1).replace('.', ',')}/10</p>
+      {!loading && error && (
+        <div className="home-error" role="alert">
+          <p>{error.message}</p>
+          {error.canRetry && (
+            <button type="button" className="today-secondary-button" onClick={retry}>
+              Spróbuj ponownie
+            </button>
+          )}
         </div>
-        <div className="home-stat-card">
-          <p className="home-stat-label">Średnia energia</p>
-          <p className="home-stat-value">{MOCK_AVERAGE_ENERGY.toFixed(1).replace('.', ',')}/10</p>
-        </div>
-      </section>
-
-      {isStressAlert && (
-        <section className="home-crisis-banner">
-          <p>
-            Zauważyliśmy, że ostatnio jest Ci trudniej.{' '}
-            {CRISIS_SUPPORT_PHONE
-              ? `Możesz zadzwonić pod numer wsparcia ${CRISIS_SUPPORT_PHONE} albo przejść do swojego planu bezpieczeństwa.`
-              : 'Możesz przejść do swojego planu bezpieczeństwa.'}
-          </p>
-          <Link to={ROUTES.safetyPlan} className="home-crisis-link">
-            Plan bezpieczeństwa →
-          </Link>
-        </section>
       )}
 
-      <Link to={ROUTES.techniques} className="home-technique-card">
-        <div>
-          <p className="home-technique-label">Propozycja na dziś: {MOCK_TECHNIQUE.name}</p>
-          <p className="home-technique-reason">{MOCK_TECHNIQUE.matchReason}</p>
-        </div>
-        <span className="home-technique-arrow">→</span>
-      </Link>
+      {!loading && dashboard && (
+        <>
+          <TodayEntryWidget entry={dashboard.todayEntry} />
+
+          <MoodChart week={dashboard.week} />
+
+          <section className="home-stats">
+            <div className={isStressAlert ? 'home-stat-card home-stat-card-alert' : 'home-stat-card'}>
+              <p className="home-stat-label">Średni stres</p>
+              <p className="home-stat-value">{formatScore(dashboard.averageStress)}</p>
+            </div>
+            <div className="home-stat-card">
+              <p className="home-stat-label">Średnia energia</p>
+              <p className="home-stat-value">{formatScore(dashboard.averageEnergy)}</p>
+            </div>
+          </section>
+
+          {isStressAlert && (
+            <section className="home-crisis-banner">
+              <p>
+                Zauważyliśmy, że ostatnio jest Ci trudniej.{' '}
+                {CRISIS_SUPPORT_PHONE
+                  ? `Możesz zadzwonić pod numer wsparcia ${CRISIS_SUPPORT_PHONE} albo przejść do swojego planu bezpieczeństwa.`
+                  : 'Możesz przejść do swojego planu bezpieczeństwa.'}
+              </p>
+              <Link to={ROUTES.safetyPlan} className="home-crisis-link">
+                Plan bezpieczeństwa →
+              </Link>
+            </section>
+          )}
+
+          {dashboard.technique && <TechniqueCard technique={dashboard.technique} />}
+        </>
+      )}
 
       <section className="home-disclaimer">
         <span className="home-disclaimer-icon" aria-hidden="true">

@@ -518,3 +518,34 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Dashboard loading / failure — the widgets below need /api/dashboard/home/ */
+
+.home-loading,
+.home-error {
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+  font-family: var(--font-body);
+  color: var(--color-graphite-muted);
+}
+
+.home-error {
+  border: 1.5px solid var(--color-error);
+  background: var(--color-error-bg);
+  color: var(--color-graphite);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.home-error p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.home-error .today-secondary-button {
+  flex: none;
+}
