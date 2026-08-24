@@ -205,7 +205,11 @@ AUTH_PASSWORD_VALIDATORS = [
 # DRF field errors) reach the frontend in the same language as its own labels.
 LANGUAGE_CODE = 'pl'
 
-TIME_ZONE = 'UTC'
+# Rows are stored in UTC either way (USE_TZ); this is what "today" means when a
+# date is derived from a timestamp — which day a diary entry belongs to, and
+# whether a date of birth is in the future. Everyone using this app is in Poland,
+# and under UTC an entry written at 00:30 would count towards the previous day.
+TIME_ZONE = 'Europe/Warsaw'
 
 USE_I18N = True
 

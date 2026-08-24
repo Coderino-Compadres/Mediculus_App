@@ -10,12 +10,15 @@ from django.utils.decorators import method_decorator
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from .authentication import end_session, start_session
+from .dashboard import build_home_dashboard
+from .models import Patient
 from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
 
 
@@ -103,3 +106,23 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(UserSerializer(request.user).data)
+
+
+class HomeDashboardView(APIView):
+    """GET /api/dashboard/home/ — the logged-in patient's own home screen.
+
+    The session says who is asking (user_db); everything returned is aggregated
+    from medical_db through that patient's `id_medical`, so one account can only
+    ever see its own numbers — there is no id in the URL to tamper with.
+
+    An account with no `patient` row (a guardian, a specialist) is refused rather
+    than answered with zeroes: they are not a clinical subject, so an empty diary
+    would be a misleading answer to a question that does not apply to them.
+    Guardians reach a child's data through the parent panel, once it exists.
+    """
+
+    def get(self, request):
+        patient = Patient.objects.filter(user=request.user).only('id_medical').first()
+        if patient is None:
+            raise PermissionDenied('Panel pacjenta jest dostępny tylko dla konta pacjenta.')
+        return Response(build_home_dashboard(patient.id_medical))
