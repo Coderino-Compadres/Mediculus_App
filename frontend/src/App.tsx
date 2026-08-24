@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
 import Home from './pages/Home'
+import DiaryEntry from './pages/DiaryEntry'
 import PlaceholderPage from './pages/PlaceholderPage'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/authContext'
@@ -60,6 +61,14 @@ function App() {
           element={
             <RequireAuth>
               <Home />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path={ROUTES.diaryEntry}
+          element={
+            <RequireAuth>
+              <DiaryEntry />
             </RequireAuth>
           }
         />

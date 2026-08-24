@@ -31,7 +31,6 @@ export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
     backLabel: '← Wróć do wyboru modułu',
   },
   { path: ROUTES.journals, title: 'Dzienniczki' },
-  { path: ROUTES.diaryEntry, title: 'Dodaj wpis' },
   { path: ROUTES.reports, title: 'Raporty' },
   { path: ROUTES.analysis, title: 'Analiza' },
   { path: ROUTES.techniques, title: 'Techniki terapeutyczne' },
