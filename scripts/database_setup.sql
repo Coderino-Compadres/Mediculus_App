@@ -149,13 +149,22 @@ CREATE TABLE IF NOT EXISTS diary (
 
     current_mood TEXT,
     current_strongest_emotion TEXT,
+    -- How strongly 'Stres' was felt. The entry form rates it on the emotion
+    -- picker like the other nine emotions; there is no separate stress slider.
     stress_level INT,
     energy_level INT,
+    tension_level INT,
     overall_feeling TEXT,
+    -- The CBT/ABC breakdown. situation_place holds either a suggested place or
+    -- the free text typed instead of one.
     situation TEXT,
     situation_place TEXT,
+    emotion_note TEXT,
+    thought TEXT,
     how_situation_handled TEXT,
     notes TEXT,
+    -- Risky behaviour (self-harm, substance use, ...). NULL means none reported.
+    risky_behavior_note TEXT,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
@@ -173,6 +182,8 @@ CREATE TABLE IF NOT EXISTS mood_scale (
     guilt_scale INT,
     frustration_scale INT,
     helplessness_scale INT,
+    shame_scale INT,
+    calm_scale INT,
 
     CONSTRAINT fk_mood_scale_diary
         FOREIGN KEY (id_diary)
@@ -212,6 +223,21 @@ CREATE TABLE IF NOT EXISTS raport (
         FOREIGN KEY (id_technique)
         REFERENCES technique (id_technique)
 );
+
+-- The CREATE TABLEs above are IF NOT EXISTS, so they are no-ops on a database
+-- that predates the "Dodaj wpis" columns. Add them here as well so that
+-- re-running this script upgrades such a database instead of silently skipping
+-- them. Mirrors core/migrations/0005_diary_entry_fields.py, whichever of the
+-- two runs first.
+ALTER TABLE diary
+    ADD COLUMN IF NOT EXISTS tension_level INT,
+    ADD COLUMN IF NOT EXISTS emotion_note TEXT,
+    ADD COLUMN IF NOT EXISTS thought TEXT,
+    ADD COLUMN IF NOT EXISTS risky_behavior_note TEXT;
+
+ALTER TABLE mood_scale
+    ADD COLUMN IF NOT EXISTS shame_scale INT,
+    ADD COLUMN IF NOT EXISTS calm_scale INT;
 
 -- Helpful FK indexes
 CREATE INDEX IF NOT EXISTS idx_mood_scale_id_diary

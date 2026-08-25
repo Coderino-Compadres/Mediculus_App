@@ -107,13 +107,30 @@ class Diary(models.Model):
     id_medical = models.UUIDField(db_index=True)
     current_mood = models.TextField(null=True, blank=True)
     current_strongest_emotion = models.TextField(null=True, blank=True)
+    # How strongly 'Stres' was felt. The entry form rates it on the emotion
+    # picker like the other nine, and `emotions.py` reads it as that emotion's
+    # intensity -- there is no second, separate "stress slider" competing for
+    # this column.
     stress_level = models.IntegerField(null=True, blank=True)
     energy_level = models.IntegerField(null=True, blank=True)
+    tension_level = models.IntegerField(null=True, blank=True)
     overall_feeling = models.TextField(null=True, blank=True)
+    # The CBT/ABC breakdown: what happened, where, what was felt, what was
+    # thought, what was done. `situation_place` holds either one of the
+    # suggested places or the free-text answer the patient typed instead --
+    # one column, because a separate "was it from the list" flag is not worth
+    # a schema of its own.
     situation = models.TextField(null=True, blank=True)
     situation_place = models.TextField(null=True, blank=True)
+    emotion_note = models.TextField(null=True, blank=True)
+    thought = models.TextField(null=True, blank=True)
     how_situation_handled = models.TextField(null=True, blank=True)
     notes = models.TextField(null=True, blank=True)
+    # Risky behaviour (self-harm, substance use, ...). NULL means the entry
+    # reported none: there is no separate boolean, so an entry flagged without
+    # a description cannot be told apart from an unflagged one -- see the note
+    # in the entry form about keeping the description mandatory once flagged.
+    risky_behavior_note = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -134,6 +151,8 @@ class MoodScale(models.Model):
     guilt_scale = models.IntegerField(null=True, blank=True)
     frustration_scale = models.IntegerField(null=True, blank=True)
     helplessness_scale = models.IntegerField(null=True, blank=True)
+    shame_scale = models.IntegerField(null=True, blank=True)
+    calm_scale = models.IntegerField(null=True, blank=True)
 
     class Meta:
         db_table = 'mood_scale'

@@ -53,7 +53,7 @@ Lokalnie są **dwa pliki env**, różnią się blokiem bazy i `DB_SSLMODE`:
 
 ```bash
 python backend/manage.py runserver 8001                                    # lokalna baza
-DJANGO_ENV_FILE=.env.azure python backend/manage.py runserver 8001         # baza na Azure
+DJANGO_ENV_FILE=.env.local.azure python backend/manage.py runserver 8001         # baza na Azure
 ```
 
 Prawdziwe zmienne środowiskowe wygrywają z plikiem, więc jednorazowa podmianka jednego klucza to `DB_SSLMODE=require python backend/manage.py ...` — bez edycji plików.

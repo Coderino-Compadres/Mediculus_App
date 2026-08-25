@@ -17,8 +17,8 @@ from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Which env file to read, relative to the repo root: '.env.local' (local
-# Postgres container, the default) or '.env.azure' (the shared dev databases on
+# Which env file to read, relative to the repo root: '.env.local.local' (local
+# Postgres container, the default) or '.env.local.azure' (the shared dev databases on
 # Azure). A missing file is a no-op, which is what we want on Azure App Service,
 # where the values come from Application Settings instead. Real environment
 # variables always win over the file, so a one-off override still works:
@@ -123,7 +123,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
 # Azure Postgres requires SSL; a local dev container doesn't support it.
-# `or` rather than a .get() default: the shipped .env.example sets an empty value.
+# `or` rather than a .get() default: the shipped .env.local.example sets an empty value.
 DB_SSLMODE = os.environ.get('DB_SSLMODE') or 'require'
 
 DATABASES = {

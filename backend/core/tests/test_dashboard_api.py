@@ -130,6 +130,36 @@ class WeekTests(DashboardTestCase):
         self.assertEqual(day['dominant_emotion'], 'Smutek')
         self.assertEqual(day['intensity'], 6)
 
+    def test_shame_and_calm_are_rateable_like_the_other_scales(self):
+        """core.0005 gave the last two emotions without a column one of their own.
+
+        Before it, 'Wstyd' and 'Spokój' could only arrive as free text, so an
+        entry where one of them was the strongest feeling drew a bar with no
+        height. Both now compete on rating like the other seven.
+        """
+        diary = make_diary(self.patient.id_medical, self.today, stress_level=3)
+        MoodScale.objects.create(diary=diary, shame_scale=8, calm_scale=1, sadness_scale=5)
+
+        day = self.get_dashboard()['week'][-1]
+
+        self.assertEqual(day['dominant_emotion'], 'Wstyd')
+        self.assertEqual(day['intensity'], 8)
+
+    def test_a_declared_shame_takes_its_height_from_the_new_column(self):
+        """The declared-emotion path needs the column too, not just the fallback."""
+        diary = make_diary(
+            self.patient.id_medical, self.today,
+            current_strongest_emotion='wstyd', stress_level=9,
+        )
+        MoodScale.objects.create(diary=diary, shame_scale=4)
+
+        day = self.get_dashboard()['week'][-1]
+
+        # Stress is rated higher, but the patient said shame was the strongest
+        # feeling -- so the bar is shame's, at shame's height.
+        self.assertEqual(day['dominant_emotion'], 'Wstyd')
+        self.assertEqual(day['intensity'], 4)
+
     def test_stress_competes_with_the_mood_scales(self):
         diary = make_diary(self.patient.id_medical, self.today, stress_level=9)
         MoodScale.objects.create(diary=diary, sadness_scale=3, anxiety_scale=4)

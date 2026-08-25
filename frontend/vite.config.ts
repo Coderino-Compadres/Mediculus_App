@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
   // dev server only and must never reach the client bundle.
   const env = loadEnv(mode, process.cwd(), '')
 
-  // Where `npm run dev` forwards /api. Override in frontend/.env.local (which is
+  // Where `npm run dev` forwards /api. Override in frontend/.env.local.local (which is
   // git-ignored) when your Django listens elsewhere — e.g. because something
   // else already owns port 8000 on your machine:
   //   API_PROXY_TARGET=http://127.0.0.1:8001
