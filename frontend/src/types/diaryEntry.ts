@@ -56,3 +56,13 @@ export interface DiaryEntryDraft {
   hasRiskyBehavior: boolean
   riskyBehaviorNote: string
 }
+
+/**
+ * One entry as it appears in the "Dzienniczki" list/detail screens — the same
+ * shape DiaryEntry.tsx saves (or GET /api/diary/today/ returns), plus an id to
+ * route to and the timestamp it was saved at (shown in the archival detail view).
+ */
+export interface JournalListEntry extends DiaryEntryDraft {
+  id: string
+  savedAt: string
+}
