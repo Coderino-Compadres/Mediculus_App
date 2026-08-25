@@ -50,12 +50,12 @@ SELECT setval(
     (SELECT MAX(id_technique) FROM technique)
 );
 
-INSERT INTO diary (id_diary, id_medical, current_mood, current_strongest_emotion, stress_level, energy_level, overall_feeling, situation, situation_place, how_situation_handled, notes) VALUES
-    ('e0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'neutralny', 'niepokój',    4, 5, 'w porządku',    'Rozmowa z przełożonym o projekcie', 'praca',   'Głębokie oddychanie przed rozmową',      'Poszło lepiej niż się bałem.'),
-    ('e0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000001', 'dobry',     'spokój',      2, 7, 'dobre',         'Spacer wieczorny',                  'park',    'Brak, dzień był spokojny',               NULL),
-    ('e0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000002', 'smutny',    'frustracja',  6, 3, 'ciężkie',       'Kłótnia z koleżanką w szkole',      'szkoła',  'Rozmowa z rodzicem wieczorem',            'Wciąż o tym myślę.'),
-    ('e0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000003', 'dobry',     'radość',      1, 8, 'bardzo dobre',  'Udany trening na siłowni',           'siłownia','Brak potrzeby',                          NULL),
-    ('e0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000004', 'neutralny', 'zmęczenie',   5, 4, 'przeciętne',    'Długi dzień w pracy zdalnej',        'dom',     'Krótka przerwa na herbatę',               'Potrzebuję więcej snu.')
+INSERT INTO diary (id_diary, id_medical, current_mood, current_strongest_emotion, stress_level, energy_level, situation, situation_place, how_situation_handled, notes) VALUES
+    ('e0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'neutralny', 'niepokój',    4, 5, 'Rozmowa z przełożonym o projekcie', 'praca',   'Głębokie oddychanie przed rozmową',      'Poszło lepiej niż się bałem.'),
+    ('e0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000001', 'dobry',     'spokój',      2, 7, 'Spacer wieczorny',                  'park',    'Brak, dzień był spokojny',               NULL),
+    ('e0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000002', 'smutny',    'frustracja',  6, 3, 'Kłótnia z koleżanką w szkole',      'szkoła',  'Rozmowa z rodzicem wieczorem',            'Wciąż o tym myślę.'),
+    ('e0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000003', 'dobry',     'radość',      1, 8, 'Udany trening na siłowni',           'siłownia','Brak potrzeby',                          NULL),
+    ('e0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000004', 'neutralny', 'zmęczenie',   5, 4, 'Długi dzień w pracy zdalnej',        'dom',     'Krótka przerwa na herbatę',               'Potrzebuję więcej snu.')
 ON CONFLICT (id_diary) DO NOTHING;
 
 INSERT INTO mood_scale (id_diary, sadness_scale, anxiety_scale, anger_scale, happiness_scale, guilt_scale, frustration_scale, helplessness_scale)

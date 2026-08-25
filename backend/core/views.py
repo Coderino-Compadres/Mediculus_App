@@ -16,8 +16,11 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
+from django.utils import timezone
+
 from .authentication import end_session, start_session
 from .dashboard import build_home_dashboard
+from .diary import DiaryEntrySerializer, load_today_entry, save_today_entry
 from .models import Patient
 from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
 
@@ -108,6 +111,24 @@ class MeView(APIView):
         return Response(UserSerializer(request.user).data)
 
 
+def _require_patient(request, refusal):
+    """The `patient` row behind the session, or a refusal.
+
+    Shared by every endpoint that reads or writes clinical data: the session is
+    the only identity input, so there is never a patient id in a URL for someone
+    to tamper with. A guardian or a specialist has no `patient` row and is turned
+    away rather than handed an empty diary — an empty diary would be a
+    misleading answer to a question that does not apply to them.
+    """
+    patient = Patient.objects.filter(user=request.user).only('id_medical').first()
+    if patient is None:
+        raise PermissionDenied(refusal)
+    return patient
+
+
+DIARY_REFUSAL = 'Dzienniczek jest dostępny tylko dla konta pacjenta.'
+
+
 class HomeDashboardView(APIView):
     """GET /api/dashboard/home/ — the logged-in patient's own home screen.
 
@@ -122,7 +143,35 @@ class HomeDashboardView(APIView):
     """
 
     def get(self, request):
-        patient = Patient.objects.filter(user=request.user).only('id_medical').first()
-        if patient is None:
-            raise PermissionDenied('Panel pacjenta jest dostępny tylko dla konta pacjenta.')
+        patient = _require_patient(
+            request, 'Panel pacjenta jest dostępny tylko dla konta pacjenta.',
+        )
         return Response(build_home_dashboard(patient.id_medical))
+
+
+class TodayDiaryEntryView(APIView):
+    """GET/PUT /api/diary/today/ — the logged-in patient's entry for today.
+
+    Only today is addressable, and that is the whole enforcement of the product
+    rule: one entry per day, editable on the day it was written, everything
+    older read-only. There is no entry id in the URL, so no request can reach
+    yesterday's row or another patient's.
+
+    PUT rather than POST because the call is idempotent — it sets what today's
+    entry is, whether or not one already exists. The form submits its complete
+    state every time, so a second save replaces the first instead of merging
+    into it: a field left out is an answer taken back.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, DIARY_REFUSAL)
+        return Response(load_today_entry(patient.id_medical, timezone.localdate()))
+
+    def put(self, request):
+        patient = _require_patient(request, DIARY_REFUSAL)
+        serializer = DiaryEntrySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entry = save_today_entry(
+            patient.id_medical, serializer.validated_data, timezone.localdate(),
+        )
+        return Response(entry)

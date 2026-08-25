@@ -114,7 +114,6 @@ class Diary(models.Model):
     stress_level = models.IntegerField(null=True, blank=True)
     energy_level = models.IntegerField(null=True, blank=True)
     tension_level = models.IntegerField(null=True, blank=True)
-    overall_feeling = models.TextField(null=True, blank=True)
     # The CBT/ABC breakdown: what happened, where, what was felt, what was
     # thought, what was done. `situation_place` holds either one of the
     # suggested places or the free-text answer the patient typed instead --

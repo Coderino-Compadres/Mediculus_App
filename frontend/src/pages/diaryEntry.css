@@ -444,3 +444,31 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Loading / failure banners for the API round-trip, and the one field the
+   schema makes mandatory (a risky-behaviour flag with nothing written under it
+   has no column to live in — see src/types/diaryEntry.ts). */
+.diary-entry-status {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite-muted);
+  text-align: center;
+  padding: 20px 16px;
+}
+
+.diary-entry-status-error {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-radius: 14px;
+}
+
+.diary-entry-field-error {
+  margin: 6px 0 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-error);
+}
+
+.emotion-intensity-value-alert {
+  color: var(--color-error);
+}
