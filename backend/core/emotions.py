@@ -82,9 +82,17 @@ _TEXT_ALIASES = {
 }
 
 
+#: Letters NFKD cannot take apart, because the mark is a stroke through the
+#: glyph rather than a combining character sitting on top of it. Polish 'ł' is
+#: the one that matters here: without this, 'Złość' folds to 'złosc', misses the
+#: alias key 'zlosc', and the vocabulary fails to recognise one of its own ten
+#: names — along with 'wściekłość' and 'zakłopotanie'.
+_STROKED_LETTERS = str.maketrans({'ł': 'l', 'Ł': 'L'})
+
+
 def _fold(text):
     """Lower-case, strip diacritics, collapse whitespace."""
-    decomposed = unicodedata.normalize('NFKD', text)
+    decomposed = unicodedata.normalize('NFKD', text.translate(_STROKED_LETTERS))
     without_accents = ''.join(char for char in decomposed if not unicodedata.combining(char))
     return ' '.join(without_accents.lower().split())
 
