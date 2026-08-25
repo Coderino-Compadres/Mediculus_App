@@ -14,6 +14,7 @@ import datetime
 
 from django.utils import timezone
 
+from .days import day_bounds, local_date
 from .emotions import MOOD_SCALE_EMOTIONS, STRES, normalize_emotion
 from .models import Diary, Raport
 
@@ -27,19 +28,6 @@ MAX_TODAY_EMOTIONS = 3
 STREAK_LOOKBACK_DAYS = 366
 
 
-def _day_bounds(first_day, last_day):
-    """Aware datetimes covering [first_day 00:00, day after last_day 00:00)."""
-    start = timezone.make_aware(datetime.datetime.combine(first_day, datetime.time.min))
-    end = timezone.make_aware(
-        datetime.datetime.combine(last_day + datetime.timedelta(days=1), datetime.time.min)
-    )
-    return start, end
-
-
-def _local_date(moment):
-    return timezone.localtime(moment).date()
-
-
 def _entries_by_day(diaries):
     """The one entry that counts per calendar day — the most recent one.
 
@@ -48,7 +36,7 @@ def _entries_by_day(diaries):
     """
     by_day = {}
     for diary in diaries:
-        by_day[_local_date(diary.created_at)] = diary
+        by_day[local_date(diary.created_at)] = diary
     return by_day
 
 
@@ -102,9 +90,9 @@ def _streak_days(id_medical, today):
     Yesterday counts as the end of the streak too: a run of six days should not
     read as broken from midnight until whenever the person writes today's entry.
     """
-    since, _ = _day_bounds(today - datetime.timedelta(days=STREAK_LOOKBACK_DAYS), today)
+    since, _ = day_bounds(today - datetime.timedelta(days=STREAK_LOOKBACK_DAYS), today)
     written = {
-        _local_date(moment)
+        local_date(moment)
         for moment in Diary.objects.filter(
             id_medical=id_medical, created_at__gte=since
         ).values_list('created_at', flat=True)
@@ -147,7 +135,7 @@ def build_home_dashboard(id_medical, today=None):
     """The whole home screen for one patient, as JSON-ready primitives."""
     today = today or timezone.localdate()
     first_day = today - datetime.timedelta(days=WEEK_LENGTH - 1)
-    start, end = _day_bounds(first_day, today)
+    start, end = day_bounds(first_day, today)
 
     diaries = (
         Diary.objects.filter(id_medical=id_medical, created_at__gte=start, created_at__lt=end)

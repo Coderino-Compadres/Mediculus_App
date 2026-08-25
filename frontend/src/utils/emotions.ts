@@ -15,6 +15,11 @@ export type EmotionName =
   | 'Bezradność'
   | 'Spokój'
 
+/** Named because it is referenced in code, not just rendered: stress is the one
+ *  emotion of the ten stored on the diary row itself (`diary.stress_level`),
+ *  and the entry form puts an alert threshold on it. */
+export const STRES: EmotionName = 'Stres'
+
 export const EMOTION_COLORS: Record<EmotionName, string> = {
   Radość: '#E0B45C',
   Smutek: '#6C93C7',

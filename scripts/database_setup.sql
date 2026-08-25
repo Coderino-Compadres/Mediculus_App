@@ -154,7 +154,6 @@ CREATE TABLE IF NOT EXISTS diary (
     stress_level INT,
     energy_level INT,
     tension_level INT,
-    overall_feeling TEXT,
     -- The CBT/ABC breakdown. situation_place holds either a suggested place or
     -- the free text typed instead of one.
     situation TEXT,
@@ -238,6 +237,12 @@ ALTER TABLE diary
 ALTER TABLE mood_scale
     ADD COLUMN IF NOT EXISTS shame_scale INT,
     ADD COLUMN IF NOT EXISTS calm_scale INT;
+
+-- Dropped in core.0006: the "jakość samopoczucia" question that would have
+-- filled it was cut from the entry form, and `current_mood` already records how
+-- the patient says they feel -- so it was a duplicate with no source.
+ALTER TABLE diary
+    DROP COLUMN IF EXISTS overall_feeling;
 
 -- Helpful FK indexes
 CREATE INDEX IF NOT EXISTS idx_mood_scale_id_diary

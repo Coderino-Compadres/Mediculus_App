@@ -7,9 +7,17 @@ interface EmotionSelectorProps {
   selected: EmotionEntry[]
   onToggle: (emotion: EmotionName) => void
   onIntensityChange: (emotion: EmotionName, intensity: number) => void
+  /** Per-emotion values at or above which the reading is shown in the error
+   *  color, e.g. the confirmed stress alarm from US-PT-13. */
+  alertThresholds?: Partial<Record<EmotionName, number>>
 }
 
-function EmotionSelector({ selected, onToggle, onIntensityChange }: EmotionSelectorProps) {
+function EmotionSelector({
+  selected,
+  onToggle,
+  onIntensityChange,
+  alertThresholds,
+}: EmotionSelectorProps) {
   return (
     <div className="emotion-selector">
       <div className="emotion-chip-row">
@@ -37,11 +45,18 @@ function EmotionSelector({ selected, onToggle, onIntensityChange }: EmotionSelec
 
       {selected.map((entry) => {
         const color = EMOTION_COLORS[entry.emotion]
+        const threshold = alertThresholds?.[entry.emotion]
+        const isAlert = threshold !== undefined && (entry.intensity ?? 0) >= threshold
         return (
           <div className="emotion-intensity" key={entry.emotion}>
             <div className="emotion-intensity-header">
               <span style={{ color }}>{entry.emotion}</span>
-              <span className="emotion-intensity-value" style={{ color }}>
+              <span
+                className={
+                  isAlert ? 'emotion-intensity-value emotion-intensity-value-alert' : 'emotion-intensity-value'
+                }
+                style={isAlert ? undefined : { color }}
+              >
                 {entry.intensity ?? 0}/10
               </span>
             </div>
