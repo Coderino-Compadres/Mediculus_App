@@ -192,3 +192,11 @@
   font-size: 16px;
   align-self: center;
 }
+
+/* No mood recorded: an outline instead of a fill. The dot lost its digit, so
+   without this an unanswered entry would be a solid grey circle and read as a
+   mood of its own. */
+.journal-mood-badge-empty {
+  background: transparent;
+  border: 2px dashed var(--color-graphite-muted);
+}

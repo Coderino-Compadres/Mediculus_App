@@ -6,6 +6,7 @@ import Journals from './Journals'
 import { ROUTES, journalDetailPath } from '../routes'
 import { ApiError } from '../api/client'
 import type { JournalListEntry } from '../types/diaryEntry'
+import { MOOD_OPTIONS } from '../utils/moods'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -210,16 +211,40 @@ describe('the row summary', () => {
     expect(await screen.findByText('Dworzec')).toBeInTheDocument()
   })
 
-  it('draws the mood as a rank, and a dash when none was saved', async () => {
+  it('draws the mood as a bare colour — no number on the dot', async () => {
     mockedFetch.mockResolvedValueOnce([
       entryPreviewing('Zły', { date: isoDaysAgo(1), mood: 'very_bad' }),
+    ])
+
+    renderWithProviders(<Journals />)
+
+    const dot = await screen.findByLabelText('Bardzo źle')
+    expect(dot).toHaveTextContent('')
+    expect(dot).toHaveStyle({ backgroundColor: MOOD_OPTIONS[0].color })
+  })
+
+  it('keeps the mood readable to a screen reader without any text', async () => {
+    // The dot has no content, so the label is the only thing carrying the mood;
+    // role="img" is what makes assistive tech announce it rather than skip it.
+    mockedFetch.mockResolvedValueOnce([
+      entryPreviewing('Dobry', { date: isoDaysAgo(1), mood: 'very_good' }),
+    ])
+
+    renderWithProviders(<Journals />)
+
+    expect(await screen.findByRole('img', { name: 'Bardzo dobrze' })).toBeInTheDocument()
+  })
+
+  it('marks an entry with no mood as empty rather than colouring it', async () => {
+    mockedFetch.mockResolvedValueOnce([
       entryPreviewing('Bez nastroju', { date: isoDaysAgo(2), mood: null }),
     ])
 
     renderWithProviders(<Journals />)
 
-    expect(await screen.findByLabelText('Bardzo źle')).toHaveTextContent('1')
-    expect(screen.getByLabelText('Brak nastroju')).toHaveTextContent('–')
+    const dot = await screen.findByLabelText('Brak nastroju')
+    expect(dot).toHaveTextContent('')
+    expect(dot).toHaveClass('journal-mood-badge-empty')
   })
 })
 

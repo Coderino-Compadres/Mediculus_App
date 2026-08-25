@@ -56,17 +56,22 @@ function summaryChips(entry: JournalListEntry): string[] {
   return place ? [...emotionChips, place] : emotionChips
 }
 
+/** The mood as a colour and nothing else.
+ *
+ * The dot carries no text, so `role="img"` plus the label is what keeps the
+ * mood readable to a screen reader — without them it would be an empty span
+ * that assistive tech skips entirely. An entry with no mood gets an outline
+ * rather than a fill, so "not answered" still looks different from "answered".
+ */
 function moodBadge(entry: JournalListEntry) {
   const option = entry.mood ? MOOD_OPTIONS.find((item) => item.value === entry.mood) : undefined
-  const rank = entry.mood ? MOOD_RANK[entry.mood] : null
   return (
     <span
-      className="journal-mood-badge"
+      className={option ? 'journal-mood-badge' : 'journal-mood-badge journal-mood-badge-empty'}
       style={option ? { backgroundColor: option.color } : undefined}
+      role="img"
       aria-label={option ? option.label : 'Brak nastroju'}
-    >
-      {rank ?? '–'}
-    </span>
+    />
   )
 }
 

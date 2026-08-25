@@ -157,7 +157,6 @@ function JournalDetail() {
 
       <section className="journal-detail-info-banner">
         <span className="journal-detail-info-icon" aria-hidden="true">
-          ℹ️
         </span>
         <p>
           Wpis z przeszłości — tylko do odczytu. Edytować możesz wyłącznie dzisiejszy dzienniczek. Historia
