@@ -1,0 +1,301 @@
+.journal-detail-page {
+  flex-grow: 1;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--color-lavender);
+  padding: 24px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.journal-detail-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+.journal-detail-not-found {
+  font-family: var(--font-body);
+  color: var(--color-graphite);
+}
+
+/* Header */
+
+.journal-detail-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.journal-detail-back {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  border: none;
+  background: #fff;
+  color: var(--color-graphite);
+  font-size: 18px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px -6px rgba(var(--shadow-tint), 0.35);
+}
+
+.journal-detail-back:hover {
+  color: var(--color-sage-hover);
+}
+
+.journal-detail-header-titles {
+  flex-grow: 1;
+}
+
+.journal-detail-module-label {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.journal-detail-header-titles h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 24px;
+  color: var(--color-graphite);
+  margin: 0 0 2px;
+}
+
+.journal-detail-date {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.journal-detail-readonly-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Info banner — calm, like the diary-entry-lock-banner, not an alert. */
+
+.journal-detail-info-banner {
+  background: var(--color-lavender);
+  border: 1px solid rgba(var(--shadow-tint), 0.14);
+  border-radius: 16px;
+  padding: 16px 20px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.journal-detail-info-icon {
+  font-size: 18px;
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
+.journal-detail-info-banner p {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Cards */
+
+.journal-detail-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.journal-detail-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 16px;
+}
+
+/* Mood + emotions */
+
+.journal-mood-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 0 0 14px;
+}
+
+.journal-mood-line-empty {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.journal-mood-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.journal-emotion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.journal-emotion-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+}
+
+.journal-emotion-value {
+  color: var(--color-graphite-muted);
+  font-weight: var(--font-weight-regular);
+}
+
+.journal-emotion-value-alert {
+  color: var(--color-error);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Read-only level bars */
+
+.journal-level {
+  margin-bottom: 20px;
+}
+
+.journal-level:last-child {
+  margin-bottom: 0;
+}
+
+.journal-level-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.journal-level-label {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+}
+
+.journal-level-value {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-sage-hover);
+}
+
+.journal-level-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(var(--shadow-tint), 0.1);
+  overflow: hidden;
+}
+
+.journal-level-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-sage);
+}
+
+.journal-level-ends {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--color-graphite-muted);
+  margin-top: 4px;
+}
+
+/* Situation / reaction fields */
+
+.journal-detail-place {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 0 0 16px;
+}
+
+.journal-detail-field {
+  margin-bottom: 16px;
+}
+
+.journal-detail-field:last-child {
+  margin-bottom: 0;
+}
+
+.journal-detail-field-label {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-graphite);
+  margin-bottom: 6px;
+}
+
+.journal-detail-field p {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite);
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.journal-detail-card > p {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite);
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.journal-detail-risky-note {
+  margin-top: 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  line-height: 1.4;
+}
+
+/* Loading and failure states for the fetch by id — the page used to read from a
+   hardcoded array and had neither. */
+.journal-detail-status {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite-muted);
+  text-align: center;
+  padding: 24px 16px;
+}
+
+.journal-detail-status-error {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-radius: 14px;
+}

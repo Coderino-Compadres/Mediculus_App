@@ -1,4 +1,4 @@
-import type { MoodOption } from '../types/diaryEntry'
+import type { MoodLevel, MoodOption } from '../types/diaryEntry'
 
 /**
  * Colors reused from the existing brand palette (emotions.ts / theme.css),
@@ -11,3 +11,12 @@ export const MOOD_OPTIONS: MoodOption[] = [
   { value: 'good', label: 'Dobrze', color: '#7FA98F' },
   { value: 'very_good', label: 'Bardzo dobrze', color: '#4F7A64' },
 ]
+
+/** 1-5 position on the scale above — drives the "Dzienniczki" list badge and the day-quality filter. */
+export const MOOD_RANK: Record<MoodLevel, number> = {
+  very_bad: 1,
+  bad: 2,
+  neutral: 3,
+  good: 4,
+  very_good: 5,
+}

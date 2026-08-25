@@ -52,6 +52,14 @@ A few `on_delete` choices in `core/models.py` are a deliberate improvement over 
 - **`LANGUAGE_CODE = 'pl'`**, so Django's own messages (password validators, DRF's "not authenticated") reach the Polish UI in Polish.
 - **Rate limiting** on `login/`/`register/` is `10/min` per IP, counted in the default local-memory cache — i.e. per gunicorn worker. A shared cache backend is what would make it a real limit.
 
+**The diary's own endpoints: `/api/diary/`.** `core/views.py` exposes three, and the split between them *is* the product rule — one entry per calendar day, editable on the day it was written, everything older read-only:
+
+- `GET`/`PUT /api/diary/today/` — the only writable one, and it can only ever address today. `core/diary.py` `save_today_entry` replaces rather than merges: the form submits its whole state, so a field left out is an answer taken back, not one left unchanged.
+- `GET /api/diary/` — the archive, newest first, today included. Read-only structurally rather than by permission: there is no write verb on the URL.
+- `GET /api/diary/<uuid>/` — one past entry. The **only** diary URL carrying an id, and therefore the only one where a caller can name a row that is not theirs; `load_entry` filters on the session's `id_medical` alongside the id, so somebody else's entry answers exactly like a nonexistent one (404, nothing leaked about whether it exists). Route order matters: `diary/today/` is declared before `diary/<uuid>/`.
+
+`serialize_entry` is shared by all three and carries `id` plus `saved_at` (`updated_at`, i.e. when it was last saved) on top of what the form edits — the archive needs both. `MAX_HISTORY_ENTRIES` is a runaway-query backstop, not a product limit; hitting it means the screen needs real pagination.
+
 **The home screen's data: `GET /api/dashboard/home/`.** `core/views.py` `HomeDashboardView` answers with everything `frontend/src/pages/Home.tsx` draws — streak, today's entry, the 7-day chart, the stress/energy averages, the technique suggestion. The aggregation itself is in `core/dashboard.py`, kept out of the view so it can be tested (and reused by the analysis/report screens) without a request.
 
 - **The session is the only identity input.** The view resolves `request.user` → `Patient.id_medical` (user_db) and passes that UUID to `build_home_dashboard`, which touches nothing but medical_db. There is no patient id in the URL, so one account cannot ask for another's numbers, and the aggregation code never sees a name or an e-mail.
@@ -96,6 +104,8 @@ python manage.py test core.tests.test_routers      # router/env-config tests onl
 - `test_schema_sync.py` — the drift `makemigrations` cannot see, because `0001` is faked: parses `scripts/database_setup.sql` (CREATE TABLE plus its ALTER blocks) and compares column-for-column with `core.models`, in both directions, per table. Also checks that every column `mock_data.sql` inserts into still exists. No database.
 - `test_migrations.py` — that every raw-SQL migration carries a `target_db` hint pointing at the right database, is reversible, tolerates the columns already existing (the documented setup order runs the SQL script first), and that the two halves of each `SeparateDatabaseAndState` describe the same change. No database.
 
+- `test_diary_history_api.py` — `/api/diary/` and `/api/diary/<id>/`: that the list holds only the signed-in patient's entries newest-first, that another patient's entry answers 404 rather than 403 (a 403 would confirm it exists), and that neither URL accepts a write verb. Needs both databases.
+
 Always pass `--noinput`: an aborted run leaves `test_user_db` behind and the next run then blocks on an interactive "delete it?" prompt, producing no output at all. Test databases are built from migrations (not `database_setup.sql`), so `0001` runs for real there rather than faked.
 
 ### Database schema/seed (raw SQL, run against Postgres directly)
@@ -125,6 +135,7 @@ npm run preview   # preview a production build
 - `utils/validation.test.ts`, `hooks/useAuthForm.test.tsx` — the pure validators, and how a server verdict lands on the input that produced it.
 - `components/*.test.tsx` — the entry form's controls, including that the stress alert threshold now sits on the 'Stres' chip.
 - `pages/DiaryEntry.test.tsx` — load, redraw, save, failure, and the two rules the schema forces on the UI: no separate stress/wellbeing sliders, and no risky-behaviour flag without a description.
+- `pages/Journals.test.tsx`, `pages/JournalDetail.test.tsx` — the archive: that a failed load never looks like an empty diary, that today is the one row not marked read-only and links to the editable form, that the filters narrow what is already loaded without re-fetching, and that a 404 is worded so it does not imply the entry exists.
 - `App.test.tsx`, `auth/AuthProvider.test.tsx` — that route guards wait for the first `/api/auth/me/` instead of bouncing a logged-in user to `/login`.
 
 ### Docker

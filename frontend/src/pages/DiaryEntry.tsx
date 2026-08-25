@@ -184,7 +184,7 @@ function DiaryEntry() {
         <>
           <section className="diary-entry-lock-banner">
             <span className="diary-entry-lock-icon" aria-hidden="true">
-              🕛
+
             </span>
             <p>
               Ten wpis możesz edytować do końca dzisiejszego dnia ({dateLabel}). Później zostanie zapisany na stałe.

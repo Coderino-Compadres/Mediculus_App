@@ -1,0 +1,202 @@
+.journals-page {
+  flex-grow: 1;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--color-lavender);
+  padding: 24px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.journals-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+/* Header */
+
+.journals-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.journals-module-label {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.journals-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* Filters */
+
+.journals-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.journals-filter-chip {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(var(--shadow-tint), 0.18);
+  background: #fff;
+  color: var(--color-graphite);
+  cursor: pointer;
+}
+
+.journals-filter-chip-active {
+  background: var(--color-sage);
+  border-color: var(--color-sage);
+  color: #fff;
+}
+
+/* Status */
+
+.journals-status {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite-muted);
+  text-align: center;
+  padding: 20px 16px;
+}
+
+.journals-status-error {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-radius: 14px;
+}
+
+/* List */
+
+.journals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.journals-empty {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  text-align: center;
+  padding: 24px 0;
+}
+
+.journal-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: none;
+  border-radius: 18px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.journal-mood-badge {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-graphite-muted);
+  color: #fff;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+}
+
+.journal-row-body {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.journal-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.journal-row-date {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  text-transform: capitalize;
+}
+
+.journal-readonly-badge {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--color-lavender);
+  color: var(--color-graphite-muted);
+}
+
+.journal-row-preview {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.journal-row-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.journal-row-chip {
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--color-lavender);
+  color: var(--color-graphite);
+}
+
+.journal-row-arrow {
+  flex-shrink: 0;
+  color: var(--color-graphite-muted);
+  font-size: 16px;
+  align-self: center;
+}
+
+/* No mood recorded: an outline instead of a fill. The dot lost its digit, so
+   without this an unanswered entry would be a solid grey circle and read as a
+   mood of its own. */
+.journal-mood-badge-empty {
+  background: transparent;
+  border: 2px dashed var(--color-graphite-muted);
+}
