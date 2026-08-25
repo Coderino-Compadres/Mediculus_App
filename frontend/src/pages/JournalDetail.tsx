@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import { ApiError } from '../api/client'
+import { fetchJournalEntry } from '../api/diary'
 import { EMOTION_COLORS, STRES, type EmotionName } from '../utils/emotions'
 import { MOOD_OPTIONS } from '../utils/moods'
 import { OTHER_TRIGGER } from '../utils/triggers'
-import { buildMockJournalEntries } from '../utils/mockJournalEntries'
 import type { JournalListEntry } from '../types/diaryEntry'
 import { ROUTES } from '../routes'
 import './diaryEntry.css'
@@ -14,6 +15,8 @@ import './journalDetail.css'
 /** Matches the alert threshold used in DiaryEntry.tsx for the 'Stres' emotion (US-PT-13). */
 const STRESS_ALERT_THRESHOLD = 6
 const EMOTION_ALERTS: Partial<Record<EmotionName, number>> = { [STRES]: STRESS_ALERT_THRESHOLD }
+
+const LOAD_ERROR = 'Nie udało się wczytać tego wpisu. Spróbuj ponownie.'
 
 interface ReadOnlyLevelProps {
   label: string
@@ -50,11 +53,60 @@ function placeLabel(entry: JournalListEntry): string | null {
 function JournalDetail() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const today = useMemo(() => new Date(), [])
-  const entry = useMemo(
-    () => buildMockJournalEntries(today).find((item) => item.id === id) ?? null,
-    [today, id],
-  )
+  const [entry, setEntry] = useState<JournalListEntry | null>(null)
+  // Starts false when the route gave us no id: there is nothing to wait for, so
+  // deriving it here beats setting it from inside the effect.
+  const [loading, setLoading] = useState(Boolean(id))
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  // A 404 means "no such entry for this patient" and covers both a wrong id and
+  // somebody else's — the backend does not tell them apart, so neither does the
+  // wording here.
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+
+    fetchJournalEntry(id)
+      .then((loaded) => {
+        if (cancelled) return
+        setEntry(loaded)
+        setLoadError(null)
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return
+        const notFound = cause instanceof ApiError && cause.status === 404
+        setEntry(null)
+        setLoadError(notFound ? null : (cause instanceof ApiError && cause.formMessage) || LOAD_ERROR)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  if (loading) {
+    return (
+      <div className="journal-detail-page">
+        <p className="journal-detail-status" role="status" aria-busy="true">
+          Wczytywanie wpisu…
+        </p>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="journal-detail-page">
+        <p className="journal-detail-status journal-detail-status-error" role="alert">
+          {loadError}
+        </p>
+        <Link to={ROUTES.journals}>← Wróć do Dzienniczków</Link>
+      </div>
+    )
+  }
 
   if (!entry) {
     return (

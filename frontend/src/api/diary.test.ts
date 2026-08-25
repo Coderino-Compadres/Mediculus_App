@@ -1,16 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchTodayEntry, saveTodayEntry } from './diary'
+import { fetchJournalEntries, fetchJournalEntry, fetchTodayEntry, saveTodayEntry } from './diary'
 import type { DiaryEntryDraft } from '../types/diaryEntry'
 import { OTHER_TRIGGER } from '../utils/triggers'
+import { ApiError } from './client'
 
-vi.mock('./client', () => ({ apiRequest: vi.fn() }))
+// Keep the real module and swap only the network call: ApiError is a real class
+// the tests construct, and a wholesale replacement would strip it.
+vi.mock('./client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./client')>()),
+  apiRequest: vi.fn(),
+}))
 const { apiRequest } = await import('./client')
 const mockedRequest = vi.mocked(apiRequest)
 
 /** A payload shaped exactly like core.diary.serialize_entry returns it. */
 function payload(overrides: Record<string, unknown> = {}) {
   return {
+    id: 'e0000000-0000-0000-0000-000000000100',
     date: '2026-08-25',
+    saved_at: '2026-08-25T21:42:00+02:00',
     mood: 'good',
     emotions: [{ emotion: 'Lęk', intensity: 7 }],
     energy_level: 5,
@@ -257,5 +265,98 @@ describe('saveTodayEntry', () => {
     const result = await saveTodayEntry(draft({ notes: 'cokolwiek' }))
 
     expect(result.notes).toBe('Znormalizowane przez serwer.')
+  })
+})
+
+describe('the history list', () => {
+  it('reads the collection, which is the only diary URL without a day in it', async () => {
+    mockedRequest.mockResolvedValueOnce([])
+
+    await fetchJournalEntries()
+
+    expect(mockedRequest).toHaveBeenCalledWith('/api/diary/')
+  })
+
+  it('is empty for a patient who has written nothing, rather than failing', async () => {
+    mockedRequest.mockResolvedValueOnce([])
+
+    await expect(fetchJournalEntries()).resolves.toEqual([])
+  })
+
+  it('carries the id and the save time the archive needs on top of the draft', async () => {
+    mockedRequest.mockResolvedValueOnce([payload()])
+
+    const [entry] = await fetchJournalEntries()
+
+    expect(entry.id).toBe('e0000000-0000-0000-0000-000000000100')
+    expect(entry.savedAt).toBe('2026-08-25T21:42:00+02:00')
+    expect(entry.mood).toBe('good')
+    expect(entry.situationReaction.situation).toBe('Rozmowa.')
+  })
+
+  it('keeps the order the server sent — newest first is the API\'s decision', async () => {
+    mockedRequest.mockResolvedValueOnce([
+      payload({ id: 'nowszy', date: '2026-08-25' }),
+      payload({ id: 'starszy', date: '2026-08-20' }),
+    ])
+
+    const entries = await fetchJournalEntries()
+
+    expect(entries.map((e) => e.id)).toEqual(['nowszy', 'starszy'])
+  })
+
+  it('applies the same mapping as a single entry, including the trigger split', async () => {
+    mockedRequest.mockResolvedValueOnce([payload({ situation_place: 'U babci na działce' })])
+
+    const [entry] = await fetchJournalEntries()
+
+    expect(entry.situationReaction.trigger).toBe(OTHER_TRIGGER)
+    expect(entry.situationReaction.triggerOther).toBe('U babci na działce')
+  })
+
+  it('derives the risky-behaviour flag per entry', async () => {
+    mockedRequest.mockResolvedValueOnce([
+      payload({ id: 'a', risky_behavior_note: 'Alkohol.' }),
+      payload({ id: 'b', risky_behavior_note: null }),
+    ])
+
+    const [flagged, plain] = await fetchJournalEntries()
+
+    expect(flagged.hasRiskyBehavior).toBe(true)
+    expect(plain.hasRiskyBehavior).toBe(false)
+  })
+})
+
+describe('one entry by id', () => {
+  it('addresses it under the collection', async () => {
+    mockedRequest.mockResolvedValueOnce(payload())
+
+    await fetchJournalEntry('e0000000-0000-0000-0000-000000000100')
+
+    expect(mockedRequest).toHaveBeenCalledWith('/api/diary/e0000000-0000-0000-0000-000000000100/')
+  })
+
+  it('escapes an id rather than pasting it into the path', async () => {
+    mockedRequest.mockResolvedValueOnce(payload())
+
+    await fetchJournalEntry('a/../b')
+
+    expect(mockedRequest).toHaveBeenCalledWith('/api/diary/a%2F..%2Fb/')
+  })
+
+  it('maps it exactly like a list row', async () => {
+    mockedRequest.mockResolvedValueOnce(payload())
+
+    const entry = await fetchJournalEntry('e0000000-0000-0000-0000-000000000100')
+
+    mockedRequest.mockResolvedValueOnce([payload()])
+    const [fromList] = await fetchJournalEntries()
+    expect(entry).toEqual(fromList)
+  })
+
+  it('lets a 404 through — the caller decides what "not found" looks like', async () => {
+    mockedRequest.mockRejectedValueOnce(new ApiError(404, 'Nie znaleziono tego wpisu.'))
+
+    await expect(fetchJournalEntry('brak')).rejects.toBeInstanceOf(ApiError)
   })
 })

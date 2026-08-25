@@ -10,7 +10,7 @@ from django.utils.decorators import method_decorator
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
@@ -20,7 +20,8 @@ from django.utils import timezone
 
 from .authentication import end_session, start_session
 from .dashboard import build_home_dashboard
-from .diary import DiaryEntrySerializer, load_today_entry, save_today_entry
+from .diary import (DiaryEntrySerializer, load_entry, load_history,
+                    load_today_entry, save_today_entry)
 from .models import Patient
 from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
 
@@ -174,4 +175,39 @@ class TodayDiaryEntryView(APIView):
         entry = save_today_entry(
             patient.id_medical, serializer.validated_data, timezone.localdate(),
         )
+        return Response(entry)
+
+
+class DiaryHistoryView(APIView):
+    """GET /api/diary/ — every entry the signed-in patient has written.
+
+    Read-only, and not because a permission says so: there is no write verb on
+    this URL and the only endpoint that writes (`/api/diary/today/`) cannot
+    address any day but today. Past entries being immutable is the point — a
+    report a therapist reads has to describe what the patient wrote then, not
+    what they would rather have written since.
+
+    Newest first, because that is the order the archive screen lists them in.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, DIARY_REFUSAL)
+        return Response(load_history(patient.id_medical))
+
+
+class DiaryEntryDetailView(APIView):
+    """GET /api/diary/<id>/ — one past entry, opened from the archive.
+
+    This is the only diary URL carrying an id, so it is the only one where a
+    caller can name a row that is not theirs. `load_entry` filters on the
+    session's `id_medical` as well as on the id, which makes somebody else's
+    entry answer exactly like a nonexistent one: 404, with nothing leaked about
+    whether it exists.
+    """
+
+    def get(self, request, id_diary):
+        patient = _require_patient(request, DIARY_REFUSAL)
+        entry = load_entry(patient.id_medical, id_diary)
+        if entry is None:
+            raise NotFound('Nie znaleziono tego wpisu.')
         return Response(entry)

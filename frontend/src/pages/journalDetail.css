@@ -283,3 +283,19 @@
   color: var(--color-graphite-muted);
   line-height: 1.4;
 }
+
+/* Loading and failure states for the fetch by id — the page used to read from a
+   hardcoded array and had neither. */
+.journal-detail-status {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite-muted);
+  text-align: center;
+  padding: 24px 16px;
+}
+
+.journal-detail-status-error {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-radius: 14px;
+}

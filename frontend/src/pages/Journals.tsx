@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import { ApiError } from '../api/client'
-import { fetchTodayEntry } from '../api/diary'
+import { fetchJournalEntries } from '../api/diary'
 import { MOOD_OPTIONS, MOOD_RANK } from '../utils/moods'
 import { OTHER_TRIGGER } from '../utils/triggers'
-import { buildMockJournalEntries } from '../utils/mockJournalEntries'
 import type { JournalListEntry } from '../types/diaryEntry'
 import { ROUTES, journalDetailPath } from '../routes'
 import './journals.css'
@@ -18,7 +17,7 @@ function toIsoDate(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
-const LOAD_ERROR = 'Nie udało się wczytać dzisiejszego wpisu.'
+const LOAD_ERROR = 'Nie udało się wczytać dzienniczków. Spróbuj ponownie.'
 
 type DayFilter = 'all' | 'hard' | 'good'
 
@@ -109,19 +108,20 @@ function Journals() {
   const today = useMemo(() => new Date(), [])
   const todayIso = useMemo(() => toIsoDate(today), [today])
   const [filter, setFilter] = useState<DayFilter>('all')
-  const [todayEntry, setTodayEntry] = useState<JournalListEntry | null>(null)
+  const [entries, setEntries] = useState<JournalListEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  // Mirrors DiaryEntry.tsx: GET /api/diary/today/ answers with null until the
-  // first save of the day, which is a normal state here, not an error.
+  // GET /api/diary/ answers with every entry this patient has written, newest
+  // first — today included. A patient who has never written one gets an empty
+  // list, which is a normal state here rather than an error.
   useEffect(() => {
     let cancelled = false
 
-    fetchTodayEntry()
-      .then((draft) => {
+    fetchJournalEntries()
+      .then((history) => {
         if (cancelled) return
-        setTodayEntry(draft ? { ...draft, id: 'today', savedAt: `${todayIso}T00:00:00` } : null)
+        setEntries(history)
         setLoadError(null)
       })
       .catch((cause: unknown) => {
@@ -135,12 +135,7 @@ function Journals() {
     return () => {
       cancelled = true
     }
-  }, [todayIso])
-
-  const entries = useMemo<JournalListEntry[]>(() => {
-    const mockEntries = buildMockJournalEntries(today)
-    return todayEntry ? [todayEntry, ...mockEntries] : mockEntries
-  }, [today, todayEntry])
+  }, [])
 
   const filteredEntries = entries.filter((entry) => matchesFilter(entry, filter))
 
@@ -177,7 +172,7 @@ function Journals() {
 
       {loading && (
         <div className="journals-status" role="status" aria-busy="true">
-          Wczytywanie dzisiejszego wpisu…
+          Wczytywanie dzienniczków…
         </div>
       )}
 
@@ -187,10 +182,14 @@ function Journals() {
         </div>
       )}
 
-      {!loading && (
+      {!loading && !loadError && (
         <div className="journals-list">
           {filteredEntries.length === 0 && (
-            <p className="journals-empty">Brak wpisów odpowiadających temu filtrowi.</p>
+            <p className="journals-empty">
+              {entries.length === 0
+                ? 'Nie masz jeszcze żadnych wpisów.'
+                : 'Brak wpisów odpowiadających temu filtrowi.'}
+            </p>
           )}
           {filteredEntries.map((entry) => (
             <JournalRow

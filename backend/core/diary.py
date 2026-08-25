@@ -19,7 +19,7 @@ and stays there.
 from django.db import transaction
 from rest_framework import serializers
 
-from .days import day_bounds
+from .days import day_bounds, local_date
 from .emotions import EMOTIONS, MOOD_SCALE_EMOTIONS, STRES
 from .models import Diary, MoodScale
 
@@ -165,9 +165,17 @@ def _read_ratings(diary):
 
 
 def serialize_entry(diary):
-    """One `diary` row (plus its scales) as the entry form's payload."""
+    """One `diary` row (plus its scales) as the entry form's payload.
+
+    `id` and `saved_at` are what the history screens need on top of what the form
+    edits: the archive addresses a past entry by id, and shows when it was
+    written. `saved_at` is `updated_at`, because an entry edited later the same
+    day was saved then, not when it was first opened.
+    """
     return {
-        'date': diary.created_at.astimezone().date().isoformat(),
+        'id': str(diary.id_diary),
+        'date': local_date(diary.created_at).isoformat(),
+        'saved_at': diary.updated_at.isoformat(),
         'mood': MOOD_VALUES.get((diary.current_mood or '').casefold()),
         'emotions': _read_ratings(diary),
         'energy_level': diary.energy_level,
@@ -189,6 +197,43 @@ def load_today_entry(id_medical, today):
         Diary.objects.filter(id_medical=id_medical, created_at__gte=start, created_at__lt=end)
         .prefetch_related('mood_scales')
         .order_by('-created_at')
+        .first()
+    )
+    return serialize_entry(diary) if diary is not None else None
+
+
+#: Safety cap on the history list. One entry per day means a year is 365 rows,
+#: so this is a backstop against a runaway query rather than a product limit —
+#: if it is ever hit, the screen needs real pagination, not a bigger number.
+MAX_HISTORY_ENTRIES = 1000
+
+
+def load_history(id_medical):
+    """Every entry this patient has written, newest first.
+
+    Read-only by construction: nothing here can write, and the endpoint that
+    does (`save_today_entry`) can only ever address today. Past entries staying
+    immutable is what makes a report to a therapist worth anything.
+    """
+    diaries = (
+        Diary.objects.filter(id_medical=id_medical)
+        .prefetch_related('mood_scales')
+        .order_by('-created_at')[:MAX_HISTORY_ENTRIES]
+    )
+    return [serialize_entry(diary) for diary in diaries]
+
+
+def load_entry(id_medical, id_diary):
+    """One entry by id, or None when it is not this patient's.
+
+    The id is in the URL, so unlike everywhere else in this module the caller
+    can name a row that belongs to somebody else. Filtering on `id_medical`
+    alongside the id is what stops that: a wrong owner is indistinguishable from
+    a wrong id, and both answer 404.
+    """
+    diary = (
+        Diary.objects.filter(pk=id_diary, id_medical=id_medical)
+        .prefetch_related('mood_scales')
         .first()
     )
     return serialize_entry(diary) if diary is not None else None

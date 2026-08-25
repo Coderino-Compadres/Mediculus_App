@@ -11,13 +11,26 @@
 import { apiRequest } from './client'
 import type { EmotionName } from '../utils/emotions'
 import { OTHER_TRIGGER, TRIGGER_OPTIONS } from '../utils/triggers'
-import type { DiaryEntryDraft, EmotionEntry, MoodLevel } from '../types/diaryEntry'
+import type {
+  DiaryEntryDraft,
+  EmotionEntry,
+  JournalListEntry,
+  MoodLevel,
+} from '../types/diaryEntry'
 
+const HISTORY_PATH = '/api/diary/'
 const TODAY_PATH = '/api/diary/today/'
+
+/** The archive addresses one past entry by id — the only diary URL that does. */
+function entryPath(id: string): string {
+  return `${HISTORY_PATH}${encodeURIComponent(id)}/`
+}
 
 /** As `core.diary.serialize_entry` returns it. */
 interface DiaryEntryPayload {
+  id: string
   date: string
+  saved_at: string
   mood: MoodLevel | null
   emotions: { emotion: string; intensity: number }[]
   energy_level: number | null
@@ -109,6 +122,33 @@ function toPayload(draft: DiaryEntryDraft) {
     notes: orNull(draft.notes),
     risky_behavior_note: draft.hasRiskyBehavior ? orNull(draft.riskyBehaviorNote) : null,
   }
+}
+
+/** One payload as the archive lists it: the draft plus who and when it is. */
+function toJournalEntry(payload: DiaryEntryPayload): JournalListEntry {
+  return { ...toDraft(payload), id: payload.id, savedAt: payload.saved_at }
+}
+
+/**
+ * Every entry this patient has written, newest first — including today's.
+ *
+ * The archive screen decides on its own that today is the one still editable;
+ * the API makes no such distinction here, it simply cannot be written through.
+ */
+export async function fetchJournalEntries(): Promise<JournalListEntry[]> {
+  const payload = await apiRequest<DiaryEntryPayload[]>(HISTORY_PATH)
+  return payload.map(toJournalEntry)
+}
+
+/**
+ * One past entry by id.
+ *
+ * A 404 here means "no such entry for this patient" and covers both a wrong id
+ * and somebody else's — the backend deliberately does not tell them apart, so
+ * neither does this.
+ */
+export async function fetchJournalEntry(id: string): Promise<JournalListEntry> {
+  return toJournalEntry(await apiRequest<DiaryEntryPayload>(entryPath(id)))
 }
 
 /** Today's entry, or null before the patient has written one. */
