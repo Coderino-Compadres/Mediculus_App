@@ -82,13 +82,19 @@ python manage.py test core.tests.test_routers      # router/env-config tests onl
 ```
 `migrate core --database=default` / `migrate core --database=medical` create the actual domain tables — see the reconciliation caveat above before running either against a real database.
 
-**Tests** live in `backend/core/tests/` and use Django's own runner (no pytest, no extra dependency):
+**Backend tests** live in `backend/core/tests/` and use Django's own runner (no pytest, no extra dependency):
 
 - `test_routers.py` — `CoreDatabaseRouter` placement and `allow_migrate` rules, including that operation hints arrive spread as kwargs (`target_db=...`, not `hints={...}`), and that `0002`'s hints still match what the router reads. `SimpleTestCase`, no database.
 - `test_models.py` — routing per model, the pseudonymized `id_medical` join (unknown ids accepted, no cascade across databases), the deliberate `PROTECT`/`SET_NULL`/`CASCADE` choices, the `parent_child` constraints, and that `created_at`/`updated_at` come from `auto_now*` rather than DB defaults. Needs both databases.
 - `test_env_config.py` — imports `config/settings.py` in a subprocess to check that `DJANGO_ENV_FILE` selects the file, real env vars override it, a missing file is survivable (the App Service case), a missing required key hard-fails, `DB_SSLMODE` defaults to `require`, and that no local env file pairs an `azure.com` host with `sslmode=disable`.
 - `test_dashboard_api.py` — `/api/dashboard/home/`: that only the signed-in patient's own rows are aggregated and a non-patient account is refused, how a day's dominant emotion and bar height are chosen (declared emotion first, highest rating as fallback, stress competing with the mood scales), the 7-day window and its averages, the streak's tolerance for an unwritten today, and that an `id_medical` with no rows is an empty dashboard rather than an error. Needs both databases.
 - `test_auth_api.py` — the `/api/auth/` endpoints: what registration writes (hash not password, consent timestamps, `Patient` row, `patient` role, and that a missing role row is survivable), that login is case-insensitive on e-mail and indistinguishable between a wrong password and an unknown address, that a non-hash `password_hash` fails cleanly rather than 500-ing, the session lifecycle including a cookie pointing at a deleted user, throttling, and that CSRF is actually required on login/register/logout. `default` only.
+
+- `test_days.py` — the calendar-day boundary in `settings.TIME_ZONE` rather than UTC, which decides what "today" means for the streak and for the one-entry-per-day rule. No database.
+- `test_emotions.py` — the ten-name vocabulary, including a **cross-language check that `frontend/src/utils/emotions.ts` declares character-for-character the same names**. Nothing else enforces that agreement. Also covers `normalize_emotion`, including Polish `ł`, which NFKD cannot decompose. No database.
+- `test_diary_unit.py` — the decisions under `/api/diary/today/`: which emotion counts as strongest (and that its tie-break matches `dashboard._ratings`), the mood-label round trip through `current_mood`, and what an empty text box means. No database.
+- `test_schema_sync.py` — the drift `makemigrations` cannot see, because `0001` is faked: parses `scripts/database_setup.sql` (CREATE TABLE plus its ALTER blocks) and compares column-for-column with `core.models`, in both directions, per table. Also checks that every column `mock_data.sql` inserts into still exists. No database.
+- `test_migrations.py` — that every raw-SQL migration carries a `target_db` hint pointing at the right database, is reversible, tolerates the columns already existing (the documented setup order runs the SQL script first), and that the two halves of each `SeparateDatabaseAndState` describe the same change. No database.
 
 Always pass `--noinput`: an aborted run leaves `test_user_db` behind and the next run then blocks on an interactive "delete it?" prompt, producing no output at all. Test databases are built from migrations (not `database_setup.sql`), so `0001` runs for real there rather than faked.
 
@@ -106,8 +112,20 @@ npm run dev       # vite dev server
 npm run build     # vite build (also generates the PWA service worker via vite-plugin-pwa)
 npm run lint      # oxlint (NOT eslint — see .oxlintrc.json)
 npm run typecheck # tsc -b, no emit
+npm run test      # vitest run (jsdom + testing-library)
+npm run test:watch
 npm run preview   # preview a production build
 ```
+
+**Frontend tests** live next to what they cover (`src/**/*.test.ts{,x}`) and run on Vitest in jsdom. `vitest.config.ts` is deliberately separate from `vite.config.ts`, which builds the PWA service worker and wires the `/api` dev proxy — neither is wanted in a test run. `src/test/setup.ts` registers jest-dom matchers and cleanup; `src/test/render.tsx` mounts a screen inside a router plus a stubbed session, because the shared header reads both.
+
+- `api/client.test.ts` — the CSRF token (cookie first, response body as the cross-site fallback), the single silent retry on a 403 and the fact that it does not loop, and how a DRF error body splits into per-field and form-level messages. A `Response` stub needs both `text()` and `json()`: `apiRequest` reads bodies with `text()` so an HTML proxy page cannot throw, while `getCsrfToken` calls `json()`.
+- `api/diary.test.ts` — the camelCase↔snake_case mapping, including the two places it is not one-to-one: the trigger chip and its "Inne" free text collapse into one `situation_place`, and the risky-behaviour flag is derived from the note being non-NULL.
+- `api/auth.test.ts`, `api/dashboard.test.ts` — field mapping, and that an emotion with no colour is dropped rather than drawn invisible.
+- `utils/validation.test.ts`, `hooks/useAuthForm.test.tsx` — the pure validators, and how a server verdict lands on the input that produced it.
+- `components/*.test.tsx` — the entry form's controls, including that the stress alert threshold now sits on the 'Stres' chip.
+- `pages/DiaryEntry.test.tsx` — load, redraw, save, failure, and the two rules the schema forces on the UI: no separate stress/wellbeing sliders, and no risky-behaviour flag without a description.
+- `App.test.tsx`, `auth/AuthProvider.test.tsx` — that route guards wait for the first `/api/auth/me/` instead of bouncing a logged-in user to `/login`.
 
 ### Docker
 ```bash
