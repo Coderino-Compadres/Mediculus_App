@@ -9,7 +9,7 @@ function placeholderLabel(path: string): string {
 }
 
 const MENU_ITEMS: { label: string; to: string }[] = [
-  { label: placeholderLabel(ROUTES.journals), to: ROUTES.journals },
+  { label: 'Dzienniczki', to: ROUTES.journals },
   { label: placeholderLabel(ROUTES.reports), to: ROUTES.reports },
   { label: placeholderLabel(ROUTES.analysis), to: ROUTES.analysis },
   { label: placeholderLabel(ROUTES.techniques), to: ROUTES.techniques },
