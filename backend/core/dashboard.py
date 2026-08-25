@@ -55,7 +55,7 @@ def _entries_by_day(diaries):
 def _ratings(diary):
     """Every emotion this entry put a number on, strongest first.
 
-    Stress joins the seven `mood_scale` columns because it is rated the same way
+    Stress joins the nine `mood_scale` columns because it is rated the same way
     (0-10) and is one of the ten emotions the app tracks — it just lives on the
     diary row rather than in the scale table.
     """

@@ -4,7 +4,7 @@
 each); the strings here have to match it character for character, because the
 dashboard sends them over the wire and the chart looks up its colours by name.
 
-Two of the three places emotions live in the database are numeric — the seven
+Two of the three places emotions live in the database are numeric — the nine
 `mood_scale` columns and `diary.stress_level` — and one, `diary.current_strongest_emotion`,
 is free text typed by whoever filled the form. `normalize_emotion` maps that
 text onto the vocabulary and answers None when it cannot: the seed data alone
@@ -40,12 +40,17 @@ MOOD_SCALE_EMOTIONS = (
     ('frustration_scale', FRUSTRACJA),
     ('helplessness_scale', BEZRADNOSC),
     ('guilt_scale', POCZUCIE_WINY),
+    ('shame_scale', WSTYD),
     ('happiness_scale', RADOSC),
+    ('calm_scale', SPOKOJ),
 )
 
-# Three of the ten have no scale column of their own: 'Stres' is rated on
-# `diary.stress_level` instead (see dashboard.py), while 'Wstyd' and 'Spokój'
-# can currently only arrive as free text.
+# One of the ten still has no scale column of its own: 'Stres' is rated on
+# `diary.stress_level` instead (see dashboard.py). 'Wstyd' and 'Spokój' used to
+# be in the same position and got `shame_scale`/`calm_scale` in core.0005, so
+# every emotion the entry form offers can now be stored as a number. Rows
+# written before that migration have NULL there, which `_ratings` skips — an
+# unrated emotion, not a zero.
 
 # Free-text spellings, keyed by their de-accented, lower-cased form. Includes the
 # canonical names themselves, so 'Lęk' and a typed 'lek' land in the same place.

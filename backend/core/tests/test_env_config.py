@@ -1,4 +1,4 @@
-"""Tests for the env-file split (.env.local / .env.azure) and DJANGO_ENV_FILE.
+"""Tests for the env-file split (.env.local.local / .env.local.azure) and DJANGO_ENV_FILE.
 
 settings.py is imported in a subprocess so each case gets a clean environment —
 the settings module of the running test process must not be re-evaluated.
@@ -72,7 +72,7 @@ class EnvFileSelectionTests(SimpleTestCase):
 
     def setUp(self):
         handle = tempfile.NamedTemporaryFile(
-            mode='w', dir=REPO_ROOT, prefix='.env.selftest-', delete=False)
+            mode='w', dir=REPO_ROOT, prefix='.env.local.selftest-', delete=False)
         handle.write('\n'.join(f'{k}={v}' for k, v in REQUIRED.items())
                      .replace('host-from-env', 'host-from-file'))
         handle.write('\nDB_SSLMODE=disable\nDJANGO_ALLOWED_HOSTS= a.example.com , b.example.com \n')
@@ -95,13 +95,13 @@ class EnvFileSelectionTests(SimpleTestCase):
 
     def test_missing_file_is_not_fatal_when_the_environment_is_complete(self):
         """The Azure App Service case: no file, values come from App Settings."""
-        result = self.probe(DJANGO_ENV_FILE='.env.does-not-exist', **REQUIRED)
+        result = self.probe(DJANGO_ENV_FILE='.env.local.does-not-exist', **REQUIRED)
         self.assertEqual(result['default_host'], 'host-from-env')
 
     def test_missing_required_variable_fails_at_import(self):
         incomplete = dict(REQUIRED)
         del incomplete['USER_DB_NAME']
-        proc = load_settings({'DJANGO_ENV_FILE': '.env.does-not-exist', **incomplete},
+        proc = load_settings({'DJANGO_ENV_FILE': '.env.local.does-not-exist', **incomplete},
                              expect_ok=False)
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn('USER_DB_NAME', proc.stderr)
@@ -112,16 +112,16 @@ class EnvFileSelectionTests(SimpleTestCase):
         self.assertEqual(result['csrf'], [])
 
     def test_sslmode_defaults_to_require(self):
-        """No DB_SSLMODE, and the empty value shipped in .env.example, both mean SSL."""
+        """No DB_SSLMODE, and the empty value shipped in .env.local.example, both mean SSL."""
         for value in (None, ''):
             with self.subTest(DB_SSLMODE=value):
-                env = {'DJANGO_ENV_FILE': '.env.does-not-exist', **REQUIRED}
+                env = {'DJANGO_ENV_FILE': '.env.local.does-not-exist', **REQUIRED}
                 if value is not None:
                     env['DB_SSLMODE'] = value
                 self.assertEqual(self.probe(**env)['sslmode'], 'require')
 
     def test_proxy_ssl_header_defaults_on_and_can_be_disabled(self):
-        env = {'DJANGO_ENV_FILE': '.env.does-not-exist', **REQUIRED}
+        env = {'DJANGO_ENV_FILE': '.env.local.does-not-exist', **REQUIRED}
         self.assertEqual(self.probe(**env)['proxy_header'],
                          ['HTTP_X_FORWARDED_PROTO', 'https'])
         self.assertIsNone(self.probe(**env, DJANGO_USE_PROXY_SSL_HEADER='false')['proxy_header'])
@@ -130,21 +130,21 @@ class EnvFileSelectionTests(SimpleTestCase):
 class EnvFileContentTests(SimpleTestCase):
     """Guards on the two checked-out env files (skipped where they don't exist)."""
 
-    example = REPO_ROOT / '.env.example'
-    local = REPO_ROOT / '.env.local'
-    azure = REPO_ROOT / '.env.azure'
+    example = REPO_ROOT / '.env.local.example'
+    local = REPO_ROOT / '.env.local.local'
+    azure = REPO_ROOT / '.env.local.azure'
 
-    @unittest.skipUnless(local.exists() and example.exists(), '.env.local not present')
+    @unittest.skipUnless(local.exists() and example.exists(), '.env.local.local not present')
     def test_local_file_covers_every_documented_key(self):
         self.assertEqual(parse_env_file(self.example).keys() - parse_env_file(self.local).keys(),
                          set())
 
-    @unittest.skipUnless(azure.exists() and example.exists(), '.env.azure not present')
+    @unittest.skipUnless(azure.exists() and example.exists(), '.env.local.azure not present')
     def test_azure_file_covers_every_documented_key(self):
         self.assertEqual(parse_env_file(self.example).keys() - parse_env_file(self.azure).keys(),
                          set())
 
-    @unittest.skipUnless(local.exists(), '.env.local not present')
+    @unittest.skipUnless(local.exists(), '.env.local.local not present')
     def test_local_file_points_at_the_container(self):
         values = parse_env_file(self.local)
         self.assertEqual(values['USER_DB_HOST'], 'localhost')
@@ -152,7 +152,7 @@ class EnvFileContentTests(SimpleTestCase):
         self.assertEqual(values['USER_DB_PORT'], '5433')
         self.assertEqual(values['DB_SSLMODE'], 'disable')
 
-    @unittest.skipUnless(azure.exists(), '.env.azure not present')
+    @unittest.skipUnless(azure.exists(), '.env.local.azure not present')
     def test_azure_file_points_at_azure_with_ssl(self):
         values = parse_env_file(self.azure)
         self.assertTrue(values['USER_DB_HOST'].endswith('.postgres.database.azure.com'))
@@ -161,8 +161,8 @@ class EnvFileContentTests(SimpleTestCase):
 
     def test_no_env_file_pairs_an_azure_host_with_ssl_disabled(self):
         """Azure Postgres drops plaintext connections — this pairing times out."""
-        for path in sorted(REPO_ROOT.glob('.env*')):
-            if path.name == '.env.example':
+        for path in sorted(REPO_ROOT.glob('.env.local*')):
+            if path.name == '.env.local.example':
                 continue
             values = parse_env_file(path)
             host = values.get('USER_DB_HOST', '')

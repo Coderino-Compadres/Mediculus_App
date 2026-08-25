@@ -262,7 +262,7 @@ function Home() {
 
       <section className="home-welcome">
         <div>
-          <p className="home-welcome-greeting">{firstName ? `Dobry dzień, ${firstName}` : 'Dobry dzień'}</p>
+          <p className="home-welcome-greeting">{firstName ? `Dzień dobry, ${firstName}` : 'Dzień dobry'}</p>
           <p className="home-welcome-date">{today}</p>
         </div>
         {dashboard && (
