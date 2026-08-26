@@ -88,6 +88,14 @@ class ParentChild(models.Model):
         User, db_column='id_child', on_delete=models.CASCADE,
         null=True, blank=True, related_name='parent_links',
     )
+    # NULL means the child has named this guardian but the guardian has not
+    # answered yet. Stored as the moment of the decision rather than a boolean
+    # for the same reason as the consent columns on `user`: RODO art. 7(1) puts
+    # the burden of proving consent on us, and "yes" without a date proves
+    # nothing. A refusal deletes the row instead of setting a third state —
+    # nothing in the app can undo a link, so a refused invitation that lingered
+    # would leave the child permanently stuck with no way to ask anyone else.
+    accepted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'parent_child'

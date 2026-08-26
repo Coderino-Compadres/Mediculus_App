@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import mediculusLogo from '../assets/mediculus-logo.jpeg'
+import GuardianInvitations from '../components/GuardianInvitations'
 import { useAuth } from '../auth/authContext'
+import { GUARDIAN_ROLE } from '../api/auth'
 import { ROUTES } from '../routes'
 import './moduleSelect.css'
 
@@ -13,6 +15,9 @@ function ModuleSelect() {
   const navigate = useNavigate()
 
   const firstName = user?.firstName ?? ''
+  // Only a guardian account can have anything to answer, and this is the first
+  // screen they land on after logging in — a child is blocked until they do.
+  const isGuardian = user?.role === GUARDIAN_ROLE
 
   return (
     <div className="module-page">
@@ -22,6 +27,8 @@ function ModuleSelect() {
         <h1>Gdzie dzisiaj zaczynamy?</h1>
         <p className="module-subtitle">Możesz przechodzić między modułami w każdej chwili.</p>
       </div>
+
+      {isGuardian && <GuardianInvitations />}
 
       <div className="module-tiles">
         <button

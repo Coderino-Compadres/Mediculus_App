@@ -191,3 +191,41 @@
 .auth-switch a:hover {
   text-decoration: underline;
 }
+
+.auth-hint {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-regular);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: -6px 0 0;
+}
+
+/* A footer action that reads as the link next to it, because it sits in the
+   same sentence — but has to be a button: it acts instead of navigating. */
+.auth-link-button {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-sage);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.auth-link-button:hover {
+  text-decoration: underline;
+}
+
+/* The second action on a card that already has a primary one — withdrawing the
+   guardian request, next to checking for its answer. */
+.auth-submit-secondary {
+  background: #fff;
+  color: var(--color-graphite);
+  border: 1px solid rgba(var(--shadow-tint), 0.2);
+}
+
+.auth-submit-secondary:hover:not(:disabled) {
+  background: rgba(var(--shadow-tint), 0.06);
+}

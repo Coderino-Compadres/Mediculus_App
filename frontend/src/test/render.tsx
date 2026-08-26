@@ -12,6 +12,7 @@ export const TEST_USER: AuthUser = {
   dateOfBirth: '1994-06-18',
   role: 'patient',
   isChild: false,
+  guardianStatus: null,
 }
 
 /**
@@ -22,13 +23,24 @@ export const TEST_USER: AuthUser = {
  */
 export function renderWithProviders(
   ui: ReactElement,
-  { user = TEST_USER, route = '/' }: { user?: AuthUser | null; route?: string } = {},
+  {
+    user = TEST_USER,
+    route = '/',
+    setUser = () => {},
+    signOut = async () => {},
+  }: {
+    user?: AuthUser | null
+    route?: string
+    /** Pass a spy when the screen under test is supposed to update the session. */
+    setUser?: (next: AuthUser | null) => void
+    signOut?: () => Promise<void>
+  } = {},
 ) {
   const auth: AuthContextValue = {
     user,
     loading: false,
-    setUser: () => {},
-    signOut: async () => {},
+    setUser,
+    signOut,
   }
 
   function Wrapper({ children }: { children: ReactNode }) {

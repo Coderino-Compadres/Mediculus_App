@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
+import LinkGuardian from './pages/LinkGuardian'
 import Home from './pages/Home'
 import DiaryEntry from './pages/DiaryEntry'
 import Journals from './pages/Journals'
@@ -10,6 +11,7 @@ import JournalDetail from './pages/JournalDetail'
 import PlaceholderPage from './pages/PlaceholderPage'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/authContext'
+import { needsGuardianLink } from './api/auth'
 import { PLACEHOLDER_ROUTES, ROUTES } from './routes'
 
 /** Both guards have to wait for the first /api/auth/me/, or a reload would
@@ -21,7 +23,19 @@ function AuthPending() {
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
-  return user ? <>{children}</> : <Navigate to={ROUTES.login} replace />
+  if (!user) return <Navigate to={ROUTES.login} replace />
+  // A minor's account is unusable until a guardian's account vouches for it, so
+  // every other screen leads back to the one form that can fix that.
+  if (needsGuardianLink(user)) return <Navigate to={ROUTES.linkGuardian} replace />
+  return <>{children}</>
+}
+
+/** The mirror image of RequireAuth's redirect: only an unlinked minor belongs here. */
+function RequireGuardianLink({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <AuthPending />
+  if (!user) return <Navigate to={ROUTES.login} replace />
+  return needsGuardianLink(user) ? <>{children}</> : <Navigate to={ROUTES.modules} replace />
 }
 
 function GuestOnly({ children }: { children: ReactNode }) {
@@ -48,6 +62,14 @@ function App() {
             <GuestOnly>
               <Register />
             </GuestOnly>
+          }
+        />
+        <Route
+          path={ROUTES.linkGuardian}
+          element={
+            <RequireGuardianLink>
+              <LinkGuardian />
+            </RequireGuardianLink>
           }
         />
         <Route

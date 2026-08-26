@@ -14,7 +14,8 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Patient, User, UserRole
+from . import guardian
+from .models import ParentChild, Patient, User, UserRole
 
 # What the registration form's "account type" choice means in the schema. Role
 # names match the rows seeded by scripts/mock_data.sql; a specialist account is
@@ -31,6 +32,11 @@ ACCOUNT_TYPES = {
     ACCOUNT_TYPE_MINOR_PATIENT: {'role': 'patient', 'is_child': True},
     ACCOUNT_TYPE_PARENT: {'role': 'rodzic', 'is_child': None},
 }
+
+# The one role a `parent_child.id_parent` may point at. Read from ACCOUNT_TYPES
+# rather than spelled again, so the registration form and the linking form can
+# never disagree about what a guardian account is.
+GUARDIAN_ROLE = ACCOUNT_TYPES[ACCOUNT_TYPE_PARENT]['role']
 
 # Rejects typos and swapped digits ('0202-05-14').
 EARLIEST_DATE_OF_BIRTH = datetime.date(1900, 1, 1)
@@ -57,10 +63,14 @@ class UserSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(source='id_user', read_only=True)
     role = serializers.SerializerMethodField()
     is_child = serializers.SerializerMethodField()
+    guardian_status = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'name', 'surname', 'date_of_birth', 'role', 'is_child']
+        fields = [
+            'id', 'email', 'name', 'surname', 'date_of_birth', 'role', 'is_child',
+            'guardian_status',
+        ]
         read_only_fields = fields
 
     def get_role(self, user):
@@ -72,6 +82,19 @@ class UserSerializer(serializers.ModelSerializer):
         # the patient row rather than deriving anything from date_of_birth.
         patient = Patient.objects.filter(user=user).first()
         return patient.is_child if patient else None
+
+    def get_guardian_status(self, user):
+        """'none', 'pending' or 'accepted' — where this account's link stands.
+
+        None for everyone the question does not apply to — an adult patient, a
+        guardian, a specialist — so the frontend blocks only the accounts that
+        are genuinely stuck: a minor whose consent to process health data is not
+        valid on its own (RODO art. 8). Only 'accepted' unblocks the app: a
+        named guardian who has not answered has consented to nothing.
+        """
+        if self.get_is_child(user) is not True:
+            return None
+        return guardian.guardian_status(user)
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -296,3 +319,87 @@ def _password_matches(raw_password, encoded):
         # Unrecognised algorithm prefix — a password nobody can match.
         check_password(raw_password, _get_unmatchable_hash())
         return False
+
+
+class GuardianLinkSerializer(serializers.Serializer):
+    """Invites a guardian, named by e-mail, to vouch for the signed-in minor.
+
+    The address has to belong to an account whose role is `rodzic`. Any other
+    account is refused with the same message as an address nobody registered:
+    both are statements about somebody else's account, the child can act on
+    neither, and telling the two apart would turn this form into a way to ask
+    "does this person have an account here, and what kind" — which for a
+    mental-health service is itself sensitive.
+
+    Sending this creates nothing but a request: the row lands with
+    `accepted_at` NULL and the child stays blocked until the guardian answers it
+    on their own home screen. The guardian is never told anything about the
+    child's diary by being asked — only who is asking.
+
+    `context['child']` is the `core.User` from the session; there is no child id
+    on the wire, so a request can only ever invite on behalf of the account
+    making it.
+    """
+
+    guardian_email = serializers.EmailField(
+        max_length=255,
+        error_messages={
+            'blank': 'Podaj adres e-mail rodzica lub opiekuna.',
+            'required': 'Podaj adres e-mail rodzica lub opiekuna.',
+            'invalid': 'Podaj poprawny adres e-mail.',
+        },
+    )
+
+    NOT_A_GUARDIAN = 'Nie znaleziono konta rodzica lub opiekuna z tym adresem.'
+    OWN_ADDRESS = 'To Twój własny adres. Podaj adres konta rodzica lub opiekuna.'
+    ALREADY_LINKED = 'Twoje konto jest już powiązane z kontem opiekuna.'
+    ALREADY_INVITED = (
+        'Zaproszenie czeka już na odpowiedź innego opiekuna. Anuluj je, jeśli '
+        'chcesz podać inny adres.'
+    )
+
+    def validate_guardian_email(self, value):
+        # Addresses are stored lowercased by registration, so this is what makes
+        # the lookup below case-insensitive.
+        return value.lower()
+
+    def validate(self, attrs):
+        child = self.context['child']
+        guardian = (
+            User.objects.select_related('user_role')
+            .filter(email=attrs['guardian_email'])
+            .first()
+        )
+
+        # Before the role check, so typing your own address gets an answer you
+        # can act on rather than the deliberately vague one below. Mirrors the
+        # `parent_child_not_self` constraint.
+        if guardian is not None and guardian.pk == child.pk:
+            raise serializers.ValidationError({'guardian_email': self.OWN_ADDRESS})
+
+        role = guardian.user_role.name if guardian and guardian.user_role_id else None
+        if role != GUARDIAN_ROLE:
+            raise serializers.ValidationError({'guardian_email': self.NOT_A_GUARDIAN})
+
+        # An accepted link is final as far as this form goes: a child who has a
+        # guardian does not get to swap them, and families with two guardians
+        # need the parent panel to add the second one deliberately.
+        existing = ParentChild.objects.filter(child=child)
+        if existing.filter(accepted_at__isnull=False).exists():
+            raise serializers.ValidationError({'guardian_email': self.ALREADY_LINKED})
+        # One pending invitation at a time, so a child cannot fish for whichever
+        # adult answers first. Re-sending it to the *same* guardian is the same
+        # answer arriving twice (a double-clicked button, a retried request) and
+        # goes through — `create` is idempotent.
+        if existing.exclude(parent=guardian).exists():
+            raise serializers.ValidationError({'guardian_email': self.ALREADY_INVITED})
+
+        attrs['guardian'] = guardian
+        return attrs
+
+    def create(self, validated_data):
+        # accepted_at stays NULL: this is the invitation, not the link.
+        link, _ = ParentChild.objects.get_or_create(
+            parent=validated_data['guardian'], child=self.context['child'],
+        )
+        return link
