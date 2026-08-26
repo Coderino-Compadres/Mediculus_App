@@ -12,6 +12,19 @@ urlpatterns = [
     path('auth/login/', views.LoginView.as_view(), name='login'),
     path('auth/logout/', views.LogoutView.as_view(), name='logout'),
     path('auth/me/', views.MeView.as_view(), name='me'),
+    path('auth/guardian/', views.GuardianLinkView.as_view(), name='guardian-link'),
+    path(
+        'guardian/invitations/',
+        views.GuardianInvitationsView.as_view(), name='guardian-invitations',
+    ),
+    path(
+        'guardian/invitations/<uuid:id_parent_child>/accept/',
+        views.GuardianInvitationAcceptView.as_view(), name='guardian-invitation-accept',
+    ),
+    path(
+        'guardian/invitations/<uuid:id_parent_child>/reject/',
+        views.GuardianInvitationRejectView.as_view(), name='guardian-invitation-reject',
+    ),
     path('dashboard/home/', views.HomeDashboardView.as_view(), name='home-dashboard'),
     path('diary/', views.DiaryHistoryView.as_view(), name='diary-history'),
     # Before the '<uuid>' route, so 'today' is never read as an id.

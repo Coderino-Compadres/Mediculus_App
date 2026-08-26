@@ -14,11 +14,8 @@ interface UserPayload {
   date_of_birth: string | null
   role: string | null
   is_child: boolean | null
-  /** null when the question does not apply: only a minor patient needs a guardian.
-   *  Optional because this screen ships ahead of the endpoint that answers it —
-   *  a backend that does not send it reads as "not linked", which is the safe
-   *  way round (see needsGuardianLink). */
-  has_guardian?: boolean | null
+  /** null when the question does not apply: only a minor patient needs a guardian. */
+  guardian_status?: GuardianStatus | null
 }
 
 export interface AuthUser {
@@ -30,8 +27,8 @@ export interface AuthUser {
   role: string | null
   /** null for a guardian: they have no patient row at all, so no answer. */
   isChild: boolean | null
-  /** Whether a `parent_child` row links this account to a guardian's account. */
-  hasGuardian: boolean | null
+  /** Where the guardian link stands; null when the question does not apply. */
+  guardianStatus: GuardianStatus | null
 }
 
 function toAuthUser(payload: UserPayload): AuthUser {
@@ -43,9 +40,25 @@ function toAuthUser(payload: UserPayload): AuthUser {
     dateOfBirth: payload.date_of_birth,
     role: payload.role,
     isChild: payload.is_child,
-    hasGuardian: payload.has_guardian ?? null,
+    guardianStatus: payload.guardian_status ?? null,
   }
 }
+
+/**
+ * Mirrors STATUS_* in core/guardian.py. 'pending' is a guardian who has been
+ * named and has not answered — which unblocks nothing: being named is not
+ * consenting.
+ */
+export const GUARDIAN_STATUS = {
+  none: 'none',
+  pending: 'pending',
+  accepted: 'accepted',
+} as const
+
+export type GuardianStatus = (typeof GUARDIAN_STATUS)[keyof typeof GUARDIAN_STATUS]
+
+/** Mirrors GUARDIAN_ROLE in core/serializers.py — the role that may be invited. */
+export const GUARDIAN_ROLE = 'rodzic'
 
 /** Mirrors ACCOUNT_TYPES in core/serializers.py — the wire values, not labels. */
 export const ACCOUNT_TYPES = {
@@ -135,10 +148,12 @@ export async function register(input: RegisterInput): Promise<AuthUser> {
 }
 
 /**
- * Links the signed-in minor's account to the guardian's account at that address.
+ * Asks the guardian at that address to vouch for the signed-in minor.
  *
- * Answers with the updated user, so the caller can hand the new `hasGuardian`
- * straight to the session instead of re-asking /api/auth/me/.
+ * This creates a request, not a link: the child stays blocked until the guardian
+ * accepts it on their own home screen. Answers with the updated user, so the
+ * caller can hand the new `guardianStatus` straight to the session instead of
+ * re-asking /api/auth/me/.
  */
 export async function linkGuardian(input: LinkGuardianInput): Promise<AuthUser> {
   const payload = await apiRequest<UserPayload>('/api/auth/guardian/', {
@@ -149,14 +164,32 @@ export async function linkGuardian(input: LinkGuardianInput): Promise<AuthUser> 
 }
 
 /**
- * Whether this account is stuck until a guardian is named.
+ * Whether this account is stuck waiting for a guardian.
  *
- * Deliberately fail-closed on `hasGuardian: null`: for a minor that is the
- * backend declining to confirm a link, and letting an unconfirmed minor write
- * health data is the worse of the two ways to be wrong.
+ * Only 'accepted' lets a minor through — a pending invitation is a question
+ * nobody has answered yet. Deliberately fail-closed on `guardianStatus: null`:
+ * for a minor that is the backend declining to confirm a link, and letting an
+ * unvouched-for minor write health data is the worse of the two ways to be wrong.
  */
 export function needsGuardianLink(user: AuthUser): boolean {
-  return user.isChild === true && user.hasGuardian !== true
+  return user.isChild === true && user.guardianStatus !== GUARDIAN_STATUS.accepted
+}
+
+/** Whether the child is waiting on an answer rather than still choosing whom to ask. */
+export function isGuardianInvitationPending(user: AuthUser): boolean {
+  return user.isChild === true && user.guardianStatus === GUARDIAN_STATUS.pending
+}
+
+/**
+ * Withdraws the invitation the signed-in minor sent, so a mistyped address is
+ * not a dead end. Refuses (404) once a guardian has accepted: undoing that is
+ * not the child's decision to make.
+ */
+export async function cancelGuardianInvitation(): Promise<AuthUser> {
+  const payload = await apiRequest<UserPayload>('/api/auth/guardian/', {
+    method: 'DELETE',
+  })
+  return toAuthUser(payload)
 }
 
 export async function logout(): Promise<void> {

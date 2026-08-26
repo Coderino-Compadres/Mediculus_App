@@ -1,0 +1,98 @@
+.invitations {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 520px;
+  margin: 20px auto 0;
+  text-align: left;
+}
+
+.invitations-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow: 0 16px 32px -22px rgba(var(--shadow-tint), 0.3);
+}
+
+.invitations-lead {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.invitations-email {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}
+
+.invitations-note {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 12px 0 0;
+}
+
+.invitations-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.invitations-accept, .invitations-reject {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.invitations-accept {
+  border: none;
+  background: var(--color-sage);
+  color: #fff;
+}
+
+.invitations-accept:hover:not(:disabled) {
+  background: var(--color-sage-hover);
+}
+
+.invitations-reject {
+  border: 1px solid rgba(var(--shadow-tint), 0.2);
+  background: #fff;
+  color: var(--color-graphite);
+}
+
+.invitations-reject:hover:not(:disabled) {
+  background: rgba(var(--shadow-tint), 0.06);
+}
+
+.invitations-accept:disabled, .invitations-reject:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.invitations-error, .invitations-answered {
+  font-family: var(--font-body);
+  font-size: 14px;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 0;
+}
+
+.invitations-error {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+}
+
+.invitations-answered {
+  color: var(--color-sage-hover);
+  background: var(--color-success-bg);
+}

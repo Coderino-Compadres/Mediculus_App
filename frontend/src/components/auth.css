@@ -217,3 +217,15 @@
 .auth-link-button:hover {
   text-decoration: underline;
 }
+
+/* The second action on a card that already has a primary one — withdrawing the
+   guardian request, next to checking for its answer. */
+.auth-submit-secondary {
+  background: #fff;
+  color: var(--color-graphite);
+  border: 1px solid rgba(var(--shadow-tint), 0.2);
+}
+
+.auth-submit-secondary:hover:not(:disabled) {
+  background: rgba(var(--shadow-tint), 0.06);
+}

@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from './client'
 import {
   ACCOUNT_TYPES,
+  cancelGuardianInvitation,
   fetchCurrentUser,
+  GUARDIAN_STATUS,
+  isGuardianInvitationPending,
   linkGuardian,
   login,
   logout,
@@ -28,7 +31,7 @@ const USER_PAYLOAD = {
   date_of_birth: '1994-06-18',
   role: 'patient',
   is_child: false,
-  has_guardian: null,
+  guardian_status: null,
 }
 
 beforeEach(() => mockedRequest.mockReset())
@@ -51,7 +54,7 @@ describe('login', () => {
       dateOfBirth: '1994-06-18',
       role: 'patient',
       isChild: false,
-      hasGuardian: null,
+      guardianStatus: null,
     })
   })
 })
@@ -171,7 +174,9 @@ describe('toFormErrors', () => {
 
 describe('linkGuardian', () => {
   it('posts the address under the column name the API uses', async () => {
-    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, is_child: true, has_guardian: true })
+    mockedRequest.mockResolvedValueOnce({
+      ...USER_PAYLOAD, is_child: true, guardian_status: 'pending',
+    })
 
     const user = await linkGuardian({ guardianEmail: 'rodzic@wp.pl' })
 
@@ -179,36 +184,63 @@ describe('linkGuardian', () => {
       method: 'POST',
       body: { guardian_email: 'rodzic@wp.pl' },
     })
-    // The answer is the updated user, so the session can be refreshed from it.
-    expect(user.hasGuardian).toBe(true)
+    // Sending the form buys a pending request, not a link: the answer is the
+    // updated user, and it says the child is still waiting.
+    expect(user.guardianStatus).toBe(GUARDIAN_STATUS.pending)
+  })
+})
+
+describe('cancelGuardianInvitation', () => {
+  it('deletes the invitation and reads the status back off the answer', async () => {
+    mockedRequest.mockResolvedValueOnce({
+      ...USER_PAYLOAD, is_child: true, guardian_status: 'none',
+    })
+
+    const user = await cancelGuardianInvitation()
+
+    expect(mockedRequest).toHaveBeenCalledWith('/api/auth/guardian/', { method: 'DELETE' })
+    expect(user.guardianStatus).toBe(GUARDIAN_STATUS.none)
   })
 })
 
 describe('needsGuardianLink', () => {
   const minor = { ...USER_PAYLOAD, is_child: true }
 
+  async function signedIn(payload: Record<string, unknown>) {
+    mockedRequest.mockResolvedValueOnce(payload)
+    return login({ email: 'd@wp.pl', password: 'x' })
+  }
+
   it('blocks a minor whose account names no guardian', async () => {
-    mockedRequest.mockResolvedValueOnce({ ...minor, has_guardian: false })
-    expect(needsGuardianLink(await login({ email: 'd@wp.pl', password: 'x' }))).toBe(true)
+    expect(needsGuardianLink(await signedIn({ ...minor, guardian_status: 'none' }))).toBe(true)
   })
 
-  it('lets a linked minor through', async () => {
-    mockedRequest.mockResolvedValueOnce({ ...minor, has_guardian: true })
-    expect(needsGuardianLink(await login({ email: 'd@wp.pl', password: 'x' }))).toBe(false)
+  it('keeps blocking while the invitation is unanswered', async () => {
+    // The rule the whole flow exists for: being named is not consenting, so a
+    // pending invitation unblocks nothing.
+    const user = await signedIn({ ...minor, guardian_status: 'pending' })
+
+    expect(needsGuardianLink(user)).toBe(true)
+    expect(isGuardianInvitationPending(user)).toBe(true)
+  })
+
+  it('lets a minor through once the guardian has accepted', async () => {
+    const user = await signedIn({ ...minor, guardian_status: 'accepted' })
+
+    expect(needsGuardianLink(user)).toBe(false)
+    expect(isGuardianInvitationPending(user)).toBe(false)
   })
 
   it('blocks rather than admits when the answer is missing', async () => {
-    // A backend that does not send has_guardian yet, or sends null for an
-    // account it cannot judge: an unvouched-for minor must not write health data.
-    mockedRequest.mockResolvedValueOnce(minor)
-    expect(needsGuardianLink(await login({ email: 'd@wp.pl', password: 'x' }))).toBe(true)
+    // A backend that does not send guardian_status, or sends null for an account
+    // it cannot judge: an unvouched-for minor must not write health data.
+    expect(needsGuardianLink(await signedIn(minor))).toBe(true)
   })
 
   it('never asks the question of an adult patient or a guardian', async () => {
-    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, is_child: false })
-    expect(needsGuardianLink(await login({ email: 'a@wp.pl', password: 'x' }))).toBe(false)
-
-    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, role: 'rodzic', is_child: null })
-    expect(needsGuardianLink(await login({ email: 'r@wp.pl', password: 'x' }))).toBe(false)
+    expect(needsGuardianLink(await signedIn({ ...USER_PAYLOAD, is_child: false }))).toBe(false)
+    expect(
+      needsGuardianLink(await signedIn({ ...USER_PAYLOAD, role: 'rodzic', is_child: null })),
+    ).toBe(false)
   })
 })

@@ -91,7 +91,7 @@ describe('guest-only routes', () => {
 })
 
 describe('a minor account with no guardian', () => {
-  const UNLINKED_MINOR = { ...TEST_USER, isChild: true, hasGuardian: false }
+  const UNLINKED_MINOR = { ...TEST_USER, isChild: true, guardianStatus: 'none' as const }
 
   it('is sent to the linking form from any other screen', async () => {
     mockedFetchUser.mockResolvedValueOnce(UNLINKED_MINOR)
@@ -109,6 +109,18 @@ describe('a minor account with no guardian', () => {
     expect(await screen.findByRole('heading', { name: /Powiąż konto/i })).toBeInTheDocument()
   })
 
+  it('keeps a minor on the linking screen while the invitation is unanswered', async () => {
+    // Being named is not consenting: a pending invitation must not unblock the
+    // app, and the screen has to say what is being waited for.
+    mockedFetchUser.mockResolvedValueOnce({
+      ...TEST_USER, isChild: true, guardianStatus: 'pending' as const,
+    })
+
+    renderAt(ROUTES.home)
+
+    expect(await screen.findByRole('heading', { name: /czeka na odpowiedź/i })).toBeInTheDocument()
+  })
+
   it('waits for the session before deciding, rather than flashing the form', async () => {
     mockedFetchUser.mockReturnValueOnce(new Promise(() => {}))
 
@@ -121,7 +133,9 @@ describe('a minor account with no guardian', () => {
 
 describe('the linking form is only for accounts that need it', () => {
   it('pushes a linked minor off it', async () => {
-    mockedFetchUser.mockResolvedValueOnce({ ...TEST_USER, isChild: true, hasGuardian: true })
+    mockedFetchUser.mockResolvedValueOnce({
+      ...TEST_USER, isChild: true, guardianStatus: 'accepted' as const,
+    })
 
     renderAt(ROUTES.linkGuardian)
 

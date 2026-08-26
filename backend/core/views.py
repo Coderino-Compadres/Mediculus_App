@@ -13,7 +13,7 @@ from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from django.utils import timezone
@@ -22,12 +22,27 @@ from .authentication import end_session, start_session
 from .dashboard import build_home_dashboard
 from .diary import (DiaryEntrySerializer, load_entry, load_history,
                     load_today_entry, save_today_entry)
+from .guardian import (accept_invitation, cancel_invitation, pending_invitations,
+                       reject_invitation)
 from .models import Patient
-from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
+from .serializers import (GuardianLinkSerializer, LoginSerializer,
+                          RegisterSerializer, UserSerializer)
 
 
 class AuthThrottle(AnonRateThrottle):
     """Per-IP cap on the credential-accepting endpoints (rate in settings.py)."""
+
+    scope = 'auth'
+
+
+class GuardianLinkThrottle(UserRateThrottle):
+    """Per-account cap on the guardian-linking endpoint.
+
+    Not AuthThrottle: AnonRateThrottle deliberately exempts requests that carry
+    a session, so it would count nothing here. The cap matters because a request
+    reveals whether an address belongs to a guardian account — one answer at a
+    time is a question about a person you know, a thousand is an address list.
+    """
 
     scope = 'auth'
 
@@ -121,13 +136,110 @@ def _require_patient(request, refusal):
     away rather than handed an empty diary — an empty diary would be a
     misleading answer to a question that does not apply to them.
     """
-    patient = Patient.objects.filter(user=request.user).only('id_medical').first()
+    patient = (
+        Patient.objects.filter(user=request.user).only('id_medical', 'is_child').first()
+    )
     if patient is None:
         raise PermissionDenied(refusal)
     return patient
 
 
 DIARY_REFUSAL = 'Dzienniczek jest dostępny tylko dla konta pacjenta.'
+
+GUARDIAN_LINK_REFUSAL = (
+    'Powiązanie z opiekunem dotyczy tylko konta pacjenta małoletniego.'
+)
+
+INVITATION_NOT_FOUND = 'Nie znaleziono zaproszenia oczekującego na odpowiedź.'
+
+
+class GuardianLinkView(APIView):
+    """POST/DELETE /api/auth/guardian/ — the minor's half of the invitation.
+
+    POST names the guardian whose account is being asked to vouch for this one;
+    it creates a *request*, not a link. `GuardianLinkSerializer` is where the
+    rules live: the address has to belong to an account whose role is `rodzic`,
+    and an address that is not one gets the same answer as an address nobody
+    registered. The child stays blocked until the guardian accepts on their own
+    home screen — being named is not consenting.
+
+    DELETE withdraws a pending invitation, so a mistyped address is not a dead
+    end. It cannot touch an accepted link: undoing that is not the child's
+    decision to make, or the guardian's oversight would last exactly as long as
+    the child allowed it.
+
+    Both answer with the updated user, whose `guardian_status` is what the
+    frontend's route guard reads — so the screen can redraw without re-asking
+    /api/auth/me/.
+    """
+
+    throttle_classes = [GuardianLinkThrottle]
+
+    def post(self, request):
+        self._require_minor(request)
+        serializer = GuardianLinkSerializer(
+            data=request.data, context={'child': request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(UserSerializer(request.user).data)
+
+    def delete(self, request):
+        self._require_minor(request)
+        if not cancel_invitation(request.user):
+            raise NotFound('Nie masz zaproszenia oczekującego na odpowiedź.')
+        return Response(UserSerializer(request.user).data)
+
+    def _require_minor(self, request):
+        patient = _require_patient(request, GUARDIAN_LINK_REFUSAL)
+        # An adult patient is not stuck and has nothing to link; refusing keeps
+        # `parent_child` meaning what it says rather than becoming a general
+        # "these two accounts know each other" table.
+        if patient.is_child is not True:
+            raise PermissionDenied(GUARDIAN_LINK_REFUSAL)
+
+
+class GuardianInvitationsView(APIView):
+    """GET /api/guardian/invitations/ — who has asked this account to be their guardian.
+
+    The guardian's home screen calls this to decide whether to show the
+    accept/refuse card at all. No permission beyond being signed in: the list is
+    filtered by `parent=request.user`, so an account nobody named simply gets an
+    empty one — and there is no id in the URL to point somewhere else.
+    """
+
+    def get(self, request):
+        return Response(pending_invitations(request.user))
+
+
+class GuardianInvitationAcceptView(APIView):
+    """POST /api/guardian/invitations/<id>/accept/ — the consent the child cannot give.
+
+    Accepting is what turns the invitation into a link and unblocks the child's
+    account. An invitation addressed to somebody else answers exactly like one
+    that does not exist (404, nothing leaked about whether it does), the same
+    convention as /api/diary/<id>/.
+    """
+
+    def post(self, request, id_parent_child):
+        if not accept_invitation(request.user, id_parent_child):
+            raise NotFound(INVITATION_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class GuardianInvitationRejectView(APIView):
+    """POST /api/guardian/invitations/<id>/reject/ — refuse to vouch for that account.
+
+    The row is deleted rather than marked refused, which puts the child back to
+    "no guardian named" and lets them ask someone else. Already-accepted links
+    are not refusable here — withdrawing one is a different decision, with a
+    child's live account behind it, and belongs to the parent panel.
+    """
+
+    def post(self, request, id_parent_child):
+        if not reject_invitation(request.user, id_parent_child):
+            raise NotFound(INVITATION_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class HomeDashboardView(APIView):

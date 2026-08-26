@@ -110,6 +110,12 @@ ALTER TABLE "user"
     ADD COLUMN IF NOT EXISTS data_consent_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS services_consent_at TIMESTAMPTZ;
 
+-- Same reasoning for the guardian invitation's answer: NULL means the child has
+-- named this guardian and the guardian has not decided yet. Mirrors
+-- core/migrations/0007_parent_child_accepted_at.py.
+ALTER TABLE parent_child
+    ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;
+
 -- Helpful FK indexes
 CREATE INDEX IF NOT EXISTS idx_user_id_user_role
     ON "user" (id_user_role);

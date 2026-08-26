@@ -45,9 +45,17 @@ INSERT INTO patient (id_user, id_medical, id_specjalist, is_child) VALUES
     ('b0000000-0000-0000-0000-000000000008', 'c0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000001', FALSE)
 ON CONFLICT (id_user) DO NOTHING;
 
-INSERT INTO parent_child (id_parent_child, id_parent, id_child) VALUES
-    ('d0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000005')
-ON CONFLICT (id_parent_child) DO NOTHING;
+-- accepted_at is set: this is an established family, not a pending request. A
+-- NULL here would mean the guardian has not answered yet, which would leave the
+-- seeded child's account blocked (see core/guardian.py).
+--
+-- DO UPDATE rather than DO NOTHING, unlike every other seed below: the column
+-- arrived (migration 0007) after this row did, so a database seeded earlier
+-- already holds it with accepted_at NULL and re-running the script has to fix
+-- that instead of skipping it.
+INSERT INTO parent_child (id_parent_child, id_parent, id_child, accepted_at) VALUES
+    ('d0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000005', '2025-01-15 10:00:00+01')
+ON CONFLICT (id_parent_child) DO UPDATE SET accepted_at = EXCLUDED.accepted_at;
 
 -- MEDICAL DB
 

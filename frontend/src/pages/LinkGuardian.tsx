@@ -1,28 +1,44 @@
-import type { FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
 import FormField from '../components/FormField'
 import { useAuthForm } from '../hooks/useAuthForm'
 import { useAuth } from '../auth/authContext'
-import { GUARDIAN_FIELDS, linkGuardian } from '../api/auth'
+import {
+  GUARDIAN_FIELDS,
+  cancelGuardianInvitation,
+  fetchCurrentUser,
+  isGuardianInvitationPending,
+  linkGuardian,
+} from '../api/auth'
 import { ROUTES } from '../routes'
 import { validateEmail } from '../utils/validation'
 
 /**
- * The one screen a minor's account can reach before it is linked to a guardian.
+ * The one screen a minor's account can reach before a guardian vouches for it.
  *
  * Consent to process health data ticked by a minor alone is not valid consent
- * (RODO art. 8), so the account stays unusable until an adult's account vouches
- * for it — hence a full screen rather than a banner, and hence the sign-out in
- * the footer: it is the only other thing to do from here.
+ * (RODO art. 8), so the account stays unusable until an adult's account accepts
+ * — hence a full screen rather than a banner, and hence the sign-out in the
+ * footer: it is the only other thing to do from here.
  *
- * The guardian must already have their own account. Naming an address that has
- * none is answered as a field error, not as an invitation: sending mail is
- * something the backend cannot do yet.
+ * Two states, because naming a guardian and being vouched for are not the same
+ * thing: the form, and then the wait for an answer the child cannot give itself.
  */
 function LinkGuardian() {
-  const { user, setUser, signOut } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
+
+  if (user && isGuardianInvitationPending(user)) return <AwaitingAnswer />
+  return <InviteGuardian />
+}
+
+/**
+ * The form. The guardian must already have their own account: naming an address
+ * that has none is answered as a field error, not as an invitation, because
+ * sending mail is something the backend cannot do yet.
+ */
+function InviteGuardian() {
+  const { user, setUser } = useAuth()
   const { values, errors, formError, submitting, handleChange, handleSubmit } = useAuthForm({
     guardianEmail: '',
   })
@@ -35,27 +51,18 @@ function LinkGuardian() {
           ownAddress(currentValues.guardianEmail, user?.email),
       }),
       submit: async (currentValues) => {
-        // The backend answers with the updated user, so the route guard sees a
-        // linked account without a second trip through /api/auth/me/.
+        // The answer carries the new status, so this screen swaps itself for the
+        // waiting state without a second trip through /api/auth/me/.
         setUser(await linkGuardian(currentValues))
-        navigate(ROUTES.modules, { replace: true })
       },
       fields: GUARDIAN_FIELDS,
     })
   }
 
   return (
-    <AuthLayout
+    <GuardianLayout
       title="Powiąż konto z opiekunem"
-      subtitle="Konto osoby małoletniej działa dopiero wtedy, gdy jest powiązane z kontem rodzica lub opiekuna."
-      footer={
-        <p className="auth-switch">
-          To nie Twoje konto?{' '}
-          <button type="button" className="auth-link-button" onClick={() => void signOut()}>
-            Wyloguj się
-          </button>
-        </p>
-      }
+      subtitle="Konto osoby małoletniej działa dopiero wtedy, gdy rodzic lub opiekun potwierdzi powiązanie."
     >
       <form className="auth-form" onSubmit={onSubmit} noValidate>
         {formError && (
@@ -75,14 +82,112 @@ function LinkGuardian() {
           disabled={submitting}
         />
         <p className="auth-hint">
-          Rodzic lub opiekun musi mieć już własne konto w Mediculusie. Jeśli go nie ma, poproś
-          o rejestrację i wróć tutaj z tym samym adresem.
+          Podaj adres konta typu „konto rodzica lub opiekuna". Adres konta pacjenta nie
+          zostanie przyjęty. Opiekun zobaczy prośbę po zalogowaniu i sam zdecyduje, czy ją
+          przyjąć — do tego czasu konto pozostaje nieaktywne.
         </p>
 
         <button type="submit" className="auth-submit" disabled={submitting}>
-          {submitting ? 'Wiązanie…' : 'Powiąż konto'}
+          {submitting ? 'Wysyłanie…' : 'Wyślij prośbę'}
         </button>
       </form>
+    </GuardianLayout>
+  )
+}
+
+/**
+ * The wait. Nothing here can accept on the child's behalf — that is the whole
+ * point of the flow — so the only two actions are checking for an answer and
+ * withdrawing the request, which is what makes a mistyped address recoverable.
+ */
+function AwaitingAnswer() {
+  const { setUser } = useAuth()
+  const navigate = useNavigate()
+  const [busy, setBusy] = useState<'checking' | 'cancelling' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function run(action: 'checking' | 'cancelling') {
+    setBusy(action)
+    setError(null)
+    try {
+      const updated =
+        action === 'checking' ? await fetchCurrentUser() : await cancelGuardianInvitation()
+      // A cancelled invitation puts this screen back to the form; an accepted
+      // one lets the route guard send the child into the app.
+      setUser(updated)
+      if (action === 'checking' && updated === null) navigate(ROUTES.login, { replace: true })
+    } catch {
+      setError('Nie udało się sprawdzić stanu zaproszenia. Spróbuj ponownie.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <GuardianLayout
+      title="Prośba czeka na odpowiedź"
+      subtitle="Wysłaliśmy prośbę o powiązanie konta. Rodzic lub opiekun zobaczy ją po zalogowaniu się do Mediculusa."
+    >
+      {error && (
+        <p className="auth-submit-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <p className="auth-hint">
+        Konto zostanie odblokowane dopiero po akceptacji — bez niej nikt nie zgodził się na
+        przetwarzanie Twoich danych. Jeśli podałeś zły adres, anuluj prośbę i wyślij ją
+        ponownie.
+      </p>
+
+      <div className="auth-form">
+        <button
+          type="button"
+          className="auth-submit"
+          onClick={() => void run('checking')}
+          disabled={busy !== null}
+        >
+          {busy === 'checking' ? 'Sprawdzanie…' : 'Sprawdź, czy jest już odpowiedź'}
+        </button>
+        <button
+          type="button"
+          className="auth-submit auth-submit-secondary"
+          onClick={() => void run('cancelling')}
+          disabled={busy !== null}
+        >
+          {busy === 'cancelling' ? 'Anulowanie…' : 'Anuluj prośbę i podaj inny adres'}
+        </button>
+      </div>
+    </GuardianLayout>
+  )
+}
+
+/** Both states share the card and the way out of it. */
+function GuardianLayout({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle: string
+  children: ReactNode
+}) {
+  const { signOut } = useAuth()
+
+  return (
+    <AuthLayout
+      title={title}
+      subtitle={subtitle}
+      footer={
+        <p className="auth-switch">
+          To nie Twoje konto?{' '}
+          <button type="button" className="auth-link-button" onClick={() => void signOut()}>
+            Wyloguj się
+          </button>
+        </p>
+      }
+    >
+      {children}
     </AuthLayout>
   )
 }
