@@ -89,3 +89,64 @@ describe('guest-only routes', () => {
     expect(screen.queryByLabelText(/hasło/i)).not.toBeInTheDocument()
   })
 })
+
+describe('a minor account with no guardian', () => {
+  const UNLINKED_MINOR = { ...TEST_USER, isChild: true, hasGuardian: false }
+
+  it('is sent to the linking form from any other screen', async () => {
+    mockedFetchUser.mockResolvedValueOnce(UNLINKED_MINOR)
+
+    renderAt(ROUTES.diaryEntry)
+
+    expect(await screen.findByLabelText(/adres e-mail rodzica/i)).toBeInTheDocument()
+  })
+
+  it('reaches the linking form directly', async () => {
+    mockedFetchUser.mockResolvedValueOnce(UNLINKED_MINOR)
+
+    renderAt(ROUTES.linkGuardian)
+
+    expect(await screen.findByRole('heading', { name: /Powiąż konto/i })).toBeInTheDocument()
+  })
+
+  it('waits for the session before deciding, rather than flashing the form', async () => {
+    mockedFetchUser.mockReturnValueOnce(new Promise(() => {}))
+
+    const { container } = renderAt(ROUTES.linkGuardian)
+
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/adres e-mail rodzica/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('the linking form is only for accounts that need it', () => {
+  it('pushes a linked minor off it', async () => {
+    mockedFetchUser.mockResolvedValueOnce({ ...TEST_USER, isChild: true, hasGuardian: true })
+
+    renderAt(ROUTES.linkGuardian)
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/adres e-mail rodzica/i)).not.toBeInTheDocument(),
+    )
+    expect(await screen.findByRole('heading', { name: /Gdzie dzisiaj zaczynamy/i })).toBeInTheDocument()
+  })
+
+  it('pushes an adult patient off it', async () => {
+    mockedFetchUser.mockResolvedValueOnce(TEST_USER)
+
+    renderAt(ROUTES.linkGuardian)
+
+    await waitFor(() =>
+      expect(screen.queryByLabelText(/adres e-mail rodzica/i)).not.toBeInTheDocument(),
+    )
+  })
+
+  it('sends a visitor to login rather than to the linking form', async () => {
+    mockedFetchUser.mockResolvedValueOnce(null)
+
+    renderAt(ROUTES.linkGuardian)
+
+    expect(await screen.findByLabelText(/hasło/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/adres e-mail rodzica/i)).not.toBeInTheDocument()
+  })
+})

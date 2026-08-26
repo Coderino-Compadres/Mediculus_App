@@ -14,6 +14,11 @@ interface UserPayload {
   date_of_birth: string | null
   role: string | null
   is_child: boolean | null
+  /** null when the question does not apply: only a minor patient needs a guardian.
+   *  Optional because this screen ships ahead of the endpoint that answers it —
+   *  a backend that does not send it reads as "not linked", which is the safe
+   *  way round (see needsGuardianLink). */
+  has_guardian?: boolean | null
 }
 
 export interface AuthUser {
@@ -25,6 +30,8 @@ export interface AuthUser {
   role: string | null
   /** null for a guardian: they have no patient row at all, so no answer. */
   isChild: boolean | null
+  /** Whether a `parent_child` row links this account to a guardian's account. */
+  hasGuardian: boolean | null
 }
 
 function toAuthUser(payload: UserPayload): AuthUser {
@@ -36,6 +43,7 @@ function toAuthUser(payload: UserPayload): AuthUser {
     dateOfBirth: payload.date_of_birth,
     role: payload.role,
     isChild: payload.is_child,
+    hasGuardian: payload.has_guardian ?? null,
   }
 }
 
@@ -51,6 +59,10 @@ export type AccountType = (typeof ACCOUNT_TYPES)[keyof typeof ACCOUNT_TYPES]
 export interface LoginInput {
   email: string
   password: string
+}
+
+export interface LinkGuardianInput {
+  guardianEmail: string
 }
 
 export interface RegisterInput {
@@ -81,6 +93,10 @@ export const REGISTER_FIELDS: Record<string, string> = {
   password_confirm: 'confirmPassword',
   data_consent: 'dataConsent',
   services_consent: 'servicesConsent',
+}
+
+export const GUARDIAN_FIELDS: Record<string, string> = {
+  guardian_email: 'guardianEmail',
 }
 
 /** Re-keys an ApiError's field errors for the form that produced them. */
@@ -116,6 +132,31 @@ export async function register(input: RegisterInput): Promise<AuthUser> {
     },
   })
   return toAuthUser(payload)
+}
+
+/**
+ * Links the signed-in minor's account to the guardian's account at that address.
+ *
+ * Answers with the updated user, so the caller can hand the new `hasGuardian`
+ * straight to the session instead of re-asking /api/auth/me/.
+ */
+export async function linkGuardian(input: LinkGuardianInput): Promise<AuthUser> {
+  const payload = await apiRequest<UserPayload>('/api/auth/guardian/', {
+    method: 'POST',
+    body: { guardian_email: input.guardianEmail },
+  })
+  return toAuthUser(payload)
+}
+
+/**
+ * Whether this account is stuck until a guardian is named.
+ *
+ * Deliberately fail-closed on `hasGuardian: null`: for a minor that is the
+ * backend declining to confirm a link, and letting an unconfirmed minor write
+ * health data is the worse of the two ways to be wrong.
+ */
+export function needsGuardianLink(user: AuthUser): boolean {
+  return user.isChild === true && user.hasGuardian !== true
 }
 
 export async function logout(): Promise<void> {

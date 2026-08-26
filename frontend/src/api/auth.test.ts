@@ -3,8 +3,10 @@ import { ApiError } from './client'
 import {
   ACCOUNT_TYPES,
   fetchCurrentUser,
+  linkGuardian,
   login,
   logout,
+  needsGuardianLink,
   register,
   REGISTER_FIELDS,
   toFormErrors,
@@ -26,6 +28,7 @@ const USER_PAYLOAD = {
   date_of_birth: '1994-06-18',
   role: 'patient',
   is_child: false,
+  has_guardian: null,
 }
 
 beforeEach(() => mockedRequest.mockReset())
@@ -48,6 +51,7 @@ describe('login', () => {
       dateOfBirth: '1994-06-18',
       role: 'patient',
       isChild: false,
+      hasGuardian: null,
     })
   })
 })
@@ -162,5 +166,49 @@ describe('toFormErrors', () => {
       'name', 'password', 'password_confirm', 'services_consent', 'surname',
     ])
     expect(Object.keys(LOGIN_FIELDS).sort()).toEqual(['email', 'password'])
+  })
+})
+
+describe('linkGuardian', () => {
+  it('posts the address under the column name the API uses', async () => {
+    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, is_child: true, has_guardian: true })
+
+    const user = await linkGuardian({ guardianEmail: 'rodzic@wp.pl' })
+
+    expect(mockedRequest).toHaveBeenCalledWith('/api/auth/guardian/', {
+      method: 'POST',
+      body: { guardian_email: 'rodzic@wp.pl' },
+    })
+    // The answer is the updated user, so the session can be refreshed from it.
+    expect(user.hasGuardian).toBe(true)
+  })
+})
+
+describe('needsGuardianLink', () => {
+  const minor = { ...USER_PAYLOAD, is_child: true }
+
+  it('blocks a minor whose account names no guardian', async () => {
+    mockedRequest.mockResolvedValueOnce({ ...minor, has_guardian: false })
+    expect(needsGuardianLink(await login({ email: 'd@wp.pl', password: 'x' }))).toBe(true)
+  })
+
+  it('lets a linked minor through', async () => {
+    mockedRequest.mockResolvedValueOnce({ ...minor, has_guardian: true })
+    expect(needsGuardianLink(await login({ email: 'd@wp.pl', password: 'x' }))).toBe(false)
+  })
+
+  it('blocks rather than admits when the answer is missing', async () => {
+    // A backend that does not send has_guardian yet, or sends null for an
+    // account it cannot judge: an unvouched-for minor must not write health data.
+    mockedRequest.mockResolvedValueOnce(minor)
+    expect(needsGuardianLink(await login({ email: 'd@wp.pl', password: 'x' }))).toBe(true)
+  })
+
+  it('never asks the question of an adult patient or a guardian', async () => {
+    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, is_child: false })
+    expect(needsGuardianLink(await login({ email: 'a@wp.pl', password: 'x' }))).toBe(false)
+
+    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, role: 'rodzic', is_child: null })
+    expect(needsGuardianLink(await login({ email: 'r@wp.pl', password: 'x' }))).toBe(false)
   })
 })

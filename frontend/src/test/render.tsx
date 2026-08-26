@@ -12,6 +12,7 @@ export const TEST_USER: AuthUser = {
   dateOfBirth: '1994-06-18',
   role: 'patient',
   isChild: false,
+  hasGuardian: null,
 }
 
 /**

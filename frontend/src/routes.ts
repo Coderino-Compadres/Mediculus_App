@@ -3,6 +3,7 @@ export const ROUTES = {
   login: '/login',
   register: '/register',
   modules: '/modules',
+  linkGuardian: '/link-guardian',
   home: '/home',
   journals: '/journals',
   journalDetail: '/journals/:id',
