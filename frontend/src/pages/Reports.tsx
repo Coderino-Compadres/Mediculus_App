@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import { ApiError } from '../api/client'
-import { fetchJournalEntries } from '../api/diary'
-import { DAYS_IN_WEEK, buildWeeklyReports, formatDelta, pluralDays } from '../utils/reports'
+import { fetchWeeklyReports } from '../api/reports'
+import { DAYS_IN_WEEK, formatDelta, pluralDays } from '../utils/reports'
 import type { ReportMetric, WeeklyReport } from '../types/report'
 import { reportDetailPath } from '../routes'
 import './journals.css'
@@ -19,9 +19,10 @@ import './reports.css'
  * with the client, alongside the rejection of a daily report as a copy of the
  * diary).
  *
- * The reports themselves are derived on the client for now (see
- * utils/reports.ts) from GET /api/diary/ — the same request "Dzienniczki" makes,
- * so the numbers here cannot drift from the entries they came from.
+ * The reports come from GET /api/reports/, generated on the server from the
+ * diary entries and nothing else (core/reports.py) — so the numbers here cannot
+ * drift from the entries they came from, and every reader of a given week gets
+ * the same document.
  */
 
 const LOAD_ERROR = 'Nie udało się wczytać raportów. Spróbuj ponownie.'
@@ -76,7 +77,6 @@ function ReportRow({ report, onOpen }: { report: WeeklyReport; onOpen: () => voi
 
 function Reports() {
   const navigate = useNavigate()
-  const today = useMemo(() => new Date(), [])
   const [reports, setReports] = useState<WeeklyReport[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -84,10 +84,10 @@ function Reports() {
   useEffect(() => {
     let cancelled = false
 
-    fetchJournalEntries()
-      .then((entries) => {
+    fetchWeeklyReports()
+      .then((loaded) => {
         if (cancelled) return
-        setReports(buildWeeklyReports(entries, today))
+        setReports(loaded)
         setLoadError(null)
       })
       .catch((cause: unknown) => {
@@ -101,7 +101,7 @@ function Reports() {
     return () => {
       cancelled = true
     }
-  }, [today])
+  }, [])
 
   return (
     <div className="journals-page">

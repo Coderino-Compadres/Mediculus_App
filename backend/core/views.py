@@ -6,6 +6,7 @@ that belong to the request as a whole rather than to one field — the frontend'
 `src/api/client.ts` splits them apart on exactly that convention.
 """
 
+from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
@@ -13,6 +14,7 @@ from rest_framework import status
 from rest_framework.exceptions import (NotFound, PermissionDenied,
                                        ValidationError)
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -25,10 +27,13 @@ from .diary import (DiaryEntrySerializer, load_entry, load_history,
 from .guardian import (accept_invitation, cancel_invitation, pending_invitations,
                        reject_invitation)
 from .models import Patient
+from .report_pdf import pdf_file_name, render_report_pdf
+from .reports import build_weekly_reports, find_report
 from .serializers import (GuardianLinkSerializer, LoginSerializer,
                           RegisterSerializer, UserSerializer)
 from .throttling import (AuthThrottle, GuardianLinkThrottle,
-                         LoginAccountThrottle, attempts_warning)
+                         LoginAccountThrottle, ReportPdfThrottle,
+                         attempts_warning)
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
@@ -168,6 +173,10 @@ GUARDIAN_LINK_REFUSAL = (
 )
 
 INVITATION_NOT_FOUND = 'Nie znaleziono zaproszenia oczekującego na odpowiedź.'
+
+REPORT_REFUSAL = 'Raporty są dostępne tylko dla konta pacjenta.'
+
+REPORT_NOT_FOUND = 'Nie znaleziono raportu dla tego tygodnia.'
 
 
 class GuardianLinkView(APIView):
@@ -340,3 +349,117 @@ class DiaryEntryDetailView(APIView):
         if entry is None:
             raise NotFound('Nie znaleziono tego wpisu.')
         return Response(entry)
+
+
+class ReportListView(APIView):
+    """GET /api/reports/ — every weekly report this patient's diary supports.
+
+    Read-only by construction, like the diary archive it is derived from: a
+    report is generated, not written, so there is no verb here but GET and no
+    id in the URL naming somebody else's week. The session resolves to one
+    `id_medical` and `core/reports.py` never sees anything else.
+
+    Newest first, and the week in progress is absent — a report covers a week
+    that has ended. Empty is the normal answer for a diary younger than that.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, REPORT_REFUSAL)
+        return Response(build_weekly_reports(patient.id_medical, timezone.localdate()))
+
+
+class ReportDetailView(APIView):
+    """GET /api/reports/<week-id>/ — one weekly report.
+
+    The only report URL carrying an id, so the only one where a caller can name
+    a week that is not theirs — and it cannot, because the reports are built
+    from the session's own `id_medical` before the id is matched against them.
+    A week nobody has entries for answers 404, exactly like a malformed id and
+    exactly like somebody else's week would: the same convention as
+    /api/diary/<id>/.
+
+    Building every report to return one is the honest cost of deriving them:
+    a week's numbers are meaningless without the week before it, so there is no
+    single-week shortcut that would not just re-read the same rows.
+    """
+
+    def get(self, request, report_id):
+        patient = _require_patient(request, REPORT_REFUSAL)
+        reports = build_weekly_reports(patient.id_medical, timezone.localdate())
+        report = find_report(reports, report_id)
+        if report is None:
+            raise NotFound(REPORT_NOT_FOUND)
+        return Response(report)
+
+
+class PdfRenderer(BaseRenderer):
+    """Lets content negotiation say yes to `Accept: application/pdf`.
+
+    DRF negotiates before the handler runs, and with only JSONRenderer
+    configured a client that honestly asks for a PDF is answered 406 — "Nie
+    można zaspokoić nagłówka Accept żądania" — without the view being called at
+    all. Nothing is ever rendered through this: the view returns an HttpResponse
+    of bytes ReportLab already produced. It exists so the endpoint can advertise
+    the type it actually serves.
+    """
+
+    media_type = 'application/pdf'
+    format = 'pdf'
+    charset = None
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
+
+
+class ReportPdfView(APIView):
+    """GET /api/reports/<week-id>/pdf/ — the same report as a file.
+
+    Rendered from the payload `ReportDetailView` answers with, not from a second
+    reading of the diary, so the document and the screen cannot drift apart.
+
+    Three things the JSON endpoints do not need:
+
+    - `Content-Disposition: attachment`, with an ASCII filename by construction
+      (`pdf_file_name`), so there is no header encoding to get wrong.
+    - `Cache-Control: no-store`. This is health data leaving the app as a file;
+      it must not be left in a browser or proxy cache for the next person on the
+      machine.
+    - a throttle. Laying out a document is CPU on a synchronous worker, which
+      makes an unthrottled URL a way to occupy the deployment.
+    """
+
+    throttle_classes = [ReportPdfThrottle]
+    renderer_classes = [PdfRenderer, JSONRenderer]
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        """A refusal is JSON even when the caller asked for a PDF.
+
+        Only DRF `Response` objects come through here — the success path returns
+        a plain HttpResponse, which DRF passes through untouched. Without this,
+        negotiation has already picked PdfRenderer and a 404 would be served as
+        `application/pdf`: a file the browser offers to save, instead of a
+        message `src/api/client.ts` can read the reason out of.
+
+        Set on the *request*: `finalize_response` copies the renderer from there
+        onto the response, so assigning it to the response first is overwritten.
+        """
+        if isinstance(response, Response):
+            request.accepted_renderer = JSONRenderer()
+            request.accepted_media_type = 'application/json'
+        return super().finalize_response(request, response, *args, **kwargs)
+
+    def get(self, request, report_id):
+        patient = _require_patient(request, REPORT_REFUSAL)
+        reports = build_weekly_reports(patient.id_medical, timezone.localdate())
+        report = find_report(reports, report_id)
+        if report is None:
+            raise NotFound(REPORT_NOT_FOUND)
+
+        # The address is the only thing in the document that comes from user_db;
+        # it is read here, from the session, so core/reports.py can go on
+        # aggregating medical_db without ever seeing one.
+        document = render_report_pdf(report, request.user.email)
+        response = HttpResponse(document, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{pdf_file_name(report)}"'
+        response['Cache-Control'] = 'no-store'
+        return response

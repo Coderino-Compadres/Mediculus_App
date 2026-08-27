@@ -140,6 +140,19 @@ class LoginAccountThrottle(SimpleRateThrottle):
             self.cache.delete(key)
 
 
+class ReportPdfThrottle(UserRateThrottle):
+    """Per-account cap on rendering a report to PDF.
+
+    Not about credentials or enumeration, unlike everything else here: laying
+    out a document costs real CPU on a worker that serves requests
+    synchronously, so an unthrottled URL is a way for one signed-in account to
+    occupy the whole deployment. Generous enough that nobody reading their own
+    reports will meet it.
+    """
+
+    scope = 'report_pdf'
+
+
 # How many attempts have to be left before the response starts saying so. Below
 # this the warning is worth more than the silence: a person who has forgotten
 # which password they used gets a chance to stop and think, and there is no

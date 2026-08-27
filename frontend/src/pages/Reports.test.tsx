@@ -2,11 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
+import { WEEK_A, WEEK_B, reportFixture } from '../test/reportFixture'
 import Reports from './Reports'
 import { reportDetailPath } from '../routes'
 import { ApiError } from '../api/client'
-import { weekReportId } from '../utils/reports'
-import type { JournalListEntry } from '../types/diaryEntry'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -14,47 +13,15 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => navigate }
 })
 
-vi.mock('../api/diary', () => ({ fetchJournalEntries: vi.fn() }))
-const { fetchJournalEntries } = await import('../api/diary')
-const mockedFetch = vi.mocked(fetchJournalEntries)
+vi.mock('../api/reports', () => ({ fetchWeeklyReports: vi.fn() }))
+const { fetchWeeklyReports } = await import('../api/reports')
+const mockedFetch = vi.mocked(fetchWeeklyReports)
 
-/** Reports only exist for weeks that have ended, so the fixtures are dated
- *  relative to today rather than pinned — the same trick mock_data.sql uses. */
-function isoDaysAgo(days: number): string {
-  const date = new Date()
-  date.setDate(date.getDate() - days)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
-function entry(date: string, overrides: Partial<JournalListEntry> = {}): JournalListEntry {
-  return {
-    id: `id-${date}`,
-    date,
-    savedAt: `${date}T21:00:00`,
-    mood: 'bad',
-    emotions: [{ emotion: 'Lęk', intensity: 7 }],
-    energyLevel: 3,
-    tensionLevel: 7,
-    situationReaction: {
-      trigger: 'Praca',
-      triggerOther: '',
-      situation: '',
-      emotionNote: '',
-      thought: '',
-      behavior: '',
-    },
-    notes: '',
-    hasRiskyBehavior: false,
-    riskyBehaviorNote: '',
-    ...overrides,
-  }
-}
-
-/** Two full weeks back, so both fall in weeks that have certainly ended. */
-const LAST_WEEK = 9
-const WEEK_BEFORE = 16
+/** Newest first, as GET /api/reports/ returns them. */
+const NEWEST = reportFixture({ weekStart: WEEK_B })
+const OLDER = reportFixture({
+  weekStart: WEEK_A, weekEnd: '2026-08-09', rangeLabel: '3 – 9 sierpnia 2026',
+})
 
 beforeEach(() => {
   navigate.mockReset()
@@ -63,7 +30,7 @@ beforeEach(() => {
 
 describe('Reports', () => {
   it('explains that reports appear on their own, and offers no way to make one', async () => {
-    mockedFetch.mockResolvedValue([entry(isoDaysAgo(LAST_WEEK))])
+    mockedFetch.mockResolvedValue([NEWEST])
     renderWithProviders(<Reports />)
 
     expect(await screen.findByText(/powstają automatycznie co tydzień/i)).toBeInTheDocument()
@@ -71,7 +38,7 @@ describe('Reports', () => {
   })
 
   it('states that specialists see the reports, without offering the patient a switch', async () => {
-    mockedFetch.mockResolvedValue([entry(isoDaysAgo(LAST_WEEK))])
+    mockedFetch.mockResolvedValue([NEWEST])
     renderWithProviders(<Reports />)
 
     expect(
@@ -82,32 +49,31 @@ describe('Reports', () => {
     expect(screen.queryByRole('checkbox')).toBeNull()
   })
 
-  it('lists one row per ended week, newest first, and opens the report on click', async () => {
-    const recent = isoDaysAgo(LAST_WEEK)
-    mockedFetch.mockResolvedValue([entry(recent), entry(isoDaysAgo(WEEK_BEFORE))])
+  it('draws one row per report, in the order the server sent them', async () => {
+    mockedFetch.mockResolvedValue([NEWEST, OLDER])
     renderWithProviders(<Reports />)
 
     const rows = await screen.findAllByRole('button', { name: /Średni nastrój/i })
-    expect(rows).toHaveLength(2)
 
-    await userEvent.click(rows[0])
-    // The newest week is on top, so the first row is the most recent one.
-    expect(navigate).toHaveBeenCalledTimes(1)
-    expect(String(navigate.mock.calls[0][0])).toMatch(/^\/reports\//)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent('10 – 16 sierpnia 2026')
+    expect(rows[1]).toHaveTextContent('3 – 9 sierpnia 2026')
   })
 
   it('previews the mood and the harder days on the row', async () => {
-    mockedFetch.mockResolvedValue([entry(isoDaysAgo(LAST_WEEK), { mood: 'very_bad' })])
+    mockedFetch.mockResolvedValue([NEWEST])
     renderWithProviders(<Reports />)
 
-    expect(await screen.findByText(/Średni nastrój 1,0 \/ 5/)).toBeInTheDocument()
-    expect(screen.getByText(/trudniejsze dni 1 z 7/)).toBeInTheDocument()
+    expect(await screen.findByText(/Średni nastrój 3,0 \/ 5/)).toBeInTheDocument()
+    expect(screen.getByText(/trudniejsze dni 1 z 7/i)).toBeInTheDocument()
   })
 
   it('marks a week that has a flagged day, and leaves other weeks unmarked', async () => {
     mockedFetch.mockResolvedValue([
-      entry(isoDaysAgo(LAST_WEEK), { hasRiskyBehavior: true, riskyBehaviorNote: 'Dwa piwa.' }),
-      entry(isoDaysAgo(WEEK_BEFORE)),
+      reportFixture({
+        riskyDays: [{ entryId: 'id-1', date: '2026-08-11', notePreview: 'Dwa piwa.' }],
+      }),
+      OLDER,
     ])
     renderWithProviders(<Reports />)
 
@@ -115,25 +81,17 @@ describe('Reports', () => {
     expect(screen.getAllByText(/z oznaczeniem/)).toHaveLength(1)
   })
 
-  it('routes to the week the row belongs to', async () => {
-    const date = isoDaysAgo(LAST_WEEK)
-    mockedFetch.mockResolvedValue([entry(date)])
+  it('opens the report the row belongs to, by the id the server gave it', async () => {
+    mockedFetch.mockResolvedValue([NEWEST])
     renderWithProviders(<Reports />)
 
-    const row = await screen.findByRole('button', { name: /Średni nastrój/i })
-    await userEvent.click(row)
+    await userEvent.click(await screen.findByRole('button', { name: /Średni nastrój/i }))
 
-    const monday = new Date(`${date}T00:00:00`)
-    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
-    const month = String(monday.getMonth() + 1).padStart(2, '0')
-    const day = String(monday.getDate()).padStart(2, '0')
-    const weekStart = `${monday.getFullYear()}-${month}-${day}`
-
-    expect(navigate).toHaveBeenCalledWith(reportDetailPath(weekReportId(weekStart)))
+    expect(navigate).toHaveBeenCalledWith(reportDetailPath(NEWEST.id))
   })
 
-  it('says there is no report yet when the diary holds only the current week', async () => {
-    mockedFetch.mockResolvedValue([entry(isoDaysAgo(0))])
+  it('says there is no report yet when the server has none', async () => {
+    mockedFetch.mockResolvedValue([])
     renderWithProviders(<Reports />)
 
     expect(await screen.findByText(/Nie ma jeszcze żadnego raportu/i)).toBeInTheDocument()

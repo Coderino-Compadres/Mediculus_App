@@ -149,3 +149,38 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (!response.ok) throw toApiError(response.status, payload)
   return payload as T
 }
+
+/**
+ * A GET whose answer is a file rather than JSON.
+ *
+ * Separate from `apiRequest` rather than a flag on it: that function reads every
+ * body with `text()` so an HTML page from a proxy cannot throw, and reading a
+ * PDF that way corrupts it. A refusal still arrives as JSON, so failures go
+ * through the same `toApiError` and land in the UI like any other — which is the
+ * reason to fetch the file at all instead of pointing a plain link at the URL
+ * and letting a 404 render as raw JSON in a new tab.
+ */
+export async function apiDownload(path: string): Promise<Blob> {
+  let response: Response
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method: 'GET',
+      headers: { Accept: 'application/pdf' },
+      credentials: 'include',
+    })
+  } catch {
+    throw new ApiError(0, NETWORK_ERROR)
+  }
+
+  if (!response.ok) {
+    let payload: unknown = null
+    try {
+      payload = JSON.parse(await response.text())
+    } catch {
+      // Not JSON — toApiError falls back to its generic message.
+    }
+    throw toApiError(response.status, payload)
+  }
+
+  return response.blob()
+}

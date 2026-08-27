@@ -1,14 +1,19 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import ReportChangeChips from '../components/ReportChangeChips'
 import ReportMetricCard from '../components/ReportMetricCard'
 import ReportRankingBars, { type RankingRow } from '../components/ReportRankingBars'
 import { ApiError } from '../api/client'
-import { fetchJournalEntries } from '../api/diary'
+import {
+  fetchReportPdf,
+  fetchWeeklyReport,
+  reportPdfFileName,
+  saveBlob,
+} from '../api/reports'
 import { fromIsoDate } from '../utils/days'
 import { EMOTION_COLORS } from '../utils/emotions'
-import { DAYS_IN_WEEK, buildWeeklyReports, findWeeklyReport, pluralDays } from '../utils/reports'
+import { DAYS_IN_WEEK, pluralDays } from '../utils/reports'
 import type { WeeklyReport } from '../types/report'
 import { ROUTES, journalDetailPath } from '../routes'
 import './diaryEntry.css'
@@ -34,12 +39,7 @@ const LOAD_ERROR = 'Nie udało się wczytać tego raportu. Spróbuj ponownie.'
  *  than borrowing colours that mean an emotion elsewhere in the app. */
 const TRIGGER_BAR_COLOR = 'var(--color-sage-light)'
 
-/** Mock, until a real PDF is generated somewhere: the mockup's six-page export. */
-const MOCK_PDF_PAGE_COUNT = 6
-
-function pdfFileName(report: WeeklyReport): string {
-  return `raport-tygodniowy-${report.weekStart}.pdf`
-}
+const PDF_ERROR = 'Nie udało się pobrać raportu. Spróbuj ponownie.'
 
 function emotionRows(report: WeeklyReport): RankingRow[] {
   return report.emotions.map((entry) => ({
@@ -74,32 +74,34 @@ function riskyDayLabel(date: string): string {
 function ReportDetail() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const today = useMemo(() => new Date(), [])
 
   const [report, setReport] = useState<WeeklyReport | null>(null)
   const [loading, setLoading] = useState(Boolean(id))
   const [loadError, setLoadError] = useState<string | null>(null)
-  /** The mock export: pressing the button only shows that the file is ready. */
-  const [pdfReady, setPdfReady] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [pdfError, setPdfError] = useState<string | null>(null)
 
-  // Reports are still derived from the diary on the client, so this screen loads
-  // the same entries the list did and picks its week back out of them. An id
-  // naming a week with no entries is simply not found — the same wording as a
-  // wrong id, since neither tells the patient anything they can act on.
+  // One report by its week id. A 404 is "no such report" rather than an error —
+  // an id naming a week with no entries and a wrong id are worded the same,
+  // since neither tells the patient anything they can act on.
   useEffect(() => {
     if (!id) return
     let cancelled = false
 
-    fetchJournalEntries()
-      .then((entries) => {
+    fetchWeeklyReport(id)
+      .then((loaded) => {
         if (cancelled) return
-        setReport(findWeeklyReport(buildWeeklyReports(entries, today), id))
+        setReport(loaded)
         setLoadError(null)
       })
       .catch((cause: unknown) => {
         if (cancelled) return
         setReport(null)
-        setLoadError((cause instanceof ApiError && cause.formMessage) || LOAD_ERROR)
+        setLoadError(
+          cause instanceof ApiError && cause.status === 404
+            ? null
+            : (cause instanceof ApiError && cause.formMessage) || LOAD_ERROR,
+        )
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -108,7 +110,24 @@ function ReportDetail() {
     return () => {
       cancelled = true
     }
-  }, [id, today])
+  }, [id])
+
+  /**
+   * The file comes from the server, fetched rather than linked to: the request
+   * has to carry the session cookie, and a refusal has to land on this screen
+   * instead of rendering as raw JSON in a new tab.
+   */
+  async function downloadPdf(current: WeeklyReport) {
+    setDownloading(true)
+    setPdfError(null)
+    try {
+      saveBlob(await fetchReportPdf(current.id), reportPdfFileName(current))
+    } catch (cause: unknown) {
+      setPdfError((cause instanceof ApiError && cause.formMessage) || PDF_ERROR)
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -170,8 +189,13 @@ function ReportDetail() {
           {report.entryCount} z {DAYS_IN_WEEK} dni z wpisem
         </p>
         <div className="report-hero-actions">
-          <button type="button" className="report-hero-button" onClick={() => setPdfReady(true)}>
-            Pobierz PDF
+          <button
+            type="button"
+            className="report-hero-button"
+            onClick={() => void downloadPdf(report)}
+            disabled={downloading}
+          >
+            {downloading ? 'Przygotowywanie…' : 'Pobierz PDF'}
           </button>
           <Link to={ROUTES.analysis} className="report-hero-button report-hero-button-outline">
             Pełna analiza
@@ -179,18 +203,12 @@ function ReportDetail() {
         </div>
       </section>
 
-      {/* TODO: mock. Nothing is generated or downloaded yet — this only shows the
-          state the finished export lands in. The real file comes from the
-          backend, together with the "PDF na maila" fallback delivery.
-          The second line is not decoration: without it the patient is told a file
-          is ready and goes looking through their device for one that was never
-          written. It comes out with the real export. */}
-      {pdfReady && (
-        <p className="report-pdf-status" role="status">
-          Raport gotowy: {pdfFileName(report)} · {MOCK_PDF_PAGE_COUNT} stron
-          <span className="report-pdf-status-note">
-            Podgląd — pobieranie pliku uruchomimy w kolejnej wersji.
-          </span>
+      {/* TODO: the "PDF na maila" fallback delivery is still missing — there is
+          no mail out of this deployment at all. Saving the file is the whole of
+          the export for now. */}
+      {pdfError && (
+        <p className="report-pdf-status report-pdf-status-error" role="alert">
+          {pdfError}
         </p>
       )}
 
