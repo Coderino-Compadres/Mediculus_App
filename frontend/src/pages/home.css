@@ -1,3 +1,15 @@
+/* Confirmation that the entry was written, shown once on arrival from the
+   form. Green rather than neutral: the person just did the one thing this
+   screen exists to prompt. */
+.home-saved-notice {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-sage-hover);
+  background: var(--color-success-bg);
+  padding: 12px 16px;
+  text-align: center;
+}
+
 .home-page {
   flex-grow: 1;
   width: 100%;
@@ -128,6 +140,13 @@
 
 .home-menu-dropdown a:hover,
 .home-menu-signout:hover {
+  background: var(--color-lavender);
+}
+
+/* The screen you are already on. Weight rather than colour, so it does not read
+   as a different kind of link. */
+.home-menu-dropdown a[aria-current='page'] {
+  font-weight: var(--font-weight-semibold);
   background: var(--color-lavender);
 }
 

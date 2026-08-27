@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import LoadError from '../components/LoadError'
 import { ApiError } from '../api/client'
 import { fetchJournalEntry } from '../api/diary'
 import { EMOTION_COLORS, STRES, type EmotionName } from '../utils/emotions'
@@ -51,6 +52,10 @@ function JournalDetail() {
   // deriving it here beats setting it from inside the effect.
   const [loading, setLoading] = useState(Boolean(id))
   const [loadError, setLoadError] = useState<string | null>(null)
+  // Bumped by the retry button; the effect below lists it as a dependency, so
+  // trying again re-runs the one load rather than a second copy of it.
+  const [attempt, setAttempt] = useState(0)
+  const retry = () => setAttempt((value) => value + 1)
 
   // A 404 means "no such entry for this patient" and covers both a wrong id and
   // somebody else's — the backend does not tell them apart, so neither does the
@@ -78,7 +83,7 @@ function JournalDetail() {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, attempt])
 
   if (loading) {
     return (
@@ -93,9 +98,11 @@ function JournalDetail() {
   if (loadError) {
     return (
       <div className="journal-detail-page">
-        <p className="journal-detail-status journal-detail-status-error" role="alert">
-          {loadError}
-        </p>
+        <LoadError
+          className="journal-detail-status journal-detail-status-error"
+          message={loadError}
+          onRetry={retry}
+        />
         <Link to={ROUTES.journals}>← Wróć do Dzienniczków</Link>
       </div>
     )

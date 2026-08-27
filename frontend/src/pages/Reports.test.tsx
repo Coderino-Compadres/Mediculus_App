@@ -166,3 +166,37 @@ describe('Reports — while and after loading', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/Nie udało się wczytać raportów/i)
   })
 })
+
+describe('Reports — trying again', () => {
+  it('offers a button rather than telling the reader to reload the page', async () => {
+    // "Spróbuj ponownie" as plain text is advice with nothing to act on, and a
+    // standalone PWA has hidden the browser's reload button.
+    mockedFetch.mockRejectedValueOnce(new ApiError(500, null))
+    renderWithProviders(<Reports />)
+
+    await screen.findByRole('alert')
+
+    expect(screen.getByRole('button', { name: /spróbuj ponownie/i })).toBeInTheDocument()
+  })
+
+  it('re-runs the load and shows what arrives', async () => {
+    mockedFetch.mockRejectedValueOnce(new ApiError(500, null))
+    mockedFetch.mockResolvedValueOnce([NEWEST])
+    renderWithProviders(<Reports />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /spróbuj ponownie/i }))
+
+    expect(await screen.findByRole('button', { name: /Średni nastrój/i })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('keeps the error when the second attempt fails too', async () => {
+    mockedFetch.mockRejectedValue(new ApiError(500, null))
+    renderWithProviders(<Reports />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /spróbuj ponownie/i }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(mockedFetch).toHaveBeenCalledTimes(2)
+  })
+})

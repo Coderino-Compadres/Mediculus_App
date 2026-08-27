@@ -1,0 +1,14 @@
+/* Above everything, including the header menu's dropdown, because it explains
+   why whatever the user just tried did not work. */
+.offline-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-graphite);
+  background: var(--color-ochre);
+  padding: 10px 16px;
+  text-align: center;
+}

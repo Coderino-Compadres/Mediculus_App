@@ -490,3 +490,27 @@ describe('ReportDetail — how strongly, next to how often', () => {
     expect(fills[1].style.width).toBe('25%')
   })
 })
+
+describe('ReportDetail — trying again', () => {
+  it('re-asks for the same week and renders it', async () => {
+    mockedFetch.mockRejectedValueOnce(new ApiError(500, null))
+    mockedFetch.mockResolvedValueOnce(reportFixture())
+    renderWithProviders(<ReportDetail />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /spróbuj ponownie/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Raport' })).toBeInTheDocument()
+    expect(mockedFetch).toHaveBeenLastCalledWith(`week-${WEEK_B}`)
+  })
+
+  it('offers no retry for a report that does not exist', async () => {
+    // Nothing to try again — the week has no report, and pressing a button
+    // would just say so a second time.
+    mockedFetch.mockRejectedValue(new ApiError(404, 'Nie znaleziono raportu dla tego tygodnia.'))
+    renderWithProviders(<ReportDetail />)
+
+    await screen.findByText('Nie znaleziono takiego raportu.')
+
+    expect(screen.queryByRole('button', { name: /spróbuj ponownie/i })).toBeNull()
+  })
+})

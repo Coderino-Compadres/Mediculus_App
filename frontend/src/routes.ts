@@ -7,7 +7,7 @@ export const ROUTES = {
   home: '/home',
   journals: '/journals',
   journalDetail: '/journals/:id',
-  diaryEntry: '/diary-entry-placeholder',
+  diaryEntry: '/diary-entry',
   reports: '/reports',
   reportDetail: '/reports/:id',
   analysis: '/analysis-placeholder',
@@ -48,3 +48,28 @@ export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
   { path: ROUTES.profile, title: 'Profil' },
   { path: ROUTES.safetyPlan, title: 'Plan bezpieczeństwa' },
 ]
+
+/**
+ * What each screen is called, for `document.title` and for the announcement a
+ * screen reader hears on navigation.
+ *
+ * Keyed by route pattern rather than set inside each page: the announcement has
+ * to happen when the URL changes, and a page's own effect runs after that — so
+ * the announcer would be a step behind, naming the screen the user just left.
+ */
+export const ROUTE_TITLES: Record<string, string> = {
+  [ROUTES.login]: 'Logowanie',
+  [ROUTES.register]: 'Rejestracja',
+  [ROUTES.linkGuardian]: 'Powiązanie z opiekunem',
+  [ROUTES.modules]: 'Wybór modułu',
+  [ROUTES.home]: 'Strona główna',
+  [ROUTES.journals]: 'Dzienniczki',
+  [ROUTES.journalDetail]: 'Wpis w dzienniczku',
+  [ROUTES.diaryEntry]: 'Dodaj wpis',
+  [ROUTES.reports]: 'Raporty',
+  [ROUTES.reportDetail]: 'Raport tygodniowy',
+  ...Object.fromEntries(PLACEHOLDER_ROUTES.map((route) => [route.path, route.title])),
+}
+
+/** Shown after the screen name, so a browser tab says what app it belongs to. */
+export const APP_NAME = 'Mediculus'

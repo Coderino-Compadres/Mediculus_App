@@ -105,6 +105,23 @@ async function parseBody(response: Response): Promise<unknown> {
   }
 }
 
+/**
+ * Fired when the API refuses a request for want of a session.
+ *
+ * An event rather than a callback into the router: this module knows about
+ * fetch and cookies and should not learn about React state. It reports what the
+ * server said and lets `AuthProvider` decide what it means — which matters,
+ * because 403 is also the normal answer to `/api/auth/me/` for a visitor and
+ * the answer to a stale CSRF token, and neither of those is an expired session.
+ */
+export const UNAUTHORIZED_EVENT = 'mediculus:unauthorized'
+
+function reportUnauthorized(status: number) {
+  if (status === 401 || status === 403) {
+    window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT))
+  }
+}
+
 interface RequestOptions {
   method?: string
   body?: unknown
@@ -146,7 +163,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (response.status === 204) return undefined as T
 
   const payload = await parseBody(response)
-  if (!response.ok) throw toApiError(response.status, payload)
+  if (!response.ok) {
+    reportUnauthorized(response.status)
+    throw toApiError(response.status, payload)
+  }
   return payload as T
 }
 
@@ -179,6 +199,7 @@ export async function apiDownload(path: string): Promise<Blob> {
     } catch {
       // Not JSON — toApiError falls back to its generic message.
     }
+    reportUnauthorized(response.status)
     throw toApiError(response.status, payload)
   }
 

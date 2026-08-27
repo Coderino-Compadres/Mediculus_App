@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import LoadError from '../components/LoadError'
 import { ApiError } from '../api/client'
 import { fetchWeeklyReports } from '../api/reports'
 import { DAYS_IN_WEEK, formatDelta, pluralDays } from '../utils/reports'
@@ -80,6 +81,10 @@ function Reports() {
   const [reports, setReports] = useState<WeeklyReport[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // Bumped by the retry button; the effect below lists it as a dependency, so
+  // trying again re-runs the one load rather than a second copy of it.
+  const [attempt, setAttempt] = useState(0)
+  const retry = () => setAttempt((value) => value + 1)
 
   useEffect(() => {
     let cancelled = false
@@ -101,7 +106,7 @@ function Reports() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [attempt])
 
   return (
     <div className="journals-page">
@@ -140,9 +145,11 @@ function Reports() {
       )}
 
       {!loading && loadError && (
-        <div className="journals-status journals-status-error" role="alert">
-          {loadError}
-        </div>
+        <LoadError
+          className="journals-status journals-status-error"
+          message={loadError}
+          onRetry={retry}
+        />
       )}
 
       {!loading && !loadError && (

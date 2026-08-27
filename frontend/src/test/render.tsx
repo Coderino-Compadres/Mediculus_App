@@ -26,11 +26,15 @@ export function renderWithProviders(
   {
     user = TEST_USER,
     route = '/',
+    state,
     setUser = () => {},
     signOut = async () => {},
   }: {
     user?: AuthUser | null
     route?: string
+    /** Navigation state, for a screen that reads something out of it — the
+     *  "Zapisano" notice on /home arrives that way. */
+    state?: unknown
     /** Pass a spy when the screen under test is supposed to update the session. */
     setUser?: (next: AuthUser | null) => void
     signOut?: () => Promise<void>
@@ -45,7 +49,7 @@ export function renderWithProviders(
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <MemoryRouter initialEntries={[route]}>
+      <MemoryRouter initialEntries={[state === undefined ? route : { pathname: route, state }]}>
         <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>
       </MemoryRouter>
     )

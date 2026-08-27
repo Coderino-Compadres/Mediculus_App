@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import LoadError from '../components/LoadError'
 import ReportChangeChips from '../components/ReportChangeChips'
 import ReportMetricCard from '../components/ReportMetricCard'
 import ReportRankingBars, { type RankingRow } from '../components/ReportRankingBars'
@@ -79,6 +80,10 @@ function ReportDetail() {
   const [report, setReport] = useState<WeeklyReport | null>(null)
   const [loading, setLoading] = useState(Boolean(id))
   const [loadError, setLoadError] = useState<string | null>(null)
+  // Bumped by the retry button; the effect below lists it as a dependency, so
+  // trying again re-runs the one load rather than a second copy of it.
+  const [attempt, setAttempt] = useState(0)
+  const retry = () => setAttempt((value) => value + 1)
   const [downloading, setDownloading] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
 
@@ -111,7 +116,7 @@ function ReportDetail() {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, attempt])
 
   /**
    * The file comes from the server, fetched rather than linked to: the request
@@ -143,9 +148,11 @@ function ReportDetail() {
   if (loadError) {
     return (
       <div className="report-detail-page">
-        <p className="journal-detail-status journal-detail-status-error" role="alert">
-          {loadError}
-        </p>
+        <LoadError
+          className="journal-detail-status journal-detail-status-error"
+          message={loadError}
+          onRetry={retry}
+        />
         <Link to={ROUTES.reports}>← Wróć do Raportów</Link>
       </div>
     )

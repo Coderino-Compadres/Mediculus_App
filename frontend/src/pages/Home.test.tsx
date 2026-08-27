@@ -408,3 +408,43 @@ describe('Home — when the data does not arrive', () => {
     expect(screen.getByText(/nie zastępuje pomocy specjalisty/i)).toBeInTheDocument()
   })
 })
+
+describe('after saving a diary entry', () => {
+  function dashboard(): HomeDashboard {
+    return {
+      streakDays: 0,
+      todayEntry: null,
+      week: [],
+      averageStress: null,
+      averageEnergy: null,
+      technique: null,
+    }
+  }
+
+  it('confirms the save, because the form navigates away before it could', async () => {
+    mockedFetch.mockResolvedValue(dashboard())
+
+    renderWithProviders(<Home />, { route: ROUTES.home, state: { savedEntry: true } })
+
+    expect(await screen.findByText('Zapisano dzisiejszy wpis.')).toBeInTheDocument()
+  })
+
+  it('says nothing on an ordinary visit', async () => {
+    mockedFetch.mockResolvedValue(dashboard())
+
+    renderWithProviders(<Home />, { route: ROUTES.home })
+
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalled())
+    expect(screen.queryByText('Zapisano dzisiejszy wpis.')).toBeNull()
+  })
+
+  it('is announced politely rather than as an error', async () => {
+    mockedFetch.mockResolvedValue(dashboard())
+
+    renderWithProviders(<Home />, { route: ROUTES.home, state: { savedEntry: true } })
+
+    const notice = await screen.findByText('Zapisano dzisiejszy wpis.')
+
+    expect(notice).toHaveAttribute('role', 'status')
+  })
+})

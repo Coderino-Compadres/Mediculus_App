@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import LoadError from '../components/LoadError'
 import { ApiError } from '../api/client'
 import { fetchJournalEntries } from '../api/diary'
 import { toIsoDate } from '../utils/days'
@@ -106,6 +107,10 @@ function Journals() {
   const [entries, setEntries] = useState<JournalListEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // Bumped by the retry button; the effect below lists it as a dependency, so
+  // trying again re-runs the one load rather than a second copy of it.
+  const [attempt, setAttempt] = useState(0)
+  const retry = () => setAttempt((value) => value + 1)
 
   // GET /api/diary/ answers with every entry this patient has written, newest
   // first — today included. A patient who has never written one gets an empty
@@ -130,7 +135,7 @@ function Journals() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [attempt])
 
   const filteredEntries = entries.filter((entry) => matchesFilter(entry, filter))
 
@@ -172,9 +177,11 @@ function Journals() {
       )}
 
       {!loading && loadError && (
-        <div className="journals-status journals-status-error" role="alert">
-          {loadError}
-        </div>
+        <LoadError
+          className="journals-status journals-status-error"
+          message={loadError}
+          onRetry={retry}
+        />
       )}
 
       {!loading && !loadError && (
