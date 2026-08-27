@@ -66,6 +66,57 @@ describe('Login', () => {
   })
 })
 
+describe('Login — the info button', () => {
+  const infoButton = () => screen.getByRole('button', { name: /informacje/i })
+
+  it('starts closed, so the tile does not cover the form on arrival', () => {
+    renderScreen()
+
+    expect(infoButton()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  })
+
+  it('shows the tile when the "i" is clicked', async () => {
+    renderScreen()
+
+    await userEvent.click(infoButton())
+
+    expect(await screen.findByRole('note')).toHaveTextContent('koczkodan')
+    expect(infoButton()).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('closes it again on a second click', async () => {
+    renderScreen()
+
+    await userEvent.click(infoButton())
+    await screen.findByRole('note')
+    await userEvent.click(infoButton())
+
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  })
+
+  it('closes it on Escape, so the keyboard is not trapped behind it', async () => {
+    renderScreen()
+
+    await userEvent.click(infoButton())
+    await screen.findByRole('note')
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  })
+
+  /* type="button": it sits inside the card but outside the <form>, and a
+     regression that moved it in must not turn it into a submit. */
+  it('does not submit the form', async () => {
+    renderScreen()
+
+    await userEvent.click(infoButton())
+
+    expect(mockedLogin).not.toHaveBeenCalled()
+    expect(infoButton()).toHaveAttribute('type', 'button')
+  })
+})
+
 describe('Login — checks before anything is sent', () => {
   it('does not call the API when the address is malformed', async () => {
     renderScreen()

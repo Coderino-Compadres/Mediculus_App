@@ -9,6 +9,7 @@
 }
 
 .auth-card {
+  position: relative;
   width: 100%;
   max-width: 420px;
   text-align: left;
@@ -228,4 +229,66 @@
 
 .auth-submit-secondary:hover:not(:disabled) {
   background: rgba(var(--shadow-tint), 0.06);
+}
+
+/* The "i" pinned to the card's top-right corner, and the tile it opens. The
+   wrapper is the positioning context so the tile hangs off the button rather
+   than off the card, and it is out of the form's flow — nothing below moves
+   when the tile appears. */
+.auth-corner {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+.auth-info {
+  position: relative;
+}
+
+.auth-info-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--shadow-tint), 0.2);
+  background: #fff;
+  color: var(--color-graphite-muted);
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.auth-info-button:hover {
+  background: rgba(var(--shadow-tint), 0.06);
+  color: var(--color-graphite);
+}
+
+.auth-info-button:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: 0 0 0 3px rgba(79, 122, 100, 0.18);
+}
+
+.auth-info-tile {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1;
+  min-width: 140px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(var(--shadow-tint), 0.12);
+  background: #fff;
+  box-shadow: var(--shadow-card);
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-regular);
+  font-size: 14px;
+  color: var(--color-graphite);
+  text-align: left;
 }

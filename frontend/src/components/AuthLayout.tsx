@@ -8,12 +8,16 @@ interface AuthLayoutProps {
   successMessage?: string | null
   children: ReactNode
   footer?: ReactNode
+  /** Pinned to the card's top-right corner, above the logo — see .auth-corner. */
+  corner?: ReactNode
 }
 
-function AuthLayout({ title, subtitle, successMessage, children, footer }: AuthLayoutProps) {
+function AuthLayout({ title, subtitle, successMessage, children, footer, corner }: AuthLayoutProps) {
   return (
     <div className="auth-page">
       <div className="auth-card">
+        {corner && <div className="auth-corner">{corner}</div>}
+
         <img className="auth-logo" src={mediculusLogo} alt="Fundacja Mediculus" />
         <h1>{title}</h1>
         <p className="auth-subtitle">{subtitle}</p>
