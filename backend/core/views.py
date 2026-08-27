@@ -13,7 +13,6 @@ from rest_framework import status
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from django.utils import timezone
@@ -27,24 +26,7 @@ from .guardian import (accept_invitation, cancel_invitation, pending_invitations
 from .models import Patient
 from .serializers import (GuardianLinkSerializer, LoginSerializer,
                           RegisterSerializer, UserSerializer)
-
-
-class AuthThrottle(AnonRateThrottle):
-    """Per-IP cap on the credential-accepting endpoints (rate in settings.py)."""
-
-    scope = 'auth'
-
-
-class GuardianLinkThrottle(UserRateThrottle):
-    """Per-account cap on the guardian-linking endpoint.
-
-    Not AuthThrottle: AnonRateThrottle deliberately exempts requests that carry
-    a session, so it would count nothing here. The cap matters because a request
-    reveals whether an address belongs to a guardian account — one answer at a
-    time is a question about a person you know, a thousand is an address list.
-    """
-
-    scope = 'auth'
+from .throttling import AuthThrottle, GuardianLinkThrottle
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
