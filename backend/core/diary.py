@@ -153,7 +153,11 @@ def _read_ratings(diary):
     chips exactly as they were left rather than as ten zeroes.
     """
     ratings = []
-    scale = next(iter(diary.mood_scales.all()), None)
+    # order_by, not next(iter(...)): the schema permits more than one scale row
+    # per entry, and `save_today_entry` edits `order_by('id_scale').first()`.
+    # Unordered here, a read could describe the other row than a write touches —
+    # and the weekly report is built on top of this.
+    scale = diary.mood_scales.order_by('id_scale').first()
     if scale is not None:
         for column, emotion in MOOD_SCALE_EMOTIONS:
             value = getattr(scale, column)

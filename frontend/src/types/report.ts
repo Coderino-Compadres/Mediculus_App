@@ -52,10 +52,20 @@ export interface ReportMetric {
 }
 
 /** One row of the "Najczęściej odczuwane emocje" ranking. */
-export interface EmotionDays {
+export interface EmotionSummary {
   emotion: EmotionName
   /** Days in the week on which the entry rated this emotion. */
   days: number
+  /**
+   * Mean of the intensities given on those days, on the chips' own 0-10 scale.
+   *
+   * Averaged over the days it was rated, not over the seven days of the week: a
+   * chip the patient never touched is not a zero, and counting it as one would
+   * pull every emotion down in proportion to how often they skipped it.
+   *
+   * Never null — a row exists only because the emotion was rated at least once.
+   */
+  avgIntensity: number
 }
 
 /** One row of the "Najczęstsze wyzwalacze" ranking. */
@@ -93,7 +103,7 @@ export interface WeeklyReport {
   entryCount: number
   /** Always the four cards, in card order. */
   metrics: ReportMetric[]
-  emotions: EmotionDays[]
+  emotions: EmotionSummary[]
   triggers: TriggerDays[]
   /** Empty is a normal, calm state — the section is shown either way. */
   riskyDays: RiskyDay[]

@@ -80,7 +80,7 @@ describe('ReportDetail', () => {
   })
 
   it('colours the emotion bars from the shared palette', async () => {
-    mockedFetch.mockResolvedValue(reportFixture({ emotions: [{ emotion: 'Lęk', days: 3 }] }))
+    mockedFetch.mockResolvedValue(reportFixture({ emotions: [{ emotion: 'Lęk', days: 3, avgIntensity: 6.5 }] }))
     const { container } = renderWithProviders(<ReportDetail />)
 
     await screen.findByText('Najczęściej odczuwane emocje')
@@ -253,5 +253,240 @@ describe('ReportDetail — the PDF export', () => {
 
     await screen.findByRole('alert')
     expect(screen.queryByText(/gotowy/i)).toBeNull()
+  })
+})
+
+describe('ReportDetail — loading and odd routes', () => {
+  it('says it is loading rather than showing "not found" first', async () => {
+    let release: (report: ReturnType<typeof reportFixture>) => void = () => {}
+    mockedFetch.mockReturnValue(new Promise((resolve) => { release = resolve }))
+    renderWithProviders(<ReportDetail />)
+
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.queryByText('Nie znaleziono takiego raportu.')).toBeNull()
+
+    release(reportFixture())
+    expect(await screen.findByRole('heading', { name: 'Raport' })).toBeInTheDocument()
+  })
+
+  it('asks for nothing when the route carries no id', async () => {
+    routeId = ''
+    renderWithProviders(<ReportDetail />)
+
+    expect(mockedFetch).not.toHaveBeenCalled()
+    expect(await screen.findByText('Nie znaleziono takiego raportu.')).toBeInTheDocument()
+  })
+
+  it('a 403 is an error, not a missing report', async () => {
+    // The wording matters: "nie znaleziono" would tell a guardian their child's
+    // week does not exist, when what happened is that they may not read it.
+    mockedFetch.mockRejectedValue(new ApiError(403, 'Raporty są dostępne tylko dla konta pacjenta.'))
+    renderWithProviders(<ReportDetail />)
+
+    expect(await screen.findByRole('alert'))
+      .toHaveTextContent('Raporty są dostępne tylko dla konta pacjenta.')
+    expect(screen.queryByText('Nie znaleziono takiego raportu.')).toBeNull()
+  })
+
+  it('survives a failure that is not an ApiError at all', async () => {
+    mockedFetch.mockRejectedValue(new TypeError('Failed to fetch'))
+    renderWithProviders(<ReportDetail />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Nie udało się wczytać tego raportu/i)
+  })
+
+  it('renders a report whose every section is empty', async () => {
+    mockedFetch.mockResolvedValue(reportFixture({
+      entryCount: 1, emotions: [], triggers: [], riskyDays: [], changes: [],
+      metrics: reportFixture().metrics.map((metric) => ({
+        ...metric, value: '— / 5', delta: delta(),
+      })),
+    }))
+    renderWithProviders(<ReportDetail />)
+
+    expect(await screen.findByRole('heading', { name: 'Raport' })).toBeInTheDocument()
+    expect(screen.getByText('Brak oznaczonych zachowań ryzykownych w tym tygodniu.'))
+      .toBeInTheDocument()
+  })
+
+  it('lists every flagged day of a full week', async () => {
+    mockedFetch.mockResolvedValue(reportFixture({
+      riskyDays: Array.from({ length: 7 }, (_, index) => ({
+        entryId: `id-${index}`,
+        date: `2026-08-1${index}`,
+        notePreview: `Notatka ${index}`,
+      })),
+    }))
+    renderWithProviders(<ReportDetail />)
+
+    expect(await screen.findByText(/oznaczone w 7 z 7 dni/)).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /sierpnia/i })).toHaveLength(7)
+  })
+})
+
+describe('ReportDetail — the PDF export, harder cases', () => {
+  function captureDownload() {
+    URL.createObjectURL = vi.fn(() => 'blob:report') as unknown as typeof URL.createObjectURL
+    URL.revokeObjectURL = vi.fn() as unknown as typeof URL.revokeObjectURL
+    return vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  }
+
+  beforeEach(() => {
+    mockedFetch.mockResolvedValue(reportFixture())
+    captureDownload()
+    return () => vi.restoreAllMocks()
+  })
+
+  it('a double click does not render the document twice', async () => {
+    let release: (blob: Blob) => void = () => {}
+    mockedPdf.mockReturnValue(new Promise((resolve) => { release = resolve }))
+    renderWithProviders(<ReportDetail />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Pobierz PDF' }))
+    await userEvent.click(screen.getByRole('button', { name: /przygotowywanie/i }))
+
+    expect(mockedPdf).toHaveBeenCalledTimes(1)
+    release(new Blob(['%PDF-']))
+  })
+
+  it('a second attempt is possible after a failure', async () => {
+    mockedPdf.mockRejectedValueOnce(new ApiError(500, null))
+    mockedPdf.mockResolvedValueOnce(new Blob(['%PDF-']))
+    renderWithProviders(<ReportDetail />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Pobierz PDF' }))
+    await screen.findByRole('alert')
+    await userEvent.click(screen.getByRole('button', { name: 'Pobierz PDF' }))
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect(mockedPdf).toHaveBeenCalledTimes(2)
+  })
+
+  it('a throttled export is worded as a refusal, not as a missing report', async () => {
+    mockedPdf.mockRejectedValue(new ApiError(429, null))
+    renderWithProviders(<ReportDetail />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Pobierz PDF' }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Raport' })).toBeInTheDocument()
+  })
+
+  it('a report that vanished between load and export says so', async () => {
+    mockedPdf.mockRejectedValue(new ApiError(404, 'Nie znaleziono raportu dla tego tygodnia.'))
+    renderWithProviders(<ReportDetail />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Pobierz PDF' }))
+
+    expect(await screen.findByRole('alert'))
+      .toHaveTextContent('Nie znaleziono raportu dla tego tygodnia.')
+  })
+
+  it('the report stays readable while the file is being prepared', async () => {
+    let release: (blob: Blob) => void = () => {}
+    mockedPdf.mockReturnValue(new Promise((resolve) => { release = resolve }))
+    renderWithProviders(<ReportDetail />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Pobierz PDF' }))
+
+    expect(screen.getByText('Średni nastrój')).toBeInTheDocument()
+    release(new Blob(['%PDF-']))
+  })
+})
+
+describe('ReportDetail — how strongly, next to how often', () => {
+  it('shows the average intensity beside the day count', async () => {
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: [{ emotion: 'Smutek', days: 2, avgIntensity: 3 }],
+    }))
+    renderWithProviders(<ReportDetail />)
+
+    await screen.findByText('Najczęściej odczuwane emocje')
+    const row = screen.getByText('Smutek').closest('.report-ranking-row')
+
+    expect(row).toHaveTextContent('2 dni')
+    expect(row).toHaveTextContent('śr. 3,0 / 10')
+  })
+
+  it('renders the scale so the number is not read as another count', async () => {
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: [{ emotion: 'Lęk', days: 1, avgIntensity: 6.5 }],
+    }))
+    renderWithProviders(<ReportDetail />)
+
+    expect(await screen.findByText(/śr\. 6,5 \/ 10/)).toBeInTheDocument()
+  })
+
+  it('an average of zero is shown rather than hidden', async () => {
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: [{ emotion: 'Spokój', days: 3, avgIntensity: 0 }],
+    }))
+    renderWithProviders(<ReportDetail />)
+
+    expect(await screen.findByText(/śr\. 0,0 \/ 10/)).toBeInTheDocument()
+  })
+
+  it('gives every rated emotion its own average', async () => {
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: [
+        { emotion: 'Lęk', days: 3, avgIntensity: 7 },
+        { emotion: 'Smutek', days: 1, avgIntensity: 2.5 },
+      ],
+    }))
+    renderWithProviders(<ReportDetail />)
+
+    expect(await screen.findByText(/śr\. 7,0 \/ 10/)).toBeInTheDocument()
+    expect(screen.getByText(/śr\. 2,5 \/ 10/)).toBeInTheDocument()
+  })
+
+  it('the triggers ranking shows no intensity, because a place has none', async () => {
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: [], triggers: [{ trigger: 'Praca', days: 2 }],
+    }))
+    renderWithProviders(<ReportDetail />)
+
+    await screen.findByText('Najczęstsze wyzwalacze')
+
+    expect(screen.getByText('Praca').closest('.report-ranking-row'))
+      .not.toHaveTextContent('śr.')
+  })
+
+  it('draws every emotion the week rated, not a top few', async () => {
+    const all = [
+      'Radość', 'Smutek', 'Lęk', 'Złość', 'Stres',
+      'Poczucie winy', 'Frustracja', 'Wstyd', 'Bezradność', 'Spokój',
+    ] as const
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: all.map((emotion, index) => ({
+        emotion, days: 1, avgIntensity: index,
+      })),
+    }))
+    const { container } = renderWithProviders(<ReportDetail />)
+
+    await screen.findByText('Najczęściej odczuwane emocje')
+
+    for (const emotion of all) {
+      expect(screen.getByText(emotion)).toBeInTheDocument()
+    }
+    // Two rankings share the component; only the emotions carry an average.
+    expect(container.querySelectorAll('.report-ranking-average')).toHaveLength(all.length)
+  })
+
+  it('the bar still measures how often, not how strongly', async () => {
+    // Otherwise a single very intense day would draw a longer bar than a
+    // feeling that ran all week, under a heading that says "najczęściej".
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: [
+        { emotion: 'Smutek', days: 4, avgIntensity: 1 },
+        { emotion: 'Lęk', days: 1, avgIntensity: 10 },
+      ],
+    }))
+    const { container } = renderWithProviders(<ReportDetail />)
+
+    await screen.findByText('Najczęściej odczuwane emocje')
+    const fills = container.querySelectorAll<HTMLElement>('.report-ranking-fill')
+
+    expect(fills[0].style.width).toBe('100%')
+    expect(fills[1].style.width).toBe('25%')
   })
 })

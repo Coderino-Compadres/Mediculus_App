@@ -105,3 +105,64 @@ describe('Reports', () => {
     expect(screen.queryByText(/Nie ma jeszcze żadnego raportu/i)).toBeNull()
   })
 })
+
+describe('Reports — while and after loading', () => {
+  it('says it is loading rather than showing an empty list first', async () => {
+    let release: (reports: never[]) => void = () => {}
+    mockedFetch.mockReturnValue(new Promise((resolve) => { release = resolve }))
+    renderWithProviders(<Reports />)
+
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.queryByText(/Nie ma jeszcze żadnego raportu/i)).toBeNull()
+
+    release([])
+    expect(await screen.findByText(/Nie ma jeszcze żadnego raportu/i)).toBeInTheDocument()
+  })
+
+  it('asks the server once, not once per row', async () => {
+    mockedFetch.mockResolvedValue([NEWEST, OLDER])
+    renderWithProviders(<Reports />)
+
+    await screen.findAllByRole('button', { name: /Średni nastrój/i })
+
+    expect(mockedFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders a week with nothing rated without falling over', async () => {
+    mockedFetch.mockResolvedValue([reportFixture({
+      entryCount: 1,
+      emotions: [],
+      triggers: [],
+      changes: [],
+      metrics: reportFixture().metrics.map((metric) => ({ ...metric, value: '— / 5' })),
+    })])
+    renderWithProviders(<Reports />)
+
+    expect(await screen.findByRole('button', { name: /Średni nastrój/i })).toBeInTheDocument()
+  })
+
+  it('draws a long history without dropping rows', async () => {
+    const many = Array.from({ length: 30 }, (_, index) => reportFixture({
+      weekStart: `2026-0${1 + Math.floor(index / 28)}-${String((index % 28) + 1).padStart(2, '0')}`,
+    }))
+    mockedFetch.mockResolvedValue(many)
+    renderWithProviders(<Reports />)
+
+    expect(await screen.findAllByRole('button', { name: /Średni nastrój/i })).toHaveLength(30)
+  })
+
+  it('carries the server error message when there is one', async () => {
+    mockedFetch.mockRejectedValue(new ApiError(403, 'Raporty są dostępne tylko dla konta pacjenta.'))
+    renderWithProviders(<Reports />)
+
+    expect(await screen.findByRole('alert'))
+      .toHaveTextContent('Raporty są dostępne tylko dla konta pacjenta.')
+  })
+
+  it('survives a failure that is not an ApiError at all', async () => {
+    mockedFetch.mockRejectedValue(new TypeError('Failed to fetch'))
+    renderWithProviders(<Reports />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Nie udało się wczytać raportów/i)
+  })
+})

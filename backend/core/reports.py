@@ -23,6 +23,7 @@ the PDF renderer) without a request.
 """
 
 import datetime
+import decimal
 
 from .diary import load_history
 from .emotions import EMOTIONS, STRES
@@ -42,7 +43,10 @@ MOOD_RANK = {'very_bad': 1, 'bad': 2, 'neutral': 3, 'good': 4, 'very_good': 5}
 #: day counted here is a day that screen also calls harder.
 HARD_DAY_MAX_RANK = 2
 
-TOP_EMOTIONS = 5
+#: The emotion ranking is not capped: the report shows every emotion the week
+#: actually rated, and the vocabulary is ten names, so the list is bounded by
+#: the form rather than by a limit here. An emotion nobody touched has no row —
+#: absence is what "not felt this week" looks like, not a zero.
 TOP_TRIGGERS = 4
 #: Chips under the narrative summary: the two emotions that moved most.
 SUMMARY_CHIP_EMOTIONS = 2
@@ -64,19 +68,30 @@ MONTHS_GENITIVE = (
     'lipca', 'sierpnia', 'września', 'października', 'listopada', 'grudnia',
 )
 
-#: Polish letters that sort immediately after their base letter rather than at
-#: the end of the alphabet, which is where a plain codepoint sort puts them.
-#: Enough to order the trigger ranking the way `localeCompare(…, 'pl')` did.
+#: Polish letters, as (the letter they follow, how far behind it). A codepoint
+#: sort puts them all after 'z'; CLDR's Polish tailoring makes each a letter of
+#: its own, immediately after its base — which is what `localeCompare(…, 'pl')`
+#: did while the ranking was built in the browser.
 _POLISH_ORDER = {
-    'ą': 'a\x01', 'ć': 'c\x01', 'ę': 'e\x01', 'ł': 'l\x01', 'ń': 'n\x01',
-    'ó': 'o\x01', 'ś': 's\x01', 'ź': 'z\x01', 'ż': 'z\x02',
+    'ą': ('a', 1), 'ć': ('c', 1), 'ę': ('e', 1), 'ł': ('l', 1), 'ń': ('n', 1),
+    'ó': ('o', 1), 'ś': ('s', 1), 'ź': ('z', 1), 'ż': ('z', 2),
 }
 
 
 def _polish_key(text):
-    """Sort key that puts 'ą' after 'a' instead of after 'z'."""
-    lowered = text.casefold()
-    return ''.join(_POLISH_ORDER.get(character, character) for character in lowered)
+    """Sort key that puts 'ą' between 'a' and 'b', and 'ł' between 'l' and 'm'.
+
+    A pair per character rather than a marker appended to the base letter: with
+    'ł' rendered as 'l' + a low marker, the marker also sorts below every real
+    letter, so "Łódź" would come out before "Lublin" — right about the alphabet
+    and wrong about the word. Comparing (base, rank) pairs settles the base
+    letter first and only then the diacritic.
+    """
+    ranked = []
+    for character in text.casefold():
+        base, rank = _POLISH_ORDER.get(character, (character, 0))
+        ranked.append((ord(base), rank))
+    return tuple(ranked)
 
 
 # ---- Formatting ----------------------------------------------------------------
@@ -135,8 +150,19 @@ def _truncate(text):
 
 
 def _round1(value):
-    """Keeps 5.699999999999999 out of both the screen and the deltas."""
-    return round(value, 1)
+    """One decimal, rounding halves away from zero.
+
+    Keeps 5.699999999999999 out of both the screen and the deltas — and does it
+    with Decimal rather than `round()`, whose banker's rounding sends 0.25 to
+    0.2 while sending 3.35 to 3.4, because whether the float is a hair under or
+    over the half decides it. Unpredictable at the boundary is a poor property
+    for a number somebody reads clinically; "halves go up" is at least a rule
+    that can be stated.
+    """
+    quantized = decimal.Decimal(value).quantize(
+        decimal.Decimal('0.1'), rounding=decimal.ROUND_HALF_UP,
+    )
+    return float(quantized)
 
 
 def _average(values):
@@ -164,20 +190,29 @@ def _is_hard_day(entry):
     return rank is not None and rank <= HARD_DAY_MAX_RANK
 
 
-def _emotion_day_counts(entries):
-    """Days on which each emotion was rated — the ranking's raw counts."""
-    counts = {}
+def _emotion_ratings(entries):
+    """Every intensity each emotion was given this week, keyed by emotion.
+
+    The list rather than a count, because the ranking now reports both: how many
+    days an emotion was rated on, and how strongly on average. A day it was not
+    rated on contributes nothing rather than a zero — 0 is a rating the patient
+    gave, "not rated" is the chip they never touched, and averaging the second
+    into the first would drag every emotion towards zero in proportion to how
+    often the patient skipped it.
+    """
+    ratings = {}
     for entry in entries:
         for rating in entry['emotions']:
-            counts[rating['emotion']] = counts.get(rating['emotion'], 0) + 1
-    return counts
+            ratings.setdefault(rating['emotion'], []).append(rating['intensity'])
+    return ratings
 
 
 class WeekStats:
     """One week's averages and counts. Attributes rather than a dict so a typo
     raises instead of quietly reading None."""
 
-    __slots__ = ('mood', 'stress', 'energy', 'tension', 'hard_days', 'emotion_days')
+    __slots__ = ('mood', 'stress', 'energy', 'tension', 'hard_days',
+                 'emotion_ratings', 'emotion_days')
 
     def __init__(self, entries):
         self.mood = _average([_mood_rank(entry) for entry in entries])
@@ -186,7 +221,13 @@ class WeekStats:
         self.energy = _average([entry['energy_level'] for entry in entries])
         self.tension = _average([entry['tension_level'] for entry in entries])
         self.hard_days = sum(1 for entry in entries if _is_hard_day(entry))
-        self.emotion_days = _emotion_day_counts(entries)
+        self.emotion_ratings = _emotion_ratings(entries)
+        # Kept alongside: the summary chips compare how *often* an emotion was
+        # rated, which is a different question from how strongly.
+        self.emotion_days = {
+            emotion: len(intensities)
+            for emotion, intensities in self.emotion_ratings.items()
+        }
 
 
 # ---- Changes against the previous week ----------------------------------------
@@ -325,9 +366,33 @@ def start_of_week(day):
     return day - datetime.timedelta(days=day.weekday())
 
 
-def _rank_emotions(counts):
-    ranked = sorted(counts.items(), key=lambda pair: (-pair[1], EMOTION_ORDER[pair[0]]))
-    return [{'emotion': emotion, 'days': days} for emotion, days in ranked[:TOP_EMOTIONS]]
+def _rank_emotions(ratings):
+    """The emotions rated this week: how often, and how strongly on average.
+
+    All of them, not a top few: the week's emotions are the point of the
+    section, and an emotion left out would read as one that was not felt rather
+    than as one that did not fit. The ten-name vocabulary is the only bound
+    there is, and an emotion nobody rated has no entry to rank.
+
+    Ordered by how often, not how strongly — the section is "Najczęściej
+    odczuwane emocje", and a single very bad day would otherwise outrank a
+    feeling that ran through the whole week. The average is the second number on
+    the row rather than the sort key.
+
+    `avg_intensity` is never null: a row exists only because the emotion was
+    rated at least once, and every rating carries an intensity.
+    """
+    ranked = sorted(
+        ratings.items(), key=lambda pair: (-len(pair[1]), EMOTION_ORDER[pair[0]]),
+    )
+    return [
+        {
+            'emotion': emotion,
+            'days': len(intensities),
+            'avg_intensity': _average(intensities),
+        }
+        for emotion, intensities in ranked
+    ]
 
 
 def _rank_triggers(entries):
@@ -416,7 +481,7 @@ def build_report(week_start, entries, previous_entries):
     week_end = week_start + datetime.timedelta(days=DAYS_IN_WEEK - 1)
     stats = WeekStats(entries)
     previous = WeekStats(previous_entries) if previous_entries else None
-    emotions = _rank_emotions(stats.emotion_days)
+    emotions = _rank_emotions(stats.emotion_ratings)
     risky_days = _risky_days(entries)
 
     return {

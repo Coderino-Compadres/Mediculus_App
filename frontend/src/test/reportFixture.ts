@@ -36,7 +36,10 @@ export function reportFixture(overrides: Partial<WeeklyReport> = {}): WeeklyRepo
       metric('energy', 'Średni poziom energii', '4,0 / 10', { value: 0, gap: null }),
       metric('hardDays', 'Trudniejsze dni', '1 z 7', { value: -1, gap: null, decimals: 0, tone: 'good' }),
     ],
-    emotions: [{ emotion: 'Lęk', days: 3 }, { emotion: 'Smutek', days: 1 }],
+    emotions: [
+      { emotion: 'Lęk', days: 3, avgIntensity: 6.5 },
+      { emotion: 'Smutek', days: 1, avgIntensity: 2 },
+    ],
     triggers: [{ trigger: 'Praca', days: 2 }, { trigger: 'Dom', days: 1 }],
     riskyDays: [],
     changes: [{ label: 'Nastrój', delta: delta({ value: 0.5, gap: null, tone: 'good' }) }],

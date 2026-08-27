@@ -47,6 +47,7 @@ function emotionRows(report: WeeklyReport): RankingRow[] {
     count: entry.days,
     // The one palette, shared with the diary and the home chart.
     color: EMOTION_COLORS[entry.emotion],
+    average: entry.avgIntensity,
   }))
 }
 

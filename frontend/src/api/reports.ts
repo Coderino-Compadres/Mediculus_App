@@ -12,7 +12,7 @@
 import { apiDownload, apiRequest } from './client'
 import type {
   Delta,
-  EmotionDays,
+  EmotionSummary,
   ReportChangeChip,
   ReportMetric,
   RiskyDay,
@@ -36,7 +36,7 @@ interface ReportPayload {
   range_label: string
   entry_count: number
   metrics: { key: ReportMetric['key']; label: string; value: string; delta: DeltaPayload }[]
-  emotions: { emotion: string; days: number }[]
+  emotions: { emotion: string; days: number; avg_intensity: number }[]
   triggers: { trigger: string; days: number }[]
   risky_days: { entry_id: string; date: string; note_preview: string }[]
   changes: { label: string; delta: DeltaPayload }[]
@@ -69,7 +69,11 @@ function toReport(payload: ReportPayload): WeeklyReport {
     // The backend sends the same ten names core/emotions.py declares, which
     // test_emotions.py pins against utils/emotions.ts character for character.
     emotions: payload.emotions.map(
-      (row): EmotionDays => ({ emotion: row.emotion as EmotionName, days: row.days }),
+      (row): EmotionSummary => ({
+        emotion: row.emotion as EmotionName,
+        days: row.days,
+        avgIntensity: row.avg_intensity,
+      }),
     ),
     triggers: payload.triggers.map((row): TriggerDays => ({ trigger: row.trigger, days: row.days })),
     riskyDays: payload.risky_days.map(

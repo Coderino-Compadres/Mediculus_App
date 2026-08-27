@@ -13,8 +13,8 @@ from django.urls import reverse
 
 from reportlab.platypus import Paragraph, Table
 
-from core.report_pdf import (FONT_REGULAR, build_story, format_delta,
-                             pdf_file_name, render_report_pdf)
+from core.report_pdf import (FONT_REGULAR, average_intensity, build_story,
+                             format_delta, pdf_file_name, render_report_pdf)
 from core.reports import build_report, week_report_id
 from core.tests.test_reports_api import ReportTestCase
 
@@ -300,3 +300,322 @@ class PdfEndpointTests(ReportTestCase):
         # The bytes cannot be searched (see texts()); what this pins is that the
         # endpoint reaches the renderer with the session's own address.
         self.assertEqual(self.patient.user.email, 'pacjent@example.com')
+
+
+class MultiPageTests(SimpleTestCase):
+    """A week can fill more than one page, and the second one has to be a page
+    rather than an orphaned table."""
+
+    def long_report(self, days=7, note_length=90):
+        entries = [
+            entry(f'2026-08-0{3 + index}', mood='bad',
+                  risky_behavior_note='x' * note_length,
+                  situation_place=f'Miejsce {index}',
+                  emotions=[{'emotion': 'Lęk', 'intensity': 5}])
+            for index in range(days)
+        ]
+        return build_report(WEEK, entries, [])
+
+    def test_a_full_week_of_flagged_days_renders(self):
+        data = render_report_pdf(self.long_report(), EMAIL)
+
+        self.assertTrue(data.startswith(b'%PDF-'))
+
+    def test_the_page_furniture_is_drawn_on_later_pages_too(self):
+        """`onLaterPages` is a separate hook; passing only `onFirstPage` leaves
+        page two with no rule and no page number, which nobody notices until a
+        report is long enough."""
+        from core.report_pdf import _page_furniture
+
+        long_data = render_report_pdf(self.long_report(), EMAIL)
+        short_data = render_report_pdf(sample_report(), EMAIL)
+
+        self.assertIsNotNone(_page_furniture)
+        self.assertGreater(len(long_data), len(short_data))
+
+    def test_a_note_at_the_preview_limit_does_not_overflow_the_column(self):
+        """90 characters is what `_truncate` allows through; the cell has to fit
+        it by wrapping rather than by clipping."""
+        data = render_report_pdf(self.long_report(days=1, note_length=90), EMAIL)
+
+        self.assertTrue(data.startswith(b'%PDF-'))
+
+    def test_a_very_long_trigger_name_renders(self):
+        """`situation_place` is a 200-character column and the ranking prints it
+        whole."""
+        report = build_report(
+            WEEK, [entry('2026-08-03', situation_place='D' * 200)], [],
+        )
+
+        self.assertTrue(render_report_pdf(report, EMAIL).startswith(b'%PDF-'))
+
+
+class RendererEdgeTests(SimpleTestCase):
+    def test_every_section_empty_at_once(self):
+        """A week with one blank entry: no mood, no emotion, no place, no
+        flagged day, and no previous week. Every section takes its empty branch
+        in the same document."""
+        report = build_report(WEEK, [entry('2026-08-03')], [])
+
+        lines = texts(build_story(report, EMAIL))
+
+        self.assertIn('W tym tygodniu nie oceniono żadnej emocji.', lines)
+        self.assertIn('W tym tygodniu nie zapisano żadnego miejsca ani wyzwalacza.', lines)
+        self.assertIn('W tym tygodniu nie oznaczono żadnego dnia jako ryzykownego.', lines)
+
+    def test_a_flagged_day_with_no_description_says_so(self):
+        """An empty cell next to a date reads as a rendering fault."""
+        report = build_report(WEEK, [entry('2026-08-03', risky_behavior_note='')], [])
+
+        self.assertIn('bez opisu', texts(build_story(report, EMAIL)))
+
+    def test_the_document_title_names_the_week(self):
+        """It is what a PDF reader shows in its window bar and what a file
+        manager indexes."""
+        data = render_report_pdf(sample_report(), EMAIL)
+
+        self.assertIn(b'Raport tygodniowy', data)
+
+    def test_an_address_with_an_ampersand_is_escaped_rather_than_parsed(self):
+        lines = texts(build_story(sample_report(), 'a&b@example.com'))
+
+        self.assertIn('Pacjent: a&amp;b@example.com', lines)
+
+    def test_a_long_address_does_not_stop_the_render(self):
+        long_email = ('x' * 60) + '@example.com'
+
+        self.assertTrue(render_report_pdf(sample_report(), long_email).startswith(b'%PDF-'))
+
+    def test_all_four_metric_cards_reach_the_document(self):
+        lines = texts(build_story(sample_report(), EMAIL))
+
+        for label in ('Średni nastrój', 'Średni poziom stresu',
+                      'Średni poziom energii', 'Trudniejsze dni'):
+            self.assertIn(label, lines)
+
+    def test_every_section_heading_is_present(self):
+        lines = texts(build_story(sample_report(), EMAIL))
+
+        for heading in ('Podsumowanie', 'Najczęściej odczuwane emocje',
+                        'Najczęstsze wyzwalacze', 'Dni z zachowaniem ryzykownym'):
+            self.assertIn(heading, lines)
+
+    def test_the_footer_says_what_the_file_holds(self):
+        """Whoever ends up with the file should be told it is health data before
+        they decide where to keep it."""
+        lines = texts(build_story(sample_report(), EMAIL))
+
+        self.assertTrue(any('dane dotyczące zdrowia' in line for line in lines))
+
+    def test_the_ranking_declines_its_day_counts(self):
+        report = build_report(WEEK, [
+            entry('2026-08-03', emotions=[{'emotion': 'Lęk', 'intensity': 5}]),
+            entry('2026-08-04', emotions=[{'emotion': 'Lęk', 'intensity': 5},
+                                          {'emotion': 'Smutek', 'intensity': 2}]),
+        ], [])
+
+        lines = texts(build_story(report, EMAIL))
+
+        self.assertIn('2 dni', lines)
+        self.assertIn('1 dzień', lines)
+
+    def test_no_tone_colour_reaches_the_printed_page(self):
+        """A tone is a nudge next to an interface, not something to print in a
+        document read months later by somebody who was not there."""
+        watching = sample_report()
+        for metric in watching['metrics']:
+            metric['delta'] = {**metric['delta'], 'tone': 'watch'}
+
+        good = sample_report()
+        for metric in good['metrics']:
+            metric['delta'] = {**metric['delta'], 'tone': 'good'}
+
+        self.assertEqual(
+            texts(build_story(watching, EMAIL)), texts(build_story(good, EMAIL)),
+        )
+
+
+class PdfEndpointEdgeTests(ReportTestCase):
+    def url_for(self, week):
+        return reverse('core:report-pdf', args=[week_report_id(week)])
+
+    def setUp(self):
+        super().setUp()
+        self.entry(self.week, mood='good')
+        self.sign_in(self.patient.user)
+
+    def test_no_write_verb_reaches_the_file(self):
+        for verb in (self.client.post, self.client.put, self.client.delete):
+            self.assertEqual(verb(self.url_for(self.week)).status_code, 405)
+
+    def test_the_week_in_progress_has_no_file_either(self):
+        from core.reports import start_of_week
+
+        current = reverse('core:report-pdf', args=[week_report_id(start_of_week(self.today))])
+
+        self.assertEqual(self.client.get(current).status_code, 404)
+
+    def test_an_id_that_names_no_week_is_404(self):
+        self.assertEqual(
+            self.client.get(reverse('core:report-pdf', args=['nie-tydzien'])).status_code, 404,
+        )
+
+    def test_the_file_name_carries_the_week_it_covers(self):
+        response = self.client.get(self.url_for(self.week))
+
+        self.assertIn(f'raport-tygodniowy-{self.week.isoformat()}.pdf',
+                      response['Content-Disposition'])
+
+    def test_two_patients_get_different_documents_for_the_same_week(self):
+        """The address is in the file, so the same week for two accounts must
+        not produce the same bytes."""
+        other = self.create_patient('ktos.inny@example.com')
+        self.entry(self.week, mood='good', patient=other)
+
+        mine = self.client.get(self.url_for(self.week)).content
+        self.sign_in(other.user)
+        theirs = self.client.get(self.url_for(self.week)).content
+
+        self.assertNotEqual(mine, theirs)
+
+    def test_rendering_is_throttled_because_it_costs_real_cpu(self):
+        """Not a security cap but a capacity one: an unthrottled URL is a way
+        for one signed-in account to occupy a synchronous worker."""
+        from unittest.mock import patch
+
+        from core.throttling import ReportPdfThrottle
+
+        with patch.object(ReportPdfThrottle, 'rate', '3/hour', create=True):
+            statuses = [
+                self.client.get(self.url_for(self.week)).status_code for _ in range(5)
+            ]
+
+        self.assertEqual(statuses.count(429), 2)
+
+    def test_the_throttle_counts_per_account_not_per_week(self):
+        from unittest.mock import patch
+
+        from core.throttling import ReportPdfThrottle
+
+        self.entry(self.previous_week, mood='good')
+
+        with patch.object(ReportPdfThrottle, 'rate', '1/hour', create=True):
+            self.client.get(self.url_for(self.week))
+            second = self.client.get(self.url_for(self.previous_week))
+
+        self.assertEqual(second.status_code, 429)
+
+    def test_a_throttled_answer_is_json_rather_than_a_broken_file(self):
+        from unittest.mock import patch
+
+        from core.throttling import ReportPdfThrottle
+
+        with patch.object(ReportPdfThrottle, 'rate', '1/hour', create=True):
+            self.client.get(self.url_for(self.week), HTTP_ACCEPT='application/pdf')
+            refused = self.client.get(self.url_for(self.week), HTTP_ACCEPT='application/pdf')
+
+        self.assertEqual(refused.status_code, 429)
+        self.assertIn('application/json', refused['Content-Type'])
+
+    def test_an_accept_header_naming_both_types_is_served(self):
+        response = self.client.get(
+            self.url_for(self.week), HTTP_ACCEPT='application/pdf, application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+
+    def test_a_caller_that_will_only_take_json_still_gets_the_file(self):
+        """Impolite of us, but the alternative is refusing a browser that sends
+        a broad Accept — and the endpoint has one thing to say."""
+        response = self.client.get(self.url_for(self.week), HTTP_ACCEPT='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+
+    def test_the_bytes_are_a_complete_document(self):
+        content = self.client.get(self.url_for(self.week)).content
+
+        self.assertTrue(content.startswith(b'%PDF-'))
+        self.assertIn(b'%%EOF', content[-1024:])
+        self.assertEqual(int(self.client.get(self.url_for(self.week))['Content-Length']),
+                         len(content))
+
+
+class PrintedIntensityTests(SimpleTestCase):
+    """The second number on an emotion row, on the printed page."""
+
+    def story_of(self, entries, previous=None):
+        return texts(build_story(build_report(WEEK, entries, previous or []), EMAIL))
+
+    def test_the_average_is_printed_next_to_the_day_count(self):
+        lines = self.story_of([
+            entry('2026-08-03', emotions=[{'emotion': 'Smutek', 'intensity': 2}]),
+            entry('2026-08-06', emotions=[{'emotion': 'Smutek', 'intensity': 4}]),
+        ])
+
+        self.assertIn('2 dni', lines)
+        self.assertIn('śr. 3,0 / 10', lines)
+
+    def test_the_denominator_is_spelled_out(self):
+        """'śr. 3,0' next to '2 dni' on the same line would read as another
+        count rather than as a point on the chips' 0-10 scale."""
+        self.assertEqual(average_intensity(3.0), 'śr. 3,0 / 10')
+
+    def test_it_uses_a_comma_like_every_other_number_in_the_document(self):
+        rendered = average_intensity(6.5)
+
+        self.assertEqual(rendered, 'śr. 6,5 / 10')
+        # The only period is the one abbreviating 'średnio'.
+        self.assertEqual(rendered.count('.'), 1)
+        self.assertNotIn('6.5', rendered)
+
+    def test_an_average_of_zero_is_printed_rather_than_left_blank(self):
+        lines = self.story_of([
+            entry('2026-08-03', emotions=[{'emotion': 'Smutek', 'intensity': 0}]),
+        ])
+
+        self.assertIn('śr. 0,0 / 10', lines)
+
+    def test_a_trigger_row_carries_no_intensity(self):
+        """A place has no intensity; the column stays so the two rankings line
+        up down the page, but it is empty."""
+        lines = self.story_of([entry('2026-08-03', situation_place='Dom')])
+
+        self.assertIn('Dom', lines)
+        self.assertEqual([line for line in lines if line.startswith('śr.')], [])
+
+    def test_every_ranked_emotion_gets_its_own_average(self):
+        lines = self.story_of([
+            entry('2026-08-03', emotions=[
+                {'emotion': 'Smutek', 'intensity': 2},
+                {'emotion': 'Lęk', 'intensity': 8},
+            ]),
+        ])
+
+        self.assertIn('śr. 2,0 / 10', lines)
+        self.assertIn('śr. 8,0 / 10', lines)
+
+    def test_a_week_with_no_emotion_rated_prints_no_averages(self):
+        lines = self.story_of([entry('2026-08-03')])
+
+        self.assertIn('W tym tygodniu nie oceniono żadnej emocji.', lines)
+        self.assertEqual([line for line in lines if line.startswith('śr.')], [])
+
+    def test_all_ten_emotions_fit_on_the_page(self):
+        """The ranking is uncapped, so a week in which the patient rated every
+        chip prints ten rows — each with its own average."""
+        from core.emotions import EMOTIONS
+
+        report = build_report(WEEK, [
+            entry('2026-08-03', emotions=[
+                {'emotion': name, 'intensity': index} for index, name in enumerate(EMOTIONS)
+            ]),
+        ], [])
+
+        lines = texts(build_story(report, EMAIL))
+
+        self.assertTrue(render_report_pdf(report, EMAIL).startswith(b'%PDF-'))
+        for name in EMOTIONS:
+            self.assertIn(name, lines)
+        self.assertEqual(len([line for line in lines if line.startswith('śr.')]), 10)

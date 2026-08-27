@@ -1,4 +1,4 @@
-import { pluralDays } from '../utils/reports'
+import { LEVEL_SCALE_MAX, formatNumber, pluralDays } from '../utils/reports'
 
 export interface RankingRow {
   /** React key and label in one — the emotion or trigger name. */
@@ -6,6 +6,13 @@ export interface RankingRow {
   count: number
   /** Bar colour. Emotions bring theirs from utils/emotions.ts; triggers share one sage tone. */
   color: string
+  /**
+   * Mean intensity on the 0-10 scale, for rankings that have one.
+   *
+   * null for triggers: a place has no intensity. Undefined and null are the same
+   * answer here, so the row simply does not render the second number.
+   */
+  average?: number | null
 }
 
 /**
@@ -16,6 +23,11 @@ export interface RankingRow {
  * week, because the ranking is about order and relative weight; the exact day
  * count is spelled out next to every label anyway. The track itself is
  * aria-hidden for that reason: it repeats a number the row already states.
+ *
+ * The bar length stays the day count even where an average is shown. Both order
+ * and length answer "how often", which is what the section heading asks; how
+ * strongly is the second number, and mixing the two into one bar would make
+ * neither readable.
  */
 function ReportRankingBars({ rows, emptyText }: { rows: RankingRow[]; emptyText: string }) {
   if (rows.length === 0) {
@@ -32,6 +44,11 @@ function ReportRankingBars({ rows, emptyText }: { rows: RankingRow[]; emptyText:
             <span className="report-ranking-label">{row.label}</span>
             <span className="report-ranking-count">
               {row.count} {pluralDays(row.count)}
+              {row.average != null && (
+                <span className="report-ranking-average">
+                  {' · '}śr. {formatNumber(row.average, 1)} / {LEVEL_SCALE_MAX}
+                </span>
+              )}
             </span>
           </div>
           <div className="report-ranking-track" aria-hidden="true">

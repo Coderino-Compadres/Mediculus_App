@@ -17,6 +17,9 @@ import type { Delta } from '../types/report'
 
 export const DAYS_IN_WEEK = 7
 
+/** The entry form's chips and sliders run 0-10; `core/reports.py` agrees. */
+export const LEVEL_SCALE_MAX = 10
+
 /** Polish decimal comma, so '3.1' never reaches the screen. */
 export function formatNumber(value: number, decimals: 0 | 1): string {
   return value.toFixed(decimals).replace('.', ',')

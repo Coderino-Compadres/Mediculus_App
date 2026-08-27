@@ -39,7 +39,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (KeepTogether, Paragraph, SimpleDocTemplate,
                                 Spacer, Table, TableStyle)
 
-from .reports import DAYS_IN_WEEK, format_number, plural_days
+from .reports import (DAYS_IN_WEEK, LEVEL_SCALE_MAX, format_number,
+                      plural_days)
 
 #: Committed to the repository — see core/fonts/README.md. ReportLab's bundled
 #: Vera has no 'ą ę ń ś ź ż', which is most of a Polish report.
@@ -156,20 +157,36 @@ def _metric_cards(report, styles):
     return table
 
 
+def average_intensity(value):
+    """'śr. 3,0 / 10' — the second number on an emotion row.
+
+    Spelled with its denominator: 'śr. 3,0' next to '3 dni' on the same line
+    would read as another count rather than as a point on the 0-10 scale the
+    entry form's chips use.
+    """
+    return f'śr. {format_number(value, 1)} / {LEVEL_SCALE_MAX}'
+
+
 def _ranking(rows, styles, empty_message):
-    """A ranking as 'name … N dni' lines. Bars would need a colour per emotion,
-    and colour here is what the module docstring says it will not do."""
+    """A ranking as 'name … N dni … śr. X / 10' lines.
+
+    Bars would need a colour per emotion, and colour here is what the module
+    docstring says it will not do. The third column is empty for triggers: a
+    place has no intensity, and leaving the column in place keeps the two
+    rankings aligned down the page.
+    """
     if not rows:
         return Paragraph(empty_message, styles['muted'])
     table = Table(
         [[Paragraph(text(label), styles['body']),
-          Paragraph(f'{days} {plural_days(days)}', styles['body'])]
-         for label, days in rows],
-        colWidths=[130 * mm, 40 * mm],
+          Paragraph(f'{days} {plural_days(days)}', styles['body']),
+          Paragraph('' if average is None else average_intensity(average), styles['muted'])]
+         for label, days, average in rows],
+        colWidths=[100 * mm, 30 * mm, 40 * mm],
     )
     table.setStyle(TableStyle([
         ('LINEBELOW', (0, 0), (-1, -2), 0.5, RULE),
-        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
@@ -270,7 +287,8 @@ def build_story(report, patient_email, styles=None):
         _section(
             'Najczęściej odczuwane emocje',
             _ranking(
-                [(row['emotion'], row['days']) for row in report['emotions']],
+                [(row['emotion'], row['days'], row['avg_intensity'])
+                 for row in report['emotions']],
                 styles, 'W tym tygodniu nie oceniono żadnej emocji.',
             ),
             styles,
@@ -278,7 +296,8 @@ def build_story(report, patient_email, styles=None):
         _section(
             'Najczęstsze wyzwalacze',
             _ranking(
-                [(row['trigger'], row['days']) for row in report['triggers']],
+                # No intensity for a place — see _ranking.
+                [(row['trigger'], row['days'], None) for row in report['triggers']],
                 styles, 'W tym tygodniu nie zapisano żadnego miejsca ani wyzwalacza.',
             ),
             styles,
