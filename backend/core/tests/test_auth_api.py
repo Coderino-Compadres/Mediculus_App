@@ -810,19 +810,18 @@ class ThrottleTests(AuthTestCase):
 
         self.assertIn(429, statuses)
 
-    @unittest.expectedFailure
     def test_a_forwarded_for_header_does_not_buy_a_fresh_budget(self):
-        """DOCUMENTS A KNOWN HOLE — remove the decorator once it is fixed.
+        """The cap is only a cap if the caller cannot pick their own key.
 
-        DRF's `BaseThrottle.get_ident` uses the *whole* X-Forwarded-For header
-        when `NUM_PROXIES` is unset, and that header comes from the client. A
-        different value per request is a different cache key per request, so the
-        10/min cap counts nothing at all and password guessing is unbounded.
+        `BaseThrottle.get_ident` uses the *whole* X-Forwarded-For header when
+        `NUM_PROXIES` is unset, and that header comes from the client — so a
+        different value per request would be a different cache key per request,
+        and password guessing would be unbounded.
 
         The requests below model App Service: the client sends whatever it likes
         and the proxy appends the address it actually saw, so the *last* entry
-        is the only trustworthy one. Setting `'NUM_PROXIES': 1` in
-        REST_FRAMEWORK makes DRF read that entry and turns this green.
+        is the only trustworthy one. `'NUM_PROXIES': 1` is what makes DRF read
+        that entry and ignore the rest.
         """
         create_user()
         payload = {'email': 'anna@example.com', 'password': 'ZleHaslo123'}
@@ -837,6 +836,21 @@ class ThrottleTests(AuthTestCase):
         ]
 
         self.assertIn(429, statuses)
+
+    def test_two_different_clients_still_get_their_own_budget(self):
+        """The other half of NUM_PROXIES: reading only the last entry must not
+        collapse every caller onto one counter, or one attacker would lock the
+        whole internet out of logging in."""
+        create_user()
+        payload = {'email': 'anna@example.com', 'password': 'ZleHaslo123'}
+        url = reverse('core:login')
+
+        self._spam(url, payload, HTTP_X_FORWARDED_FOR='203.0.113.7')
+        other = self.client.post(
+            url, payload, format='json', HTTP_X_FORWARDED_FOR='198.51.100.4',
+        )
+
+        self.assertNotEqual(other.status_code, 429)
 
 
 class PasswordPolicyTests(AuthTestCase):
