@@ -1,0 +1,55 @@
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+  margin: 20px auto 0;
+  box-sizing: border-box;
+  padding: 0 4px;
+}
+
+.pagination-step {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+  background: #fff;
+  border: 1px solid rgba(var(--shadow-tint), 0.2);
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pagination-step:hover:not(:disabled) {
+  background: rgba(var(--shadow-tint), 0.06);
+}
+
+/* Kept in the layout rather than hidden at the ends: the two buttons must not
+   swap places as you move through the pages. */
+.pagination-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pagination-status {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  text-align: center;
+}
+
+/* The exact range is useful and secondary; it goes first on a narrow screen,
+   where the two buttons need the width more. */
+.pagination-range {
+  display: block;
+  font-size: 12px;
+}
+
+@media (max-width: 420px) {
+  .pagination-range {
+    display: none;
+  }
+}

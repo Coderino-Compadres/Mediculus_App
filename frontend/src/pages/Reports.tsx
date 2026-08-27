@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import Pagination from '../components/Pagination'
 import { ApiError } from '../api/client'
 import { fetchWeeklyReports } from '../api/reports'
 import { DAYS_IN_WEEK, formatDelta, pluralDays } from '../utils/reports'
 import type { ReportMetric, WeeklyReport } from '../types/report'
+import { usePagination } from '../hooks/usePagination'
 import { reportDetailPath } from '../routes'
 import './journals.css'
 import './reports.css'
@@ -85,6 +87,7 @@ function Reports() {
   // trying again re-runs the one load rather than a second copy of it.
   const [attempt, setAttempt] = useState(0)
   const retry = () => setAttempt((value) => value + 1)
+  const pages = usePagination(reports)
 
   useEffect(() => {
     let cancelled = false
@@ -160,7 +163,7 @@ function Reports() {
               zapiszesz swój dzienniczek.
             </p>
           )}
-          {reports.map((report) => (
+          {pages.items.map((report) => (
             <ReportRow
               key={report.id}
               report={report}
@@ -168,6 +171,18 @@ function Reports() {
             />
           ))}
         </div>
+      )}
+
+      {!loading && !loadError && (
+        <Pagination
+          page={pages.page}
+          pageCount={pages.pageCount}
+          from={pages.from}
+          to={pages.to}
+          total={pages.total}
+          onChange={pages.goTo}
+          unit="raportów"
+        />
       )}
     </div>
   )

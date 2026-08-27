@@ -111,6 +111,13 @@ The rules that shape those screens came from the client and are not free choices
   6. **The guardian gate does not cover the API.** A minor whose guardian has not accepted still gets `/api/reports/` if they ask directly; the check lives only in the frontend route guard. Same for `/api/diary/`, and it would have to be fixed in both at once — `test_reports_api.SessionEdgeTests` documents it.
   7. **"Pełna analiza"** on the detail screen links to `ROUTES.analysis`, which is a `PlaceholderPage`.
 
+**Both list screens are paginated at 7 rows** (`hooks/usePagination.ts`, `components/Pagination.tsx`). Client-side, and that is a constraint rather than a shortcut: `/api/diary/` and `/api/reports/` answer with everything, and "Dzienniczki" filters what it already holds — paginating on the server while filtering in the browser would hand out pages of the wrong list. So this is a readability feature, not a payload one; the day `MAX_HISTORY_ENTRIES` becomes a real ceiling instead of a backstop, filtering and paging have to move to the backend together.
+
+- The page lives in `?page=`, not in component state, so opening a row from page three and pressing back returns to page three. It is clamped rather than trusted (`?page=99` shows the last page, `?page=abc` the first), and page one is left out of the URL so `?page=1` and the bare address are not two addresses for one screen.
+- **Journals paginates the filtered list and resets to page one when the filter changes** — page four of "Wszystkie" is rarely page four of "Dobre dni", and landing on an empty page reads as "no such days" rather than "wrong page".
+- `goTo` scrolls to the top (`RouteChange` only watches the pathname, and this is a query change); `reset` deliberately does not, because a filter chip is pressed from the top already.
+- The control renders nothing at one page, and shows prev / "Strona X z Y (a–b z N …)" / next rather than numbered buttons: a year of reports is fifty-odd pages, which is a row of buttons nobody can use on a phone.
+
 **The app shell.** `App.tsx` wraps every route in four things a single-page app has to do by hand, because a real page load does them for free:
 
 - `components/RouteChange.tsx` sets `document.title` from `ROUTE_TITLES` (keyed by route pattern, matched with `matchPath` so `/reports/:id` resolves), scrolls back to the top, and announces the new screen through an `aria-live` region. Titles live in `routes.ts` rather than in each page because the announcement has to happen when the URL changes and a page's own effect runs after that — it would name the screen the user just left. The first render is skipped: the browser has already scrolled and read the document.

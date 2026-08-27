@@ -6,6 +6,7 @@ import { WEEK_A, WEEK_B, reportFixture } from '../test/reportFixture'
 import Reports from './Reports'
 import { reportDetailPath } from '../routes'
 import { ApiError } from '../api/client'
+import { PAGE_SIZE } from '../hooks/usePagination'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -22,6 +23,17 @@ const NEWEST = reportFixture({ weekStart: WEEK_B })
 const OLDER = reportFixture({
   weekStart: WEEK_A, weekEnd: '2026-08-09', rangeLabel: '3 – 9 sierpnia 2026',
 })
+
+/** `count` reports, newest first, each on its own week. */
+function manyReports(count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const day = String(28 - (index % 28)).padStart(2, '0')
+    return reportFixture({
+      weekStart: `2026-0${1 + Math.floor(index / 28)}-${day}`,
+      rangeLabel: `tydzień ${index + 1}`,
+    })
+  })
+}
 
 beforeEach(() => {
   navigate.mockReset()
@@ -141,14 +153,12 @@ describe('Reports — while and after loading', () => {
     expect(await screen.findByRole('button', { name: /Średni nastrój/i })).toBeInTheDocument()
   })
 
-  it('draws a long history without dropping rows', async () => {
-    const many = Array.from({ length: 30 }, (_, index) => reportFixture({
-      weekStart: `2026-0${1 + Math.floor(index / 28)}-${String((index % 28) + 1).padStart(2, '0')}`,
-    }))
-    mockedFetch.mockResolvedValue(many)
+  it('a long history is paginated rather than truncated', async () => {
+    mockedFetch.mockResolvedValue(manyReports(30))
     renderWithProviders(<Reports />)
 
-    expect(await screen.findAllByRole('button', { name: /Średni nastrój/i })).toHaveLength(30)
+    expect(await screen.findAllByRole('button', { name: /Średni nastrój/i })).toHaveLength(PAGE_SIZE)
+    expect(screen.getByText(/z 30 raportów/)).toBeInTheDocument()
   })
 
   it('carries the server error message when there is one', async () => {
@@ -198,5 +208,101 @@ describe('Reports — trying again', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(mockedFetch).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('Reports — pagination', () => {
+  const nextPage = () => screen.getByRole('button', { name: /następna/i })
+  const prevPage = () => screen.getByRole('button', { name: /poprzednia/i })
+
+  it('shows seven reports on a page', async () => {
+    mockedFetch.mockResolvedValue(manyReports(20))
+    renderWithProviders(<Reports />)
+
+    expect(await screen.findAllByRole('button', { name: /Średni nastrój/i })).toHaveLength(7)
+  })
+
+  it('draws no control when everything fits on one page', async () => {
+    // A control that can only be pressed to no effect is worse than none.
+    mockedFetch.mockResolvedValue(manyReports(PAGE_SIZE))
+    renderWithProviders(<Reports />)
+
+    await screen.findAllByRole('button', { name: /Średni nastrój/i })
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('says which page the reader is on and how many there are', async () => {
+    mockedFetch.mockResolvedValue(manyReports(20))
+    renderWithProviders(<Reports />)
+
+    expect(await screen.findByText(/Strona 1 z 3/)).toBeInTheDocument()
+  })
+
+  it('moves to the next page and shows the next seven', async () => {
+    mockedFetch.mockResolvedValue(manyReports(20))
+    renderWithProviders(<Reports />)
+    await screen.findAllByRole('button', { name: /Średni nastrój/i })
+
+    await userEvent.click(nextPage())
+
+    expect(screen.getByText('tydzień 8')).toBeInTheDocument()
+    expect(screen.queryByText('tydzień 1')).toBeNull()
+  })
+
+  it('the last page holds the remainder', async () => {
+    mockedFetch.mockResolvedValue(manyReports(16))
+    renderWithProviders(<Reports />)
+    await screen.findAllByRole('button', { name: /Średni nastrój/i })
+
+    await userEvent.click(nextPage())
+    await userEvent.click(nextPage())
+
+    expect(screen.getAllByRole('button', { name: /Średni nastrój/i })).toHaveLength(2)
+    expect(screen.getByText(/15–16 z 16/)).toBeInTheDocument()
+  })
+
+  it('cannot step past either end', async () => {
+    mockedFetch.mockResolvedValue(manyReports(10))
+    renderWithProviders(<Reports />)
+    await screen.findAllByRole('button', { name: /Średni nastrój/i })
+
+    expect(prevPage()).toBeDisabled()
+
+    await userEvent.click(nextPage())
+
+    expect(nextPage()).toBeDisabled()
+    expect(prevPage()).toBeEnabled()
+  })
+
+  it('starts on the page the URL names', async () => {
+    // What makes coming back from a report land where the reader left.
+    mockedFetch.mockResolvedValue(manyReports(20))
+    renderWithProviders(<Reports />, { route: '/reports?page=3' })
+
+    expect(await screen.findByText(/Strona 3 z 3/)).toBeInTheDocument()
+  })
+
+  it('clamps a page number past the end rather than showing nothing', async () => {
+    mockedFetch.mockResolvedValue(manyReports(10))
+    renderWithProviders(<Reports />, { route: '/reports?page=99' })
+
+    expect(await screen.findByText(/Strona 2 z 2/)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Średni nastrój/i })).toHaveLength(3)
+  })
+
+  it('falls back to the first page when the parameter is not a number', async () => {
+    mockedFetch.mockResolvedValue(manyReports(20))
+    renderWithProviders(<Reports />, { route: '/reports?page=abc' })
+
+    expect(await screen.findByText(/Strona 1 z 3/)).toBeInTheDocument()
+  })
+
+  it('an empty list draws no pagination and keeps its own wording', async () => {
+    mockedFetch.mockResolvedValue([])
+    renderWithProviders(<Reports />)
+
+    expect(await screen.findByText(/Nie ma jeszcze żadnego raportu/i)).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
   })
 })
