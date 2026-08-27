@@ -10,10 +10,10 @@ from django.utils.decorators import method_decorator
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from rest_framework import status
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import (NotFound, PermissionDenied,
+                                       ValidationError)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from django.utils import timezone
@@ -27,24 +27,8 @@ from .guardian import (accept_invitation, cancel_invitation, pending_invitations
 from .models import Patient
 from .serializers import (GuardianLinkSerializer, LoginSerializer,
                           RegisterSerializer, UserSerializer)
-
-
-class AuthThrottle(AnonRateThrottle):
-    """Per-IP cap on the credential-accepting endpoints (rate in settings.py)."""
-
-    scope = 'auth'
-
-
-class GuardianLinkThrottle(UserRateThrottle):
-    """Per-account cap on the guardian-linking endpoint.
-
-    Not AuthThrottle: AnonRateThrottle deliberately exempts requests that carry
-    a session, so it would count nothing here. The cap matters because a request
-    reveals whether an address belongs to a guardian account — one answer at a
-    time is a question about a person you know, a thousand is an address list.
-    """
-
-    scope = 'auth'
+from .throttling import (AuthThrottle, GuardianLinkThrottle,
+                         LoginAccountThrottle, attempts_warning)
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
@@ -89,18 +73,51 @@ class RegisterView(APIView):
 
 @method_decorator(csrf_protect, name='dispatch')
 class LoginView(APIView):
-    """POST /api/auth/login/ — exchange credentials for a session cookie."""
+    """POST /api/auth/login/ — exchange credentials for a session cookie.
+
+    Two caps, and they answer different attacks: `AuthThrottle` bounds one
+    caller, `LoginAccountThrottle` bounds attempts against one account no matter
+    how many callers they come from. DRF runs both, so both counters move.
+
+    The account cap is silent until `WARN_AT_ATTEMPTS_LEFT` remain — announcing
+    it earlier would only tell an attacker how much room they have, while the
+    person it is meant for is someone who has forgotten which password they
+    used and is about to lock themselves out of a deployment with no password
+    reset in it.
+    """
 
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [AuthThrottle]
+    throttle_classes = [AuthThrottle, LoginAccountThrottle]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            raise ValidationError(self._with_warning(serializer.errors, request))
+
         user = serializer.validated_data['user']
+        # The counter bounds guessing, and this was not a guess.
+        LoginAccountThrottle().reset(request)
         start_session(request, user)
         return Response(UserSerializer(user).data)
+
+    @staticmethod
+    def _with_warning(errors, request):
+        """Adds the remaining-attempts sentence to whatever refused the login.
+
+        Folded into `detail` rather than sent as its own key: the frontend reads
+        `detail` as the message above the form and treats every other key as a
+        field error, so a new key would be attributed to an input that does not
+        exist and shown nowhere. Joined into one string rather than appended as
+        a second list entry for the same reason — `firstMessage` in
+        src/api/client.ts renders the first entry of a list and drops the rest.
+        """
+        warning = attempts_warning(request)
+        if warning is None:
+            return errors
+        detail = errors.get('detail') or []
+        message = f'{detail[0]} {warning}' if detail else warning
+        return {**errors, 'detail': [message]}
 
 
 class LogoutView(APIView):

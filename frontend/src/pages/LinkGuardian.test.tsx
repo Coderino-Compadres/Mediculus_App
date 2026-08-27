@@ -190,7 +190,57 @@ describe('waiting for the answer', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /sprawdź/i }))
 
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/sprawdzić stanu zaproszenia/i)
+  })
+
+  it('says the withdrawal failed, not the check the child never asked for', async () => {
+    mockedCancel.mockRejectedValueOnce(new Error('network down'))
+    renderScreen(WAITING)
+
+    await userEvent.click(screen.getByRole('button', { name: /anuluj/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/anulować prośby/i)
+  })
+
+  /**
+   * DELETE answers 404 once the invitation is no longer pending, and the usual
+   * reason is that the guardian accepted it a moment earlier. Reporting a
+   * failure would leave the child on the waiting screen, waiting for an answer
+   * that has already arrived — so the session is re-read and the route guard
+   * moves them on.
+   */
+  it('re-reads the session when there is nothing left to withdraw', async () => {
+    const accepted: AuthUser = { ...MINOR, guardianStatus: 'accepted' }
+    mockedCancel.mockRejectedValueOnce(new ApiError(404, 'Nie masz zaproszenia.'))
+    mockedFetchUser.mockResolvedValueOnce(accepted)
+    const { setUser } = renderScreen(WAITING)
+
+    await userEvent.click(screen.getByRole('button', { name: /anuluj/i }))
+
+    await waitFor(() => expect(setUser).toHaveBeenCalledWith(accepted))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('falls back to a message about the request when even that re-read fails', async () => {
+    mockedCancel.mockRejectedValueOnce(new ApiError(404, 'Nie masz zaproszenia.'))
+    mockedFetchUser.mockRejectedValueOnce(new Error('network down'))
+    renderScreen(WAITING)
+
+    await userEvent.click(screen.getByRole('button', { name: /anuluj/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/nie czeka już na odpowiedź/i)
+  })
+
+  it('sends the child to login when the session turned out to be gone', async () => {
+    mockedCancel.mockRejectedValueOnce(new ApiError(404, 'Nie masz zaproszenia.'))
+    mockedFetchUser.mockResolvedValueOnce(null)
+    renderScreen(WAITING)
+
+    await userEvent.click(screen.getByRole('button', { name: /anuluj/i }))
+
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith(ROUTES.login, { replace: true }),
+    )
   })
 })
 

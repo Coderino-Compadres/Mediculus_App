@@ -377,22 +377,32 @@ class GuardianLinkSerializer(serializers.Serializer):
         if guardian is not None and guardian.pk == child.pk:
             raise serializers.ValidationError({'guardian_email': self.OWN_ADDRESS})
 
-        role = guardian.user_role.name if guardian and guardian.user_role_id else None
-        if role != GUARDIAN_ROLE:
-            raise serializers.ValidationError({'guardian_email': self.NOT_A_GUARDIAN})
-
+        # Both of these describe the *child's own* account, so they are checked
+        # before anything is said about the address — and that ordering is the
+        # point, not a detail. The other way round, a child who already had a
+        # link got ALREADY_INVITED for a `rodzic` address and NOT_A_GUARDIAN for
+        # anything else, which is exactly the "does this person have an account
+        # here, and what kind" oracle the shared message exists to prevent. Now
+        # every address answers the same once there is a link, whatever it is.
+        existing = ParentChild.objects.filter(child=child)
         # An accepted link is final as far as this form goes: a child who has a
         # guardian does not get to swap them, and families with two guardians
         # need the parent panel to add the second one deliberately.
-        existing = ParentChild.objects.filter(child=child)
         if existing.filter(accepted_at__isnull=False).exists():
             raise serializers.ValidationError({'guardian_email': self.ALREADY_LINKED})
         # One pending invitation at a time, so a child cannot fish for whichever
         # adult answers first. Re-sending it to the *same* guardian is the same
         # answer arriving twice (a double-clicked button, a retried request) and
-        # goes through — `create` is idempotent.
+        # goes through — `create` is idempotent. `guardian` is None for an
+        # address nobody registered, and `exclude(parent=None)` then keeps every
+        # pending row, which is what makes an unknown address answer like any
+        # other while one is outstanding.
         if existing.exclude(parent=guardian).exists():
             raise serializers.ValidationError({'guardian_email': self.ALREADY_INVITED})
+
+        role = guardian.user_role.name if guardian and guardian.user_role_id else None
+        if role != GUARDIAN_ROLE:
+            raise serializers.ValidationError({'guardian_email': self.NOT_A_GUARDIAN})
 
         attrs['guardian'] = guardian
         return attrs

@@ -10,7 +10,9 @@ import {
   fetchCurrentUser,
   isGuardianInvitationPending,
   linkGuardian,
+  type AuthUser,
 } from '../api/auth'
+import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
 import { validateEmail } from '../utils/validation'
 
@@ -112,14 +114,43 @@ function AwaitingAnswer() {
     try {
       const updated =
         action === 'checking' ? await fetchCurrentUser() : await cancelGuardianInvitation()
-      // A cancelled invitation puts this screen back to the form; an accepted
-      // one lets the route guard send the child into the app.
-      setUser(updated)
-      if (action === 'checking' && updated === null) navigate(ROUTES.login, { replace: true })
-    } catch {
-      setError('Nie udało się sprawdzić stanu zaproszenia. Spróbuj ponownie.')
+      applySession(updated)
+    } catch (error) {
+      if (action === 'cancelling' && error instanceof ApiError && error.status === 404) {
+        await recoverFromVanishedInvitation()
+      } else {
+        // Two buttons, two failures: telling a child whose withdrawal was
+        // refused that the *check* failed describes something they did not do.
+        setError(
+          action === 'checking'
+            ? 'Nie udało się sprawdzić stanu zaproszenia. Spróbuj ponownie.'
+            : 'Nie udało się anulować prośby. Spróbuj ponownie.',
+        )
+      }
     } finally {
       setBusy(null)
+    }
+  }
+
+  /** A cancelled invitation puts this screen back to the form; an accepted one
+   *  lets the route guard send the child into the app. */
+  function applySession(updated: AuthUser | null) {
+    setUser(updated)
+    if (updated === null) navigate(ROUTES.login, { replace: true })
+  }
+
+  /**
+   * DELETE answered 404: there is no pending invitation left to withdraw, and
+   * the usual reason is that the guardian accepted it a moment earlier. The
+   * child is then not stuck at all, so re-read the session and let it decide
+   * which screen this is — reporting a failure would leave them waiting for an
+   * answer that has already arrived.
+   */
+  async function recoverFromVanishedInvitation() {
+    try {
+      applySession(await fetchCurrentUser())
+    } catch {
+      setError('Prośba nie czeka już na odpowiedź. Odśwież stronę, aby zobaczyć stan konta.')
     }
   }
 

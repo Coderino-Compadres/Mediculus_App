@@ -81,7 +81,7 @@ describe('Login — the info button', () => {
 
     await userEvent.click(infoButton())
 
-    expect(await screen.findByRole('note')).toHaveTextContent('koczkodan')
+    expect(await screen.findByRole('note')).toHaveTextContent(/numer konta dla darowizn/i)
     expect(infoButton()).toHaveAttribute('aria-expanded', 'true')
   })
 

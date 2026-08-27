@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ApiError } from '../api/client'
 import {
   acceptGuardianInvitation,
   fetchGuardianInvitations,
@@ -25,6 +26,10 @@ function GuardianInvitations() {
   const [failed, setFailed] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [answered, setAnswered] = useState<string | null>(null)
+  // Separate from `failed`: a decision that did not go through is not a list
+  // that did not load, and saying the latter sends the guardian to refresh a
+  // page whose content is already correct.
+  const [answerError, setAnswerError] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -49,22 +54,36 @@ function GuardianInvitations() {
 
   async function answer(invitation: GuardianInvitation, decision: 'accept' | 'reject') {
     setBusyId(invitation.id)
-    setFailed(false)
+    setAnswerError(null)
     try {
       if (decision === 'accept') await acceptGuardianInvitation(invitation.id)
       else await rejectGuardianInvitation(invitation.id)
 
-      setInvitations((current) => current.filter((item) => item.id !== invitation.id))
+      drop(invitation)
       setAnswered(
         decision === 'accept'
           ? `Konto ${childLabel(invitation)} zostało powiązane z Twoim.`
           : `Prośba od ${childLabel(invitation)} została odrzucona.`,
       )
-    } catch {
-      setFailed(true)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        // Gone between the load and the click: the child withdrew it, or it was
+        // answered in another tab. There is no decision left to make, so the
+        // card goes away with the explanation rather than staying clickable.
+        drop(invitation)
+        setAnswerError(
+          `Prośba od ${childLabel(invitation)} nie czeka już na odpowiedź — mogła zostać wycofana.`,
+        )
+      } else {
+        setAnswerError('Nie udało się zapisać odpowiedzi. Spróbuj ponownie.')
+      }
     } finally {
       setBusyId(null)
     }
+  }
+
+  function drop(invitation: GuardianInvitation) {
+    setInvitations((current) => current.filter((item) => item.id !== invitation.id))
   }
 
   if (loading) return null
@@ -74,6 +93,12 @@ function GuardianInvitations() {
       {failed && (
         <p className="invitations-error" role="alert">
           Nie udało się wczytać prośb o powiązanie konta. Odśwież stronę.
+        </p>
+      )}
+
+      {answerError && (
+        <p className="invitations-error" role="alert">
+          {answerError}
         </p>
       )}
 

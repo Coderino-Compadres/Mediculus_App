@@ -9,6 +9,8 @@ import datetime
 import unittest
 from unittest.mock import patch
 
+from unittest.mock import patch
+
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import IntegrityError
@@ -20,6 +22,7 @@ from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
 from core.models import Patient, User, UserRole
+from core.throttling import AuthThrottle
 
 VALID_PASSWORD = 'TajneHaslo123'
 
@@ -810,19 +813,18 @@ class ThrottleTests(AuthTestCase):
 
         self.assertIn(429, statuses)
 
-    @unittest.expectedFailure
     def test_a_forwarded_for_header_does_not_buy_a_fresh_budget(self):
-        """DOCUMENTS A KNOWN HOLE — remove the decorator once it is fixed.
+        """The cap is only a cap if the caller cannot pick their own key.
 
-        DRF's `BaseThrottle.get_ident` uses the *whole* X-Forwarded-For header
-        when `NUM_PROXIES` is unset, and that header comes from the client. A
-        different value per request is a different cache key per request, so the
-        10/min cap counts nothing at all and password guessing is unbounded.
+        `BaseThrottle.get_ident` uses the *whole* X-Forwarded-For header when
+        `NUM_PROXIES` is unset, and that header comes from the client — so a
+        different value per request would be a different cache key per request,
+        and password guessing would be unbounded.
 
         The requests below model App Service: the client sends whatever it likes
         and the proxy appends the address it actually saw, so the *last* entry
-        is the only trustworthy one. Setting `'NUM_PROXIES': 1` in
-        REST_FRAMEWORK makes DRF read that entry and turns this green.
+        is the only trustworthy one. `'NUM_PROXIES': 1` is what makes DRF read
+        that entry and ignore the rest.
         """
         create_user()
         payload = {'email': 'anna@example.com', 'password': 'ZleHaslo123'}
@@ -837,6 +839,183 @@ class ThrottleTests(AuthTestCase):
         ]
 
         self.assertIn(429, statuses)
+
+    def test_two_different_clients_still_get_their_own_budget(self):
+        """The other half of NUM_PROXIES: reading only the last entry must not
+        collapse every caller onto one counter, or one attacker would lock the
+        whole internet out of logging in."""
+        create_user()
+        payload = {'email': 'anna@example.com', 'password': 'ZleHaslo123'}
+        url = reverse('core:login')
+
+        self._spam(url, payload, HTTP_X_FORWARDED_FOR='203.0.113.7')
+        other = self.client.post(
+            url, payload, format='json', HTTP_X_FORWARDED_FOR='198.51.100.4',
+        )
+
+        self.assertNotEqual(other.status_code, 429)
+
+
+class LoginAccountTestCase(AuthTestCase):
+    """Shared setup for the per-account cap. No tests of its own.
+
+    Two things are neutralized so what is left under test is the real deployed
+    rate rather than a rate invented here:
+
+    - the per-IP cap, which fires at 11 and would stop anything from ever
+      reaching the account cap. Patched on the class rather than through
+      `override_settings(REST_FRAMEWORK=...)`, which silently does nothing:
+      `SimpleRateThrottle.THROTTLE_RATES` is bound to the settings dict at
+      import time and never re-reads it.
+    - the password hasher, because every attempt here costs a real PBKDF2
+      verification and these tests make a few hundred of them.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # create=True: SimpleRateThrottle has no `rate` class attribute, it is
+        # set per instance in __init__ from THROTTLE_RATES — and __init__ skips
+        # that lookup entirely when one is already there.
+        lifted = patch.object(AuthThrottle, 'rate', '1000/min', create=True)
+        lifted.start()
+        self.addCleanup(lifted.stop)
+
+        cheap_hashing = override_settings(
+            PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher'],
+        )
+        cheap_hashing.enable()
+        self.addCleanup(cheap_hashing.disable)
+
+        create_user()
+
+    def attempt(self, email='anna@example.com', password='ZleHaslo123'):
+        return self.client.post(
+            reverse('core:login'), {'email': email, 'password': password}, format='json',
+        )
+
+    def attempts(self, count, **kwargs):
+        return [self.attempt(**kwargs).status_code for _ in range(count)]
+
+    def detail_of(self, response):
+        """DRF sends `detail` as a list from a serializer and as a bare string
+        from an exception (the 429), so both shapes turn up here."""
+        detail = response.data.get('detail', '')
+        return detail[0] if isinstance(detail, list) else str(detail)
+
+
+class LoginAccountThrottleTests(LoginAccountTestCase):
+    """The cap that actually bounds password guessing.
+
+    Per-IP throttling does not: a botnet hands every attempt its own address and
+    its own budget. This counter keys on the address being attacked, which no
+    amount of client diversity can spread out.
+    """
+
+    def test_the_sixteenth_attempt_in_an_hour_is_refused(self):
+        self.assertNotIn(429, self.attempts(15))
+
+        self.assertEqual(self.attempt().status_code, 429)
+
+    def test_the_counter_follows_the_account_not_the_caller(self):
+        """The whole point: a fresh address per request must not buy a fresh
+        budget, or a botnet walks straight through the cap."""
+        for index in range(15):
+            self.client.post(
+                reverse('core:login'),
+                {'email': 'anna@example.com', 'password': 'ZleHaslo123'},
+                format='json', HTTP_X_FORWARDED_FOR=f'203.0.113.{index}',
+            )
+
+        refused = self.client.post(
+            reverse('core:login'),
+            {'email': 'anna@example.com', 'password': 'ZleHaslo123'},
+            format='json', HTTP_X_FORWARDED_FOR='198.51.100.99',
+        )
+
+        self.assertEqual(refused.status_code, 429)
+
+    def test_attacking_one_account_does_not_lock_out_another(self):
+        create_user(email='bogdan@example.com')
+        self.attempts(15)
+
+        self.assertNotEqual(self.attempt(email='bogdan@example.com').status_code, 429)
+
+    def test_case_and_padding_do_not_buy_a_second_budget(self):
+        """LoginSerializer lowercases the address and DRF trims it, so these all
+        reach the same account — the counter has to normalize the same way."""
+        self.attempts(8)
+        self.attempts(7, email='ANNA@Example.com')
+
+        self.assertEqual(self.attempt(email='  anna@example.com  ').status_code, 429)
+
+    def test_a_password_that_matches_clears_the_counter(self):
+        """Somebody who knows the password was never guessing; without this, a
+        person logging in from a few devices in one hour locks themselves out."""
+        self.attempts(14)
+
+        self.assertEqual(self.attempt(password=VALID_PASSWORD).status_code, 200)
+        self.assertNotIn(429, self.attempts(15))
+
+    def test_a_request_with_no_address_at_all_is_survivable(self):
+        response = self.client.post(reverse('core:login'), {'password': 'x'}, format='json')
+
+        self.assertEqual(response.status_code, 400)
+
+
+class LoginAttemptsWarningTests(LoginAccountTestCase):
+    """When the cap starts saying so, and what it must not say while doing it."""
+
+    # 15/hour, so the 10th failure is the one after which five are left.
+    UNTIL_WARNING = 9
+
+    def test_nothing_is_said_while_there_is_room(self):
+        """Announcing the budget early only tells an attacker how much of it is
+        left; the person it is for has not run into anything yet."""
+        for _ in range(self.UNTIL_WARNING):
+            self.assertNotIn('rób', self.detail_of(self.attempt()))
+
+    def test_the_warning_starts_when_five_are_left(self):
+        self.attempts(self.UNTIL_WARNING)
+
+        self.assertIn('Pozostało 5 prób', self.detail_of(self.attempt()))
+
+    def test_it_counts_down_with_the_right_polish_forms(self):
+        self.attempts(self.UNTIL_WARNING)
+
+        self.assertIn('Pozostało 5 prób', self.detail_of(self.attempt()))
+        self.assertIn('Pozostały 4 próby', self.detail_of(self.attempt()))
+        self.assertIn('Pozostały 3 próby', self.detail_of(self.attempt()))
+        self.assertIn('Pozostały 2 próby', self.detail_of(self.attempt()))
+        self.assertIn('Pozostała 1 próba', self.detail_of(self.attempt()))
+
+    def test_the_last_attempt_says_it_was_the_last(self):
+        """Otherwise the 429 arrives out of nowhere, one request after the only
+        point where the user could still have stopped."""
+        self.attempts(14)
+
+        self.assertIn('ostatnia próba', self.detail_of(self.attempt()))
+        self.assertEqual(self.attempt().status_code, 429)
+
+    def test_the_refusal_itself_is_still_there(self):
+        """The warning is added to the answer, not swapped in for it — the user
+        still has to be told the credentials were wrong."""
+        self.attempts(self.UNTIL_WARNING)
+
+        self.assertIn('Nieprawidłowy e-mail lub hasło.', self.detail_of(self.attempt()))
+
+    def test_the_warning_says_nothing_about_whether_the_account_exists(self):
+        """The counter moves for an address nobody registered exactly as it does
+        for a real one, so the warning arrives at the same attempt either way.
+        Otherwise this sentence would undo everything LoginSerializer does to
+        make the two indistinguishable."""
+        self.attempts(self.UNTIL_WARNING)
+        known = self.attempt()
+
+        self.attempts(self.UNTIL_WARNING, email='nikogo@example.com')
+        unknown = self.attempt(email='nikogo@example.com')
+
+        self.assertEqual(known.status_code, unknown.status_code)
+        self.assertEqual(known.data, unknown.data)
 
 
 class PasswordPolicyTests(AuthTestCase):

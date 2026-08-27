@@ -164,11 +164,28 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'UNAUTHENTICATED_USER': None,
-    # Applied to the login/register endpoints only (core.views.AuthThrottle);
+    # Applied to the login/register endpoints only (core.throttling.AuthThrottle);
     # everything else is unthrottled. Counted in the default local-memory cache,
     # so the budget is per gunicorn worker rather than per deployment — a shared
     # cache backend is what would make this a real limit.
-    'DEFAULT_THROTTLE_RATES': {'auth': '10/min'},
+    # 'auth' is the per-IP cap; 'login_account' is the per-account one, which is
+    # what actually bounds password guessing — a botnet hands every attempt its
+    # own address and its own 'auth' budget, but they all land on the same
+    # account counter. 15/hour leaves room for a person who genuinely cannot
+    # remember which password they used, while making guessing pointless.
+    'DEFAULT_THROTTLE_RATES': {'auth': '10/min', 'login_account': '15/hour'},
+    # How many proxies sit in front of us, and therefore how much of
+    # X-Forwarded-For to believe. Unset, DRF keys the throttle on the *whole*
+    # header — which the client writes, so a different value per request buys a
+    # fresh 10/min budget every time and the cap counts nothing at all.
+    #
+    # 1 makes DRF read the last entry instead. Each proxy appends the address it
+    # actually saw, so with exactly one hop in front (App Service) the last
+    # entry is the real client and everything before it is whatever the caller
+    # chose to claim. Raise this only if another proxy is added, and never lower
+    # it to 0 while one is there: 0 means "trust REMOTE_ADDR", which behind a
+    # proxy is the proxy, i.e. one budget shared by every client on the internet.
+    'NUM_PROXIES': 1,
 }
 
 if not DEBUG:

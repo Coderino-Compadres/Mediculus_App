@@ -185,6 +185,43 @@ class OnlyGuardianAccountsPassTests(GuardianTestCase):
         self.assertEqual(existing.status_code, unknown.status_code)
         self.assertEqual(existing.data, unknown.data)
 
+    def test_a_child_who_already_has_a_link_learns_nothing_about_the_address(self):
+        """The oracle this ordering closes.
+
+        With the role checked first, a child holding any link got
+        ALREADY_INVITED for a `rodzic` address and NOT_A_GUARDIAN for anything
+        else — a working "is this address a guardian account" probe, runnable
+        against any address at the throttle's pace. The state of the child's own
+        account has to be answered before anything is said about somebody
+        else's, so that every address gives the same answer.
+        """
+        create_user('inny.rodzic@example.com', 'rodzic')
+        create_user('dorosly@example.com', 'patient')
+        self.invite('rodzic@example.com')
+
+        a_guardian = self.invite('inny.rodzic@example.com')
+        a_patient = self.invite('dorosly@example.com')
+        unregistered = self.invite('nikt@example.com')
+
+        self.assertEqual(a_guardian.data, a_patient.data)
+        self.assertEqual(a_guardian.data, unregistered.data)
+        self.assertEqual(a_guardian.status_code, unregistered.status_code)
+
+    def test_an_accepted_link_hides_the_address_just_as_well(self):
+        # Same probe, from the state a linked child sits in for good — and the
+        # one the frontend never navigates to, so only a hand-made request
+        # reaches it.
+        create_user('inny.rodzic@example.com', 'rodzic')
+        create_user('dorosly@example.com', 'patient')
+        ParentChild.objects.create(
+            parent=self.guardian, child=self.child, accepted_at=timezone.now(),
+        )
+
+        a_guardian = self.invite('inny.rodzic@example.com')
+        a_patient = self.invite('dorosly@example.com')
+
+        self.assertEqual(a_guardian.data, a_patient.data)
+
     def test_the_childs_own_address_is_refused_with_a_message_they_can_act_on(self):
         # Mirrors the parent_child_not_self constraint, which would otherwise
         # surface as a database error.
