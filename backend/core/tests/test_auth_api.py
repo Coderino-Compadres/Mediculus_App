@@ -6,8 +6,12 @@ is generated locally and only referenced from the other database later.
 """
 
 import datetime
+import unittest
+from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.db import IntegrityError
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -522,3 +526,394 @@ class CsrfTests(AuthTestCase):
         response = self.client.post(reverse('core:logout'))
 
         self.assertEqual(response.status_code, 403)
+
+
+class SessionFixationTests(AuthTestCase):
+    """Logging in has to move the session to a new key.
+
+    `start_session` calls `request.session.cycle_key()` for one reason: if an
+    attacker managed to plant a session id in the victim's browser before they
+    logged in — a link with a cookie-setting side effect, a shared machine —
+    then without cycling, the id the attacker knows becomes the id of the
+    *authenticated* session. It is one line, trivial to lose in a refactor, and
+    invisible afterwards.
+    """
+
+    def _csrf(self):
+        return self.client.get(reverse('core:csrf')).data['csrf_token']
+
+    def test_logging_in_moves_the_session_to_a_new_key(self):
+        create_user()
+        # Touch the session so an anonymous key exists to be replaced.
+        self.client.get(reverse('core:csrf'))
+        before = self.client.session.session_key
+
+        self.client.post(
+            reverse('core:login'),
+            {'email': 'anna@example.com', 'password': VALID_PASSWORD}, format='json',
+        )
+
+        self.assertIsNotNone(before)
+        self.assertNotEqual(self.client.session.session_key, before)
+
+    def test_registering_moves_the_session_to_a_new_key_too(self):
+        UserRole.objects.create(name='patient')
+        self.client.get(reverse('core:csrf'))
+        before = self.client.session.session_key
+
+        self.client.post(reverse('core:register'), REGISTRATION, format='json')
+
+        self.assertNotEqual(self.client.session.session_key, before)
+
+    def test_the_key_an_attacker_planted_no_longer_identifies_anyone(self):
+        create_user()
+        self.client.get(reverse('core:csrf'))
+        planted = self.client.session.session_key
+
+        self.client.post(
+            reverse('core:login'),
+            {'email': 'anna@example.com', 'password': VALID_PASSWORD}, format='json',
+        )
+
+        stale = APIClient()
+        stale.cookies[settings.SESSION_COOKIE_NAME] = planted
+        self.assertIn(stale.get(reverse('core:me')).status_code, (401, 403))
+
+    def test_logging_out_leaves_nothing_behind_on_the_old_key(self):
+        create_user()
+        token = self._csrf()
+        self.client.post(
+            reverse('core:login'),
+            {'email': 'anna@example.com', 'password': VALID_PASSWORD}, format='json',
+            HTTP_X_CSRFTOKEN=token,
+        )
+        key = self.client.session.session_key
+
+        self.client.post(reverse('core:logout'), HTTP_X_CSRFTOKEN=self._csrf())
+
+        stale = APIClient()
+        stale.cookies[settings.SESSION_COOKIE_NAME] = key
+        self.assertIn(stale.get(reverse('core:me')).status_code, (401, 403))
+
+
+class RegistrationRaceTests(AuthTestCase):
+    """`validate_email` can lose to a concurrent signup for the same address.
+
+    The unique index is the actual arbiter, and `create()` catches the
+    IntegrityError so the loser of the race gets the same 400 as anybody else
+    typing a taken address — not a 500. Without a test the branch is unreachable
+    code that only production ever executes.
+    """
+
+    def test_losing_the_race_reads_as_a_taken_address_rather_than_a_crash(self):
+        UserRole.objects.create(name='patient')
+        create_user(email=REGISTRATION['email'])
+
+        # Whatever the pre-flight check saw, the index still refuses the insert.
+        with patch('core.serializers.RegisterSerializer.validate_email',
+                   side_effect=lambda value: value.lower()):
+            response = self.client.post(reverse('core:register'), REGISTRATION, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('email', response.data)
+
+    def test_the_loser_of_the_race_leaves_no_half_written_account(self):
+        """Both writes are in one transaction on `default`: a user without the
+        patient row that was supposed to accompany it would be an account that
+        can log in and reach nothing."""
+        UserRole.objects.create(name='patient')
+        create_user(email=REGISTRATION['email'])
+        before = Patient.objects.count()
+
+        with patch('core.serializers.RegisterSerializer.validate_email',
+                   side_effect=lambda value: value.lower()):
+            self.client.post(reverse('core:register'), REGISTRATION, format='json')
+
+        self.assertEqual(Patient.objects.count(), before)
+        self.assertEqual(User.objects.filter(email=REGISTRATION['email']).count(), 1)
+
+    def test_a_failure_writing_the_patient_row_rolls_the_user_back(self):
+        """transaction.atomic(using='default') covers both writes. Without it a
+        failed second insert would leave an account that can log in and then
+        reach nothing — every clinical endpoint refuses a user with no patient
+        row."""
+        UserRole.objects.create(name='patient')
+
+        with patch('core.serializers.Patient.objects.create',
+                   side_effect=IntegrityError('mock: insert odrzucony')):
+            response = self.client.post(reverse('core:register'), REGISTRATION, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(email=REGISTRATION['email']).exists())
+        self.assertFalse(Patient.objects.exists())
+
+
+class ConsentTests(AuthTestCase):
+    """RODO consents are not a checkbox we may quietly default.
+
+    DRF's BooleanField accepts a range of spellings, so "was it actually
+    agreed to" has more than one wrong answer available: absent, false, and the
+    string 'false' all have to be refused, and each takes a different path
+    through the field.
+    """
+
+    def setUp(self):
+        super().setUp()
+        UserRole.objects.create(name='patient')
+
+    def _register_with(self, **overrides):
+        return self.client.post(
+            reverse('core:register'), REGISTRATION | overrides, format='json',
+        )
+
+    def test_an_absent_data_consent_is_refused(self):
+        payload = {k: v for k, v in REGISTRATION.items() if k != 'data_consent'}
+
+        response = self.client.post(reverse('core:register'), payload, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('data_consent', response.data)
+
+    def test_an_absent_services_consent_is_refused(self):
+        payload = {k: v for k, v in REGISTRATION.items() if k != 'services_consent'}
+
+        response = self.client.post(reverse('core:register'), payload, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('services_consent', response.data)
+
+    def test_a_false_data_consent_is_refused(self):
+        response = self._register_with(data_consent=False)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('data_consent', response.data)
+
+    def test_the_string_false_is_refused_and_not_read_as_agreement(self):
+        """'false' is truthy as a Python string; DRF parses it to False. If that
+        parsing ever changes, a client sending JSON strings would register with
+        no consent at all."""
+        response = self._register_with(data_consent='false')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('data_consent', response.data)
+
+    def test_the_string_true_is_accepted_the_same_as_the_boolean(self):
+        response = self._register_with(
+            email='inny@example.com', data_consent='true', services_consent='true',
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_neither_consent_is_written_when_the_other_is_missing(self):
+        self._register_with(services_consent=False)
+
+        self.assertFalse(User.objects.exists())
+
+    def test_the_two_consents_are_recorded_separately(self):
+        """Two columns rather than one flag, because they are two decisions and
+        art. 7(1) puts the burden of proving each on us."""
+        self._register_with()
+
+        user = User.objects.get(email=REGISTRATION['email'])
+        self.assertIsNotNone(user.data_consent_at)
+        self.assertIsNotNone(user.services_consent_at)
+
+
+class NullableColumnTests(AuthTestCase):
+    """Rows the form would never write, which the database happily holds.
+
+    Almost every column on `"user"` is nullable and scripts/mock_data.sql seeds
+    rows the registration form could not produce. `/api/auth/me/` runs on every
+    page load, so a row like this must serialize rather than 500 the whole app.
+    """
+
+    def sign_in(self, user):
+        session = self.client.session
+        session[SESSION_USER_KEY] = str(user.pk)
+        session.save()
+        self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+    def test_a_user_with_no_name_still_answers_me(self):
+        self.sign_in(create_user())
+
+        response = self.client.get(reverse('core:me'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.data['name'])
+        self.assertIsNone(response.data['surname'])
+
+    def test_a_user_with_no_date_of_birth_still_answers_me(self):
+        self.sign_in(create_user())
+
+        self.assertIsNone(self.client.get(reverse('core:me')).data['date_of_birth'])
+
+    def test_a_user_with_no_role_reads_as_a_null_role(self):
+        """user_role is seeded by SQL, not by a migration, so its absence is a
+        state the app has to survive rather than a bug."""
+        self.sign_in(create_user(role=None))
+
+        self.assertIsNone(self.client.get(reverse('core:me')).data['role'])
+
+    def test_an_account_with_no_patient_row_reads_as_neither_child_nor_adult(self):
+        self.sign_in(create_user(role='rodzic'))
+
+        response = self.client.get(reverse('core:me'))
+
+        self.assertIsNone(response.data['is_child'])
+        self.assertIsNone(response.data['guardian_status'])
+
+    def test_a_patient_with_is_child_null_is_not_forced_into_an_answer(self):
+        """`is_child` is nullable, and a NULL is 'we do not know' — which must
+        not be read as 'adult' by anything that gates on it."""
+        user = create_user()
+        Patient.objects.create(user=user, is_child=None)
+        self.sign_in(user)
+
+        response = self.client.get(reverse('core:me'))
+
+        self.assertIsNone(response.data['is_child'])
+        self.assertIsNone(response.data['guardian_status'])
+
+
+class ThrottleTests(AuthTestCase):
+    """The cap on the credential-accepting endpoints."""
+
+    def _spam(self, url, payload, count=12, **extra):
+        return [
+            self.client.post(url, payload, format='json', **extra).status_code
+            for _ in range(count)
+        ]
+
+    def test_registration_is_throttled_as_well_as_login(self):
+        """RegisterView carries the same AuthThrottle and nothing covered it:
+        an unthrottled signup form is a way to fill the table, and — because a
+        taken address answers differently from a free one — to read it."""
+        UserRole.objects.create(name='patient')
+
+        statuses = self._spam(reverse('core:register'), REGISTRATION)
+
+        self.assertIn(429, statuses)
+
+    def test_the_cap_is_shared_by_address_not_reset_by_changing_it(self):
+        """AnonRateThrottle keys on the caller, not on the credentials, so
+        walking through a list of addresses must not buy extra attempts."""
+        create_user()
+        url = reverse('core:login')
+
+        statuses = [
+            self.client.post(
+                url, {'email': f'ktos{index}@example.com', 'password': 'Zle123456'},
+                format='json',
+            ).status_code
+            for index in range(12)
+        ]
+
+        self.assertIn(429, statuses)
+
+    @unittest.expectedFailure
+    def test_a_forwarded_for_header_does_not_buy_a_fresh_budget(self):
+        """DOCUMENTS A KNOWN HOLE — remove the decorator once it is fixed.
+
+        DRF's `BaseThrottle.get_ident` uses the *whole* X-Forwarded-For header
+        when `NUM_PROXIES` is unset, and that header comes from the client. A
+        different value per request is a different cache key per request, so the
+        10/min cap counts nothing at all and password guessing is unbounded.
+
+        The requests below model App Service: the client sends whatever it likes
+        and the proxy appends the address it actually saw, so the *last* entry
+        is the only trustworthy one. Setting `'NUM_PROXIES': 1` in
+        REST_FRAMEWORK makes DRF read that entry and turns this green.
+        """
+        create_user()
+        payload = {'email': 'anna@example.com', 'password': 'ZleHaslo123'}
+        url = reverse('core:login')
+
+        statuses = [
+            self.client.post(
+                url, payload, format='json',
+                HTTP_X_FORWARDED_FOR=f'10.0.0.{index}, 203.0.113.7',
+            ).status_code
+            for index in range(12)
+        ]
+
+        self.assertIn(429, statuses)
+
+
+class PasswordPolicyTests(AuthTestCase):
+    """AUTH_PASSWORD_VALIDATORS lists four validators; not all of them run."""
+
+    def setUp(self):
+        super().setUp()
+        UserRole.objects.create(name='patient')
+
+    def test_a_short_password_is_refused(self):
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'password': 'Ab1!', 'password_confirm': 'Ab1!'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('password', response.data)
+
+    def test_an_all_numeric_password_is_refused(self):
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'password': '4938271056', 'password_confirm': '4938271056'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_a_common_password_is_refused(self):
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'password': 'password123', 'password_confirm': 'password123'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_the_error_names_the_password_field_so_the_form_can_place_it(self):
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'password': '12345678', 'password_confirm': '12345678'},
+            format='json',
+        )
+
+        self.assertIn('password', response.data)
+        self.assertNotIn('password_confirm', response.data)
+
+    @unittest.expectedFailure
+    def test_a_password_identical_to_the_email_is_refused(self):
+        """DOCUMENTS A KNOWN HOLE — remove the decorator once it is fixed.
+
+        UserAttributeSimilarityValidator is listed in AUTH_PASSWORD_VALIDATORS
+        but never gets a user to compare against: `validate_password(value)` in
+        RegisterSerializer is called with one argument, so the validator has
+        nothing to look at and silently passes everything. It reads attributes
+        with getattr, so passing an object carrying email/name/surname is enough
+        to wake it up — it does not need a django.contrib.auth user.
+        """
+        password = REGISTRATION['email']
+
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'password': password, 'password_confirm': password},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    @unittest.expectedFailure
+    def test_a_password_identical_to_the_surname_is_refused(self):
+        """Same hole as above, from the angle a real person would hit it."""
+        password = f"{REGISTRATION['surname']}{REGISTRATION['surname']}"
+
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'password': password, 'password_confirm': password},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)

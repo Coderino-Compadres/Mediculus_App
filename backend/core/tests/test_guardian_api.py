@@ -525,3 +525,95 @@ class ThrottleTests(GuardianTestCase):
         ]
 
         self.assertIn(429, statuses)
+
+
+class GuardianCsrfTests(GuardianTestCase):
+    """Every state-changing step of the invitation, not just the ones with a form.
+
+    The checks live in SessionUserAuthentication rather than on the views, so
+    they are inherited rather than declared — and an inherited protection is the
+    kind that disappears quietly. Accepting an invitation is the act that
+    unblocks a child's account and starts the processing of their health data;
+    another site must not be able to trigger it in a guardian's browser.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.client = APIClient(enforce_csrf_checks=True)
+
+    def token(self):
+        return self.client.get(reverse('core:csrf')).data['csrf_token']
+
+    def test_inviting_without_a_token_is_refused(self):
+        self.sign_in(self.child)
+
+        response = self.client.post(
+            self.url, {'guardian_email': self.guardian.email}, format='json',
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(ParentChild.objects.exists())
+
+    def test_inviting_with_a_token_goes_through(self):
+        self.sign_in(self.child)
+
+        response = self.client.post(
+            self.url, {'guardian_email': self.guardian.email}, format='json',
+            HTTP_X_CSRFTOKEN=self.token(),
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_withdrawing_without_a_token_is_refused(self):
+        ParentChild.objects.create(parent=self.guardian, child=self.child)
+        self.sign_in(self.child)
+
+        response = self.client.delete(self.url)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(ParentChild.objects.exists())
+
+    def test_accepting_without_a_token_is_refused(self):
+        link = ParentChild.objects.create(parent=self.guardian, child=self.child)
+        self.sign_in(self.guardian)
+
+        response = self.client.post(self.accept_url(link.pk))
+
+        self.assertEqual(response.status_code, 403)
+        link.refresh_from_db()
+        self.assertIsNone(link.accepted_at)
+
+    def test_refusing_without_a_token_is_refused(self):
+        link = ParentChild.objects.create(parent=self.guardian, child=self.child)
+        self.sign_in(self.guardian)
+
+        response = self.client.post(self.reject_url(link.pk))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(ParentChild.objects.filter(pk=link.pk).exists())
+
+    def test_reading_the_list_needs_no_token(self):
+        self.sign_in(self.guardian)
+
+        self.assertEqual(self.client.get(self.invitations_url).status_code, 200)
+
+
+class InvitationOrderingTests(GuardianTestCase):
+    """The order the guardian's home screen renders the cards in.
+
+    Covered directly in test_guardian_unit.py; repeated here once through the
+    endpoint so a serializer or a view that re-sorts on its way out cannot undo
+    it silently.
+    """
+
+    def test_the_endpoint_preserves_the_order_the_rules_chose(self):
+        for name, email in (('Zofia', 'z@example.com'), ('Ala', 'a@example.com')):
+            ParentChild.objects.create(
+                parent=self.guardian, child=create_minor(email, name=name),
+            )
+        self.sign_in(self.guardian)
+
+        names = [item['child_name']
+                 for item in self.client.get(self.invitations_url).data]
+
+        self.assertEqual(names, sorted(names))
