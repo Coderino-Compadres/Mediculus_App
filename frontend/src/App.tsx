@@ -8,6 +8,8 @@ import Home from './pages/Home'
 import DiaryEntry from './pages/DiaryEntry'
 import Journals from './pages/Journals'
 import JournalDetail from './pages/JournalDetail'
+import Reports from './pages/Reports'
+import ReportDetail from './pages/ReportDetail'
 import PlaceholderPage from './pages/PlaceholderPage'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/authContext'
@@ -109,6 +111,22 @@ function App() {
           element={
             <RequireAuth>
               <JournalDetail />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path={ROUTES.reports}
+          element={
+            <RequireAuth>
+              <Reports />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path={ROUTES.reportDetail}
+          element={
+            <RequireAuth>
+              <ReportDetail />
             </RequireAuth>
           }
         />

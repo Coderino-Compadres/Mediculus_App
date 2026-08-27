@@ -5,7 +5,7 @@ import { ApiError } from '../api/client'
 import { fetchJournalEntry } from '../api/diary'
 import { EMOTION_COLORS, STRES, type EmotionName } from '../utils/emotions'
 import { MOOD_OPTIONS } from '../utils/moods'
-import { OTHER_TRIGGER } from '../utils/triggers'
+import { placeLabel } from '../utils/triggers'
 import type { JournalListEntry } from '../types/diaryEntry'
 import { ROUTES } from '../routes'
 import './diaryEntry.css'
@@ -41,13 +41,6 @@ function ReadOnlyLevel({ label, lowLabel, highLabel, value }: ReadOnlyLevelProps
       </div>
     </div>
   )
-}
-
-function placeLabel(entry: JournalListEntry): string | null {
-  if (entry.situationReaction.trigger === OTHER_TRIGGER) {
-    return entry.situationReaction.triggerOther.trim() || null
-  }
-  return entry.situationReaction.trigger
 }
 
 function JournalDetail() {
@@ -128,7 +121,7 @@ function JournalDetail() {
     hour: '2-digit',
     minute: '2-digit',
   })
-  const place = placeLabel(entry)
+  const place = placeLabel(entry.situationReaction)
 
   return (
     <div className="journal-detail-page">

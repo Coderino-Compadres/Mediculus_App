@@ -8,7 +8,8 @@ export const ROUTES = {
   journals: '/journals',
   journalDetail: '/journals/:id',
   diaryEntry: '/diary-entry-placeholder',
-  reports: '/reports-placeholder',
+  reports: '/reports',
+  reportDetail: '/reports/:id',
   analysis: '/analysis-placeholder',
   techniques: '/techniques-placeholder',
   profile: '/profile-placeholder',
@@ -19,6 +20,11 @@ export const ROUTES = {
 /** Fills in ROUTES.journalDetail's `:id` param — use instead of building the path by hand. */
 export function journalDetailPath(id: string): string {
   return ROUTES.journalDetail.replace(':id', id)
+}
+
+/** The same for ROUTES.reportDetail, whose `:id` is a week ('week-2026-08-03'). */
+export function reportDetailPath(id: string): string {
+  return ROUTES.reportDetail.replace(':id', id)
 }
 
 export interface PlaceholderRouteDef {
@@ -37,7 +43,6 @@ export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
     backTo: ROUTES.modules,
     backLabel: '← Wróć do wyboru modułu',
   },
-  { path: ROUTES.reports, title: 'Raporty' },
   { path: ROUTES.analysis, title: 'Analiza' },
   { path: ROUTES.techniques, title: 'Techniki terapeutyczne' },
   { path: ROUTES.profile, title: 'Profil' },
