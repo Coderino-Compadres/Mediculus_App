@@ -168,7 +168,12 @@ REST_FRAMEWORK = {
     # everything else is unthrottled. Counted in the default local-memory cache,
     # so the budget is per gunicorn worker rather than per deployment — a shared
     # cache backend is what would make this a real limit.
-    'DEFAULT_THROTTLE_RATES': {'auth': '10/min'},
+    # 'auth' is the per-IP cap; 'login_account' is the per-account one, which is
+    # what actually bounds password guessing — a botnet hands every attempt its
+    # own address and its own 'auth' budget, but they all land on the same
+    # account counter. 15/hour leaves room for a person who genuinely cannot
+    # remember which password they used, while making guessing pointless.
+    'DEFAULT_THROTTLE_RATES': {'auth': '10/min', 'login_account': '15/hour'},
     # How many proxies sit in front of us, and therefore how much of
     # X-Forwarded-For to believe. Unset, DRF keys the throttle on the *whole*
     # header — which the client writes, so a different value per request buys a
