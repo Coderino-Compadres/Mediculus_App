@@ -11,6 +11,7 @@ holding rather than about a permission check firing.
 """
 
 import datetime
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -20,7 +21,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
-from core.diary import MOOD_LABELS
+from core.diary import MAX_LONG_TEXT, MOOD_LABELS
+from core.emotions import EMOTIONS, MOOD_SCALE_EMOTIONS, STRES
 from core.models import Diary, MoodScale, Patient, User, UserRole
 
 
@@ -322,3 +324,269 @@ class ValidationTests(DiaryEntryTestCase):
 
     def test_an_absurdly_long_note_is_refused(self):
         self.put({'notes': 'x' * 5000}, expect=400)
+
+
+def at_time(diary, day, hour):
+    """Stamp an entry at a given hour of `day` — created_at is auto_now_add."""
+    moment = timezone.make_aware(datetime.datetime.combine(day, datetime.time(hour, 0)))
+    Diary.objects.filter(pk=diary.pk).update(created_at=moment, updated_at=moment)
+    diary.refresh_from_db()
+    return diary
+
+
+class MockSaveFailed(Exception):
+    """Raised by a patched write so a rollback can be observed."""
+
+
+class AtomicityTests(DiaryEntryTestCase):
+    """`save_today_entry` is atomic on medical_db, and the reason is legibility.
+
+    An entry whose `diary` row saved and whose `mood_scale` row did not would
+    read back as a day the patient wrote about and rated nothing — a plausible
+    day, not an obviously broken one. Nobody would ever notice it was a partial
+    write; the dashboard would simply be wrong about that day forever.
+    """
+
+    def test_a_failed_scale_write_leaves_no_diary_row_behind(self):
+        with patch('core.diary.MoodScale.objects.create', side_effect=MockSaveFailed):
+            with self.assertRaises(MockSaveFailed):
+                self.client.put(
+                    self.url, {'notes': 'Dziś.', 'emotions': [
+                        {'emotion': 'Lęk', 'intensity': 5}]}, format='json',
+                )
+
+        self.assertFalse(Diary.objects.exists())
+        self.assertFalse(MoodScale.objects.exists())
+
+    def test_a_failed_edit_leaves_the_previous_version_intact(self):
+        """The rollback has to restore, not just refrain from creating."""
+        self.put({'notes': 'Pierwsza wersja.', 'energy_level': 3})
+
+        # An entry that already has a scale row takes the UPDATE branch, so it
+        # is `save` rather than `create` that has to fail here.
+        with patch.object(MoodScale, 'save', side_effect=MockSaveFailed):
+            with self.assertRaises(MockSaveFailed):
+                self.client.put(self.url, {'notes': 'Druga wersja.'}, format='json')
+
+        diary = Diary.objects.get()
+        self.assertEqual(diary.notes, 'Pierwsza wersja.')
+        self.assertEqual(diary.energy_level, 3)
+
+    def test_a_failed_save_does_not_touch_yesterday(self):
+        yesterday = place_on_day(
+            Diary.objects.create(id_medical=self.patient.id_medical, notes='Wczoraj.'),
+            self.today - datetime.timedelta(days=1),
+        )
+
+        with patch('core.diary.MoodScale.objects.create', side_effect=MockSaveFailed):
+            with self.assertRaises(MockSaveFailed):
+                self.client.put(self.url, {'notes': 'Dziś.'}, format='json')
+
+        yesterday.refresh_from_db()
+        self.assertEqual(yesterday.notes, 'Wczoraj.')
+
+
+class SecondRowOnOneDayTests(DiaryEntryTestCase):
+    """Nothing in the schema stops two `diary` rows sharing a day.
+
+    `database_setup.sql` has no unique index on (id_medical, day) — the rule is
+    enforced by the endpoint being unable to address any day but today, which
+    says nothing about rows that arrived another way: the seed script, a manual
+    fix, an import. Both the form and the dashboard resolve it by taking the
+    newest row, and they have to agree, or the screen and the chart would
+    describe different days.
+    """
+
+    def two_entries_today(self):
+        older = at_time(
+            Diary.objects.create(id_medical=self.patient.id_medical, notes='Rano.'),
+            self.today, 8,
+        )
+        newer = at_time(
+            Diary.objects.create(id_medical=self.patient.id_medical, notes='Wieczorem.'),
+            self.today, 20,
+        )
+        return older, newer
+
+    def test_reading_today_answers_with_the_newer_row(self):
+        _, newer = self.two_entries_today()
+
+        self.assertEqual(self.get()['id'], str(newer.id_diary))
+
+    def test_saving_edits_the_newer_row_rather_than_adding_a_third(self):
+        older, newer = self.two_entries_today()
+
+        self.put({'notes': 'Poprawione.'})
+
+        self.assertEqual(Diary.objects.count(), 2)
+        newer.refresh_from_db()
+        older.refresh_from_db()
+        self.assertEqual(newer.notes, 'Poprawione.')
+        self.assertEqual(older.notes, 'Rano.')
+
+    def test_an_entry_at_one_minute_past_midnight_still_counts_as_today(self):
+        """The day boundary is Europe/Warsaw, not UTC — under UTC this row would
+        belong to yesterday and the form would offer a blank page over the top
+        of an entry the patient had already written."""
+        entry = at_time(
+            Diary.objects.create(id_medical=self.patient.id_medical, notes='Tuż po północy.'),
+            self.today, 0,
+        )
+
+        self.assertEqual(self.get()['id'], str(entry.id_diary))
+
+
+class ExistingScaleRowsTests(DiaryEntryTestCase):
+    """A `mood_scale` pair that arrived without going through the form."""
+
+    def test_a_save_collapses_a_pre_existing_pair_into_one(self):
+        diary = Diary.objects.create(id_medical=self.patient.id_medical)
+        MoodScale.objects.create(diary=diary, anxiety_scale=1)
+        MoodScale.objects.create(diary=diary, anxiety_scale=9)
+
+        self.put({'emotions': [{'emotion': 'Lęk', 'intensity': 4}]})
+
+        self.assertEqual(MoodScale.objects.count(), 1)
+        self.assertEqual(MoodScale.objects.get().anxiety_scale, 4)
+
+    def test_reading_a_pair_answers_with_one_set_of_ratings_not_two(self):
+        """Whichever row wins, an emotion must not appear twice — the form binds
+        chips by name and a duplicate would render on top of itself."""
+        diary = Diary.objects.create(id_medical=self.patient.id_medical)
+        MoodScale.objects.create(diary=diary, anxiety_scale=1)
+        MoodScale.objects.create(diary=diary, sadness_scale=9)
+
+        emotions = [rating['emotion'] for rating in self.get()['emotions']]
+
+        self.assertEqual(len(emotions), len(set(emotions)))
+
+    def test_a_scale_row_with_no_ratings_reads_as_no_emotions(self):
+        diary = Diary.objects.create(id_medical=self.patient.id_medical)
+        MoodScale.objects.create(diary=diary)
+
+        self.assertEqual(self.get()['emotions'], [])
+
+
+class ValuesAlreadyInTheDatabaseTests(DiaryEntryTestCase):
+    """The API validates what comes in; the schema does not.
+
+    `database_setup.sql` declares these columns as plain INTEGER with no CHECK,
+    so a value outside 0-10 is legal as far as Postgres is concerned and the
+    seed script or a manual fix can put one there. These tests document that
+    reads pass such a value through untouched rather than clamping or failing —
+    if that is not what we want, the fix is a CHECK constraint in the schema,
+    not a silent correction on the way out.
+    """
+
+    def test_an_out_of_range_level_is_returned_as_stored(self):
+        Diary.objects.create(id_medical=self.patient.id_medical, stress_level=99)
+
+        [rating] = [r for r in self.get()['emotions'] if r['emotion'] == STRES]
+        self.assertEqual(rating['intensity'], 99)
+
+    def test_a_negative_level_is_returned_as_stored(self):
+        Diary.objects.create(id_medical=self.patient.id_medical, energy_level=-4)
+
+        self.assertEqual(self.get()['energy_level'], -4)
+
+    def test_the_same_value_would_be_refused_on_the_way_in(self):
+        """Which is the asymmetry worth being deliberate about."""
+        self.put({'energy_level': 99}, expect=400)
+
+    def test_text_longer_than_the_api_allows_is_still_readable(self):
+        long_note = 'x' * (MAX_LONG_TEXT + 500)
+        Diary.objects.create(id_medical=self.patient.id_medical, notes=long_note)
+
+        self.assertEqual(self.get()['notes'], long_note)
+
+
+class EveryEmotionRoundTripTests(DiaryEntryTestCase):
+    """The whole vocabulary, at both ends of the scale, through the API.
+
+    Ten emotions and eleven intensities is a small enough space to cover
+    exhaustively, and the mapping is not uniform: nine emotions live in their
+    own column on `mood_scale` and 'Stres' lives on the `diary` row, so a
+    mistake in SCALE_COLUMNS would show up on exactly one of them.
+    """
+
+    def test_every_emotion_survives_a_save_and_a_read(self):
+        for emotion in EMOTIONS:
+            for intensity in (0, 5, 10):
+                with self.subTest(emotion=emotion, intensity=intensity):
+                    saved = self.put({'emotions': [
+                        {'emotion': emotion, 'intensity': intensity}]})
+                    self.assertEqual(
+                        saved['emotions'], [{'emotion': emotion, 'intensity': intensity}],
+                    )
+                    self.assertEqual(self.get()['emotions'], saved['emotions'])
+
+    def test_all_ten_at_once_come_back_as_ten(self):
+        payload = [
+            {'emotion': emotion, 'intensity': index}
+            for index, emotion in enumerate(EMOTIONS)
+        ]
+
+        saved = self.put({'emotions': payload})
+
+        self.assertEqual(
+            sorted(saved['emotions'], key=lambda r: r['emotion']),
+            sorted(payload, key=lambda r: r['emotion']),
+        )
+
+    def test_each_scale_emotion_lands_in_its_own_column_and_no_other(self):
+        for column, emotion in MOOD_SCALE_EMOTIONS:
+            with self.subTest(emotion=emotion):
+                self.put({'emotions': [{'emotion': emotion, 'intensity': 7}]})
+
+                scale = MoodScale.objects.get()
+                filled = {name for name, _ in MOOD_SCALE_EMOTIONS
+                          if getattr(scale, name) is not None}
+                self.assertEqual(filled, {column})
+
+    def test_stress_never_lands_in_the_scale_table(self):
+        self.put({'emotions': [{'emotion': STRES, 'intensity': 6}]})
+
+        scale = MoodScale.objects.get()
+        self.assertEqual(Diary.objects.get().stress_level, 6)
+        self.assertTrue(all(getattr(scale, name) is None
+                            for name, _ in MOOD_SCALE_EMOTIONS))
+
+    def test_every_mood_label_survives_a_save_and_a_read(self):
+        for value in sorted(MOOD_LABELS):
+            with self.subTest(mood=value):
+                self.assertEqual(self.put({'mood': value})['mood'], value)
+                self.assertEqual(self.get()['mood'], value)
+
+
+class WriteCsrfTests(DiaryEntryTestCase):
+    """The one diary URL that changes data has to prove it was not forged.
+
+    Authenticated requests are checked inside SessionUserAuthentication rather
+    than by a decorator, so the protection is inherited rather than declared —
+    and CsrfTests in test_auth_api.py only ever proved it for logout. A diary
+    entry is health data being written; it deserves its own assertion.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.client = APIClient(enforce_csrf_checks=True)
+        self.sign_in(self.patient.user)
+
+    def test_a_write_without_a_token_is_refused(self):
+        response = self.client.put(self.url, {'notes': 'Cudza strona.'}, format='json')
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Diary.objects.exists())
+
+    def test_a_write_with_a_token_goes_through(self):
+        token = self.client.get(reverse('core:csrf')).data['csrf_token']
+
+        response = self.client.put(
+            self.url, {'notes': 'Mój formularz.'}, format='json', HTTP_X_CSRFTOKEN=token,
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_reading_needs_no_token(self):
+        """GET is safe and the archive screens would break behind a token."""
+        self.assertEqual(self.client.get(self.url).status_code, 200)

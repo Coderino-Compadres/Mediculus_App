@@ -9,6 +9,7 @@ name a row belonging to somebody else.
 
 import datetime
 import uuid
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -244,3 +245,62 @@ class ImmutabilityTests(HistoryTestCase):
         yesterday.refresh_from_db()
         self.assertEqual(yesterday.notes, 'Wczoraj.')
         self.assertEqual(len(self.get_history()), 2)
+
+
+class HistoryCapTests(HistoryTestCase):
+    """MAX_HISTORY_ENTRIES is a backstop against a runaway query, not a product
+    rule — one entry a day means a year is 365 rows. What matters is which rows
+    survive the cut: the archive lists newest first, so truncating from the
+    wrong end would quietly hide the entries somebody actually came to read.
+
+    Hitting it for real means the screen needs pagination rather than a bigger
+    number, so this also serves as the reminder.
+    """
+
+    def write_days(self, count):
+        return [make_diary(self.patient.id_medical, self.days_ago(index),
+                           notes=f'Dzień -{index}.')
+                for index in range(count)]
+
+    def test_the_list_is_cut_at_the_cap(self):
+        self.write_days(6)
+
+        with patch('core.diary.MAX_HISTORY_ENTRIES', 4):
+            entries = self.get_history()
+
+        self.assertEqual(len(entries), 4)
+
+    def test_the_entries_kept_are_the_newest_ones(self):
+        self.write_days(6)
+
+        with patch('core.diary.MAX_HISTORY_ENTRIES', 4):
+            entries = self.get_history()
+
+        self.assertEqual(
+            [entry['date'] for entry in entries],
+            [self.days_ago(index).isoformat() for index in range(4)],
+        )
+
+    def test_a_diary_shorter_than_the_cap_is_returned_whole(self):
+        self.write_days(3)
+
+        with patch('core.diary.MAX_HISTORY_ENTRIES', 4):
+            self.assertEqual(len(self.get_history()), 3)
+
+    def test_an_entry_past_the_cap_is_still_readable_by_id(self):
+        """The cap belongs to the list query. A link somebody saved, or a report
+        referring to an old entry, must not stop working because the archive got
+        long."""
+        oldest = self.write_days(6)[-1]
+
+        with patch('core.diary.MAX_HISTORY_ENTRIES', 4):
+            response = self.client.get(self.detail_url(oldest.id_diary))
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_the_shipped_cap_is_generous_enough_not_to_bite_in_a_year(self):
+        """365 entries is a year of perfect attendance; the cap must sit above
+        it or the backstop turns into a product limit nobody decided on."""
+        from core.diary import MAX_HISTORY_ENTRIES
+
+        self.assertGreater(MAX_HISTORY_ENTRIES, 365)
