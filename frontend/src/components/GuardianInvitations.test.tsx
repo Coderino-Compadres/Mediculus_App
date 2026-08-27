@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
+import { ApiError } from '../api/client'
 import GuardianInvitations from './GuardianInvitations'
 import type { GuardianInvitation } from '../api/guardian'
 
@@ -115,6 +116,49 @@ describe('answering', () => {
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /zaakceptuj/i })).toBeInTheDocument()
+  })
+
+  /**
+   * The list loaded fine; it was the decision that failed. Blaming the load
+   * sends the guardian to refresh a page whose content is already correct, and
+   * says nothing about whether the child is now linked.
+   */
+  it('blames the decision rather than the list', async () => {
+    mockedFetch.mockResolvedValueOnce([INVITATION])
+    mockedAccept.mockRejectedValueOnce(new Error('network down'))
+
+    renderWithProviders(<GuardianInvitations />)
+    await userEvent.click(await screen.findByRole('button', { name: /zaakceptuj/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/nie udało się zapisać odpowiedzi/i)
+    expect(screen.queryByText(/wczytać/i)).not.toBeInTheDocument()
+  })
+
+  /**
+   * The child withdrew it while the guardian was looking at the card, or it was
+   * answered in another tab. Leaving an answerable card on screen invites a
+   * second click that fails the same way.
+   */
+  it('takes away a card the server no longer has', async () => {
+    mockedFetch.mockResolvedValueOnce([INVITATION])
+    mockedAccept.mockRejectedValueOnce(new ApiError(404, 'Nie znaleziono.'))
+
+    renderWithProviders(<GuardianInvitations />)
+    await userEvent.click(await screen.findByRole('button', { name: /zaakceptuj/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/nie czeka już na odpowiedź/i)
+    expect(screen.queryByRole('button', { name: /zaakceptuj/i })).not.toBeInTheDocument()
+  })
+
+  it('does not claim the link was made when the server said no', async () => {
+    mockedFetch.mockResolvedValueOnce([INVITATION])
+    mockedAccept.mockRejectedValueOnce(new ApiError(404, 'Nie znaleziono.'))
+
+    renderWithProviders(<GuardianInvitations />)
+    await userEvent.click(await screen.findByRole('button', { name: /zaakceptuj/i }))
+
+    await screen.findByRole('alert')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('answers one invitation at a time', async () => {
