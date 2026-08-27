@@ -228,3 +228,71 @@ describe('apiRequest — how failures reach the UI', () => {
     expect(error.formMessage).toContain('połączyć z serwerem')
   })
 })
+
+describe('apiDownload', () => {
+  /** A binary Response: no text() in the success path, because reading a PDF
+   *  that way is what corrupts it — which is the whole reason this function is
+   *  separate from apiRequest. */
+  function respondWithFile(status: number, body: unknown) {
+    const text = body === undefined ? '' : typeof body === 'string' ? body : JSON.stringify(body)
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      headers: new Headers({ 'Content-Type': 'application/pdf' }),
+      text: async () => text,
+      blob: async () => new Blob(['%PDF-'], { type: 'application/pdf' }),
+    } as unknown as Response
+  }
+
+  it('returns the body as a blob rather than as text', async () => {
+    const { apiDownload } = await freshClient()
+    mockFetch().mockResolvedValueOnce(respondWithFile(200, undefined))
+
+    const blob = await apiDownload('/api/reports/week-2026-08-03/pdf/')
+
+    expect(blob).toBeInstanceOf(Blob)
+    expect(blob.type).toBe('application/pdf')
+  })
+
+  it('sends the session cookie, or the server has no idea whose report it is', async () => {
+    const { apiDownload } = await freshClient()
+    const fetchMock = mockFetch()
+    fetchMock.mockResolvedValueOnce(respondWithFile(200, undefined))
+
+    await apiDownload('/api/reports/week-2026-08-03/pdf/')
+
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ credentials: 'include' })
+  })
+
+  it('turns a refusal into the same ApiError every other call throws', async () => {
+    const { apiDownload, ApiError: Err } = await freshClient()
+    // Not Once: the assertion below calls it a second time.
+    mockFetch().mockResolvedValue(
+      respondWithFile(404, { detail: 'Nie znaleziono raportu dla tego tygodnia.' }),
+    )
+
+    await expect(apiDownload('/api/reports/week-1999-01-04/pdf/')).rejects.toMatchObject({
+      status: 404,
+      formMessage: 'Nie znaleziono raportu dla tego tygodnia.',
+    })
+    await expect(apiDownload('/api/reports/week-1999-01-04/pdf/')).rejects.toBeInstanceOf(Err)
+  })
+
+  it('survives a failure whose body is not JSON at all', async () => {
+    const { apiDownload } = await freshClient()
+    mockFetch().mockResolvedValue(respondWithFile(502, '<html>Bad gateway</html>'))
+
+    await expect(apiDownload('/api/reports/week-2026-08-03/pdf/')).rejects.toMatchObject({
+      status: 502,
+    })
+  })
+
+  it('reports a request that never got an answer as a network failure', async () => {
+    const { apiDownload } = await freshClient()
+    mockFetch().mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    await expect(apiDownload('/api/reports/week-2026-08-03/pdf/')).rejects.toMatchObject({
+      status: 0,
+    })
+  })
+})

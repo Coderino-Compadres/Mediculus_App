@@ -11,6 +11,9 @@ import JournalDetail from './pages/JournalDetail'
 import Reports from './pages/Reports'
 import ReportDetail from './pages/ReportDetail'
 import PlaceholderPage from './pages/PlaceholderPage'
+import NotFound from './pages/NotFound'
+import OfflineBanner from './components/OfflineBanner'
+import RouteChange from './components/RouteChange'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/authContext'
 import { needsGuardianLink } from './api/auth'
@@ -49,101 +52,110 @@ function GuestOnly({ children }: { children: ReactNode }) {
 function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route
-          path={ROUTES.login}
-          element={
-            <GuestOnly>
-              <Login />
-            </GuestOnly>
-          }
-        />
-        <Route
-          path={ROUTES.register}
-          element={
-            <GuestOnly>
-              <Register />
-            </GuestOnly>
-          }
-        />
-        <Route
-          path={ROUTES.linkGuardian}
-          element={
-            <RequireGuardianLink>
-              <LinkGuardian />
-            </RequireGuardianLink>
-          }
-        />
-        <Route
-          path={ROUTES.modules}
-          element={
-            <RequireAuth>
-              <ModuleSelect />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path={ROUTES.home}
-          element={
-            <RequireAuth>
-              <Home />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path={ROUTES.diaryEntry}
-          element={
-            <RequireAuth>
-              <DiaryEntry />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path={ROUTES.journals}
-          element={
-            <RequireAuth>
-              <Journals />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path={ROUTES.journalDetail}
-          element={
-            <RequireAuth>
-              <JournalDetail />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path={ROUTES.reports}
-          element={
-            <RequireAuth>
-              <Reports />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path={ROUTES.reportDetail}
-          element={
-            <RequireAuth>
-              <ReportDetail />
-            </RequireAuth>
-          }
-        />
-        {PLACEHOLDER_ROUTES.map(({ path, title, backTo, backLabel }) => (
+      <RouteChange />
+      <OfflineBanner />
+      <a className="skip-link" href="#main">
+        Przejdź do treści
+      </a>
+      {/* tabIndex so the skip link can land on it; #main also keeps the flex
+          chain that lets a page fill the viewport (see index.css). */}
+      <main id="main" tabIndex={-1}>
+        <Routes>
           <Route
-            key={path}
-            path={path}
+            path={ROUTES.login}
+            element={
+              <GuestOnly>
+                <Login />
+              </GuestOnly>
+            }
+          />
+          <Route
+            path={ROUTES.register}
+            element={
+              <GuestOnly>
+                <Register />
+              </GuestOnly>
+            }
+          />
+          <Route
+            path={ROUTES.linkGuardian}
+            element={
+              <RequireGuardianLink>
+                <LinkGuardian />
+              </RequireGuardianLink>
+            }
+          />
+          <Route
+            path={ROUTES.modules}
             element={
               <RequireAuth>
-                <PlaceholderPage title={title} backTo={backTo} backLabel={backLabel} />
+                <ModuleSelect />
               </RequireAuth>
             }
           />
-        ))}
-        <Route path="/" element={<Navigate to={ROUTES.modules} replace />} />
-        <Route path="*" element={<Navigate to={ROUTES.modules} replace />} />
-      </Routes>
+          <Route
+            path={ROUTES.home}
+            element={
+              <RequireAuth>
+                <Home />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.diaryEntry}
+            element={
+              <RequireAuth>
+                <DiaryEntry />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.journals}
+            element={
+              <RequireAuth>
+                <Journals />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.journalDetail}
+            element={
+              <RequireAuth>
+                <JournalDetail />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.reports}
+            element={
+              <RequireAuth>
+                <Reports />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.reportDetail}
+            element={
+              <RequireAuth>
+                <ReportDetail />
+              </RequireAuth>
+            }
+          />
+          {PLACEHOLDER_ROUTES.map(({ path, title, backTo, backLabel }) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <RequireAuth>
+                  <PlaceholderPage title={title} backTo={backTo} backLabel={backLabel} />
+                </RequireAuth>
+              }
+            />
+          ))}
+            <Route path="/" element={<Navigate to={ROUTES.modules} replace />} />
+            <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
     </AuthProvider>
   )
 }

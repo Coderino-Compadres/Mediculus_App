@@ -23,6 +23,9 @@ const EMOTION_ALERTS: Partial<Record<EmotionName, number>> = { [STRES]: STRESS_A
 
 const LOAD_ERROR = 'Nie udało się wczytać dzisiejszego wpisu. Spróbuj ponownie.'
 const SAVE_ERROR = 'Nie udało się zapisać wpisu. Spróbuj ponownie.'
+const LEAVE_CONFIRM =
+  'Masz niezapisane zmiany w dzisiejszym wpisie. Jeśli wyjdziesz teraz, przepadną.'
+
 const RISKY_NOTE_REQUIRED = 'Opisz krótko, co się wydarzyło — inaczej nie zapiszemy oznaczenia.'
 
 function emptyDraft(isoDate: string): DiaryEntryDraft {
@@ -64,6 +67,38 @@ function DiaryEntry() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [riskyNoteError, setRiskyNoteError] = useState<string | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  /**
+   * What was on screen when the form was last in step with the server.
+   *
+   * Compared by value rather than tracked with a flag, so typing something and
+   * deleting it again does not count as a change — the question this answers is
+   * "would leaving lose anything", not "did anything happen".
+   */
+  const [saved, setSaved] = useState<DiaryEntryDraft | null>(null)
+  const dirty = saved !== null && JSON.stringify(draft) !== JSON.stringify(saved)
+
+  /**
+   * Warns before a reload, a closed tab or the back button leaves the page.
+   *
+   * Only covers navigation the browser owns. Leaving through the header menu or
+   * this screen's own back arrow is in-app routing, which `<Routes>` cannot
+   * intercept without a data router — the back arrow asks on its own (see
+   * `leave`), a menu link still does not. A form with eight fields losing
+   * everything in silence was worth the partial fix.
+   */
+  useEffect(() => {
+    if (!dirty) return
+    function warn(event: BeforeUnloadEvent) {
+      event.preventDefault()
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+
+  function leave() {
+    if (dirty && !window.confirm(LEAVE_CONFIRM)) return
+    navigate(ROUTES.home)
+  }
 
   // GET /api/diary/today/ answers with null until the first save of the day, so
   // "no entry yet" is the normal case here rather than an error.
@@ -79,6 +114,10 @@ function DiaryEntry() {
           // An entry that already has details worth seeing should not hide them.
           setDetailsOpen(true)
         }
+        // The baseline the guard compares against. Set only once the load has
+        // answered: before that there is nothing on screen worth keeping, and
+        // a failed load must not make an empty form look like unsaved work.
+        setSaved(entry ?? emptyDraft(isoDate))
         setLoadError(null)
       })
       .catch((cause: unknown) => {
@@ -92,7 +131,7 @@ function DiaryEntry() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [isoDate])
 
   function updateSituationReaction<K extends keyof DiaryEntryDraft['situationReaction']>(
     key: K,
@@ -135,7 +174,12 @@ function DiaryEntry() {
     setSaveError(null)
     try {
       await saveTodayEntry(draft)
-      navigate(ROUTES.home)
+      // Marked clean before leaving, or the guard would ask about the very
+      // changes that were just written.
+      setSaved(draft)
+      // Home says it, not this screen: the confirmation has to survive the
+      // navigation, and a message shown here would flash for one frame.
+      navigate(ROUTES.home, { state: { savedEntry: true } })
     } catch (cause: unknown) {
       setSaveError((cause instanceof ApiError && cause.formMessage) || SAVE_ERROR)
       setSaving(false)
@@ -149,7 +193,7 @@ function DiaryEntry() {
           type="button"
           className="diary-entry-back"
           aria-label="Wróć do strony głównej"
-          onClick={() => navigate(ROUTES.home)}
+          onClick={leave}
         >
           ←
         </button>

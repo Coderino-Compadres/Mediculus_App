@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { ApiError } from '../api/client'
 import { fetchHomeDashboard } from '../api/dashboard'
@@ -200,6 +200,18 @@ interface DashboardError {
 }
 
 function Home() {
+  /**
+   * Whether we arrived here straight after saving a diary entry.
+   *
+   * The confirmation belongs on this screen rather than on the form: saving
+   * navigates away, so a message rendered there would show for a single frame.
+   * Read from the navigation's own state, which means it survives the redirect
+   * and disappears on the next one — a reload of /home carries no state and
+   * shows nothing, which is right, because by then it is not news.
+   */
+  const savedEntry = Boolean(
+    (useLocation().state as { savedEntry?: boolean } | null)?.savedEntry,
+  )
   const { user } = useAuth()
   const firstName = user?.firstName ?? ''
   const today = new Date().toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })
@@ -252,6 +264,11 @@ function Home() {
 
   return (
     <div className="home-page">
+      {savedEntry && (
+        <p className="home-saved-notice" role="status">
+          Zapisano dzisiejszy wpis.
+        </p>
+      )}
       <header className="home-header">
         <div>
           <p className="home-module-label">PSYCHOTERAPIA</p>

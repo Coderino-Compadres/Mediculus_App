@@ -62,6 +62,14 @@ class FrontendParityTests(SimpleTestCase):
     def test_the_frontend_file_is_where_we_think_it_is(self):
         self.assertTrue(EMOTIONS_TS.exists(), f'{EMOTIONS_TS} is missing')
 
+    def test_both_sides_declare_them_in_the_same_order(self):
+        """Not pedantry: the order breaks ties in the report rankings, on both
+        sides. `core/reports.py` reads it out of EMOTIONS, the browser used to
+        read it out of EMOTION_COLORS' keys — two equally-rated emotions have to
+        come out in the same order wherever they are ranked, or the same week
+        reads differently on two screens."""
+        self.assertEqual(self.frontend_names(), list(EMOTIONS))
+
     def test_both_sides_list_exactly_the_same_ten_names(self):
         self.assertEqual(sorted(self.frontend_names()), sorted(EMOTIONS))
 

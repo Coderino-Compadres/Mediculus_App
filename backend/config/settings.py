@@ -173,7 +173,12 @@ REST_FRAMEWORK = {
     # own address and its own 'auth' budget, but they all land on the same
     # account counter. 15/hour leaves room for a person who genuinely cannot
     # remember which password they used, while making guessing pointless.
-    'DEFAULT_THROTTLE_RATES': {'auth': '10/min', 'login_account': '15/hour'},
+    'DEFAULT_THROTTLE_RATES': {
+        'auth': '10/min',
+        'login_account': '15/hour',
+        # Not a security cap but a capacity one — see ReportPdfThrottle.
+        'report_pdf': '30/hour',
+    },
     # How many proxies sit in front of us, and therefore how much of
     # X-Forwarded-For to believe. Unset, DRF keys the throttle on the *whole*
     # header — which the client writes, so a different value per request buys a

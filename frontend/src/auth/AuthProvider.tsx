@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { fetchCurrentUser, logout as logoutRequest, type AuthUser } from '../api/auth'
+import { UNAUTHORIZED_EVENT } from '../api/client'
 import { AuthContext } from './authContext'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -26,6 +27,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       active = false
+    }
+  }, [])
+
+  // A session can end while the app is open — it expires, the server restarts,
+  // somebody logs out in another tab. Before this, every screen simply started
+  // answering "Nie udało się wczytać…", the menu went on showing an e-mail
+  // address, and the only way out was to reload the page by hand.
+  const signedIn = useRef(false)
+  useEffect(() => {
+    // In an effect rather than during render: a ref written while rendering is
+    // a side effect React is entitled to run twice. The listener below only
+    // reads it when an event fires, which is always after the commit.
+    signedIn.current = user !== null
+  }, [user])
+
+  useEffect(() => {
+    let active = true
+    let checking = false
+
+    async function onRefusal() {
+      // A 403 is also the normal answer to /api/auth/me/ for a visitor, and the
+      // answer to a CSRF token the server no longer recognises. Only one of
+      // those means the session is gone, so ask rather than assume — and only
+      // when there is a session to lose.
+      if (!signedIn.current || checking) return
+      checking = true
+      try {
+        const current = await fetchCurrentUser()
+        if (active && current === null) setUser(null)
+      } catch {
+        // The check itself failed. Leaving the user signed in is the safer of
+        // the two wrong answers: a network blip must not throw away a form
+        // somebody is in the middle of filling.
+      } finally {
+        checking = false
+      }
+    }
+
+    window.addEventListener(UNAUTHORIZED_EVENT, onRefusal)
+    return () => {
+      active = false
+      window.removeEventListener(UNAUTHORIZED_EVENT, onRefusal)
     }
   }, [])
 

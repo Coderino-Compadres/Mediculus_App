@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import LoadError from '../components/LoadError'
+import Pagination from '../components/Pagination'
 import { ApiError } from '../api/client'
 import { fetchJournalEntries } from '../api/diary'
 import { toIsoDate } from '../utils/days'
 import { MOOD_OPTIONS, MOOD_RANK } from '../utils/moods'
 import { placeLabel } from '../utils/triggers'
 import type { JournalListEntry } from '../types/diaryEntry'
+import { usePagination } from '../hooks/usePagination'
 import { ROUTES, journalDetailPath } from '../routes'
 import './journals.css'
 
@@ -106,6 +109,10 @@ function Journals() {
   const [entries, setEntries] = useState<JournalListEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // Bumped by the retry button; the effect below lists it as a dependency, so
+  // trying again re-runs the one load rather than a second copy of it.
+  const [attempt, setAttempt] = useState(0)
+  const retry = () => setAttempt((value) => value + 1)
 
   // GET /api/diary/ answers with every entry this patient has written, newest
   // first — today included. A patient who has never written one gets an empty
@@ -130,9 +137,19 @@ function Journals() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [attempt])
 
   const filteredEntries = entries.filter((entry) => matchesFilter(entry, filter))
+  // Paginates what the filter left, not the whole diary: otherwise "Trudniejsze
+  // dni" would show three rows on page one and an empty page two.
+  const pages = usePagination(filteredEntries)
+
+  function changeFilter(value: DayFilter) {
+    setFilter(value)
+    // Page four of "Wszystkie" is rarely page four of "Dobre dni", and landing
+    // on an empty page reads as "no such days" rather than "wrong page".
+    pages.reset()
+  }
 
   function openEntry(entry: JournalListEntry) {
     if (entry.date === todayIso) {
@@ -158,7 +175,7 @@ function Journals() {
             key={option.value}
             type="button"
             className={filter === option.value ? 'journals-filter-chip journals-filter-chip-active' : 'journals-filter-chip'}
-            onClick={() => setFilter(option.value)}
+            onClick={() => changeFilter(option.value)}
           >
             {option.label}
           </button>
@@ -172,9 +189,11 @@ function Journals() {
       )}
 
       {!loading && loadError && (
-        <div className="journals-status journals-status-error" role="alert">
-          {loadError}
-        </div>
+        <LoadError
+          className="journals-status journals-status-error"
+          message={loadError}
+          onRetry={retry}
+        />
       )}
 
       {!loading && !loadError && (
@@ -186,7 +205,7 @@ function Journals() {
                 : 'Brak wpisów odpowiadających temu filtrowi.'}
             </p>
           )}
-          {filteredEntries.map((entry) => (
+          {pages.items.map((entry) => (
             <JournalRow
               key={entry.id}
               entry={entry}
@@ -195,6 +214,18 @@ function Journals() {
             />
           ))}
         </div>
+      )}
+
+      {!loading && !loadError && (
+        <Pagination
+          page={pages.page}
+          pageCount={pages.pageCount}
+          from={pages.from}
+          to={pages.to}
+          total={pages.total}
+          onChange={pages.goTo}
+          unit="wpisów"
+        />
       )}
     </div>
   )

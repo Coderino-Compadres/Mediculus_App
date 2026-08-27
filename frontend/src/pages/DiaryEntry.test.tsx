@@ -150,7 +150,9 @@ describe('saving', () => {
       mood: 'good',
       emotions: [{ emotion: 'Spokój', intensity: 0 }],
     })
-    expect(navigate).toHaveBeenCalledWith(ROUTES.home)
+    // The state is what makes /home say "Zapisano dzisiejszy wpis." — a message
+    // rendered here would flash for one frame before the navigation.
+    expect(navigate).toHaveBeenCalledWith(ROUTES.home, { state: { savedEntry: true } })
   })
 
   it('saves an entry that answers nothing — both questions are optional', async () => {
@@ -305,5 +307,89 @@ describe('the "Inne" trigger', () => {
       trigger: 'Inne',
       triggerOther: 'Dworzec',
     })
+  })
+})
+
+describe('leaving with unsaved changes', () => {
+  async function loadEmptyForm() {
+    mockedFetch.mockResolvedValueOnce(null)
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+  }
+
+  const back = () => screen.getByRole('button', { name: 'Wróć do strony głównej' })
+
+  beforeEach(() => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    return () => vi.restoreAllMocks()
+  })
+
+  it('goes straight back when nothing has been filled in', async () => {
+    await loadEmptyForm()
+
+    await userEvent.click(back())
+
+    expect(window.confirm).not.toHaveBeenCalled()
+    expect(navigate).toHaveBeenCalledWith(ROUTES.home)
+  })
+
+  it('asks before throwing away what was typed', async () => {
+    await loadEmptyForm()
+    await userEvent.click(screen.getByRole('radio', { name: 'Dobrze' }))
+
+    await userEvent.click(back())
+
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/niezapisane zmiany/i))
+    expect(navigate).toHaveBeenCalledWith(ROUTES.home)
+  })
+
+  it('stays put when the answer is no', async () => {
+    vi.mocked(window.confirm).mockReturnValue(false)
+    await loadEmptyForm()
+    await userEvent.click(screen.getByRole('radio', { name: 'Dobrze' }))
+
+    await userEvent.click(back())
+
+    expect(navigate).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Nowy wpis' })).toBeInTheDocument()
+  })
+
+  it('a change undone is not a change', async () => {
+    // Compared by value, not tracked with a flag: picking something and taking
+    // it back leaves nothing to lose. An emotion chip is the control that
+    // toggles — a mood tile is a radio and cannot be unset.
+    await loadEmptyForm()
+    const chip = screen.getByRole('button', { name: 'Spokój' })
+    await userEvent.click(chip)
+    await userEvent.click(chip)
+
+    await userEvent.click(back())
+
+    expect(window.confirm).not.toHaveBeenCalled()
+  })
+
+  it('does not ask after a successful save', async () => {
+    // The guard must not query the very changes that were just written.
+    mockedFetch.mockResolvedValueOnce(null)
+    mockedSave.mockResolvedValueOnce(existingEntry())
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+    await userEvent.click(screen.getByRole('radio', { name: 'Dobrze' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz wpis' }))
+
+    await waitFor(() => expect(mockedSave).toHaveBeenCalled())
+    expect(window.confirm).not.toHaveBeenCalled()
+  })
+
+  it('a failed load leaves nothing to protect', async () => {
+    // An empty form the user never saw is not unsaved work.
+    mockedFetch.mockRejectedValueOnce(new ApiError(500, null))
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('alert')
+
+    await userEvent.click(back())
+
+    expect(window.confirm).not.toHaveBeenCalled()
   })
 })

@@ -1,0 +1,16 @@
+.load-error-retry {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+  background: #fff;
+  border: 1px solid rgba(var(--shadow-tint), 0.2);
+  border-radius: 12px;
+  padding: 8px 16px;
+  margin-top: 12px;
+  cursor: pointer;
+}
+
+.load-error-retry:hover {
+  background: rgba(var(--shadow-tint), 0.06);
+}

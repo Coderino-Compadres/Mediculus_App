@@ -103,10 +103,13 @@
   margin-bottom: 0;
 }
 
-.report-pdf-status-note {
-  display: block;
-  margin-top: 4px;
-  color: var(--color-graphite-muted);
+/* A failed export, in the same box as the ready state. Without this the
+   message inherits .report-pdf-status alone and a failure is painted in the
+   success green, which is the one colour it must not be. Same tokens as
+   .journals-status-error, so a refusal looks the same wherever it appears. */
+.report-pdf-status-error {
+  color: var(--color-error);
+  background: var(--color-error-bg);
 }
 
 /* Four metric cards, 2x2 — one column on a narrow phone. */
@@ -195,6 +198,14 @@
   font-size: 13px;
   color: var(--color-graphite-muted);
   white-space: nowrap;
+}
+
+/* The second number on an emotion row. Lighter than the day count next to it:
+   how often is what the section ranks by, how strongly is the detail. It shares
+   the count's `white-space: nowrap`, so on a narrow phone the pair wraps below
+   the label as one block rather than splitting mid-figure. */
+.report-ranking-average {
+  color: var(--color-sage-hover);
 }
 
 .report-ranking-track {

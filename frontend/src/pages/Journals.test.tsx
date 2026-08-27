@@ -5,6 +5,7 @@ import { renderWithProviders } from '../test/render'
 import Journals from './Journals'
 import { ROUTES, journalDetailPath } from '../routes'
 import { ApiError } from '../api/client'
+import { PAGE_SIZE } from '../hooks/usePagination'
 import type { JournalListEntry } from '../types/diaryEntry'
 import { MOOD_OPTIONS } from '../utils/moods'
 
@@ -315,5 +316,118 @@ describe('the filters', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Dobre dni' }))
 
     expect(mockedFetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+/** `count` entries, one per day going back from yesterday. */
+function manyEntries(count: number, overrides: Partial<JournalListEntry> = {}) {
+  return Array.from({ length: count }, (_, index) =>
+    entry({ date: isoDaysAgo(index + 1), ...overrides }),
+  )
+}
+
+describe('Journals — pagination', () => {
+  const rows = () => screen.getAllByRole('button', { name: /Tylko odczyt|Dziś/ })
+  const nextPage = () => screen.getByRole('button', { name: /następna/i })
+  const prevPage = () => screen.getByRole('button', { name: /poprzednia/i })
+
+  it('shows seven entries on a page', async () => {
+    mockedFetch.mockResolvedValueOnce(manyEntries(20))
+    renderWithProviders(<Journals />)
+
+    await screen.findByText(/Strona 1 z 3/)
+
+    expect(rows()).toHaveLength(PAGE_SIZE)
+  })
+
+  it('draws no control when everything fits on one page', async () => {
+    mockedFetch.mockResolvedValueOnce(manyEntries(PAGE_SIZE))
+    renderWithProviders(<Journals />)
+
+    await screen.findAllByRole('button', { name: /Tylko odczyt/ })
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('counts entries, not reports, in the range it prints', async () => {
+    mockedFetch.mockResolvedValueOnce(manyEntries(20))
+    renderWithProviders(<Journals />)
+
+    expect(await screen.findByText(/1–7 z 20 wpisów/)).toBeInTheDocument()
+  })
+
+  it('moves through the pages', async () => {
+    mockedFetch.mockResolvedValueOnce(manyEntries(20))
+    renderWithProviders(<Journals />)
+    await screen.findByText(/Strona 1 z 3/)
+
+    await userEvent.click(nextPage())
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    expect(rows()).toHaveLength(PAGE_SIZE)
+  })
+
+  it('cannot step past either end', async () => {
+    mockedFetch.mockResolvedValueOnce(manyEntries(10))
+    renderWithProviders(<Journals />)
+    await screen.findByText(/Strona 1 z 2/)
+
+    expect(prevPage()).toBeDisabled()
+
+    await userEvent.click(nextPage())
+
+    expect(nextPage()).toBeDisabled()
+  })
+
+  it('starts on the page the URL names', async () => {
+    mockedFetch.mockResolvedValueOnce(manyEntries(20))
+    renderWithProviders(<Journals />, { route: '/journals?page=2' })
+
+    expect(await screen.findByText(/Strona 2 z 3/)).toBeInTheDocument()
+  })
+})
+
+describe('Journals — pagination and the filters together', () => {
+  it('paginates what the filter left, not the whole diary', async () => {
+    // Otherwise "Trudniejsze dni" shows three rows on page one and an empty
+    // page two.
+    mockedFetch.mockResolvedValueOnce([
+      ...manyEntries(3, { mood: 'very_bad' }),
+      ...Array.from({ length: 12 }, (_, index) =>
+        entry({ date: isoDaysAgo(index + 4), mood: 'very_good' }),
+      ),
+    ])
+    renderWithProviders(<Journals />)
+    await screen.findByText(/Strona 1 z 3/)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Trudniejsze dni' }))
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: /Tylko odczyt/ })).toHaveLength(3)
+  })
+
+  it('a filter sends the reader back to the first page', async () => {
+    // Page four of "Wszystkie" is rarely page four of "Dobre dni", and an empty
+    // page reads as "no such days" rather than "wrong page".
+    mockedFetch.mockResolvedValueOnce(manyEntries(30, { mood: 'very_good' }))
+    renderWithProviders(<Journals />)
+    await screen.findByText(/Strona 1 z 5/)
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    expect(screen.getByText(/Strona 2 z 5/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dobre dni' }))
+
+    expect(screen.getByText(/Strona 1 z 5/)).toBeInTheDocument()
+  })
+
+  it('a filter that empties the list keeps its own wording', async () => {
+    mockedFetch.mockResolvedValueOnce(manyEntries(20, { mood: 'very_good' }))
+    renderWithProviders(<Journals />)
+    await screen.findByText(/Strona 1 z 3/)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Trudniejsze dni' }))
+
+    expect(screen.getByText(/Brak wpisów odpowiadających temu filtrowi/i)).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
   })
 })

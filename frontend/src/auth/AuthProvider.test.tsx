@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AuthProvider } from './AuthProvider'
 import { useAuth } from './authContext'
-import { ApiError } from '../api/client'
+import { ApiError, UNAUTHORIZED_EVENT } from '../api/client'
 import { TEST_USER } from '../test/render'
 
 vi.mock('../api/auth', () => ({
@@ -120,5 +120,77 @@ describe('useAuth', () => {
     expect(() => render(<Probe />)).toThrow(/AuthProvider/)
 
     quiet.mockRestore()
+  })
+})
+
+describe('a session that ends while the app is open', () => {
+  /** What api/client.ts dispatches when the API answers 401 or 403. */
+  function refuseSomething() {
+    window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT))
+  }
+
+  async function signedIn() {
+    mockedFetchUser.mockResolvedValueOnce(TEST_USER)
+    renderProvider()
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent(String(TEST_USER.email)))
+  }
+
+  it('clears the session once the server confirms it is gone', async () => {
+    // Before this the app went on showing an e-mail address while every screen
+    // answered "Nie udało się wczytać…", and only a manual reload got out.
+    await signedIn()
+    mockedFetchUser.mockResolvedValueOnce(null)
+
+    refuseSomething()
+
+    await waitFor(() => expect(screen.getByTestId('user')).toHaveTextContent('brak'))
+  })
+
+  it('asks the server rather than trusting the refusal', async () => {
+    // A 403 is also what a stale CSRF token gets, and that is not an expired
+    // session — signing the user out of a form they are filling would be worse
+    // than the bug.
+    await signedIn()
+    mockedFetchUser.mockResolvedValueOnce(TEST_USER)
+
+    refuseSomething()
+
+    await waitFor(() => expect(mockedFetchUser).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('user')).toHaveTextContent(String(TEST_USER.email))
+  })
+
+  it('keeps the user signed in when the check itself fails', async () => {
+    // A network blip must not throw away what somebody is in the middle of.
+    await signedIn()
+    mockedFetchUser.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    refuseSomething()
+
+    await waitFor(() => expect(mockedFetchUser).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('user')).toHaveTextContent(String(TEST_USER.email))
+  })
+
+  it('ignores the refusal a visitor gets, because /api/auth/me/ answers 403 to one', async () => {
+    mockedFetchUser.mockResolvedValueOnce(null)
+    renderProvider()
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
+
+    refuseSomething()
+
+    await waitFor(() => expect(mockedFetchUser).toHaveBeenCalledTimes(1))
+  })
+
+  it('does not pile up checks when several requests are refused at once', async () => {
+    // A screen firing three requests must not produce three /api/auth/me/ calls.
+    await signedIn()
+    let release: (user: null) => void = () => {}
+    mockedFetchUser.mockReturnValueOnce(new Promise((resolve) => { release = resolve }))
+
+    refuseSomething()
+    refuseSomething()
+    refuseSomething()
+
+    await waitFor(() => expect(mockedFetchUser).toHaveBeenCalledTimes(2))
+    release(null)
   })
 })

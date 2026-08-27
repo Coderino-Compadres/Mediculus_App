@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { PLACEHOLDER_ROUTES, ROUTES } from '../routes'
+import { roleLabel } from '../utils/roles'
 
 /** Reuses the placeholder page's own title as the menu label, so a rename only touches routes.ts. */
 function placeholderLabel(path: string): string {
@@ -9,6 +10,9 @@ function placeholderLabel(path: string): string {
 }
 
 const MENU_ITEMS: { label: string; to: string }[] = [
+  // First, because every other entry leads away from it and several screens
+  // have no back arrow of their own — without it the menu is a one-way trip.
+  { label: 'Strona główna', to: ROUTES.home },
   { label: 'Dzienniczki', to: ROUTES.journals },
   { label: 'Raporty', to: ROUTES.reports },
   { label: placeholderLabel(ROUTES.analysis), to: ROUTES.analysis },
@@ -25,6 +29,22 @@ function HeaderMenu() {
   const [open, setOpen] = useState(false)
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const toggle = useRef<HTMLButtonElement>(null)
+
+  // Escape closes it and the focus goes back where it came from. Without the
+  // second half a keyboard user lands at the top of the document and walks the
+  // whole header again — the menu opens fine and traps you on the way out.
+  useEffect(() => {
+    if (!open) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      toggle.current?.focus()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [open])
 
   async function onSignOut() {
     setOpen(false)
@@ -41,6 +61,7 @@ function HeaderMenu() {
   return (
     <div className="home-menu">
       <button
+        ref={toggle}
         type="button"
         className="home-menu-toggle"
         aria-label="Menu"
@@ -59,11 +80,20 @@ function HeaderMenu() {
             {user?.email && (
               <div className="home-menu-account">
                 <p className="home-menu-account-email">{user.email}</p>
-                {user.role && <p className="home-menu-account-role">{user.role}</p>}
+                {user.role && (
+                  <p className="home-menu-account-role">{roleLabel(user.role)}</p>
+                )}
               </div>
             )}
             {MENU_ITEMS.map((item) => (
-              <Link key={item.to} to={item.to} onClick={() => setOpen(false)}>
+              <Link
+                key={item.to}
+                to={item.to}
+                // Marks the screen you are already on. Nothing else in the menu
+                // says where you are.
+                aria-current={item.to === pathname ? 'page' : undefined}
+                onClick={() => setOpen(false)}
+              >
                 {item.label}
               </Link>
             ))}
