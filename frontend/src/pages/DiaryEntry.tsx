@@ -6,6 +6,7 @@ import EmotionSelector from '../components/EmotionSelector'
 import LevelSlider from '../components/LevelSlider'
 import { ApiError } from '../api/client'
 import { fetchTodayEntry, saveTodayEntry } from '../api/diary'
+import { toIsoDate } from '../utils/days'
 import { STRES, type EmotionName } from '../utils/emotions'
 import { OTHER_TRIGGER, TRIGGER_OPTIONS } from '../utils/triggers'
 import type { DiaryEntryDraft, EmotionEntry } from '../types/diaryEntry'
@@ -23,14 +24,6 @@ const EMOTION_ALERTS: Partial<Record<EmotionName, number>> = { [STRES]: STRESS_A
 const LOAD_ERROR = 'Nie udało się wczytać dzisiejszego wpisu. Spróbuj ponownie.'
 const SAVE_ERROR = 'Nie udało się zapisać wpisu. Spróbuj ponownie.'
 const RISKY_NOTE_REQUIRED = 'Opisz krótko, co się wydarzyło — inaczej nie zapiszemy oznaczenia.'
-
-/** 'YYYY-MM-DD' for the local calendar day — the day this entry belongs to. */
-function toIsoDate(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
 
 function emptyDraft(isoDate: string): DiaryEntryDraft {
   return {

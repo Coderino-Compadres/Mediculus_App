@@ -3,19 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import { ApiError } from '../api/client'
 import { fetchJournalEntries } from '../api/diary'
+import { toIsoDate } from '../utils/days'
 import { MOOD_OPTIONS, MOOD_RANK } from '../utils/moods'
-import { OTHER_TRIGGER } from '../utils/triggers'
+import { placeLabel } from '../utils/triggers'
 import type { JournalListEntry } from '../types/diaryEntry'
 import { ROUTES, journalDetailPath } from '../routes'
 import './journals.css'
-
-/** 'YYYY-MM-DD' for the local calendar day — matches the key GET /api/diary/today/ answers for. */
-function toIsoDate(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
 
 const LOAD_ERROR = 'Nie udało się wczytać dzienniczków. Spróbuj ponownie.'
 
@@ -48,10 +41,7 @@ function summaryChips(entry: JournalListEntry): string[] {
     .slice(0, 2)
     .map((rating) => (rating.intensity === null ? rating.emotion : `${rating.emotion} ${rating.intensity}`))
 
-  const place =
-    entry.situationReaction.trigger === OTHER_TRIGGER
-      ? entry.situationReaction.triggerOther.trim() || null
-      : entry.situationReaction.trigger
+  const place = placeLabel(entry.situationReaction)
 
   return place ? [...emotionChips, place] : emotionChips
 }
