@@ -53,7 +53,7 @@ Lokalnie są **dwa pliki env**, różnią się blokiem bazy i `DB_SSLMODE`:
 
 ```bash
 python backend/manage.py runserver 8001                                    # lokalna baza
-DJANGO_ENV_FILE=.env.local.azure python backend/manage.py runserver 8001         # baza na Azure
+DJANGO_ENV_FILE=.env.azure python backend/manage.py runserver 8001               # baza na Azure
 ```
 
 Prawdziwe zmienne środowiskowe wygrywają z plikiem, więc jednorazowa podmianka jednego klucza to `DB_SSLMODE=require python backend/manage.py ...` — bez edycji plików.
@@ -90,6 +90,11 @@ Hasła: w `.env.azure` / `.env.local`. Jedno połączenie pokazuje **obie** bazy
   python backend/manage.py migrate --database=default
   python backend/manage.py migrate --database=medical
   ```
+  Zapomniana druga komenda nie daje żadnego sygnału: import przechodzi, testy przechodzą, a pierwsze żądanie do `/api/dashboard/home/` wywala 500 z `column diary.tension_level does not exist`. Dlatego jest `scripts/setup_dev.sh` — robi obie i na końcu weryfikuje. Samą weryfikację (read-only, bezpieczna wszędzie, też przeciw Azure) daje:
+  ```bash
+  python backend/manage.py check_databases
+  DJANGO_ENV_FILE=.env.azure python backend/manage.py check_databases
+  ```
 - **Coś działa lokalnie, ale nie na Azure?** Normalne. Azure ma reverse proxy i HTTPS, `runserver` nie — cała klasa błędów (CSRF, HTTPS, `DEBUG=False`, statyki) ujawnia się tylko tam. Po deployu zrobić szybki smoke test na Azure.
 - **Zanik prądu albo twardy reset ubija kontener** (`Exited (255)`) — pgAdmin i Django pokazują wtedy *connection timeout*. Dane przeżywają, bo siedzą w warstwie zapisywalnej kontenera, więc wystarczy `docker start mediculus-pg`. Kasuje je dopiero `docker rm`. Kontener ma już `--restart unless-stopped`, a demon `docker` jest `enabled` w systemd, więc powinien wstawać sam.
 - **Timeout na Azure po restarcie routera** = nowe publiczne IP i stara reguła firewalla. Portal → zasób Postgres → Networking → *Add current client IP address* → Save, odczekać kilkadziesiąt sekund, potem reconnect. Poznaje się to po tym, że firewall Azure **gubi** pakiety (timeout), a nie odrzuca połączenia (*refused*).
@@ -110,8 +115,7 @@ docker run -d --name mediculus-pg \
 docker exec -i mediculus-pg psql -v ON_ERROR_STOP=1 -U mediculus_admin -d postgres < scripts/database_setup.sql
 docker exec -i mediculus-pg psql -v ON_ERROR_STOP=1 -U mediculus_admin -d postgres < scripts/mock_data.sql
 
-python backend/manage.py migrate --database=default --fake-initial
-python backend/manage.py migrate --database=medical --fake-initial
+scripts/setup_dev.sh          # oba migrate --fake-initial + check_databases
 python backend/manage.py createsuperuser
 ```
 
@@ -123,6 +127,6 @@ docker update --restart unless-stopped mediculus-pg
 
 `POSTGRES_PASSWORD` musi się zgadzać z `USER_DB_PASSWORD`/`MEDICAL_DB_PASSWORD` w `.env.local` (teraz `123`) — inaczej Django dostanie *password authentication failed*.
 
-Stan po odtworzeniu: 7 × `user`, 4 × `patient` w `user_db`; 5 × `diary`, 5 × `mood_scale`, 3 × `technique`, 4 × `raport` w `medical_db`. Migracje: `core.0001` FAKED, `0002` i `0003` zaaplikowane w obu bazach.
+Stan po odtworzeniu: 7 × `user`, 4 × `patient` w `user_db`; 5 × `diary`, 5 × `mood_scale`, 3 × `technique`, 4 × `raport` w `medical_db`. Migracje: `core.0001` FAKED, `0002`–`0008` zaaplikowane w obu bazach (`scripts/setup_dev.sh` to potwierdzi).
 
 `--fake-initial` jest konieczne, bo schemat tworzy `database_setup.sql`, a nie migracje. Ważne: `mock_data.sql` działa **tylko** na schemacie z tego SQL-a — nie na tabelach stworzonych przez `migrate`, bo Django nie daje kolumnom `created_at`/`updated_at` defaultów w bazie.
