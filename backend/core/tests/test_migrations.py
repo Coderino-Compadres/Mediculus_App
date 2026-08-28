@@ -17,6 +17,7 @@ No database is touched: the migration modules are imported and inspected.
 import importlib
 import re
 
+from django.conf import settings
 from django.db import migrations
 from django.test import SimpleTestCase
 
@@ -103,6 +104,73 @@ class IdempotencyTests(SimpleTestCase):
         for operation in run_sql_operations('core.migrations.0006_drop_overall_feeling'):
             self.assertRegex(operation.sql, r'DROP COLUMN IF EXISTS')
             self.assertRegex(operation.reverse_sql, r'ADD COLUMN IF NOT EXISTS')
+
+
+class ThrottleCacheTableTests(SimpleTestCase):
+    """0008 creates the table `CACHES['default']` counts throttle hits in.
+
+    The name is written out in both places — a migration must not read a setting
+    that can change under it — so something has to hold them together. If they
+    drift, `migrate` creates a table nothing uses and every cache write raises;
+    DRF reads a cache it cannot reach as "no history", so the caps would fail
+    open with nothing in the logs to say so.
+    """
+
+    MODULE = 'core.migrations.0008_throttle_cache_table'
+
+    def module(self):
+        return importlib.import_module(self.MODULE)
+
+    def test_the_migration_creates_the_table_the_cache_is_configured_to_use(self):
+        self.assertEqual(
+            self.module().TABLE, settings.CACHES['default']['LOCATION'],
+        )
+
+    def test_it_names_user_db_and_the_router_agrees(self):
+        """Unhinted, RunPython runs against medical_db as well — where the
+        counters would be a second, unrelated budget in the pseudonymized
+        database that is supposed to hold nothing but clinical rows."""
+        operations = [
+            operation for operation in operations_of(self.MODULE)
+            if isinstance(operation, migrations.RunPython)
+        ]
+        self.assertTrue(operations, f'{self.MODULE} declares no RunPython')
+
+        router = CoreDatabaseRouter()
+        for operation in operations:
+            self.assertEqual(operation.hints.get('target_db'), 'default')
+            self.assertTrue(
+                router.allow_migrate('default', 'core', model_name=None, **operation.hints))
+            self.assertFalse(
+                router.allow_migrate('medical', 'core', model_name=None, **operation.hints))
+
+    def test_it_is_reversible(self):
+        for operation in operations_of(self.MODULE):
+            if isinstance(operation, migrations.RunPython):
+                self.assertTrue(operation.reversible)
+
+
+class ThrottleCacheSettingsTests(SimpleTestCase):
+    """What makes the cache a shared counter rather than a per-worker one."""
+
+    def test_the_cache_is_not_per_process(self):
+        """Local-memory is Django's default and was what made the login cap
+        worth N times what it says, N being the number of gunicorn workers."""
+        backend = settings.CACHES['default']['BACKEND']
+
+        self.assertNotIn('locmem', backend)
+        self.assertNotIn('dummy', backend)
+        self.assertEqual(backend, 'django.core.cache.backends.db.DatabaseCache')
+
+    def test_culling_cannot_quietly_reset_a_counter(self):
+        """DatabaseCache culls once the table passes MAX_ENTRIES, and a culled
+        row is a throttle counter back at zero — the cap failing open exactly
+        under the load that would cause the culling. Django's default of 300 is
+        reachable by a few hundred callers in one hour."""
+        max_entries = settings.CACHES['default'].get('OPTIONS', {}).get('MAX_ENTRIES')
+
+        self.assertIsNotNone(max_entries, 'MAX_ENTRIES left at the default 300')
+        self.assertGreaterEqual(max_entries, 10000)
 
 
 class StateAndDatabaseAgreeTests(SimpleTestCase):

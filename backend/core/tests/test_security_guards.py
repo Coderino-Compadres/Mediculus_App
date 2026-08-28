@@ -130,15 +130,36 @@ class SqlInjectionSinkTests(SimpleTestCase):
     test_schema_sync.py.
     """
 
-    #: Ways to reach the database with a string of your own making.
-    SINKS = (
+    #: Running a statement of your own making. No module may do this.
+    STATEMENT_SINKS = (
         r'\.raw\(',
         r'\.extra\(',
         r'RawSQL',
+        r'\.execute\(',
+    )
+
+    #: Holding a cursor. A prerequisite for the above, and refused by default so
+    #: that reaching for one is a decision rather than a habit — but not itself a
+    #: way to inject anything.
+    CURSOR_SINKS = (
         r'connection\.cursor\(',
         r'connections\[[^\]]+\]\.cursor\(',
-        r'cursor\.execute\(',
     )
+
+    SINKS = STATEMENT_SINKS + CURSOR_SINKS
+
+    #: Modules allowed to hold a cursor, and why. Deliberately not a general
+    #: exemption: `test_an_exempt_module_runs_no_statement_of_its_own` keeps each
+    #: entry to handing a cursor to Django's own introspection, so an exempt
+    #: module still cannot build SQL. Checked for exact equality below, so a
+    #: stale entry fails as loudly as a missing one.
+    CURSOR_ONLY = {
+        'check_databases.py': (
+            'compares a real database with core/models.py, which is exactly the '
+            'drift a faked 0001_initial hides; '
+            'connection.introspection.get_table_description takes a cursor'
+        ),
+    }
 
     def application_sources(self):
         """`core` and `config`, minus migrations and this suite."""
@@ -149,13 +170,42 @@ class SqlInjectionSinkTests(SimpleTestCase):
     def test_no_application_module_builds_sql_by_hand(self):
         for path in self.application_sources():
             body = path.read_text()
-            for sink in self.SINKS:
+            exempt = path.name in self.CURSOR_ONLY
+            sinks = self.STATEMENT_SINKS if exempt else self.SINKS
+            for sink in sinks:
                 with self.subTest(file=path.relative_to(REPO_ROOT), sink=sink):
                     self.assertIsNone(
                         re.search(sink, body),
                         f'{path.name}: surowy SQL. Jeśli naprawdę jest potrzebny, '
-                        f'użyj parametrów (nie f-stringa) i dopisz go tutaj świadomie.',
+                        f'użyj parametrów (nie f-stringa) i dopisz go tutaj świadomie '
+                        f'(CURSOR_ONLY, jeśli chodzi tylko o introspekcję).',
                     )
+
+    def test_an_exempt_module_runs_no_statement_of_its_own(self):
+        """What keeps CURSOR_ONLY from being a hole rather than an exemption.
+
+        An exempt module may hold a cursor and hand it to Django; the moment it
+        calls `.execute(` it is writing SQL, and the reason for the exemption no
+        longer describes it. Covered by the loop above too — this states it as a
+        property so the intent survives a refactor of that loop.
+        """
+        by_name = {path.name: path for path in self.application_sources()}
+
+        for name in self.CURSOR_ONLY:
+            with self.subTest(module=name):
+                self.assertIn(name, by_name, f'{name}: wpis w CURSOR_ONLY bez pliku')
+                self.assertNotIn('.execute(', by_name[name].read_text())
+
+    def test_no_module_is_exempt_by_accident(self):
+        """Exact equality, so an entry left behind after a module stopped needing
+        a cursor fails as loudly as a missing one — otherwise the allowlist
+        grows quietly and stops meaning anything."""
+        holding_a_cursor = {
+            path.name for path in self.application_sources()
+            if any(re.search(sink, path.read_text()) for sink in self.CURSOR_SINKS)
+        }
+
+        self.assertEqual(holding_a_cursor, set(self.CURSOR_ONLY))
 
     def test_the_scan_actually_looks_at_the_modules_that_query(self):
         """A guard that scans nothing passes forever."""

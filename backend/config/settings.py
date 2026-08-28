@@ -150,6 +150,46 @@ DATABASES = {
 DATABASE_ROUTERS = ['core.routers.CoreDatabaseRouter']
 
 
+# Cache
+# https://docs.djangoproject.com/en/6.1/topics/cache/
+
+#: The table `core/migrations/0008_throttle_cache_table.py` creates. It is the
+#: one table in `user_db` that `scripts/database_setup.sql` does not declare:
+#: it holds no domain data, and `test_schema_sync.py` compares that script
+#: against `core.models` table by table, where a model-less table has nothing to
+#: compare with.
+THROTTLE_CACHE_TABLE = 'throttle_cache'
+
+# Where the throttle counters live, and the only reason this project has a cache
+# at all. Django's default is local-memory, which is per *process*: with N
+# gunicorn workers every cap was worth N times what it says, and the one that
+# bounds password guessing bounded nothing in particular — which worker answered
+# is up to the load balancer, so an attacker got a fresh budget by retrying.
+#
+# DatabaseCache is the shared backend that needs no new infrastructure; there is
+# no Redis in this deployment and adding one for a handful of counters would be
+# a service to run, monitor and pay for. It lands on `user_db` because
+# `core/routers.py` sends every non-`core` app label to `default`.
+#
+# Putting counters next to the PII is safe only because of what the keys hold:
+# `core/throttling.py` writes an HMAC of the caller's address and of the
+# submitted e-mail, never either value — see `HashedIdent`, which was written
+# against exactly this move.
+#
+# MAX_ENTRIES is far above Django's default of 300 on purpose. DatabaseCache
+# culls the table once it grows past it, and a culled row is a throttle counter
+# reset to zero: the cap would fail open under load, which is precisely when it
+# is the only thing standing there. At 20 000 rows an hour's worth of counters
+# fits with room to spare, and the table is still trivially small.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': THROTTLE_CACHE_TABLE,
+        'OPTIONS': {'MAX_ENTRIES': 20000},
+    },
+}
+
+
 # Django REST Framework
 # https://www.django-rest-framework.org/api-guide/settings/
 
@@ -165,9 +205,9 @@ REST_FRAMEWORK = {
     ],
     'UNAUTHENTICATED_USER': None,
     # Applied to the login/register endpoints only (core.throttling.AuthThrottle);
-    # everything else is unthrottled. Counted in the default local-memory cache,
-    # so the budget is per gunicorn worker rather than per deployment — a shared
-    # cache backend is what would make this a real limit.
+    # everything else is unthrottled. Counted in CACHES['default'] above, which
+    # is database-backed precisely so these are one budget per deployment rather
+    # than one per gunicorn worker.
     # 'auth' is the per-IP cap; 'login_account' is the per-account one, which is
     # what actually bounds password guessing — a botnet hands every attempt its
     # own address and its own 'auth' budget, but they all land on the same
