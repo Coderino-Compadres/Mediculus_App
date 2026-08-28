@@ -24,8 +24,8 @@ from .authentication import end_session, start_session
 from .dashboard import build_home_dashboard
 from .diary import (DiaryEntrySerializer, load_entry, load_history,
                     load_today_entry, save_today_entry)
-from .guardian import (accept_invitation, cancel_invitation, pending_invitations,
-                       reject_invitation)
+from .guardian import (STATUS_ACCEPTED, accept_invitation, cancel_invitation,
+                       guardian_status, pending_invitations, reject_invitation)
 from .models import Patient
 from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
@@ -149,7 +149,7 @@ class MeView(APIView):
         return Response(UserSerializer(request.user).data)
 
 
-def _require_patient(request, refusal):
+def _require_patient(request, refusal, *, require_guardian_link=True):
     """The `patient` row behind the session, or a refusal.
 
     Shared by every endpoint that reads or writes clinical data: the session is
@@ -157,12 +157,34 @@ def _require_patient(request, refusal):
     to tamper with. A guardian or a specialist has no `patient` row and is turned
     away rather than handed an empty diary — an empty diary would be a
     misleading answer to a question that does not apply to them.
+
+    A minor whose guardian has not accepted is refused as well, and
+    `require_guardian_link` defaults to True for the same reason
+    `IsAuthenticated` is the default permission: a clinical endpoint added later
+    that forgets to think about the gate is closed rather than accidentally
+    open. The one caller that opts out is `GuardianLinkView`, which is how the
+    child asks for the acceptance in the first place — gating it would leave
+    them with no way out of the gate.
+
+    The rule mirrors `needsGuardianLink` in src/api/auth.ts exactly
+    (`is_child` *and* not accepted), because until now the frontend route guard
+    was the only thing enforcing it: a hand-made request reached the data, and
+    RODO art. 8 makes a minor's consent the guardian's to give. Nothing enforces
+    that the two definitions stay in step, so change them together.
     """
     patient = (
         Patient.objects.filter(user=request.user).only('id_medical', 'is_child').first()
     )
     if patient is None:
         raise PermissionDenied(refusal)
+    # Only a minor is asked the question, so an adult patient costs no extra
+    # query — `is_child` came back with the row above.
+    if (
+        require_guardian_link
+        and patient.is_child is True
+        and guardian_status(request.user) != STATUS_ACCEPTED
+    ):
+        raise PermissionDenied(GUARDIAN_GATE_REFUSAL)
     return patient
 
 
@@ -170,6 +192,14 @@ DIARY_REFUSAL = 'Dzienniczek jest dostępny tylko dla konta pacjenta.'
 
 GUARDIAN_LINK_REFUSAL = (
     'Powiązanie z opiekunem dotyczy tylko konta pacjenta małoletniego.'
+)
+
+# One message for every clinical endpoint, because the reason is a fact about
+# the account rather than about the thing being asked for: naming the diary here
+# would suggest the reports are reachable.
+GUARDIAN_GATE_REFUSAL = (
+    'To konto czeka na akceptację opiekuna. '
+    'Poproś opiekuna o zatwierdzenie zaproszenia, aby korzystać z aplikacji.'
 )
 
 INVITATION_NOT_FOUND = 'Nie znaleziono zaproszenia oczekującego na odpowiedź.'
@@ -217,7 +247,11 @@ class GuardianLinkView(APIView):
         return Response(UserSerializer(request.user).data)
 
     def _require_minor(self, request):
-        patient = _require_patient(request, GUARDIAN_LINK_REFUSAL)
+        # The one endpoint that must stay reachable from behind the gate: this
+        # is where the child asks for the acceptance that opens it.
+        patient = _require_patient(
+            request, GUARDIAN_LINK_REFUSAL, require_guardian_link=False,
+        )
         # An adult patient is not stuck and has nothing to link; refusing keeps
         # `parent_child` meaning what it says rather than becoming a general
         # "these two accounts know each other" table.

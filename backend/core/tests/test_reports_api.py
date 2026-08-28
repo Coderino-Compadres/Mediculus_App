@@ -1145,17 +1145,18 @@ class SessionEdgeTests(ReportTestCase):
         self.assertEqual(self.client.get(self.list_url).status_code, 403)
         self.assertEqual(self.client.get(self.detail_url).status_code, 403)
 
-    def test_a_minor_without_an_accepted_guardian_is_still_served(self):
-        """DOCUMENTS CURRENT BEHAVIOUR. The guardian gate lives in the frontend
-        route guard; no diary or report endpoint checks it, so a hand-made
-        request reaches the data. Consistent with /api/diary/, and the same
-        thing would have to be fixed in both places at once."""
+    def test_a_minor_without_an_accepted_guardian_is_refused(self):
+        """The gate is enforced here and not only in App.tsx's route guard, so a
+        hand-made request no longer reaches the data. Kept in this file as well
+        as in test_guardian_gate.py, which sweeps every clinical endpoint: this
+        one is the regression guard for the reports specifically, since a rule
+        applied to /api/diary/ and forgotten here would be no rule at all."""
         child = self.create_patient('dziecko@example.com')
         Patient.objects.filter(pk=child.pk).update(is_child=True)
         self.entry(self.week, mood='good', patient=child)
         self.sign_in(child.user)
 
-        self.assertEqual(self.client.get(self.list_url).status_code, 200)
+        self.assertEqual(self.client.get(self.list_url).status_code, 403)
 
     def test_a_role_less_account_with_a_patient_row_is_still_a_patient(self):
         """`user_role` is nullable, and the endpoint keys on the patient row
