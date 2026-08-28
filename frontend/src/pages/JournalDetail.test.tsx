@@ -143,6 +143,55 @@ describe('what the entry did not answer', () => {
   })
 })
 
+describe('pora dnia', () => {
+  it('shows it on the same line as the place — one answer to "where and when"', async () => {
+    mockedFetch.mockResolvedValueOnce(entry({ timeOfDay: 'evening' }))
+
+    renderWithProviders(<JournalDetail />)
+
+    expect(await screen.findByText('Miejsce: Praca · Pora dnia: Wieczór')).toBeInTheDocument()
+  })
+
+  it('leaves the line out entirely when the entry answered neither', async () => {
+    mockedFetch.mockResolvedValueOnce(
+      entry({ situationReaction: { ...entry().situationReaction, trigger: null }, timeOfDay: undefined }),
+    )
+
+    renderWithProviders(<JournalDetail />)
+    await screen.findByRole('heading', { name: 'Sytuacja i reakcja' })
+
+    expect(screen.queryByText(/Pora dnia/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Miejsce/)).not.toBeInTheDocument()
+  })
+
+  it('shows the place alone when there is no pora dnia — no dash for a missing answer', async () => {
+    mockedFetch.mockResolvedValueOnce(entry({ timeOfDay: undefined }))
+
+    renderWithProviders(<JournalDetail />)
+
+    expect(await screen.findByText('Miejsce: Praca')).toBeInTheDocument()
+  })
+
+  it('shows the pora dnia alone when no place was picked', async () => {
+    mockedFetch.mockResolvedValueOnce(
+      entry({ situationReaction: { ...entry().situationReaction, trigger: null }, timeOfDay: 'night' }),
+    )
+
+    renderWithProviders(<JournalDetail />)
+
+    expect(await screen.findByText('Pora dnia: Noc')).toBeInTheDocument()
+  })
+
+  it('is not the time the entry was saved — the archive shows both', async () => {
+    mockedFetch.mockResolvedValueOnce(entry({ savedAt: '2026-08-22T22:10:00', timeOfDay: 'morning' }))
+
+    renderWithProviders(<JournalDetail />)
+
+    expect(await screen.findByText(/Pora dnia: Rano/)).toBeInTheDocument()
+    expect(screen.getByText(/zapisano 22:10/)).toBeInTheDocument()
+  })
+})
+
 describe('the risky-behaviour section', () => {
   it('is absent when the entry was not flagged', async () => {
     mockedFetch.mockResolvedValueOnce(entry({ hasRiskyBehavior: false }))

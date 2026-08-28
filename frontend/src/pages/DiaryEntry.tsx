@@ -9,6 +9,7 @@ import { fetchTodayEntry, saveTodayEntry } from '../api/diary'
 import { toIsoDate } from '../utils/days'
 import { STRES, type EmotionName } from '../utils/emotions'
 import { OTHER_TRIGGER, TRIGGER_OPTIONS } from '../utils/triggers'
+import { TIME_OF_DAY_OPTIONS, type TimeOfDay } from '../utils/timeOfDay'
 import type { DiaryEntryDraft, EmotionEntry } from '../types/diaryEntry'
 import { ROUTES } from '../routes'
 import './diaryEntry.css'
@@ -43,6 +44,9 @@ function emptyDraft(isoDate: string): DiaryEntryDraft {
       thought: '',
       behavior: '',
     },
+    // Undefined rather than a default hour: the question is optional, and
+    // guessing "Rano" would put an answer in the diary the patient never gave.
+    timeOfDay: undefined,
     notes: '',
     hasRiskyBehavior: false,
     riskyBehaviorNote: '',
@@ -140,6 +144,14 @@ function DiaryEntry() {
     setDraft((current) => ({
       ...current,
       situationReaction: { ...current.situationReaction, [key]: value },
+    }))
+  }
+
+  /** Toggles, like the place chips: pressing the selected one takes it back. */
+  function toggleTimeOfDay(value: TimeOfDay) {
+    setDraft((current) => ({
+      ...current,
+      timeOfDay: current.timeOfDay === value ? undefined : value,
     }))
   }
 
@@ -278,9 +290,42 @@ function DiaryEntry() {
 
                 <div className="diary-entry-subsection">
                   <h3>Sytuacja i reakcja</h3>
+                  {/* Pora dnia sits with the place rather than in the always-visible
+                      part of the form: it answers "where and when did this happen",
+                      and the obligatory section stays as short as it can. */}
+                  <span className="diary-entry-group-label" id="time-of-day-label">
+                    Pora dnia
+                  </span>
+                  <div
+                    className="diary-entry-trigger-chips"
+                    role="group"
+                    aria-labelledby="time-of-day-label"
+                  >
+                    {TIME_OF_DAY_OPTIONS.map((option) => {
+                      const selected = draft.timeOfDay === option.value
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={selected ? 'trigger-chip trigger-chip-selected' : 'trigger-chip'}
+                          aria-pressed={selected}
+                          onClick={() => toggleTimeOfDay(option.value)}
+                        >
+                          {option.label}
+                        </button>
+                      )
+                    })}
+                  </div>
                   {/* TODO: this trigger list (utils/triggers.ts) is a reasonable starting set,
                       not final — confirm the definitive list with the client. */}
-                  <div className="diary-entry-trigger-chips">
+                  <span className="diary-entry-group-label" id="place-label">
+                    Miejsce
+                  </span>
+                  <div
+                    className="diary-entry-trigger-chips"
+                    role="group"
+                    aria-labelledby="place-label"
+                  >
                     {TRIGGER_OPTIONS.map((option) => {
                       const selected = draft.situationReaction.trigger === option
                       return (

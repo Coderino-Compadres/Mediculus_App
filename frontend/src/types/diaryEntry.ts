@@ -1,4 +1,5 @@
 import type { EmotionName } from '../utils/emotions'
+import type { TimeOfDay } from '../utils/timeOfDay'
 
 export type MoodLevel = 'very_bad' | 'bad' | 'neutral' | 'good' | 'very_good'
 
@@ -46,6 +47,12 @@ export interface DiaryEntryDraft {
   energyLevel: number | null
   tensionLevel: number | null
   situationReaction: SituationReaction
+  /**
+   * When the situation happened, as one of four parts of the day — not when the
+   * entry was written (that is `JournalListEntry.savedAt`). Optional like every
+   * other answer on this form: undefined means the question went unanswered.
+   */
+  timeOfDay?: TimeOfDay
   notes: string
   /**
    * Confirmed client feature: a flag for risky behavior (self-harm, substance

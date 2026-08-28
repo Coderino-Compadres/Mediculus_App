@@ -7,6 +7,7 @@ import { fetchJournalEntry } from '../api/diary'
 import { EMOTION_COLORS, STRES, type EmotionName } from '../utils/emotions'
 import { MOOD_OPTIONS } from '../utils/moods'
 import { placeLabel } from '../utils/triggers'
+import { timeOfDayLabel } from '../utils/timeOfDay'
 import type { JournalListEntry } from '../types/diaryEntry'
 import { ROUTES } from '../routes'
 import './diaryEntry.css'
@@ -129,6 +130,7 @@ function JournalDetail() {
     minute: '2-digit',
   })
   const place = placeLabel(entry.situationReaction)
+  const timeOfDay = timeOfDayLabel(entry.timeOfDay)
 
   return (
     <div className="journal-detail-page">
@@ -208,7 +210,16 @@ function JournalDetail() {
 
       <section className="journal-detail-card">
         <h2>Sytuacja i reakcja</h2>
-        {place && <p className="journal-detail-place">Miejsce: {place}</p>}
+        {/* One line, because "where" and "when" are one answer to read. An
+            unanswered half is left out rather than shown as a dash: the whole
+            line disappears only when the entry answered neither. */}
+        {(place || timeOfDay) && (
+          <p className="journal-detail-place">
+            {[place && `Miejsce: ${place}`, timeOfDay && `Pora dnia: ${timeOfDay}`]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        )}
 
         <div className="journal-detail-field">
           <span className="journal-detail-field-label">Sytuacja</span>
