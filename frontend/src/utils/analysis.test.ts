@@ -5,6 +5,7 @@ import {
   TREND_CHART_MAX_DAYS,
   WEEKDAYS,
   buildAnalysis,
+  buildFrequency,
   difficultyScore,
   daysGenitive,
   entriesGenitive,
@@ -12,6 +13,7 @@ import {
 } from './analysis'
 import { addDays, fromIsoDate, toIsoDate } from './days'
 import type { JournalListEntry } from '../types/diaryEntry'
+import type { FrequencyPeriodId } from '../types/analysis'
 
 /** A fixed Friday, so a weekday assertion does not depend on when the suite runs. */
 const TODAY = new Date(2026, 7, 28)
@@ -397,27 +399,50 @@ describe('buildAnalysis — the emotion bars', () => {
   })
 })
 
-describe('buildAnalysis — the entry-frequency bars', () => {
-  it('splits a full window into seven-day stretches', () => {
-    const analysis = analysisOf(consecutive(ANALYSIS_WINDOW_DAYS))
-    expect(analysis.weeks.map((week) => week.length)).toEqual([7, 7, 7, 7, 2])
-    expect(analysis.weeks[0].label).toBe('Tyg. 1')
+describe('buildFrequency — the entry-frequency bars', () => {
+  const bars = (entries: JournalListEntry[], period: FrequencyPeriodId = '30d') =>
+    buildFrequency(entries, TODAY, period)
+
+  it('splits a full 30-day window into seven-day stretches', () => {
+    const buckets = bars(consecutive(ANALYSIS_WINDOW_DAYS))
+    expect(buckets.map((bucket) => bucket.length)).toEqual([7, 7, 7, 7, 2])
+    expect(buckets[0].label).toBe('Tyg. 1')
   })
 
   it('carries how long the last, still-running stretch is', () => {
     // Without it a two-day stretch with two entries would read as a week the
     // patient nearly stopped writing in.
-    const analysis = analysisOf(consecutive(9))
-    expect(analysis.weeks.map((week) => [week.days, week.length])).toEqual([
-      [7, 7],
-      [2, 2],
+    expect(bars(consecutive(9)).map((bucket) => [bucket.days, bucket.length, bucket.partial])).toEqual([
+      [7, 7, false],
+      [2, 2, true],
     ])
   })
 
   it('counts days with an entry, not entries', () => {
-    const analysis = analysisOf([entry(6), entry(0)])
-    expect(analysis.weeks).toHaveLength(1)
-    expect(analysis.weeks[0].days).toBe(2)
+    const buckets = bars([entry(6), entry(0)])
+    expect(buckets).toHaveLength(1)
+    expect(buckets[0].days).toBe(2)
+  })
+
+  it('reaches past the screen\'s own window — 90 days is thirteen week bars', () => {
+    // The point of the period chips: buildAnalysis caps everything at
+    // ANALYSIS_WINDOW_DAYS, and this chart has to see further than that.
+    const buckets = bars(consecutive(90), '90d')
+    expect(buckets).toHaveLength(13)
+    expect(buckets.every((bucket) => bucket.days === bucket.length)).toBe(true)
+  })
+
+  it('never draws more than thirteen bars, however long the history', () => {
+    // 200 weeks of daily entries — the case pagination was proposed for. The
+    // named-year setting is not here: it is fetched and bucketed by month on the
+    // server (backend/core/tests/test_frequency_api.py), because `/api/diary/`
+    // would not have sent five-year-old rows in the first place.
+    expect(bars(consecutive(1400), '30d')).toHaveLength(5)
+    expect(bars(consecutive(1400), '90d')).toHaveLength(13)
+  })
+
+  it('is empty rather than a row of zeroes when nothing has been written', () => {
+    expect(bars([])).toEqual([])
   })
 })
 

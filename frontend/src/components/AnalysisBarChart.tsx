@@ -25,17 +25,23 @@ export interface BarRow {
  *
  * The row scrolls sideways rather than squeezing: ten emotions with names like
  * "Poczucie winy" do not fit across a phone, and a label rotated to fit is a
- * label nobody reads.
+ * label nobody reads. `compact` lowers the floor for a caller whose labels are
+ * short ("Tyg. 12", "sie") -- thirteen bars at the emotion chart's width would
+ * overflow a desktop card and clip the newest one, which is the bar the patient
+ * came to look at.
  */
 function AnalysisBarChart({
   rows,
   emptyText,
   max,
+  compact = false,
 }: {
   rows: BarRow[]
   emptyText: string
   /** Absolute ceiling for the bar heights; defaults to the tallest row. */
   max?: number
+  /** Short labels: narrower columns, so more bars fit before the row scrolls. */
+  compact?: boolean
 }) {
   if (rows.length === 0) {
     return <p className="analysis-empty">{emptyText}</p>
@@ -44,7 +50,7 @@ function AnalysisBarChart({
   const ceiling = Math.max(max ?? 0, ...rows.map((row) => row.value), 1)
 
   return (
-    <div className="analysis-bars">
+    <div className={compact ? 'analysis-bars analysis-bars-compact' : 'analysis-bars'}>
       {rows.map((row) => (
         <div className="analysis-bar-column" key={row.key}>
           <span className="analysis-bar-value">{row.value}</span>

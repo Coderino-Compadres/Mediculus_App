@@ -6,10 +6,13 @@ import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
 import TrendChart from '../components/TrendChart'
 import { ApiError } from '../api/client'
+import { fetchYearFrequency } from '../api/analysis'
 import { fetchJournalEntries } from '../api/diary'
 import {
   ANALYSIS_WINDOW_DAYS,
-  DAYS_PER_WEEK_BAR,
+  DEFAULT_FREQUENCY_PERIOD,
+  FREQUENCY_PERIODS,
+  buildFrequency,
   MOOD_SCALE_MAX,
   WEEKDAYS,
   buildAnalysis,
@@ -19,7 +22,12 @@ import {
 } from '../utils/analysis'
 import { formatNumber, pluralDays } from '../utils/reports'
 import { TIME_OF_DAY_LABELS } from '../utils/timeOfDay'
-import type { Analysis as AnalysisData } from '../types/analysis'
+import type {
+  Analysis as AnalysisData,
+  FrequencyBucket,
+  FrequencySelection,
+  YearFrequency,
+} from '../types/analysis'
 import type { JournalListEntry } from '../types/diaryEntry'
 import { ROUTES } from '../routes'
 import './journals.css'
@@ -45,6 +53,9 @@ import './analysis.css'
  * are aggregated by `utils/analysis.ts` in the browser, so no figure here can
  * disagree with the entry it was computed from.
  */
+
+const FREQUENCY_LOAD_ERROR =
+  'Nie udało się wczytać częstotliwości wpisów dla tego roku.'
 
 const LOAD_ERROR = 'Nie udało się wczytać Twojej analizy. Spróbuj ponownie.'
 
@@ -95,25 +106,30 @@ function emotionBars(analysis: AnalysisData): BarRow[] {
   }))
 }
 
-function weekBars(analysis: AnalysisData): BarRow[] {
-  const longest = Math.max(...analysis.weeks.map((week) => week.length), 1)
-  return analysis.weeks.map((week) => ({
-    key: week.label,
-    // A stretch shorter than seven days says so under the bar, not only in the
-    // tooltip: the last one covers whatever is left of the window (two days, on
-    // a full 30), and a patient who wrote on both of them would otherwise see a
-    // bar at two sevenths of the height labelled "Tyg. 5" and read it as having
-    // nearly stopped writing. This is a PWA on a phone — there is no hover to
-    // discover the real denominator with.
-    label:
-      week.length < DAYS_PER_WEEK_BAR
-        ? `${week.label} (${week.length} ${pluralDays(week.length)})`
-        : week.label,
-    value: week.days,
-    // Deeper sage the fuller the week — one hue, so the bars read as a series
+/** The subtitle carries the bucket, because the section no longer shares the
+ *  screen's window and a bare "Dni z wpisem" would leave that ambiguous. */
+function frequencySubtitle(selection: FrequencySelection): string {
+  return selection.kind === 'year' ? 'Dni z wpisem w miesiącu' : 'Dni z wpisem w tygodniu'
+}
+
+function frequencyBars(buckets: FrequencyBucket[]): BarRow[] {
+  const longest = Math.max(...buckets.map((bucket) => bucket.length), 1)
+  return buckets.map((bucket) => ({
+    key: bucket.label,
+    // A stretch shorter than a whole week or month says so under the bar, not
+    // only in the tooltip: the newest one covers whatever has happened so far,
+    // and a patient who wrote on both days of a two-day stretch would otherwise
+    // see a bar at two sevenths labelled "Tyg. 5" and read it as having nearly
+    // stopped writing. This is a PWA on a phone — there is no hover to discover
+    // the real denominator with.
+    label: bucket.partial
+      ? `${bucket.label} (${bucket.length} ${pluralDays(bucket.length)})`
+      : bucket.label,
+    value: bucket.days,
+    // Deeper sage the fuller the stretch — one hue, so the bars read as a series
     // rather than as categories that mean something different from one another.
-    color: sageShade(week.days / longest),
-    title: `${week.label} (${week.rangeLabel}): ${week.days} z ${week.length} ${daysGenitive(week.length)} z wpisem`,
+    color: sageShade(bucket.days / longest),
+    title: `${bucket.label} (${bucket.rangeLabel}): ${bucket.days} z ${bucket.length} ${daysGenitive(bucket.length)} z wpisem`,
   }))
 }
 
@@ -132,6 +148,70 @@ function EmptyAnalysis() {
       </Link>
     </section>
   )
+}
+
+/**
+ * The named-year half of "Częstotliwość wpisów", fetched rather than computed.
+ *
+ * Its own request, its own loading and error state: the rest of the screen is
+ * already on screen when somebody picks a year, and making the whole page go
+ * back to "Wczytywanie…" for one chart would throw away everything they were
+ * reading.
+ *
+ * `yearsWithEntries` is kept across selections — it arrives with every answer
+ * and does not change while the screen is open, so re-picking a year must not
+ * empty the picker the pick was made from.
+ */
+function useYearFrequency(selection: FrequencySelection) {
+  const [data, setData] = useState<YearFrequency | null>(null)
+  const [years, setYears] = useState<number[]>([])
+  // Bumped by the retry button, and part of what marks a failure stale, so
+  // trying the same year again is a new attempt rather than a no-op.
+  const [attempt, setAttempt] = useState(0)
+  const [failure, setFailure] = useState<{ year: number; attempt: number } | null>(null)
+  const wanted = selection.kind === 'year' ? selection.year : null
+
+  useEffect(() => {
+    if (wanted === null) return
+    let cancelled = false
+
+    fetchYearFrequency(wanted)
+      .then((answer) => {
+        if (cancelled) return
+        setData(answer)
+        setYears(answer.yearsWithEntries)
+      })
+      .catch(() => {
+        // Said out loud rather than drawn as an empty chart: "nothing came back"
+        // and "you wrote nothing that year" are the two readings this section
+        // must never confuse, which is the whole reason it is not derived in the
+        // browser in the first place.
+        if (!cancelled) setFailure({ year: wanted, attempt })
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [wanted, attempt])
+
+  // Derived during render rather than set from inside the effect: a synchronous
+  // setState there costs a second render pass for a value both branches already
+  // know. `data` is only honoured for the year actually asked for, so switching
+  // years shows the spinner instead of the previous year's bars under the new
+  // year's heading.
+  const ready = wanted !== null && data?.year === wanted ? data : null
+  const failed = wanted !== null && failure?.year === wanted && failure.attempt === attempt
+
+  return {
+    data: ready,
+    // Kept across selections: the list arrives with every answer and does not
+    // change while the screen is open, so re-picking must not empty the picker
+    // the pick was made from.
+    years,
+    loading: wanted !== null && ready === null && !failed,
+    failed,
+    retry: () => setAttempt((value) => value + 1),
+  }
 }
 
 function Analysis() {
@@ -170,6 +250,21 @@ function Analysis() {
   }, [attempt])
 
   const analysis = useMemo(() => buildAnalysis(entries, today), [entries, today])
+
+  // Its own period, and its own memo: this chart reads past the window the rest
+  // of the screen is capped at, so it is built from `entries` rather than from
+  // `analysis`. Recomputed only when the chip changes, not on every render.
+  const [selection, setSelection] = useState<FrequencySelection>({
+    kind: 'rolling',
+    id: DEFAULT_FREQUENCY_PERIOD,
+  })
+  const rolling = useMemo(
+    () => (selection.kind === 'rolling' ? buildFrequency(entries, today, selection.id) : []),
+    [entries, today, selection],
+  )
+  const year = useYearFrequency(selection)
+  const yearOptions = year.years
+  const frequency = selection.kind === 'year' ? (year.data?.buckets ?? []) : rolling
 
   return (
     <div className="journals-page analysis-page">
@@ -268,17 +363,97 @@ function Analysis() {
             />
           </section>
 
+          {/* The one section with a period of its own. It answers "am I keeping
+              this up", which is a question about the long run, while everything
+              above answers "what is going on lately" and is capped at
+              ANALYSIS_WINDOW_DAYS on purpose. The bucket grows with the range
+              (weeks, then months), so the chart is never more than a dozen bars
+              and never needs paging. */}
           <section className="analysis-card">
             <h2>Częstotliwość wpisów</h2>
-            <p className="analysis-card-subtitle">Dni z wpisem w tygodniu</p>
-            <AnalysisBarChart
-              rows={weekBars(analysis)}
-              emptyText="Brak wpisów w tym okresie."
-              // An absolute ceiling here, unlike the emotion chart: the bars mean
-              // "days out of seven", and scaling them against the best week would
-              // draw three days as a full column.
-              max={Math.max(...analysis.weeks.map((week) => week.length), 1)}
-            />
+            <p className="analysis-card-subtitle">{frequencySubtitle(selection)}</p>
+            <div className="analysis-period" role="group" aria-label="Zakres częstotliwości wpisów">
+              {FREQUENCY_PERIODS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  // aria-pressed, not aria-current: these are toggles over one
+                  // chart, not links to somewhere. Journals' filter chips carry
+                  // the visual style; the state is the button's own.
+                  aria-pressed={selection.kind === 'rolling' && selection.id === option.id}
+                  className={
+                    selection.kind === 'rolling' && selection.id === option.id
+                      ? 'journals-filter-chip journals-filter-chip-active'
+                      : 'journals-filter-chip'
+                  }
+                  onClick={() => setSelection({ kind: 'rolling', id: option.id })}
+                >
+                  {option.label}
+                </button>
+              ))}
+              {/* A chip until it is picked, a picker once it is. The years come
+                  from the server with the first answer, so before that there is
+                  nothing to populate a <select> with — and rendering an empty
+                  one would offer a control that cannot be used. */}
+              {selection.kind === 'rolling' ? (
+                <button
+                  type="button"
+                  aria-pressed={false}
+                  className="journals-filter-chip"
+                  onClick={() => setSelection({ kind: 'year', year: today.getFullYear() })}
+                >
+                  Rok
+                </button>
+              ) : (
+                <label className="analysis-year-picker">
+                  <span className="visually-hidden">Rok</span>
+                  <select
+                    value={selection.year}
+                    onChange={(event) =>
+                      setSelection({ kind: 'year', year: Number(event.target.value) })
+                    }
+                  >
+                    {/* The current year is always offered even with nothing in
+                        it yet: it is the year the patient is living in, and its
+                        absence would read as the picker being broken. */}
+                    {[...new Set([...yearOptions, selection.year])]
+                      .sort((a, b) => b - a)
+                      .map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+            </div>
+            {selection.kind === 'year' && year.loading && (
+              <p className="analysis-empty" role="status" aria-busy="true">
+                Wczytywanie roku {selection.year}…
+              </p>
+            )}
+            {selection.kind === 'year' && year.failed && (
+              <LoadError
+                className="journals-status journals-status-error"
+                message={FREQUENCY_LOAD_ERROR}
+                onRetry={year.retry}
+              />
+            )}
+            {!(selection.kind === 'year' && (year.loading || year.failed)) && (
+              <AnalysisBarChart
+                rows={frequencyBars(frequency)}
+                compact
+                emptyText={
+                  selection.kind === 'year'
+                    ? `W ${selection.year} roku nie ma jeszcze żadnego wpisu.`
+                    : 'Brak wpisów w tym okresie.'
+                }
+                // An absolute ceiling here, unlike the emotion chart: the bars
+                // mean "days out of the stretch", and scaling them against the
+                // fullest one would draw three days out of seven as a full column.
+                max={Math.max(...frequency.map((bucket) => bucket.length), 1)}
+              />
+            )}
           </section>
 
           {/* The mockup's rule: a conclusion rather than one more number, so the

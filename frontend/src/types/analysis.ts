@@ -111,14 +111,65 @@ export interface AnalysisHeatmap {
   cells: HeatmapCell[]
 }
 
+/**
+ * Which stretch "Częstotliwość wpisów" covers, and how it cuts that stretch up.
+ *
+ * The section has a period of its own rather than following the rest of the
+ * screen: the other charts answer "what is going on with me lately" and are
+ * deliberately capped at ANALYSIS_WINDOW_DAYS, while this one answers "am I
+ * keeping this up", which is a question about the long run. The line chart is
+ * already a third window (TREND_CHART_MAX_DAYS), so a section stating its own
+ * range is the existing convention here, not a new one.
+ *
+ * The bucket grows with the range on purpose, which is what keeps the bar count
+ * near a dozen at every setting -- a year cut into weeks would be 52 bars, and
+ * that is the shape the patient asked pagination for. Nothing needs paging when
+ * the chart is never longer than twelve bars.
+ */
+export type FrequencyPeriodId = '30d' | '90d'
+
+/**
+ * What "Częstotliwość wpisów" is currently showing.
+ *
+ * Two kinds, because they come from two places and cannot be one id. A rolling
+ * range is computed in the browser out of the entry list the screen already
+ * holds; a named year is fetched, because `/api/diary/` stops at its newest
+ * 1000 rows and a patient asking in 2031 about 2026 is asking about entries the
+ * browser is never sent. Drawing that year from what did arrive would render as
+ * a flat "you did not write" — a false statement about somebody's own history.
+ */
+export type FrequencySelection =
+  | { kind: 'rolling'; id: FrequencyPeriodId }
+  | { kind: 'year'; year: number }
+
+/** What `GET /api/analysis/frequency/` answers with, already mapped. */
+export interface YearFrequency {
+  year: number
+  /** Every year the patient has an entry in, oldest first — the picker's options.
+   *  From the database rather than from the loaded entries, for the cap above. */
+  yearsWithEntries: number[]
+  buckets: FrequencyBucket[]
+}
+
 /** One bar of "Częstotliwość wpisów". */
-export interface WeekFrequency {
-  /** 'Tyg. 1', oldest first. */
+export interface FrequencyBucket {
+  /** 'Tyg. 1' for a week, 'sie' for a month. Oldest first. */
   label: string
   /** Days in this stretch that hold an entry. */
   days: number
-  /** How many calendar days the stretch covers — the last one may be shorter than 7. */
+  /** How many calendar days the stretch covers. */
   length: number
+  /**
+   * True when the stretch is shorter than a whole week/month.
+   *
+   * The newest bucket almost always is (the week or month is still running) and
+   * the oldest one can be, on an account younger than the period. The screen
+   * says so under the bar: 2 out of 2 days drawn at full height next to 7 out of
+   * 7 is honest, but "Tyg. 5" at two sevenths would read as somebody who nearly
+   * stopped writing. Decided here, where the full length is known, rather than
+   * left to the page to infer from `length`.
+   */
+  partial: boolean
   /** '3 – 9 sierpnia', for the bar's tooltip. */
   rangeLabel: string
 }
@@ -158,6 +209,7 @@ export interface Analysis {
   heatmap: AnalysisHeatmap
   /** Only emotions actually rated in the window, most days first. */
   emotions: EmotionShare[]
-  weeks: WeekFrequency[]
+  /** Not here: "Częstotliwość wpisów" reads a period of its own, chosen on the
+   *  screen, and reaches further back than this window -- see `buildFrequency`. */
   insight: AnalysisInsight
 }

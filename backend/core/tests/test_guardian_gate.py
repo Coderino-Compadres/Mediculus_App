@@ -87,6 +87,7 @@ def clinical_urls(diary_id, report_id):
     """
     return [
         ('get', reverse('core:home-dashboard')),
+        ('get', reverse('core:analysis-frequency')),
         ('get', reverse('core:diary-today')),
         ('put', reverse('core:diary-today')),
         ('get', reverse('core:diary-history')),

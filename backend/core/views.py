@@ -22,6 +22,7 @@ from django.utils import timezone
 
 from .authentication import end_session, start_session
 from .dashboard import build_home_dashboard
+from .frequency import build_year_frequency, years_with_entries
 from .diary import (DiaryEntrySerializer, load_entry, load_history,
                     load_today_entry, save_today_entry)
 from .guardian import (STATUS_ACCEPTED, accept_invitation, cancel_invitation,
@@ -497,3 +498,55 @@ class ReportPdfView(APIView):
         response['Content-Disposition'] = f'attachment; filename="{pdf_file_name(report)}"'
         response['Cache-Control'] = 'no-store'
         return response
+
+
+#: Refusal for an account that is not a clinical subject, worded for this screen.
+ANALYSIS_REFUSAL = 'Analiza jest dostępna tylko dla konta pacjenta.'
+
+#: How far either side of the present a year may be asked for. Not a policy —
+#: just a guard so a parsed integer cannot become `datetime.date(999999, 1, 1)`.
+MIN_YEAR = 1900
+MAX_YEAR = 2200
+
+
+class FrequencyView(APIView):
+    """GET /api/analysis/frequency/?year=2026 — one bucket per month of that year.
+
+    The analysis screen computes its 30- and 90-day views in the browser, out of
+    the entry list it already has. This endpoint exists for the one question that
+    list cannot answer: a *named* year, which for a long-standing patient is past
+    the 1000-row cap on `/api/diary/` — see `core/frequency.py` for why that
+    makes it a backend question rather than one more period chip.
+
+    `years_with_entries` rides along on every response because the picker has to
+    be populated from somewhere, and the same cap rules out deriving it in the
+    browser. It is cheap (one DISTINCT) and it keeps the screen to one request
+    rather than two.
+
+    `year` is optional: without it the answer covers the current year, which is
+    what the screen opens on. Anything unparseable is a 400 rather than a silent
+    fallback — a chart quietly showing a different year than the one selected is
+    worse than an error.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, ANALYSIS_REFUSAL)
+        today = timezone.localdate()
+
+        raw = request.query_params.get('year')
+        if raw is None:
+            year = today.year
+        else:
+            try:
+                year = int(raw)
+            except ValueError:
+                raise ValidationError({'year': 'Rok musi być liczbą.'})
+            if not MIN_YEAR <= year <= MAX_YEAR:
+                raise ValidationError({'year': f'Rok musi być z zakresu {MIN_YEAR}-{MAX_YEAR}.'})
+
+        return Response({
+            'year': year,
+            'bucket': 'month',
+            'years_with_entries': years_with_entries(patient.id_medical),
+            'buckets': build_year_frequency(patient.id_medical, year, today),
+        })

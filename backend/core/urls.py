@@ -26,6 +26,7 @@ urlpatterns = [
         views.GuardianInvitationRejectView.as_view(), name='guardian-invitation-reject',
     ),
     path('dashboard/home/', views.HomeDashboardView.as_view(), name='home-dashboard'),
+    path('analysis/frequency/', views.FrequencyView.as_view(), name='analysis-frequency'),
     path('diary/', views.DiaryHistoryView.as_view(), name='diary-history'),
     # Before the '<uuid>' route, so 'today' is never read as an id.
     path('diary/today/', views.TodayDiaryEntryView.as_view(), name='diary-today'),

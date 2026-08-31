@@ -17,6 +17,26 @@ vi.mock('../api/diary', () => ({ fetchJournalEntries: vi.fn() }))
 const { fetchJournalEntries } = await import('../api/diary')
 const mockedFetch = vi.mocked(fetchJournalEntries)
 
+vi.mock('../api/analysis', () => ({ fetchYearFrequency: vi.fn() }))
+const { fetchYearFrequency } = await import('../api/analysis')
+const mockedYear = vi.mocked(fetchYearFrequency)
+
+/** What the server answers for a named year — months, not weeks, and the list
+ *  of years the picker is built from. */
+function yearAnswer(year: number, years: number[] = [year]) {
+  return {
+    year,
+    yearsWithEntries: years,
+    buckets: ['sty', 'lut', 'mar'].map((label, index) => ({
+      label,
+      days: 20 + index,
+      length: 31,
+      partial: false,
+      rangeLabel: `1 – 31 ${label}`,
+    })),
+  }
+}
+
 function isoDaysAgo(days: number): string {
   const date = new Date()
   date.setDate(date.getDate() - days)
@@ -72,6 +92,9 @@ function patternedMonth(overrides: Partial<JournalListEntry> = {}): JournalListE
 
 beforeEach(() => {
   mockedFetch.mockResolvedValue([])
+  // `restoreMocks` restores spies, not the call history of a vi.fn() made in a
+  // mock factory — and one test here asserts the year endpoint is *not* called.
+  mockedYear.mockReset()
 })
 
 describe('Analysis — empty and failed states', () => {
@@ -339,7 +362,12 @@ describe('Analysis — what this screen is not', () => {
     expect(screen.queryByText(/Historia analiz/i)).not.toBeInTheDocument()
   })
 
-  it('offers no range switch — the window is not a control', async () => {
+  it('keeps the analysis window itself out of the user\'s hands', async () => {
+    // The mockup's Tydzień/Miesiąc/Kwartał switch stays gone: what "lately"
+    // means for the mood average, the heat map and the emotion shares is a
+    // clinical choice (ANALYSIS_WINDOW_DAYS), not a control. The frequency
+    // section's own chips below are a different thing — they change how far
+    // back one chart counts, not what the rest of the screen is reading.
     mockedFetch.mockResolvedValue(consecutive(20))
     renderWithProviders(<Analysis />)
 
@@ -360,6 +388,131 @@ describe('Analysis — what this screen is not', () => {
     // A full week says nothing extra — the number would be noise on four bars
     // out of five.
     expect(screen.getByText('Tyg. 1')).toBeInTheDocument()
+  })
+
+  describe('the frequency section\'s own range', () => {
+    const chip = (name: string) => screen.getByRole('button', { name })
+
+    it('opens on 30 days, in weeks', async () => {
+      mockedFetch.mockResolvedValue(consecutive(200))
+      renderWithProviders(<Analysis />)
+
+      await screen.findByText('Częstotliwość wpisów')
+      expect(chip('30 dni')).toHaveAttribute('aria-pressed', 'true')
+      expect(chip('Rok')).toHaveAttribute('aria-pressed', 'false')
+      expect(screen.getByText('Dni z wpisem w tygodniu')).toBeInTheDocument()
+      expect(screen.getByText('Tyg. 1')).toBeInTheDocument()
+    })
+
+    it('never grows past thirteen bars, which is why it needs no pagination', async () => {
+      // 200 weeks of daily entries. The bucket grows with the range instead of
+      // the bar count growing with the history, so there is nothing to page.
+      mockedFetch.mockResolvedValue(consecutive(1400))
+      renderWithProviders(<Analysis />)
+
+      await screen.findByText('Częstotliwość wpisów')
+      const section = screen.getByText('Częstotliwość wpisów').closest('section')!
+
+      for (const [label, expected] of [['30 dni', 5], ['90 dni', 13]] as const) {
+        fireEvent.click(within(section).getByRole('button', { name: label }))
+        expect(within(section).getAllByTitle(/z wpisem$/)).toHaveLength(expected)
+      }
+
+      expect(within(section).queryByText(/Strona/)).not.toBeInTheDocument()
+      expect(within(section).queryByRole('button', { name: /Następna|Poprzednia/ })).not.toBeInTheDocument()
+    })
+
+    it('fetches a named year instead of deriving it from the loaded entries', async () => {
+      // The point of the endpoint: /api/diary/ stops at its 1000 newest rows, so
+      // a year five years back is not in what the screen already holds. Nothing
+      // is requested until the patient asks for a year.
+      mockedFetch.mockResolvedValue(consecutive(20))
+      mockedYear.mockResolvedValue(yearAnswer(new Date().getFullYear()))
+      renderWithProviders(<Analysis />)
+
+      await screen.findByText('Częstotliwość wpisów')
+      expect(mockedYear).not.toHaveBeenCalled()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Rok' }))
+      expect(mockedYear).toHaveBeenCalledWith(new Date().getFullYear())
+      expect(await screen.findByText('Dni z wpisem w miesiącu')).toBeInTheDocument()
+      expect(screen.getByText('sty')).toBeInTheDocument()
+    })
+
+    it('offers the years the server says have entries, newest first', async () => {
+      mockedFetch.mockResolvedValue(consecutive(20))
+      mockedYear.mockResolvedValue(yearAnswer(2031, [2026, 2028, 2031]))
+      renderWithProviders(<Analysis />)
+
+      await screen.findByText('Częstotliwość wpisów')
+      fireEvent.click(screen.getByRole('button', { name: 'Rok' }))
+
+      const picker = await screen.findByRole('combobox', { name: 'Rok' })
+      const offered = within(picker).getAllByRole('option').map((option) => option.textContent)
+      // 2026 is reachable even though nothing that old is in the entry list.
+      expect(offered).toContain('2026')
+      expect(offered.slice(0, 3)).toEqual(['2031', '2028', '2026'])
+    })
+
+    it('asks the server again when another year is picked', async () => {
+      mockedFetch.mockResolvedValue(consecutive(20))
+      mockedYear.mockResolvedValue(yearAnswer(2031, [2026, 2031]))
+      renderWithProviders(<Analysis />)
+
+      await screen.findByText('Częstotliwość wpisów')
+      fireEvent.click(screen.getByRole('button', { name: 'Rok' }))
+      const picker = await screen.findByRole('combobox', { name: 'Rok' })
+
+      mockedYear.mockResolvedValue(yearAnswer(2026, [2026, 2031]))
+      fireEvent.change(picker, { target: { value: '2026' } })
+      expect(mockedYear).toHaveBeenLastCalledWith(2026)
+    })
+
+    it('says a failed year failed rather than drawing it as a year of silence', async () => {
+      // The one confusion this section must never cause: "nothing came back"
+      // read as "you wrote nothing".
+      mockedFetch.mockResolvedValue(consecutive(20))
+      mockedYear.mockRejectedValue(new Error('nope'))
+      renderWithProviders(<Analysis />)
+
+      await screen.findByText('Częstotliwość wpisów')
+      fireEvent.click(screen.getByRole('button', { name: 'Rok' }))
+
+      expect(await screen.findByText(/Nie udało się wczytać częstotliwości/)).toBeInTheDocument()
+      const section = screen.getByText('Częstotliwość wpisów').closest('section')!
+      expect(within(section).queryByText(/nie ma jeszcze żadnego wpisu/)).not.toBeInTheDocument()
+      expect(within(section).queryByTitle(/z wpisem$/)).not.toBeInTheDocument()
+    })
+
+    it('goes back to the rolling ranges without another request', async () => {
+      mockedFetch.mockResolvedValue(consecutive(20))
+      mockedYear.mockResolvedValue(yearAnswer(new Date().getFullYear()))
+      renderWithProviders(<Analysis />)
+
+      await screen.findByText('Częstotliwość wpisów')
+      fireEvent.click(screen.getByRole('button', { name: 'Rok' }))
+      await screen.findByText('Dni z wpisem w miesiącu')
+
+      mockedYear.mockClear()
+      fireEvent.click(screen.getByRole('button', { name: '30 dni' }))
+      expect(screen.getByText('Dni z wpisem w tygodniu')).toBeInTheDocument()
+      expect(screen.getByText('Tyg. 1')).toBeInTheDocument()
+      expect(mockedYear).not.toHaveBeenCalled()
+    })
+
+    it('does not move the rest of the screen with it', async () => {
+      // Only this chart reads the chosen range. The caption above still speaks
+      // for the fixed analysis window, and it must not start disagreeing.
+      mockedFetch.mockResolvedValue(consecutive(200))
+      mockedYear.mockResolvedValue(yearAnswer(new Date().getFullYear()))
+      renderWithProviders(<Analysis />)
+
+      await screen.findByText('Częstotliwość wpisów')
+      const caption = screen.getByText(new RegExp(`ostatnich ${ANALYSIS_WINDOW_DAYS} dni`))
+      fireEvent.click(screen.getByRole('button', { name: 'Rok' }))
+      await screen.findByText('Dni z wpisem w miesiącu')
+      expect(caption).toBeInTheDocument()
+    })
   })
 
   it('has no bottom tab bar', async () => {

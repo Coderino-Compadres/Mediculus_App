@@ -227,17 +227,47 @@
 
 /* Heat map ---------------------------------------------------------------- */
 
+/* The map and its legend share one cap, declared once so they cannot drift
+   apart, and centre themselves in the card rather than spanning it.
+
+   Without the cap the table stretched to the card's full 640px: the label
+   column and the 4px spacing take ~94px of it, so each of the seven cells came
+   out ~73px wide against a fixed 28px height and the grid read as four rows of
+   bars instead of a heat map. It only showed on a wide screen — at phone width
+   the same rule produced near-squares. */
+.analysis-heatmap-scroll,
+.analysis-heat-legend {
+  --heatmap-max-width: 420px;
+  max-width: var(--heatmap-max-width);
+  margin-inline: auto;
+}
+
 /* Seven columns plus a row header is wider than a narrow phone; the table
    scrolls inside its card rather than stretching the page. */
 .analysis-heatmap-scroll {
   overflow-x: auto;
 }
 
+/* `fixed`, not the default `auto`: auto layout sizes each column from its own
+   content, and the seven day columns differ only in their header text ("Śr" is
+   narrower than "Nd"), so the squares came out anywhere between 40.7px and
+   56.3px wide -- a 15.6px spread that reads as a wonky grid. Fixed layout takes
+   the widths from the first row and splits what is left evenly, so every cell
+   is the same size by construction rather than by luck of the labels. */
 .analysis-heatmap {
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 4px;
   width: 100%;
   min-width: 300px;
+}
+
+/* Under fixed layout only the first row's widths count, and the first row is
+   the header -- so the row-label column is sized here, on the empty corner
+   cell, not on the `tbody th` that visibly holds the labels. Wide enough for
+   "Południe" (~53px measured) plus room for a font that loads wider. */
+.analysis-heatmap thead td {
+  width: 68px;
 }
 
 .analysis-heatmap th {
@@ -259,10 +289,19 @@
   padding: 0;
 }
 
+/* Square, not a fixed height: the column width is whatever the table hands it,
+   and tying the height to that keeps a cell square at every width the cap
+   allows -- ~46px in the card, ~35px on a phone -- instead of flattening as the
+   screen widens. */
 .analysis-heat-cell {
   display: block;
   width: 100%;
-  height: 28px;
+  aspect-ratio: 1;
+  /* Not inherited from anywhere -- index.css sets border-box on #root only, and
+     it is not an inherited property. Without it the dashed 1px border on an
+     empty cell would sit outside the square and make those two pixels wider and
+     taller than the filled ones next to them. */
+  box-sizing: border-box;
   border-radius: 6px;
 }
 
@@ -291,9 +330,40 @@
   border-radius: 999px;
 }
 
+/* Period chips ------------------------------------------------------------ */
+
+/* Only "Częstotliwość wpisów" has these -- it is the one section reading a
+   range of its own. The chips themselves reuse .journals-filter-chip rather
+   than inventing a second pill: this screen already shares its frame with
+   Dzienniczki, and two subtly different chip styles in one app is a worse
+   outcome than one class crossing a file boundary. */
+.analysis-period {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* The year picker takes the chips' place once a year is chosen, so it has to
+   sit on the same line and read as one of them rather than as a form field. */
+.analysis-year-picker select {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-sage);
+  background: var(--color-sage);
+  color: #fff;
+  cursor: pointer;
+}
+
 /* Bar charts -------------------------------------------------------------- */
 
 .analysis-bars {
+  /* The column floor, in one place: `flex-basis` and `min-width` have to agree
+     or the columns shrink below the width the labels were sized for. */
+  --bar-column-min: 44px;
   display: flex;
   align-items: flex-end;
   gap: 10px;
@@ -301,13 +371,21 @@
   padding-bottom: 4px;
 }
 
+/* "Częstotliwość wpisów": labels are "Tyg. 12" and "sie", not "Poczucie winy",
+   so the columns can be narrower -- which is what lets thirteen weekly bars or
+   twelve monthly ones fit a desktop card instead of scrolling and clipping the
+   newest bar off the right edge. */
+.analysis-bars-compact {
+  --bar-column-min: 34px;
+}
+
 .analysis-bar-column {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  flex: 1 0 44px;
-  min-width: 44px;
+  flex: 1 0 var(--bar-column-min);
+  min-width: var(--bar-column-min);
 }
 
 .analysis-bar-value {
@@ -334,12 +412,27 @@
   min-height: 2px;
 }
 
+/* Two lines are reserved whether or not the label needs them.
+   `.analysis-bars` aligns its columns on their bottom edge, so a label that
+   wraps makes its whole column taller and lifts that bar's floor above the
+   others -- 14.3px of it, which is a bar chart whose bars do not share a
+   baseline. Reserving the taller of the two heights for every label puts the
+   floors back on one line. In em, so it tracks the font-size above it.
+
+   `hyphens: auto` is a progressive enhancement, not a fix: the document is
+   lang="pl", so a browser that ships a Polish hyphenation dictionary breaks
+   "Bezradność" as "Bezrad-ność" instead of at whatever character the width runs
+   out on. One that does not still gives "Bezradno / ść" via `overflow-wrap` --
+   verified failing that way in headless Firefox here. Getting rid of mid-word
+   breaks for good needs wider columns or horizontal bars, not this line. */
 .analysis-bar-label {
   font-family: var(--font-body);
   font-size: 11px;
   line-height: 1.3;
+  min-height: 2.6em;
   color: var(--color-graphite-muted);
   text-align: center;
+  hyphens: auto;
   overflow-wrap: anywhere;
 }
 

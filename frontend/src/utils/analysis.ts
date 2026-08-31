@@ -24,8 +24,9 @@ import type {
   AnalysisSummary,
   EmotionShare,
   HeatmapCell,
+  FrequencyBucket,
+  FrequencyPeriodId,
   TrendPoint,
-  WeekFrequency,
 } from '../types/analysis'
 
 /** The rolling window's ceiling. Until an account is this old the window is
@@ -275,11 +276,17 @@ export function sageShade(ratio: number): string {
 
 // ---- The window -----------------------------------------------------------------
 
-/** '3 – 9 sierpnia', for a week bar's tooltip. */
-function rangeLabel(start: Date, end: Date): string {
+/** '3 – 9 sierpnia', for a bar's tooltip. Exported because api/analysis.ts
+ *  labels the server's buckets with it — the payload carries dates, not Polish. */
+export function rangeLabel(start: Date, end: Date): string {
   const day = (date: Date) => date.toLocaleDateString('pl-PL', { day: 'numeric' })
   const full = (date: Date) => date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })
   return start.getMonth() === end.getMonth() ? `${day(start)} – ${full(end)}` : `${full(start)} – ${full(end)}`
+}
+
+/** 'sie'. The one place a month is put into words, for the same reason. */
+export function monthLabel(date: Date): string {
+  return date.toLocaleDateString('pl-PL', { month: 'short' })
 }
 
 // ---- Sections -------------------------------------------------------------------
@@ -407,33 +414,89 @@ function buildHeatmap(entries: JournalListEntry[]): AnalysisHeatmap {
 }
 
 /**
- * One bar per seven days of the window, oldest first.
+ * The periods "Częstotliwość wpisów" offers, in the order the chips render.
+ *
+ * Both are computed in the browser, out of the entry list the screen already
+ * holds. The third setting -- a named year -- is not here: it is fetched, and
+ * cut into months rather than weeks, because a year of weeks is 52 bars and
+ * because `/api/diary/` would not have sent the rows anyway. See
+ * `api/analysis.ts` and `backend/core/frequency.py`.
+ */
+export const FREQUENCY_PERIODS = [
+  { id: '30d', label: '30 dni', days: 30 },
+  { id: '90d', label: '90 dni', days: 90 },
+] as const satisfies readonly { id: FrequencyPeriodId; label: string; days: number }[]
+
+export const DEFAULT_FREQUENCY_PERIOD: FrequencyPeriodId = '30d'
+
+function periodOf(id: FrequencyPeriodId) {
+  return FREQUENCY_PERIODS.find((period) => period.id === id) ?? FREQUENCY_PERIODS[0]
+}
+
+/** How many days of `[start, end]` hold an entry. Both ends inclusive. */
+function daysWithEntry(dates: Set<string>, start: Date, end: Date): number {
+  let days = 0
+  for (let step = 0; step <= daysBetween(start, end); step += 1) {
+    if (dates.has(toIsoDate(addDays(start, step)))) days += 1
+  }
+  return days
+}
+
+/**
+ * One bar per seven days, oldest first.
  *
  * Anchored at the window's start, so "Tyg. 1" is always a full week and it is
- * the last bar — the stretch still in progress — that may cover fewer days. Its
- * length travels with it so the screen can say so rather than letting a short
- * week read as a week somebody stopped writing in.
+ * the last bar — the stretch still in progress — that may cover fewer days.
  */
-function buildWeeks(dates: Set<string>, windowStart: Date, windowDays: number): WeekFrequency[] {
-  const weeks: WeekFrequency[] = []
+function weekBuckets(dates: Set<string>, windowStart: Date, windowDays: number): FrequencyBucket[] {
+  const buckets: FrequencyBucket[] = []
 
   for (let offset = 0; offset < windowDays; offset += DAYS_PER_WEEK_BAR) {
     const length = Math.min(DAYS_PER_WEEK_BAR, windowDays - offset)
     const start = addDays(windowStart, offset)
     const end = addDays(start, length - 1)
-    let days = 0
-    for (let step = 0; step < length; step += 1) {
-      if (dates.has(toIsoDate(addDays(start, step)))) days += 1
-    }
-    weeks.push({
-      label: `Tyg. ${weeks.length + 1}`,
-      days,
+    buckets.push({
+      label: `Tyg. ${buckets.length + 1}`,
+      days: daysWithEntry(dates, start, end),
       length,
+      partial: length < DAYS_PER_WEEK_BAR,
       rangeLabel: rangeLabel(start, end),
     })
   }
 
-  return weeks
+  return buckets
+}
+
+/**
+ * "Częstotliwość wpisów" for one period, straight from the entry list.
+ *
+ * Deliberately not part of `buildAnalysis`: that function caps everything at
+ * ANALYSIS_WINDOW_DAYS, and this chart's whole point is reaching past it. It
+ * takes the raw entries for the same reason — the 30-day slice `buildAnalysis`
+ * works on cannot answer what the patient did in March.
+ *
+ * Returns [] when there is no history at all; the caller draws its own empty
+ * state for that, the same as the other charts.
+ */
+export function buildFrequency(
+  entries: JournalListEntry[],
+  today: Date,
+  periodId: FrequencyPeriodId,
+): FrequencyBucket[] {
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const todayIso = toIsoDate(todayMidnight)
+  const past = entries.filter((entry) => entry.date <= todayIso)
+  if (past.length === 0) return []
+
+  const dates = new Set(past.map((entry) => entry.date))
+  const firstIso = [...dates].sort()[0]
+  const firstDay = fromIsoDate(firstIso)
+  const period = periodOf(periodId)
+
+  // Never further back than the account itself, or a three-day-old account
+  // would open on thirteen empty bars.
+  const windowDays = Math.min(period.days, daysBetween(firstDay, todayMidnight) + 1)
+  return weekBuckets(dates, addDays(todayMidnight, -(windowDays - 1)), windowDays)
 }
 
 function buildSummary(
@@ -621,7 +684,6 @@ export function buildAnalysis(entries: JournalListEntry[], today: Date): Analysi
     summary,
     heatmap,
     emotions,
-    weeks: buildWeeks(new Set(byDate.keys()), windowStart, windowDays),
     insight: buildInsight(summary, byDate.size),
   }
 }
