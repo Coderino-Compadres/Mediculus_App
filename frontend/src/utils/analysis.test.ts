@@ -114,7 +114,7 @@ describe('buildAnalysis — the rolling window', () => {
   })
 })
 
-describe('buildAnalysis — the mood/stress trend', () => {
+describe('buildAnalysis — the trend', () => {
   it('never covers more days than the chart cap, even on a full window', () => {
     expect(analysisOf(consecutive(ANALYSIS_WINDOW_DAYS)).trend).toHaveLength(TREND_CHART_MAX_DAYS)
   })
@@ -128,21 +128,54 @@ describe('buildAnalysis — the mood/stress trend', () => {
     const yesterday = analysis.trend.find((point) => point.date === isoDaysAgo(1))
     expect(yesterday).toBeDefined()
     expect(yesterday?.mood).toBeNull()
-    expect(yesterday?.stress).toBeNull()
+    expect(yesterday?.energy).toBeNull()
+    expect(yesterday?.tension).toBeNull()
+    expect(yesterday?.emotions).toEqual({})
   })
 
-  it('reads stress off the emotion picker, not off a slider', () => {
+  it('carries every answer the chart can draw, not just the selected one', () => {
+    // The picker switches series without refetching, so a point built for one
+    // of them would turn a switch into a reload of the screen.
     const analysis = analysisOf([
-      entry(0, { mood: 'neutral', emotions: [{ emotion: 'Stres', intensity: 8 }] }),
+      entry(0, {
+        mood: 'neutral',
+        energyLevel: 4,
+        tensionLevel: 9,
+        emotions: [
+          { emotion: 'Stres', intensity: 8 },
+          { emotion: 'Lęk', intensity: 6 },
+        ],
+      }),
     ])
     const today = analysis.trend[analysis.trend.length - 1]
-    expect(today.stress).toBe(8)
     expect(today.mood).toBe(3)
+    expect(today.energy).toBe(4)
+    expect(today.tension).toBe(9)
+    // Stress lives in here like the other nine — it is one of the ten emotions,
+    // and a field of its own would be a second place to read one number from.
+    expect(today.emotions).toEqual({ Stres: 8, Lęk: 6 })
   })
 
-  it('leaves stress null on a day that rated other emotions but not that one', () => {
+  it('leaves an emotion out entirely on a day that rated other ones', () => {
     const analysis = analysisOf([entry(0, { emotions: [{ emotion: 'Lęk', intensity: 6 }] })])
-    expect(analysis.trend[analysis.trend.length - 1].stress).toBeNull()
+    expect(analysis.trend[analysis.trend.length - 1].emotions.Stres).toBeUndefined()
+  })
+
+  it('drops a chip picked without an intensity rather than storing it as null', () => {
+    // "Picked, unrated" has no answer to the chart's question — how strong was
+    // it — so it is the same gap as a day with no entry.
+    const analysis = analysisOf([entry(0, { emotions: [{ emotion: 'Lęk', intensity: null }] })])
+    expect(analysis.trend[analysis.trend.length - 1].emotions).toEqual({})
+  })
+
+  it('keeps a rated zero, which is an answer the patient can give', () => {
+    const analysis = analysisOf([
+      entry(0, { energyLevel: 0, tensionLevel: 0, emotions: [{ emotion: 'Lęk', intensity: 0 }] }),
+    ])
+    const today = analysis.trend[analysis.trend.length - 1]
+    expect(today.energy).toBe(0)
+    expect(today.tension).toBe(0)
+    expect(today.emotions.Lęk).toBe(0)
   })
 
   it('runs oldest first, ending today', () => {
@@ -336,6 +369,22 @@ describe('buildAnalysis — the emotion bars', () => {
   it('lists only the emotions actually rated', () => {
     const analysis = analysisOf([entry(0, { emotions: [{ emotion: 'Spokój', intensity: 8 }] })])
     expect(analysis.emotions).toHaveLength(1)
+  })
+
+  it('does not count a chip that was picked but never rated', () => {
+    // `days` means days the entry *rated* this emotion — the same thing the
+    // section's own empty text says, and the same rule the trend points and
+    // `stressLevel` already follow. Counting an unrated chip would make this bar
+    // the one number on the screen with a different definition of "rated".
+    const analysis = analysisOf([
+      entry(0, {
+        emotions: [
+          { emotion: 'Lęk', intensity: null },
+          { emotion: 'Smutek', intensity: 4 },
+        ],
+      }),
+    ])
+    expect(analysis.emotions.map((share) => share.emotion)).toEqual(['Smutek'])
   })
 
   it('sorts by days, most first', () => {

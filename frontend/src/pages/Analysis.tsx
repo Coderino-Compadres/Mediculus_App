@@ -4,11 +4,12 @@ import AnalysisBarChart, { type BarRow } from '../components/AnalysisBarChart'
 import EmotionHeatmap from '../components/EmotionHeatmap'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
-import MoodStressChart from '../components/MoodStressChart'
+import TrendChart from '../components/TrendChart'
 import { ApiError } from '../api/client'
 import { fetchJournalEntries } from '../api/diary'
 import {
   ANALYSIS_WINDOW_DAYS,
+  DAYS_PER_WEEK_BAR,
   MOOD_SCALE_MAX,
   WEEKDAYS,
   buildAnalysis,
@@ -98,7 +99,16 @@ function weekBars(analysis: AnalysisData): BarRow[] {
   const longest = Math.max(...analysis.weeks.map((week) => week.length), 1)
   return analysis.weeks.map((week) => ({
     key: week.label,
-    label: week.label,
+    // A stretch shorter than seven days says so under the bar, not only in the
+    // tooltip: the last one covers whatever is left of the window (two days, on
+    // a full 30), and a patient who wrote on both of them would otherwise see a
+    // bar at two sevenths of the height labelled "Tyg. 5" and read it as having
+    // nearly stopped writing. This is a PWA on a phone — there is no hover to
+    // discover the real denominator with.
+    label:
+      week.length < DAYS_PER_WEEK_BAR
+        ? `${week.label} (${week.length} ${pluralDays(week.length)})`
+        : week.label,
     value: week.days,
     // Deeper sage the fuller the week — one hue, so the bars read as a series
     // rather than as categories that mean something different from one another.
@@ -206,7 +216,7 @@ function Analysis() {
         <>
           <p className="analysis-caption">{windowCaption(analysis)}</p>
 
-          <MoodStressChart points={analysis.trend} days={analysis.trend.length} />
+          <TrendChart points={analysis.trend} days={analysis.trend.length} />
 
           <section className="analysis-summary" aria-label="Podsumowanie okresu">
             <SummaryCard

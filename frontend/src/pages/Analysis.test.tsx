@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { renderWithProviders } from '../test/render'
 import Analysis from './Analysis'
 import { ROUTES } from '../routes'
 import { ApiError } from '../api/client'
-import { HEATMAP_MIN_DAYS, TREND_CHART_MAX_DAYS, weekdayIndex } from '../utils/analysis'
+import {
+  ANALYSIS_WINDOW_DAYS,
+  HEATMAP_MIN_DAYS,
+  TREND_CHART_MAX_DAYS,
+  weekdayIndex,
+} from '../utils/analysis'
 import { fromIsoDate } from '../utils/days'
 import type { JournalListEntry } from '../types/diaryEntry'
 
@@ -118,14 +123,14 @@ describe('Analysis — the window caption', () => {
   })
 })
 
-describe('Analysis — the mood/stress chart', () => {
+describe('Analysis — the trend chart', () => {
   it('caps its own subtitle at the chart window, not the analysis window', async () => {
     mockedFetch.mockResolvedValue(consecutive(30))
     renderWithProviders(<Analysis />)
 
     // Deliberately shorter than the 30-day window above it — see TREND_CHART_MAX_DAYS.
     expect(
-      await screen.findByText(`Nastrój i poziom stresu, ostatnie ${TREND_CHART_MAX_DAYS} dni`),
+      await screen.findByText(`Nastrój, ostatnie ${TREND_CHART_MAX_DAYS} dni`),
     ).toBeInTheDocument()
     expect(screen.getByText(/z ostatnich 30 dni/)).toBeInTheDocument()
   })
@@ -134,16 +139,101 @@ describe('Analysis — the mood/stress chart', () => {
     mockedFetch.mockResolvedValue(consecutive(6))
     renderWithProviders(<Analysis />)
 
-    expect(await screen.findByText('Nastrój i poziom stresu, ostatnie 6 dni')).toBeInTheDocument()
+    expect(await screen.findByText('Nastrój, ostatnie 6 dni')).toBeInTheDocument()
   })
 
-  it('says so rather than drawing an empty plot when nothing was rated', async () => {
+  it('opens on mood, with one series drawn rather than two', async () => {
+    mockedFetch.mockResolvedValue(consecutive(6))
+    const { container } = renderWithProviders(<Analysis />)
+
+    expect(await screen.findByLabelText('Pokaż na wykresie')).toHaveValue('mood')
+    // Two units on one axis put the mood line above the stress line almost
+    // always, which read as a relationship and was an artefact of the scaling.
+    const legend = container.querySelectorAll('.analysis-legend-item')
+    expect(legend).toHaveLength(1)
+    expect(legend[0]).toHaveTextContent('Nastrój')
+  })
+
+  it('offers every level and every emotion, with stress listed once', async () => {
+    mockedFetch.mockResolvedValue(consecutive(6))
+    renderWithProviders(<Analysis />)
+
+    const picker = await screen.findByLabelText('Pokaż na wykresie')
+    const labels = within(picker)
+      .getAllByRole('option')
+      .map((option) => option.textContent)
+
+    expect(labels.slice(0, 4)).toEqual([
+      'Nastrój',
+      'Poziom stresu',
+      'Poziom energii',
+      'Poziom napięcia',
+    ])
+    // 'Stres' is one of the ten emotions, so it would otherwise be the same
+    // series listed twice under two names.
+    expect(labels).not.toContain('Stres')
+    expect(labels).toContain('Lęk')
+    expect(labels).toHaveLength(4 + 9)
+  })
+
+  it('redraws for the emotion the patient picks', async () => {
+    mockedFetch.mockResolvedValue(consecutive(6, { emotions: [{ emotion: 'Lęk', intensity: 7 }] }))
+    renderWithProviders(<Analysis />)
+
+    const picker = await screen.findByLabelText('Pokaż na wykresie')
+    fireEvent.change(picker, { target: { value: 'emotion:Lęk' } })
+
+    expect(screen.getByText('Lęk, ostatnie 6 dni')).toBeInTheDocument()
+    // Its own colour, from utils/emotions.ts — never a second palette.
+    expect(screen.getAllByText(/lęk 7 \/ 10/)).toHaveLength(6)
+  })
+
+  it('states values on the shared 0-10 scale, including mood', async () => {
+    mockedFetch.mockResolvedValue([entry(0, { mood: 'neutral' })])
+    renderWithProviders(<Analysis />)
+
+    // 'neutral' is 3 on the tiles' 1-5 and 6 on the axis the point sits on;
+    // showing '3 / 5' next to a dot at 6 is what the normalization removes.
+    expect(await screen.findByText(/nastrój 6 \/ 10/)).toBeInTheDocument()
+    expect(screen.getByText('skala 0–10')).toBeInTheDocument()
+    expect(screen.queryByText(/skala 1–5/)).not.toBeInTheDocument()
+  })
+
+  it('says so rather than drawing an empty plot when this series was never rated', async () => {
     mockedFetch.mockResolvedValue([entry(0, { mood: null, emotions: [] })])
     renderWithProviders(<Analysis />)
 
+    expect(await screen.findByText(/nie ma oceny „nastrój”/)).toBeInTheDocument()
+  })
+
+  it('words its empty state against its own window, not the analysis window', async () => {
+    // Entries 16-29 days back and nothing since: the chart's 14 days hold
+    // nothing while the screen's 30 do. "Żaden wpis z tego okresu" would be
+    // contradicted twice on the same screen — by the caption counting three of
+    // them and by the mood average computed from them.
+    mockedFetch.mockResolvedValue([entry(29), entry(20), entry(16)])
+    renderWithProviders(<Analysis />)
+
     expect(
-      await screen.findByText(/Żaden wpis z tego okresu nie zawiera oceny nastroju/),
+      await screen.findByText(
+        `Żaden wpis z ostatnich ${TREND_CHART_MAX_DAYS} dni nie ma oceny „nastrój”.`,
+      ),
     ).toBeInTheDocument()
+    expect(screen.getByText(/z 3 wpisów z ostatnich 30 dni/)).toBeInTheDocument()
+  })
+
+  it('keeps the picker reachable when the chosen series has nothing to draw', async () => {
+    mockedFetch.mockResolvedValue(consecutive(6))
+    renderWithProviders(<Analysis />)
+
+    const picker = await screen.findByLabelText('Pokaż na wykresie')
+    // Nothing in the fixture rates 'Wstyd'. A picker that vanished with the plot
+    // would leave no way back to a series that does have days behind it.
+    fireEvent.change(picker, { target: { value: 'emotion:Wstyd' } })
+
+    expect(screen.getByText(/nie ma oceny „wstyd”/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Pokaż na wykresie'), { target: { value: 'mood' } })
+    expect(screen.getByText('Nastrój, ostatnie 6 dni')).toBeInTheDocument()
   })
 })
 
@@ -257,6 +347,19 @@ describe('Analysis — what this screen is not', () => {
     for (const label of ['Tydzień', 'Miesiąc', 'Kwartał']) {
       expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument()
     }
+  })
+
+  it('labels a stretch shorter than a week with its real length', async () => {
+    // The last bar covers what is left of the window — two days on a full 30.
+    // Its height is two sevenths, and on a phone there is no hover to discover
+    // that the denominator is not seven.
+    mockedFetch.mockResolvedValue(consecutive(ANALYSIS_WINDOW_DAYS))
+    renderWithProviders(<Analysis />)
+
+    expect(await screen.findByText('Tyg. 5 (2 dni)')).toBeInTheDocument()
+    // A full week says nothing extra — the number would be noise on four bars
+    // out of five.
+    expect(screen.getByText('Tyg. 1')).toBeInTheDocument()
   })
 
   it('has no bottom tab bar', async () => {
