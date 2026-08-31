@@ -14,7 +14,9 @@ import datetime
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
+from django.db import connections
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -180,7 +182,7 @@ class YearBoundaryTests(FrequencyTestCase):
             timezone.make_aware(datetime.datetime(2026, 1, 1, 0, 30)),
         )
 
-        self.assertEqual(years_with_entries(self.patient.id_medical), [2026])
+        self.assertEqual(years_with_entries(self.patient.id_medical, datetime.date(2026, 12, 31)), [2026])
         january = build_year_frequency(
             self.patient.id_medical, 2026, datetime.date(2026, 12, 31),
         )[0]
@@ -192,7 +194,7 @@ class YearBoundaryTests(FrequencyTestCase):
             timezone.make_aware(datetime.datetime(2026, 12, 31, 23, 45)),
         )
 
-        self.assertEqual(years_with_entries(self.patient.id_medical), [2026])
+        self.assertEqual(years_with_entries(self.patient.id_medical, datetime.date(2026, 12, 31)), [2026])
         december = build_year_frequency(
             self.patient.id_medical, 2026, datetime.date(2026, 12, 31),
         )[-1]
@@ -276,3 +278,138 @@ class RequestShapeTests(FrequencyTestCase):
         for method in (self.client.post, self.client.put, self.client.delete):
             with self.subTest(method=method.__name__):
                 self.assertEqual(method(self.url).status_code, 405)
+
+
+class FutureRowTests(FrequencyTestCase):
+    """Rows dated after today, which the API cannot write but seed data can.
+
+    `core/reports.py` already skips them, so they are a real shape in this
+    database rather than a hypothetical. The trap here is that two functions
+    stop at different places: `build_year_frequency` clips at today, and until
+    `years_with_entries` did the same the picker offered a year whose chart then
+    came back empty.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.today = datetime.date(2026, 8, 31)
+
+    def test_a_future_year_is_not_offered_in_the_picker(self):
+        write_day(self.patient.id_medical, datetime.date(2026, 6, 1))
+        write_day(self.patient.id_medical, datetime.date(2027, 5, 5))
+
+        self.assertEqual(years_with_entries(self.patient.id_medical, self.today), [2026])
+
+    def test_the_picker_never_offers_a_year_the_chart_cannot_draw(self):
+        # The two have to agree: this is the invariant, stated once.
+        write_day(self.patient.id_medical, datetime.date(2026, 6, 1))
+        write_day(self.patient.id_medical, datetime.date(2027, 5, 5))
+
+        for year in years_with_entries(self.patient.id_medical, self.today):
+            with self.subTest(year=year):
+                buckets = build_year_frequency(self.patient.id_medical, year, self.today)
+                self.assertTrue(any(bucket['days'] for bucket in buckets))
+
+    def test_a_future_row_in_the_current_year_is_counted_nowhere(self):
+        write_day(self.patient.id_medical, datetime.date(2026, 1, 5))
+        write_day(self.patient.id_medical, datetime.date(2026, 12, 24))
+
+        buckets = build_year_frequency(self.patient.id_medical, 2026, self.today)
+        self.assertEqual([b['start'][5:7] for b in buckets][-1], '08')
+        self.assertEqual(sum(b['days'] for b in buckets), 1)
+
+    def test_a_patient_whose_only_row_is_in_the_future_has_nothing(self):
+        write_day(self.patient.id_medical, datetime.date(2027, 5, 5))
+
+        self.assertEqual(years_with_entries(self.patient.id_medical, self.today), [])
+        self.assertEqual(build_year_frequency(self.patient.id_medical, 2027, self.today), [])
+
+
+class CalendarEdgeTests(FrequencyTestCase):
+    """The days the calendar does not hand out evenly."""
+
+    def test_february_in_a_leap_year_is_29_days(self):
+        # `calendar.monthrange` handles it; this pins that nothing later replaces
+        # it with a table of month lengths.
+        write_day(self.patient.id_medical, datetime.date(2028, 1, 3))
+
+        february = build_year_frequency(
+            self.patient.id_medical, 2028, datetime.date(2028, 12, 31),
+        )[1]
+        self.assertEqual((february['end'], february['length']), ('2028-02-29', 29))
+
+    def test_a_silent_month_inside_an_active_year_is_a_zero_not_a_gap(self):
+        # Different from a month before the account existed, which is omitted.
+        # Here the patient was writing either side of it and stopped for March.
+        for day in (datetime.date(2026, 2, 10), datetime.date(2026, 4, 10)):
+            write_day(self.patient.id_medical, day)
+
+        buckets = build_year_frequency(
+            self.patient.id_medical, 2026, datetime.date(2026, 8, 31),
+        )
+        march = next(b for b in buckets if b['start'].startswith('2026-03'))
+        self.assertEqual((march['days'], march['length'], march['partial']), (0, 31, False))
+
+    def test_the_25_hour_day_in_october_counts_once(self):
+        # Poland puts the clocks back on the last Sunday of October, so 02:30
+        # happens twice that night. Two readings of one instant must not become
+        # two days of writing, and the day must not land in the wrong month.
+        write_entry(
+            self.patient.id_medical,
+            timezone.make_aware(datetime.datetime(2026, 10, 25, 2, 30)),
+        )
+
+        october = next(
+            b for b in build_year_frequency(
+                self.patient.id_medical, 2026, datetime.date(2026, 12, 31))
+            if b['start'].startswith('2026-10')
+        )
+        self.assertEqual(october['days'], 1)
+
+    def test_the_23_hour_day_in_march_counts_once(self):
+        # The clocks go forward, so that day is an hour short. Its bucket is
+        # still one calendar day, not a fraction of one.
+        write_entry(
+            self.patient.id_medical,
+            timezone.make_aware(datetime.datetime(2026, 3, 29, 3, 30)),
+        )
+
+        march = build_year_frequency(
+            self.patient.id_medical, 2026, datetime.date(2026, 12, 31),
+        )[0]
+        self.assertEqual((march['start'], march['days']), ('2026-03-29', 1))
+
+
+class QueryCountTests(FrequencyTestCase):
+    """The cost of one chart, pinned.
+
+    Twelve bars used to be twelve round trips before the days were fetched in
+    one go, and nothing about the output would show if it went back — which is
+    exactly the kind of regression a count catches and an assertion on the
+    buckets never would.
+    """
+
+    def test_a_whole_year_costs_a_fixed_number_of_queries(self):
+        for month in range(1, 13):
+            write_day(self.patient.id_medical, datetime.date(2026, month, 15))
+
+        with self.assertNumQueries(2, using='medical'):
+            build_year_frequency(self.patient.id_medical, 2026, datetime.date(2026, 12, 31))
+
+    def test_the_count_does_not_grow_with_the_months_that_hold_entries(self):
+        # One month of history against twelve: the same two queries.
+        write_day(self.patient.id_medical, datetime.date(2026, 1, 15))
+
+        with self.assertNumQueries(2, using='medical'):
+            build_year_frequency(self.patient.id_medical, 2026, datetime.date(2026, 12, 31))
+
+    def test_the_endpoint_reads_medical_db_a_bounded_number_of_times(self):
+        for month in range(1, 13):
+            write_day(self.patient.id_medical, datetime.date(2026, month, 15))
+
+        with CaptureQueriesContext(connections['medical']) as captured:
+            self.assertEqual(self.get(year=2026).status_code, 200)
+        # Two for the buckets plus one for the year list. A number rather than a
+        # ceiling, so adding a query is a decision somebody has to make on
+        # purpose.
+        self.assertEqual(len(captured), 3, [q['sql'][:80] for q in captured.captured_queries])

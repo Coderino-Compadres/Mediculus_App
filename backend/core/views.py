@@ -547,6 +547,6 @@ class FrequencyView(APIView):
         return Response({
             'year': year,
             'bucket': 'month',
-            'years_with_entries': years_with_entries(patient.id_medical),
+            'years_with_entries': years_with_entries(patient.id_medical, today),
             'buckets': build_year_frequency(patient.id_medical, year, today),
         })

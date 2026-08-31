@@ -41,7 +41,7 @@ from .models import Diary
 MONTHS_IN_YEAR = 12
 
 
-def years_with_entries(id_medical):
+def years_with_entries(id_medical, today):
     """Every calendar year this patient has at least one entry in, oldest first.
 
     What the year picker is populated from. It has to come from the database
@@ -52,9 +52,18 @@ def years_with_entries(id_medical):
     The year is read in `settings.TIME_ZONE`, like every other calendar question
     in this codebase — an entry written at 00:30 on 1 January belongs to the new
     year, and under UTC it would be filed in the old one.
+
+    Rows dated after today are left out, and `today` is a parameter rather than a
+    call to the clock so the boundary can be tested. Nothing in the API writes
+    one — `save_today_entry` can only ever address today — but `mock_data.sql`
+    and the seed scripts can, and `core/reports.py` already guards against them.
+    Without the cutoff the picker would offer a year that `build_year_frequency`
+    then draws as empty, because that function stops at today: a year listed as
+    having entries and showing none is a worse answer than not listing it.
     """
+    _, end_of_today = day_bounds(today, today)
     return sorted(
-        Diary.objects.filter(id_medical=id_medical)
+        Diary.objects.filter(id_medical=id_medical, created_at__lt=end_of_today)
         .annotate(year=ExtractYear('created_at'))
         .values_list('year', flat=True)
         .distinct()
