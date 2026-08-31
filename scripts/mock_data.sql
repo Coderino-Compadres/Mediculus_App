@@ -74,12 +74,12 @@ SELECT setval(
     (SELECT MAX(id_technique) FROM technique)
 );
 
-INSERT INTO diary (id_diary, id_medical, current_mood, current_strongest_emotion, stress_level, energy_level, situation, situation_place, how_situation_handled, notes) VALUES
-    ('e0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'neutralny', 'niepokój',    4, 5, 'Rozmowa z przełożonym o projekcie', 'praca',   'Głębokie oddychanie przed rozmową',      'Poszło lepiej niż się bałem.'),
-    ('e0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000001', 'dobry',     'spokój',      2, 7, 'Spacer wieczorny',                  'park',    'Brak, dzień był spokojny',               NULL),
-    ('e0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000002', 'smutny',    'frustracja',  6, 3, 'Kłótnia z koleżanką w szkole',      'szkoła',  'Rozmowa z rodzicem wieczorem',            'Wciąż o tym myślę.'),
-    ('e0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000003', 'dobry',     'radość',      1, 8, 'Udany trening na siłowni',           'siłownia','Brak potrzeby',                          NULL),
-    ('e0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000004', 'neutralny', 'zmęczenie',   5, 4, 'Długi dzień w pracy zdalnej',        'dom',     'Krótka przerwa na herbatę',               'Potrzebuję więcej snu.')
+INSERT INTO diary (id_diary, id_medical, current_mood, current_strongest_emotion, stress_level, energy_level, situation, situation_place, time_of_day, how_situation_handled, notes) VALUES
+    ('e0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001', 'neutralny', 'niepokój',    4, 5, 'Rozmowa z przełożonym o projekcie', 'praca',    'noon',    'Głębokie oddychanie przed rozmową',      'Poszło lepiej niż się bałem.'),
+    ('e0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000001', 'dobry',     'spokój',      2, 7, 'Spacer wieczorny',                  'park',     'evening', 'Brak, dzień był spokojny',               NULL),
+    ('e0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000002', 'smutny',    'frustracja',  6, 3, 'Kłótnia z koleżanką w szkole',      'szkoła',   'noon',    'Rozmowa z rodzicem wieczorem',            'Wciąż o tym myślę.'),
+    ('e0000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000003', 'dobry',     'radość',      1, 8, 'Udany trening na siłowni',           'siłownia', 'evening', 'Brak potrzeby',                          NULL),
+    ('e0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000004', 'neutralny', 'zmęczenie',   5, 4, 'Długi dzień w pracy zdalnej',        'dom',      'noon',    'Krótka przerwa na herbatę',               'Potrzebuję więcej snu.')
 ON CONFLICT (id_diary) DO NOTHING;
 
 INSERT INTO mood_scale (id_diary, sadness_scale, anxiety_scale, anger_scale, happiness_scale, guilt_scale, frustration_scale, helplessness_scale)
@@ -111,6 +111,14 @@ WHERE NOT EXISTS (SELECT 1 FROM mood_scale m WHERE m.id_diary = v.id_diary);
 --     real diary has, and what stops the streak at 4 rather than a month
 --   * a different declared emotion most days -> bars in different colours,
 --     'Wstyd' and 'Spokój' included, which only got scale columns in 0005
+--   * a `time_of_day` on all but three days, with the hard days landing in the
+--     evening and at night and the calmer ones in the morning and at noon -> the
+--     analysis screen's heatmap has a pattern to draw rather than noise. The
+--     count matters: it unlocks at HEATMAP_MIN_DAYS (14) days that answered
+--     *that* question, not 14 entries, so seeding a handful would leave the grid
+--     locked on a database with a month of entries in it. The three days without
+--     an answer are the point too -- the question is optional, and a seed where
+--     every single day answers it would not look like a real diary
 --
 -- `current_mood` uses the five labels the entry form writes ('Bardzo źle' ..
 -- 'Bardzo dobrze') and `situation_place` uses chips from utils/triggers.ts, so
@@ -121,58 +129,58 @@ WHERE NOT EXISTS (SELECT 1 FROM mood_scale m WHERE m.id_diary = v.id_diary);
 -- an average evening.
 INSERT INTO diary (id_diary, id_medical, current_mood, current_strongest_emotion,
                    stress_level, energy_level, tension_level,
-                   situation, situation_place, emotion_note, thought,
+                   situation, situation_place, time_of_day, emotion_note, thought,
                    how_situation_handled, notes, risky_behavior_note, created_at) VALUES
     ('e0000000-0000-0000-0000-000000000100', 'c0000000-0000-0000-0000-000000000005', 'Dobrze',        'Spokój',     2, 7, 2,
-     'Wieczór bez planów, pierwszy taki od tygodnia.', 'Dom', 'Ulga i spokój.', 'Chyba wracam do siebie.',
+     'Wieczór bez planów, pierwszy taki od tygodnia.', 'Dom', 'evening', 'Ulga i spokój.', 'Chyba wracam do siebie.',
      'Nic nie musiałem robić — po prostu odpoczywałem.', 'Dobry dzień. Warto zapamiętać, co go takim zrobiło.', NULL,
      now()),
     ('e0000000-0000-0000-0000-000000000101', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Lęk',        5, 5, 6,
-     'Jutro prezentacja dla całego zespołu.', 'Praca', 'Ucisk w klatce, płytki oddech.', 'Na pewno się pomylę i wszyscy to zobaczą.',
+     'Jutro prezentacja dla całego zespołu.', 'Praca', 'evening', 'Ucisk w klatce, płytki oddech.', 'Na pewno się pomylę i wszyscy to zobaczą.',
      'Przećwiczyłem wstęp na głos trzy razy.', 'Pomogło mniej, niż liczyłem.', NULL,
      now() - INTERVAL '1 day'),
     ('e0000000-0000-0000-0000-000000000102', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Złość',      7, 3, 8,
-     'Kłótnia o podział obowiązków, podniesione głosy.', 'Dom', 'Gorąco, ręce się trzęsły.', 'Nikt się tu ze mną nie liczy.',
+     'Kłótnia o podział obowiązków, podniesione głosy.', 'Dom', 'evening', 'Gorąco, ręce się trzęsły.', 'Nikt się tu ze mną nie liczy.',
      'Wyszedłem z pokoju, zanim powiedziałem coś gorszego.', 'Wieczorem nie umiałem tego odpuścić.', 'Wieczorem dwa piwa, żeby się uspokoić.',
      now() - INTERVAL '2 days'),
     ('e0000000-0000-0000-0000-000000000103', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Smutek',     6, 2, 5,
-     'Cały dzień w łóżku, odwołałem spotkanie ze znajomymi.', 'Sam/sama w domu', 'Ciężko, pusto.', 'Nie mam po co wstawać.',
+     'Cały dzień w łóżku, odwołałem spotkanie ze znajomymi.', 'Sam/sama w domu', 'morning', 'Ciężko, pusto.', 'Nie mam po co wstawać.',
      'Nic. Zasnąłem po południu.', NULL, NULL,
      now() - INTERVAL '3 days'),
     ('e0000000-0000-0000-0000-000000000105', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Frustracja', 5, 4, 6,
-     'Trzecia poprawka tego samego dokumentu.', 'Praca', 'Napięcie w szczęce.', 'To i tak nie ma znaczenia.',
+     'Trzecia poprawka tego samego dokumentu.', 'Praca', 'noon', 'Napięcie w szczęce.', 'To i tak nie ma znaczenia.',
      'Zrobiłem przerwę i wyszedłem na dwór.', 'Przerwa pomogła bardziej niż myślałem.', NULL,
      now() - INTERVAL '5 days'),
     ('e0000000-0000-0000-0000-000000000106', 'c0000000-0000-0000-0000-000000000005', 'Bardzo dobrze', 'Radość',     1, 9, 1,
-     'Urodziny przyjaciela, dużo śmiechu.', 'Wśród ludzi', 'Lekko, ciepło.', 'Dobrze, że jednak poszedłem.',
+     'Urodziny przyjaciela, dużo śmiechu.', 'Wśród ludzi', 'evening', 'Lekko, ciepło.', 'Dobrze, że jednak poszedłem.',
      'Zostałem dłużej, niż planowałem.', 'Najlepszy dzień od dawna.', NULL,
      now() - INTERVAL '6 days'),
     ('e0000000-0000-0000-0000-000000000107', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Wstyd',      4, 4, 4,
-     'Powiedziałem coś niezręcznego na spotkaniu i wszyscy zamilkli.', 'Praca', 'Gorące uszy.', 'Wyszedłem na idiotę.',
+     'Powiedziałem coś niezręcznego na spotkaniu i wszyscy zamilkli.', 'Praca', 'noon', 'Gorące uszy.', 'Wyszedłem na idiotę.',
      'Przeprosiłem i zmieniłem temat.', 'Wracało do mnie jeszcze wieczorem.', NULL,
      now() - INTERVAL '7 days')
 ON CONFLICT (id_diary) DO NOTHING;
 
 INSERT INTO diary (id_diary, id_medical, current_mood, current_strongest_emotion,
-                   stress_level, energy_level, tension_level, notes, created_at) VALUES
-    ('e0000000-0000-0000-0000-000000000108', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Lęk',            5, 5, 5, NULL,                                now() - INTERVAL '8 days'),
-    ('e0000000-0000-0000-0000-000000000111', 'c0000000-0000-0000-0000-000000000005', 'Dobrze',        'Spokój',         3, 6, 3, 'Spokojny weekend.',                 now() - INTERVAL '11 days'),
-    ('e0000000-0000-0000-0000-000000000112', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Frustracja',     5, 4, 6, NULL,                                now() - INTERVAL '12 days'),
-    ('e0000000-0000-0000-0000-000000000113', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Poczucie winy',  6, 3, 6, 'Znowu odwołałem spotkanie.',        now() - INTERVAL '13 days'),
-    ('e0000000-0000-0000-0000-000000000114', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Lęk',            5, 4, 6, NULL,                                now() - INTERVAL '14 days'),
-    ('e0000000-0000-0000-0000-000000000115', 'c0000000-0000-0000-0000-000000000005', 'Dobrze',        'Radość',         3, 7, 3, NULL,                                now() - INTERVAL '15 days'),
-    ('e0000000-0000-0000-0000-000000000116', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Smutek',         5, 4, 5, NULL,                                now() - INTERVAL '16 days'),
-    ('e0000000-0000-0000-0000-000000000118', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Frustracja',     7, 3, 7, NULL,                                now() - INTERVAL '18 days'),
-    ('e0000000-0000-0000-0000-000000000119', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Złość',          7, 3, 8, NULL,                                now() - INTERVAL '19 days'),
-    ('e0000000-0000-0000-0000-000000000120', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Lęk',            6, 4, 6, NULL,                                now() - INTERVAL '20 days'),
-    ('e0000000-0000-0000-0000-000000000121', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Smutek',         7, 2, 6, NULL,                                now() - INTERVAL '21 days'),
-    ('e0000000-0000-0000-0000-000000000122', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Bezradność',     8, 2, 7, 'Nie wiem, od czego zacząć.',        now() - INTERVAL '22 days'),
-    ('e0000000-0000-0000-0000-000000000124', 'c0000000-0000-0000-0000-000000000005', 'Bardzo źle',    'Bezradność',     8, 2, 8, 'Najgorszy dzień w tym miesiącu.',   now() - INTERVAL '24 days'),
-    ('e0000000-0000-0000-0000-000000000125', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Wstyd',          7, 3, 7, NULL,                                now() - INTERVAL '25 days'),
-    ('e0000000-0000-0000-0000-000000000126', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Lęk',            8, 2, 8, NULL,                                now() - INTERVAL '26 days'),
-    ('e0000000-0000-0000-0000-000000000127', 'c0000000-0000-0000-0000-000000000005', 'Bardzo źle',    'Smutek',         8, 1, 7, NULL,                                now() - INTERVAL '27 days'),
-    ('e0000000-0000-0000-0000-000000000129', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Lęk',            7, 3, 7, NULL,                                now() - INTERVAL '29 days'),
-    ('e0000000-0000-0000-0000-000000000130', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Złość',          7, 3, 7, NULL,                                now() - INTERVAL '30 days')
+                   stress_level, energy_level, tension_level, time_of_day, notes, created_at) VALUES
+    ('e0000000-0000-0000-0000-000000000108', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Lęk',            5, 5, 5, 'night',   NULL,                                now() - INTERVAL '8 days'),
+    ('e0000000-0000-0000-0000-000000000111', 'c0000000-0000-0000-0000-000000000005', 'Dobrze',        'Spokój',         3, 6, 3, 'noon',    'Spokojny weekend.',                 now() - INTERVAL '11 days'),
+    ('e0000000-0000-0000-0000-000000000112', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Frustracja',     5, 4, 6, 'noon',    NULL,                                now() - INTERVAL '12 days'),
+    ('e0000000-0000-0000-0000-000000000113', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Poczucie winy',  6, 3, 6, 'evening', 'Znowu odwołałem spotkanie.',        now() - INTERVAL '13 days'),
+    ('e0000000-0000-0000-0000-000000000114', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Lęk',            5, 4, 6, 'night',   NULL,                                now() - INTERVAL '14 days'),
+    ('e0000000-0000-0000-0000-000000000115', 'c0000000-0000-0000-0000-000000000005', 'Dobrze',        'Radość',         3, 7, 3, 'morning', NULL,                                now() - INTERVAL '15 days'),
+    ('e0000000-0000-0000-0000-000000000116', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Smutek',         5, 4, 5, NULL,      NULL,                                now() - INTERVAL '16 days'),
+    ('e0000000-0000-0000-0000-000000000118', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Frustracja',     7, 3, 7, 'evening', NULL,                                now() - INTERVAL '18 days'),
+    ('e0000000-0000-0000-0000-000000000119', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Złość',          7, 3, 8, 'evening', NULL,                                now() - INTERVAL '19 days'),
+    ('e0000000-0000-0000-0000-000000000120', 'c0000000-0000-0000-0000-000000000005', 'Neutralnie',    'Lęk',            6, 4, 6, 'night',   NULL,                                now() - INTERVAL '20 days'),
+    ('e0000000-0000-0000-0000-000000000121', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Smutek',         7, 2, 6, NULL,      NULL,                                now() - INTERVAL '21 days'),
+    ('e0000000-0000-0000-0000-000000000122', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Bezradność',     8, 2, 7, 'morning', 'Nie wiem, od czego zacząć.',        now() - INTERVAL '22 days'),
+    ('e0000000-0000-0000-0000-000000000124', 'c0000000-0000-0000-0000-000000000005', 'Bardzo źle',    'Bezradność',     8, 2, 8, 'night',   'Najgorszy dzień w tym miesiącu.',   now() - INTERVAL '24 days'),
+    ('e0000000-0000-0000-0000-000000000125', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Wstyd',          7, 3, 7, 'evening', NULL,                                now() - INTERVAL '25 days'),
+    ('e0000000-0000-0000-0000-000000000126', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Lęk',            8, 2, 8, 'night',   NULL,                                now() - INTERVAL '26 days'),
+    ('e0000000-0000-0000-0000-000000000127', 'c0000000-0000-0000-0000-000000000005', 'Bardzo źle',    'Smutek',         8, 1, 7, NULL,      NULL,                                now() - INTERVAL '27 days'),
+    ('e0000000-0000-0000-0000-000000000129', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Lęk',            7, 3, 7, 'night',   NULL,                                now() - INTERVAL '29 days'),
+    ('e0000000-0000-0000-0000-000000000130', 'c0000000-0000-0000-0000-000000000005', 'Źle',           'Złość',          7, 3, 7, 'evening', NULL,                                now() - INTERVAL '30 days')
 ON CONFLICT (id_diary) DO NOTHING;
 
 -- Ratings for the entries above. NULL rather than 0 for an emotion the entry

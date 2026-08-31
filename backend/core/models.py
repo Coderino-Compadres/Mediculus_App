@@ -2,6 +2,8 @@ import uuid
 
 from django.db import models
 
+from .time_of_day import TIME_OF_DAY_CHOICES
+
 class UserRole(models.Model):
     id_user_role = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.TextField(null=True, blank=True)
@@ -129,6 +131,18 @@ class Diary(models.Model):
     # a schema of its own.
     situation = models.TextField(null=True, blank=True)
     situation_place = models.TextField(null=True, blank=True)
+    # When the situation happened, as one of four buckets -- not when the entry
+    # was written, which is `updated_at`. NULL is a perfectly normal answer:
+    # the question is optional on the form and every entry written before the
+    # column existed has nothing here, which is not a gap to backfill (nobody
+    # can say afterwards what time of day those describe). The Polish labels
+    # stay in `frontend/src/utils/timeOfDay.ts`; the column holds the key.
+    # TextField like every other text column on this table -- `choices` is what
+    # constrains the value, so a length limit would only be a second thing to
+    # keep in step with `database_setup.sql` (see core.0002 for how that goes).
+    time_of_day = models.TextField(
+        choices=TIME_OF_DAY_CHOICES, null=True, blank=True,
+    )
     emotion_note = models.TextField(null=True, blank=True)
     thought = models.TextField(null=True, blank=True)
     how_situation_handled = models.TextField(null=True, blank=True)

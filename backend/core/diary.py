@@ -22,6 +22,7 @@ from rest_framework import serializers
 from .days import day_bounds, local_date
 from .emotions import EMOTIONS, MOOD_SCALE_EMOTIONS, STRES
 from .models import Diary, MoodScale
+from .time_of_day import TIMES_OF_DAY
 
 #: Sliders and emotion intensities are all rated on the same 0-10 scale.
 MIN_LEVEL = 0
@@ -83,6 +84,24 @@ class DiaryEntrySerializer(serializers.Serializer):
     )
     situation = serializers.CharField(
         max_length=MAX_LONG_TEXT, required=False, allow_null=True, allow_blank=True,
+    )
+    # A ChoiceField, not a CharField: an answer outside the four buckets has to
+    # be refused out loud. Until this field existed the key was unknown to the
+    # serializer, and a plain `serializers.Serializer` drops unknown keys
+    # silently -- the patient's "Wieczór" was accepted, discarded and reported
+    # as saved. A 400 is the whole point of naming the field here.
+    #
+    # No `allow_blank`, which makes this the one optional field where '' is a
+    # 400 rather than "not answered" -- and a 400 fails the whole PUT, so an
+    # empty value here costs the patient the entire entry. Deliberate: '' is not
+    # one of the four keys, and mapping it to NULL would be this serializer
+    # quietly deciding what an answer it does not recognise meant, which is the
+    # habit that lost the field in the first place. It holds only because the
+    # form sends `draft.timeOfDay ?? null` and never '' (see toPayload in
+    # frontend/src/api/diary.ts) -- if a client ever needs '' to mean "nothing
+    # selected", change it here rather than working around it there.
+    time_of_day = serializers.ChoiceField(
+        choices=TIMES_OF_DAY, required=False, allow_null=True,
     )
     emotion_note = serializers.CharField(
         max_length=MAX_LONG_TEXT, required=False, allow_null=True, allow_blank=True,
@@ -186,6 +205,7 @@ def serialize_entry(diary):
         'tension_level': diary.tension_level,
         'situation_place': diary.situation_place,
         'situation': diary.situation,
+        'time_of_day': diary.time_of_day,
         'emotion_note': diary.emotion_note,
         'thought': diary.thought,
         'how_situation_handled': diary.how_situation_handled,
@@ -267,6 +287,9 @@ def save_today_entry(id_medical, data, today):
         diary.tension_level = data.get('tension_level')
         diary.situation_place = _blank_to_none(data.get('situation_place'))
         diary.situation = _blank_to_none(data.get('situation'))
+        # Not through _blank_to_none: the value is one of four keys or NULL,
+        # never a text box somebody could leave whitespace in.
+        diary.time_of_day = data.get('time_of_day')
         diary.emotion_note = _blank_to_none(data.get('emotion_note'))
         diary.thought = _blank_to_none(data.get('thought'))
         diary.how_situation_handled = _blank_to_none(data.get('how_situation_handled'))
