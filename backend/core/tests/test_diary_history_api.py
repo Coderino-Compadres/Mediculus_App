@@ -149,7 +149,7 @@ class ListTests(HistoryTestCase):
             current_mood='Źle', stress_level=7, energy_level=3, tension_level=8,
             situation='Kłótnia.', situation_place='Dom', emotion_note='Gorąco.',
             thought='Nikt się nie liczy.', how_situation_handled='Wyszedłem.',
-            notes='Ciężko.', risky_behavior_note='Alkohol.',
+            time_of_day='evening', notes='Ciężko.', risky_behavior_note='Alkohol.',
         )
         MoodScale.objects.create(diary=diary, anger_scale=8, shame_scale=3)
 
@@ -160,6 +160,7 @@ class ListTests(HistoryTestCase):
         self.assertIn('saved_at', entry)
         self.assertEqual(entry['mood'], 'bad')
         self.assertEqual(entry['tension_level'], 8)
+        self.assertEqual(entry['time_of_day'], 'evening')
         self.assertEqual(entry['risky_behavior_note'], 'Alkohol.')
         self.assertEqual(
             sorted(r['emotion'] for r in entry['emotions']),
@@ -216,6 +217,53 @@ class DetailTests(HistoryTestCase):
         response = self.client.get(reverse('core:diary-today'))
 
         self.assertEqual(response.status_code, 200)
+
+
+class TimeOfDayReadTests(HistoryTestCase):
+    """Both read URLs have to carry the answer, for two different screens.
+
+    The archive and the analysis screen's heatmap group entries by time of day
+    off the list; the detail is what the edit form redraws a chip from. A field
+    missing from either is a question that looks unanswered.
+    """
+
+    def test_the_list_carries_it(self):
+        make_diary(self.patient.id_medical, self.days_ago(2), time_of_day='morning')
+        make_diary(self.patient.id_medical, self.days_ago(1), time_of_day='night')
+
+        entries = self.get_history()
+
+        self.assertEqual([e['time_of_day'] for e in entries], ['night', 'morning'])
+
+    def test_the_detail_carries_it(self):
+        diary = make_diary(self.patient.id_medical, self.days_ago(2), time_of_day='noon')
+
+        response = self.client.get(self.detail_url(diary.id_diary))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['time_of_day'], 'noon')
+
+    def test_an_entry_from_before_the_column_existed_answers_null_on_both(self):
+        """Those rows are the normal case, not a broken one: the column is
+        optional and was never backfilled."""
+        diary = make_diary(self.patient.id_medical, self.days_ago(4), notes='Stary.')
+
+        listed = self.get_history()[0]
+        detail = self.client.get(self.detail_url(diary.id_diary))
+
+        self.assertIn('time_of_day', listed)
+        self.assertIsNone(listed['time_of_day'])
+        self.assertIsNone(detail.data['time_of_day'])
+
+    def test_a_mixture_of_answered_and_unanswered_days_is_listed_as_it_is(self):
+        make_diary(self.patient.id_medical, self.days_ago(3), time_of_day='evening')
+        make_diary(self.patient.id_medical, self.days_ago(2))
+        make_diary(self.patient.id_medical, self.days_ago(1), time_of_day='morning')
+
+        self.assertEqual(
+            [e['time_of_day'] for e in self.get_history()],
+            ['morning', None, 'evening'],
+        )
 
 
 class ImmutabilityTests(HistoryTestCase):

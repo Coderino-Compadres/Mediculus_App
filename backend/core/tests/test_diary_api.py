@@ -23,6 +23,7 @@ from rest_framework.test import APIClient
 from core.authentication import SESSION_USER_KEY
 from core.diary import MAX_LONG_TEXT, MOOD_LABELS
 from core.emotions import EMOTIONS, MOOD_SCALE_EMOTIONS, STRES
+from core.time_of_day import TIMES_OF_DAY
 from core.models import Diary, MoodScale, Patient, User, UserRole
 
 
@@ -324,6 +325,111 @@ class ValidationTests(DiaryEntryTestCase):
 
     def test_an_absurdly_long_note_is_refused(self):
         self.put({'notes': 'x' * 5000}, expect=400)
+
+
+class TimeOfDayTests(DiaryEntryTestCase):
+    """The "pora dnia" question — the one answer that used to vanish silently.
+
+    `DiaryEntrySerializer` is a plain `serializers.Serializer`, which discards a
+    key it does not declare without saying anything. Until the field existed the
+    form's `time_of_day` was therefore dropped on the floor: the patient picked
+    "Wieczór", was told the entry had been saved, reopened it and found the
+    question blank. So these tests are not only about the column existing —
+    every one of them is about an answer either being stored or being refused,
+    never quietly accepted and thrown away.
+
+    Note what is *not* asserted anywhere here: a Polish word. The four keys are
+    what the API stores, and `frontend/src/utils/timeOfDay.ts` is the only place
+    'Rano'/'Południe'/'Wieczór'/'Noc' are written.
+    """
+
+    def test_the_answer_is_stored_and_comes_back(self):
+        saved = self.put({'time_of_day': 'evening'})
+
+        diary = Diary.objects.get(id_medical=self.patient.id_medical)
+        self.assertEqual(diary.time_of_day, 'evening')
+        self.assertEqual(saved['time_of_day'], 'evening')
+        self.assertEqual(self.get()['time_of_day'], 'evening')
+
+    def test_every_bucket_survives_a_save_and_a_read(self):
+        for value in TIMES_OF_DAY:
+            with self.subTest(time_of_day=value):
+                self.assertEqual(self.put({'time_of_day': value})['time_of_day'], value)
+                self.assertEqual(self.get()['time_of_day'], value)
+
+    def test_an_unknown_value_is_refused_rather_than_ignored(self):
+        """The bug this field was added to fix, stated as a test.
+
+        A 400 naming the field is the only acceptable answer: a 200 that stored
+        NULL is exactly the silent loss the form already suffered.
+        """
+        response = self.put({'time_of_day': 'afternoon'}, expect=400)
+
+        self.assertIn('time_of_day', response)
+        self.assertEqual(Diary.objects.count(), 0)
+
+    def test_a_polish_label_is_not_a_value(self):
+        """The backend never translates: 'Wieczór' is a label, not a key."""
+        self.put({'time_of_day': 'Wieczór'}, expect=400)
+        self.assertEqual(Diary.objects.count(), 0)
+
+    def test_a_refused_value_does_not_damage_the_entry_already_saved(self):
+        self.put({'time_of_day': 'morning', 'notes': 'Rano.'})
+
+        self.put({'time_of_day': 'popołudnie', 'notes': 'Inaczej.'}, expect=400)
+
+        entry = self.get()
+        self.assertEqual(entry['time_of_day'], 'morning')
+        self.assertEqual(entry['notes'], 'Rano.')
+
+    def test_no_answer_is_null_rather_than_an_error(self):
+        """Optional on the form, so both null and absent are real answers."""
+        for payload in ({'time_of_day': None}, {}):
+            with self.subTest(payload=payload):
+                self.assertIsNone(self.put(payload)['time_of_day'])
+
+                diary = Diary.objects.get(id_medical=self.patient.id_medical)
+                self.assertIsNone(diary.time_of_day)
+                self.assertIsNone(self.get()['time_of_day'])
+
+    def test_an_answer_left_out_of_the_second_save_is_cleared(self):
+        """Same rule as every other field: the form submits its whole state, so
+        a missing key is an answer taken back rather than one left alone."""
+        self.put({'time_of_day': 'night'})
+
+        self.put({'notes': 'Bez pory dnia.'})
+
+        self.assertIsNone(self.get()['time_of_day'])
+
+    def test_an_entry_written_before_the_column_existed_still_reads(self):
+        """NULL is the correct value for those rows, not a gap to backfill —
+        nothing in the row says what time of day it describes."""
+        Diary.objects.create(id_medical=self.patient.id_medical, notes='Stary wpis.')
+
+        entry = self.get()
+
+        self.assertEqual(entry['notes'], 'Stary wpis.')
+        self.assertIsNone(entry['time_of_day'])
+
+    def test_it_travels_next_to_the_rest_of_the_form(self):
+        """The field has to survive a full payload, not only one of its own."""
+        entry = self.put({
+            'mood': 'bad',
+            'emotions': [{'emotion': 'Lęk', 'intensity': 6}],
+            'energy_level': 2,
+            'tension_level': 9,
+            'situation_place': 'Szkoła',
+            'situation': 'Sprawdzian.',
+            'time_of_day': 'noon',
+            'emotion_note': 'Ścisk w gardle.',
+            'thought': 'Nie zdążę.',
+            'how_situation_handled': 'Oddychałem.',
+            'notes': 'Trudno.',
+            'risky_behavior_note': None,
+        })
+
+        self.assertEqual(entry['time_of_day'], 'noon')
+        self.assertEqual(entry['situation_place'], 'Szkoła')
 
 
 def at_time(diary, day, hour):
