@@ -11,7 +11,8 @@ export const ROUTES = {
   reports: '/reports',
   reportDetail: '/reports/:id',
   analysis: '/analysis',
-  techniques: '/techniques-placeholder',
+  techniques: '/techniques',
+  techniqueDetail: '/techniques/:id',
   profile: '/profile-placeholder',
   safetyPlan: '/safety-plan-placeholder',
   diet: '/diet-placeholder',
@@ -25,6 +26,11 @@ export function journalDetailPath(id: string): string {
 /** The same for ROUTES.reportDetail, whose `:id` is a week ('week-2026-08-03'). */
 export function reportDetailPath(id: string): string {
   return ROUTES.reportDetail.replace(':id', id)
+}
+
+/** The same for ROUTES.techniqueDetail, whose `:id` is a technique slug ('tipp'). */
+export function techniqueDetailPath(id: string): string {
+  return ROUTES.techniqueDetail.replace(':id', id)
 }
 
 export interface PlaceholderRouteDef {
@@ -43,7 +49,6 @@ export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
     backTo: ROUTES.modules,
     backLabel: '← Wróć do wyboru modułu',
   },
-  { path: ROUTES.techniques, title: 'Techniki terapeutyczne' },
   { path: ROUTES.profile, title: 'Profil' },
   { path: ROUTES.safetyPlan, title: 'Plan bezpieczeństwa' },
 ]
@@ -68,6 +73,8 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.reports]: 'Raporty',
   [ROUTES.reportDetail]: 'Raport tygodniowy',
   [ROUTES.analysis]: 'Analiza',
+  [ROUTES.techniques]: 'Techniki terapeutyczne',
+  [ROUTES.techniqueDetail]: 'Technika terapeutyczna',
   ...Object.fromEntries(PLACEHOLDER_ROUTES.map((route) => [route.path, route.title])),
 }
 

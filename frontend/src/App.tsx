@@ -11,6 +11,8 @@ import JournalDetail from './pages/JournalDetail'
 import Reports from './pages/Reports'
 import ReportDetail from './pages/ReportDetail'
 import Analysis from './pages/Analysis'
+import Techniques from './pages/Techniques'
+import TechniqueDetail from './pages/TechniqueDetail'
 import PlaceholderPage from './pages/PlaceholderPage'
 import NotFound from './pages/NotFound'
 import OfflineBanner from './components/OfflineBanner'
@@ -147,6 +149,22 @@ function App() {
             element={
               <RequireAuth>
                 <Analysis />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.techniques}
+            element={
+              <RequireAuth>
+                <Techniques />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.techniqueDetail}
+            element={
+              <RequireAuth>
+                <TechniqueDetail />
               </RequireAuth>
             }
           />

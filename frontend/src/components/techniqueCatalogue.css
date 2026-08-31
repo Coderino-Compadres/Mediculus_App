@@ -1,0 +1,168 @@
+/* The technique catalogue's own parts: the school badge, the list row and the
+   "Jak to zrobić" step list.
+
+   Named techniqueCatalogue.css, not techniques.css, because pages/techniques.css
+   exists too: as siblings both were imported as './techniques.css' and moving a
+   component between the two directories would have swapped its stylesheet with
+   no error anywhere. Everything else — the page frame, the header, the
+   white cards, the chips — comes from journals.css / journalDetail.css, because
+   "Techniki terapeutyczne" is meant to read as one family with "Dzienniczki" and
+   "Raporty" rather than as a screen of its own design. No colour is defined
+   here that is not already a theme.css token. */
+
+/* Tab chips reuse .journals-filter-chip; only the count next to the label is new. */
+.technique-tab-count {
+  margin-left: 6px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* The school badge — where the journal row keeps its mood dot. */
+.technique-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--color-sage);
+  color: #fff;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+/* List row — the journal row, as a link. */
+
+.technique-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+}
+
+.technique-row-name {
+  display: block;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 16px;
+  color: var(--color-graphite);
+  margin-bottom: 4px;
+}
+
+.technique-row-subtitle {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+/* "Jak to zrobić" */
+
+.technique-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.technique-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.technique-step-index {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-lavender);
+  color: var(--color-sage-hover);
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+}
+
+.technique-step-body {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.technique-step-name {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 2px 0 4px;
+}
+
+.technique-step-text {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-graphite);
+  margin: 0;
+  /* The document writes a couple of descriptions as several short lines; the
+     newlines are part of the text rather than wrapping. */
+  white-space: pre-line;
+}
+
+/* The document's example line, set apart from the instruction it illustrates. */
+.technique-step-examples {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  background: var(--color-lavender);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin: 8px 0 0;
+}
+
+.technique-step-examples-label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-sage-hover);
+}
+
+/* A skill this catalogue names but does not explain (TIPP's "Temperatura").
+   Ochre, never red — the same discreet treatment the risky-behaviour flag has on
+   the entry form: this is a "talk to your specialist", not a warning. */
+.technique-step-specialist .technique-step-index {
+  background: rgba(224, 180, 92, 0.22);
+  color: #7a5a17;
+}
+
+.technique-step-specialist .technique-step-body {
+  background: rgba(224, 180, 92, 0.12);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.technique-step-specialist .technique-step-name {
+  margin-top: 0;
+}
+
+.technique-step-flag {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #7a5a17;
+  margin: 8px 0 0;
+}
