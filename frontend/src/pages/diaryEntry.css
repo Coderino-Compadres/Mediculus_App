@@ -290,6 +290,27 @@
 
 /* Trigger chips */
 
+/* Label above a chip row. Same typography as a field label (.diary-entry-field
+   label), but the chips are buttons rather than one input, so the group is
+   labelled with aria-labelledby instead of a <label for>. */
+.diary-entry-group-label {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-graphite);
+  margin-bottom: 8px;
+}
+
+/* A label that follows a chip row starts a second question, so it needs more
+   air above it than the row's own 12px — otherwise "Pora dnia" and "Miejsce"
+   read as one group with a stray heading in the middle. */
+.diary-entry-trigger-chips + .diary-entry-group-label {
+  margin-top: 20px;
+}
+
 .diary-entry-trigger-chips {
   display: flex;
   flex-wrap: wrap;

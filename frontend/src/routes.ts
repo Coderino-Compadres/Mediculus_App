@@ -10,7 +10,7 @@ export const ROUTES = {
   diaryEntry: '/diary-entry',
   reports: '/reports',
   reportDetail: '/reports/:id',
-  analysis: '/analysis-placeholder',
+  analysis: '/analysis',
   techniques: '/techniques-placeholder',
   profile: '/profile-placeholder',
   safetyPlan: '/safety-plan-placeholder',
@@ -43,7 +43,6 @@ export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
     backTo: ROUTES.modules,
     backLabel: '← Wróć do wyboru modułu',
   },
-  { path: ROUTES.analysis, title: 'Analiza' },
   { path: ROUTES.techniques, title: 'Techniki terapeutyczne' },
   { path: ROUTES.profile, title: 'Profil' },
   { path: ROUTES.safetyPlan, title: 'Plan bezpieczeństwa' },
@@ -68,7 +67,20 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.diaryEntry]: 'Dodaj wpis',
   [ROUTES.reports]: 'Raporty',
   [ROUTES.reportDetail]: 'Raport tygodniowy',
+  [ROUTES.analysis]: 'Analiza',
   ...Object.fromEntries(PLACEHOLDER_ROUTES.map((route) => [route.path, route.title])),
+}
+
+/**
+ * A screen's name, for a menu entry that should not repeat a title already
+ * written down.
+ *
+ * Reads ROUTE_TITLES rather than PLACEHOLDER_ROUTES, so an entry keeps its label
+ * when the screen behind it stops being a placeholder and moves into the real
+ * route table — which is exactly what happened to "Analiza".
+ */
+export function routeTitle(path: string): string {
+  return ROUTE_TITLES[path] ?? path
 }
 
 /** Shown after the screen name, so a browser tab says what app it belongs to. */

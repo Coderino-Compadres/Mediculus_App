@@ -27,6 +27,8 @@ RAW_SQL_MIGRATIONS = {
     'core.migrations.0004_user_consents': 'default',
     'core.migrations.0005_diary_entry_fields': 'medical',
     'core.migrations.0006_drop_overall_feeling': 'medical',
+    'core.migrations.0007_parent_child_accepted_at': 'default',
+    'core.migrations.0009_diary_time_of_day': 'medical',
 }
 
 
@@ -94,7 +96,9 @@ class IdempotencyTests(SimpleTestCase):
 
     def test_adding_columns_tolerates_them_already_existing(self):
         for module_path in ('core.migrations.0004_user_consents',
-                            'core.migrations.0005_diary_entry_fields'):
+                            'core.migrations.0005_diary_entry_fields',
+                            'core.migrations.0007_parent_child_accepted_at',
+                            'core.migrations.0009_diary_time_of_day'):
             with self.subTest(migration=module_path):
                 for operation in run_sql_operations(module_path):
                     self.assertRegex(operation.sql, r'ADD COLUMN IF NOT EXISTS')
@@ -203,6 +207,13 @@ class StateAndDatabaseAgreeTests(SimpleTestCase):
 
         self.assertEqual(removed, set(re.findall(r'DROP COLUMN IF EXISTS (\w+)', sql)))
         self.assertEqual(removed, {'overall_feeling'})
+
+    def test_0009_adds_the_same_column_on_both_halves(self):
+        state_ops, sql = self.state_and_sql('core.migrations.0009_diary_time_of_day')
+        added = {op.name for op in state_ops if isinstance(op, migrations.AddField)}
+
+        self.assertEqual(added, set(re.findall(r'ADD COLUMN IF NOT EXISTS (\w+)', sql)))
+        self.assertEqual(added, {'time_of_day'})
 
     def test_0004_adds_the_same_consent_columns_on_both_halves(self):
         state_ops, sql = self.state_and_sql('core.migrations.0004_user_consents')

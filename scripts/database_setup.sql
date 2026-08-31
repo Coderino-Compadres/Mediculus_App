@@ -164,6 +164,19 @@ CREATE TABLE IF NOT EXISTS diary (
     -- the free text typed instead of one.
     situation TEXT,
     situation_place TEXT,
+    -- When the situation happened: 'morning' | 'noon' | 'evening' | 'night'.
+    -- Not when the entry was written -- that is updated_at. The Polish labels
+    -- live on the frontend; the column holds the technical key.
+    --
+    -- Unconstrained on purpose, and worth knowing exactly how far that goes:
+    -- there is no CHECK here, and Django's `choices` in core/models.py is not
+    -- one either -- it is validated by forms and by full_clean(), never by
+    -- .save() and never by the database. The only thing that actually refuses a
+    -- fifth value is DiaryEntrySerializer, i.e. the API. So anything writing
+    -- this column directly (a data migration, manage.py shell, a seed script,
+    -- a future specialist-side writer) can store text the frontend will silently
+    -- drop on read -- add a CHECK, or go through the serializer.
+    time_of_day TEXT,
     emotion_note TEXT,
     thought TEXT,
     how_situation_handled TEXT,
@@ -243,6 +256,11 @@ ALTER TABLE diary
 ALTER TABLE mood_scale
     ADD COLUMN IF NOT EXISTS shame_scale INT,
     ADD COLUMN IF NOT EXISTS calm_scale INT;
+
+-- Same again for the "pora dnia" question, added later still.
+-- Mirrors core/migrations/0009_diary_time_of_day.py.
+ALTER TABLE diary
+    ADD COLUMN IF NOT EXISTS time_of_day TEXT;
 
 -- Dropped in core.0006: the "jakość samopoczucia" question that would have
 -- filled it was cut from the entry form, and `current_mood` already records how

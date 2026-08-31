@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
 import DiaryEntry from './DiaryEntry'
@@ -275,6 +275,111 @@ describe('the risky-behaviour flag', () => {
     await userEvent.click(screen.getByRole('button', { name: /Oznacz zachowanie ryzykowne/ }))
 
     expect(screen.queryByLabelText(/Opis/)).not.toBeInTheDocument()
+  })
+})
+
+describe('pora dnia', () => {
+  /** The four chips, as a group — named so it cannot match the place chips. */
+  function timeOfDayGroup() {
+    return screen.getByRole('group', { name: 'Pora dnia' })
+  }
+
+  it('offers the four parts of the day, and none of them preselected', async () => {
+    mockedFetch.mockResolvedValueOnce(null)
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+    await openDetails()
+
+    const chips = within(timeOfDayGroup()).getAllByRole('button')
+
+    expect(chips.map((chip) => chip.textContent)).toEqual(['Rano', 'Południe', 'Wieczór', 'Noc'])
+    for (const chip of chips) expect(chip).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('is a separate question from the place, each row under its own heading', async () => {
+    mockedFetch.mockResolvedValueOnce(null)
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+    await openDetails()
+
+    const place = screen.getByRole('group', { name: 'Miejsce' })
+
+    expect(within(place).getAllByRole('button').map((chip) => chip.textContent)).toContain('Praca')
+    expect(within(timeOfDayGroup()).queryByRole('button', { name: 'Praca' })).not.toBeInTheDocument()
+    expect(within(place).queryByRole('button', { name: 'Rano' })).not.toBeInTheDocument()
+  })
+
+  it('sits with the place, not in the always-visible part of the form', async () => {
+    mockedFetch.mockResolvedValueOnce(null)
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+
+    expect(screen.queryByRole('group', { name: 'Pora dnia' })).not.toBeInTheDocument()
+  })
+
+  it('saves the chosen one', async () => {
+    mockedFetch.mockResolvedValueOnce(null)
+    mockedSave.mockResolvedValueOnce(existingEntry({ timeOfDay: 'evening' }))
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+    await openDetails()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Wieczór' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz wpis' }))
+
+    expect(mockedSave.mock.calls[0][0]).toMatchObject({ timeOfDay: 'evening' })
+  })
+
+  it('replaces the previous choice — one pora dnia per entry, unlike emotions', async () => {
+    mockedFetch.mockResolvedValueOnce(null)
+    mockedSave.mockResolvedValueOnce(existingEntry())
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+    await openDetails()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rano' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Noc' }))
+
+    expect(screen.getByRole('button', { name: 'Rano' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Noc' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz wpis' }))
+    expect(mockedSave.mock.calls[0][0]).toMatchObject({ timeOfDay: 'night' })
+  })
+
+  it('unselects on a second press, like the place chips do', async () => {
+    mockedFetch.mockResolvedValueOnce(null)
+    mockedSave.mockResolvedValueOnce(existingEntry())
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+    await openDetails()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rano' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Rano' }))
+
+    expect(screen.getByRole('button', { name: 'Rano' })).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz wpis' }))
+    expect(mockedSave.mock.calls[0][0].timeOfDay).toBeUndefined()
+  })
+
+  it('does not block a save when nothing was picked — no field on this form does', async () => {
+    mockedFetch.mockResolvedValueOnce(null)
+    mockedSave.mockResolvedValueOnce(existingEntry())
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz wpis' }))
+
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledTimes(1))
+    expect(mockedSave.mock.calls[0][0].timeOfDay).toBeUndefined()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('redraws the chip an existing entry was saved with', async () => {
+    mockedFetch.mockResolvedValueOnce(existingEntry({ timeOfDay: 'noon' }))
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Edycja wpisu' })
+
+    expect(screen.getByRole('button', { name: 'Południe' })).toHaveAttribute('aria-pressed', 'true')
   })
 })
 

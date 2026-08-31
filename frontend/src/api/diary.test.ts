@@ -185,6 +185,47 @@ describe('the trigger chip and its free-text twin share one column', () => {
   })
 })
 
+describe('pora dnia — when the situation happened, not when it was written', () => {
+  it('reads one of the four values back onto its chip', async () => {
+    mockedRequest.mockResolvedValueOnce(payload({ time_of_day: 'evening' }))
+
+    expect((await fetchTodayEntry())?.timeOfDay).toBe('evening')
+  })
+
+  it('ignores a value that is not one of the four, rather than drawing no chip for it', async () => {
+    mockedRequest.mockResolvedValueOnce(payload({ time_of_day: 'popoludnie' }))
+
+    expect((await fetchTodayEntry())?.timeOfDay).toBeUndefined()
+  })
+
+  it('survives the field being absent, which is what the backend sends today', async () => {
+    mockedRequest.mockResolvedValueOnce(payload())
+
+    expect((await fetchTodayEntry())?.timeOfDay).toBeUndefined()
+  })
+
+  it('sends the chosen value', async () => {
+    expect(await sentBody(draft({ timeOfDay: 'morning' }))).toMatchObject({ time_of_day: 'morning' })
+  })
+
+  it('sends null when the question went unanswered — the field is optional', async () => {
+    expect((await sentBody(draft())).time_of_day).toBeNull()
+  })
+
+  it('is not saved_at — an archive row carries both, and they can disagree', async () => {
+    // A morning episode written up at night: the whole reason this is a field
+    // the patient fills in rather than a timestamp the server takes.
+    mockedRequest.mockResolvedValueOnce([
+      payload({ saved_at: '2026-08-25T22:10:00+02:00', time_of_day: 'morning' }),
+    ])
+
+    const [entry] = await fetchJournalEntries()
+
+    expect(entry.timeOfDay).toBe('morning')
+    expect(entry.savedAt).toBe('2026-08-25T22:10:00+02:00')
+  })
+})
+
 describe('the risky-behaviour flag lives in the note, because the column is all there is', () => {
   it('reads a note as the flag being on', async () => {
     mockedRequest.mockResolvedValueOnce(payload({ risky_behavior_note: 'Alkohol wieczorem.' }))
@@ -248,6 +289,7 @@ describe('saveTodayEntry', () => {
     expect(Object.keys(body).sort()).toEqual([
       'emotion_note', 'emotions', 'energy_level', 'how_situation_handled', 'mood',
       'notes', 'risky_behavior_note', 'situation', 'situation_place', 'tension_level', 'thought',
+      'time_of_day',
     ])
     expect(body.energy_level).toBeNull()
     expect(body.mood).toBeNull()

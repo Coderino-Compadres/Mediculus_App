@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
-import { PLACEHOLDER_ROUTES, ROUTES } from '../routes'
+import { ROUTES, routeTitle } from '../routes'
 import { roleLabel } from '../utils/roles'
-
-/** Reuses the placeholder page's own title as the menu label, so a rename only touches routes.ts. */
-function placeholderLabel(path: string): string {
-  return PLACEHOLDER_ROUTES.find((route) => route.path === path)?.title ?? path
-}
 
 const MENU_ITEMS: { label: string; to: string }[] = [
   // First, because every other entry leads away from it and several screens
@@ -15,12 +10,12 @@ const MENU_ITEMS: { label: string; to: string }[] = [
   { label: 'Strona główna', to: ROUTES.home },
   { label: 'Dzienniczki', to: ROUTES.journals },
   { label: 'Raporty', to: ROUTES.reports },
-  { label: placeholderLabel(ROUTES.analysis), to: ROUTES.analysis },
-  { label: placeholderLabel(ROUTES.techniques), to: ROUTES.techniques },
-  { label: placeholderLabel(ROUTES.profile), to: ROUTES.profile },
+  { label: routeTitle(ROUTES.analysis), to: ROUTES.analysis },
+  { label: routeTitle(ROUTES.techniques), to: ROUTES.techniques },
+  { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
   // TODO: not in the mockup, but confirmed as a high-priority feature (US-PT-13)
   // — added as a plain menu entry for now, no escalation logic yet.
-  { label: placeholderLabel(ROUTES.safetyPlan), to: ROUTES.safetyPlan },
+  { label: routeTitle(ROUTES.safetyPlan), to: ROUTES.safetyPlan },
   { label: 'Przejdź do części dietetyczno-psychodietetycznej', to: ROUTES.diet },
 ]
 

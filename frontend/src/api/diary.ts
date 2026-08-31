@@ -11,6 +11,7 @@
 import { apiRequest } from './client'
 import type { EmotionName } from '../utils/emotions'
 import { OTHER_TRIGGER, TRIGGER_OPTIONS } from '../utils/triggers'
+import { isTimeOfDay } from '../utils/timeOfDay'
 import type {
   DiaryEntryDraft,
   EmotionEntry,
@@ -40,6 +41,13 @@ interface DiaryEntryPayload {
   emotion_note: string | null
   thought: string | null
   how_situation_handled: string | null
+  /**
+   * TODO: the backend does not store this yet — `diary` has no column for it,
+   * so a saved entry comes back without the field (Kacper has to add the column
+   * and serialize it). Optional here rather than `| null` for that reason: this
+   * is the one field the API may simply not mention.
+   */
+  time_of_day?: string | null
   notes: string | null
   risky_behavior_note: string | null
 }
@@ -93,6 +101,10 @@ function toDraft(payload: DiaryEntryPayload): DiaryEntryDraft {
       thought: text(payload.thought),
       behavior: text(payload.how_situation_handled),
     },
+    // Guarded rather than cast: until the column exists the field is absent,
+    // and anything that is not one of the four values would put a chip the
+    // picker cannot draw into the form.
+    timeOfDay: isTimeOfDay(payload.time_of_day) ? payload.time_of_day : undefined,
     notes: text(payload.notes),
     // NULL is the database's way of saying no risky behaviour was reported;
     // there is no separate boolean column to read it from.
@@ -119,6 +131,11 @@ function toPayload(draft: DiaryEntryDraft) {
     emotion_note: orNull(draft.situationReaction.emotionNote),
     thought: orNull(draft.situationReaction.thought),
     how_situation_handled: orNull(draft.situationReaction.behavior),
+    // TODO: sent so the form is ready the moment the backend can take it —
+    // `diary` needs a column plus handling in core/diary.py before this is
+    // stored, and until then it is written and dropped on the floor. NULL is
+    // "the patient did not answer", the same as every other optional field.
+    time_of_day: draft.timeOfDay ?? null,
     notes: orNull(draft.notes),
     risky_behavior_note: draft.hasRiskyBehavior ? orNull(draft.riskyBehaviorNote) : null,
   }

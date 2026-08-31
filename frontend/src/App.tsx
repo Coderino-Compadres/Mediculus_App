@@ -10,6 +10,7 @@ import Journals from './pages/Journals'
 import JournalDetail from './pages/JournalDetail'
 import Reports from './pages/Reports'
 import ReportDetail from './pages/ReportDetail'
+import Analysis from './pages/Analysis'
 import PlaceholderPage from './pages/PlaceholderPage'
 import NotFound from './pages/NotFound'
 import OfflineBanner from './components/OfflineBanner'
@@ -138,6 +139,14 @@ function App() {
             element={
               <RequireAuth>
                 <ReportDetail />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.analysis}
+            element={
+              <RequireAuth>
+                <Analysis />
               </RequireAuth>
             }
           />
