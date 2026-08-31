@@ -90,8 +90,9 @@ export const MIN_DIFFICULTY_MARGIN = 1
 /** The mood tiles are a 1-5 scale (utils/moods.ts); the sliders and chips are 0-10. */
 export const MOOD_SCALE_MAX = 5
 
-/** Days per bar on "Częstotliwość wpisów". */
-const DAYS_PER_WEEK_BAR = 7
+/** Days per bar on "Częstotliwość wpisów". Exported because the last stretch may
+ *  be shorter, and the label under that bar has to say so — see `weekBars`. */
+export const DAYS_PER_WEEK_BAR = 7
 
 /**
  * Monday-first, like `startOfWeek` in utils/days.ts and the weekly reports —
@@ -257,9 +258,17 @@ export const DIFFICULTY_GRADIENT = `linear-gradient(to right, ${DIFFICULTY_RAMP.
 const SAGE_LIGHT: Rgb = [127, 169, 143]
 const SAGE_DEEP: Rgb = [79, 122, 100]
 
-/** A shade of the brand sage, deeper the fuller the bar — for "Częstotliwość
- *  wpisów", which has no palette of its own and must not borrow one that means
- *  an emotion somewhere else. */
+/**
+ * A shade of the brand sage, deeper the fuller the bar — for "Częstotliwość
+ * wpisów", which has no palette of its own.
+ *
+ * The pale end is `#7FA98F`, which is also `EMOTION_COLORS.Spokój`. The bars do
+ * not mean that emotion and nothing on this screen puts the two side by side —
+ * "Udział emocji" is a separate section with its own labelled bars — but the
+ * overlap is real, so read this ramp as "how full the week was", never as a hue
+ * carrying an emotion's meaning. Same trade-off, and the same eventual fix (a
+ * palette hue no emotion uses), as the level colours in components/TrendChart.tsx.
+ */
 export function sageShade(ratio: number): string {
   return css(mix(SAGE_LIGHT, SAGE_DEEP, Math.min(1, Math.max(0, ratio))))
 }
@@ -276,11 +285,36 @@ function rangeLabel(start: Date, end: Date): string {
 // ---- Sections -------------------------------------------------------------------
 
 /**
+ * The 0-10 intensities one entry gave its emotion chips, keyed by name.
+ *
+ * A chip picked without an intensity is left out rather than stored as null: the
+ * chart's question is "how strong was it", and "picked, unrated" has no answer
+ * to it — same as a day with no entry at all. Unknown names are dropped for the
+ * reason `buildEmotions` gives: api/diary.ts casts the API's string to
+ * EmotionName without checking it.
+ */
+function emotionIntensities(entry: JournalListEntry): Partial<Record<EmotionName, number>> {
+  const intensities: Partial<Record<EmotionName, number>> = {}
+
+  for (const rating of entry.emotions) {
+    if (rating.intensity === null) continue
+    if (!Object.hasOwn(EMOTION_COLORS, rating.emotion)) continue
+    intensities[rating.emotion] = rating.intensity
+  }
+
+  return intensities
+}
+
+/**
  * One point per calendar day of the (shorter) trend window, oldest first.
  *
- * Days with no entry are present as points with two nulls rather than left out:
- * the x-axis is a calendar, so dropping them would silently close the gap and
- * draw a straight line across a week nobody wrote in.
+ * Days with no entry are present as points with nothing rated rather than left
+ * out: the x-axis is a calendar, so dropping them would silently close the gap
+ * and draw a straight line across a week nobody wrote in.
+ *
+ * Every answer the chart can draw travels on every point, whichever series is
+ * selected — the picker switches between them without a refetch, and a point
+ * built for one series would make that a reload of the screen.
  */
 function buildTrend(byDate: Map<string, JournalListEntry>, today: Date, windowDays: number): TrendPoint[] {
   const days = Math.min(TREND_CHART_MAX_DAYS, windowDays)
@@ -294,7 +328,9 @@ function buildTrend(byDate: Map<string, JournalListEntry>, today: Date, windowDa
       date: iso,
       dayLabel: date.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' }),
       mood: entry?.mood ? MOOD_RANK[entry.mood] : null,
-      stress: entry ? stressLevel(entry) : null,
+      energy: entry?.energyLevel ?? null,
+      tension: entry?.tensionLevel ?? null,
+      emotions: entry ? emotionIntensities(entry) : {},
     })
   }
 
@@ -309,7 +345,16 @@ function buildEmotions(entries: JournalListEntry[]): EmotionShare[] {
 
   for (const entry of entries) {
     // A Set, because one entry is one day however many chips it carries.
-    for (const emotion of new Set(entry.emotions.map((rating) => rating.emotion))) {
+    //
+    // Only the chips that carry an intensity: `EmotionShare.days` counts days
+    // the entry *rated* this emotion, which is what the section's own empty text
+    // ("nie ma ocenionej emocji") and every other reader of a rating already
+    // mean — `emotionIntensities` and `stressLevel` both drop a null the same
+    // way. Latent today, because `_read_ratings` omits a NULL column rather than
+    // sending it, but `EmotionEntry.intensity` is `number | null` and a draft
+    // held in the browser goes through this shape too.
+    const rated = entry.emotions.filter((rating) => rating.intensity !== null)
+    for (const emotion of new Set(rated.map((rating) => rating.emotion))) {
       // `Object.hasOwn`, not `in`: api/diary.ts casts the API's emotion name to
       // EmotionName without checking it, so `in` would also answer true for
       // 'toString' and hand a function to `style.backgroundColor`. The same

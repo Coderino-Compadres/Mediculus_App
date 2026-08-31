@@ -95,6 +95,15 @@
   stroke-width: 1.5;
 }
 
+/* The 0/5/10 numbers beside the grid rules. Only truthful because every series
+   is normalized onto one scale — with mood on 1-5 and the chips on 0-10 sharing
+   the plot, a number here would have labelled one line and lied about the other. */
+.analysis-line-axis {
+  font-family: var(--font-body);
+  font-size: 9px;
+  fill: var(--color-graphite-muted);
+}
+
 .analysis-line-tick {
   font-family: var(--font-body);
   font-size: 9px;
@@ -124,10 +133,48 @@
   flex-shrink: 0;
 }
 
-/* The unit each line is drawn against — the two share a plot area but not a
-   scale, and the legend is where that is said out loud. */
+/* The one scale every series is drawn against, said out loud next to the series
+   name — a value read off this chart is the normalized one, not the 1-5 the mood
+   tiles were tapped on. */
 .analysis-legend-scale {
   color: var(--color-graphite-muted);
+}
+
+/* Which answer the chart is showing. Sits under the subtitle rather than beside
+   the heading: on a phone the two would not fit on one line, and the control is
+   read after the sentence that says what is currently drawn. */
+.analysis-series-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.analysis-series-picker label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+}
+
+.analysis-series-picker select {
+  font-family: var(--font-body);
+  /* 16px, like every other control in the app: anything smaller makes iOS Safari
+     zoom the page when the picker is opened. */
+  font-size: 16px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--shadow-tint), 0.18);
+  background: #fff;
+  color: var(--color-graphite);
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.analysis-series-picker select:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: 0 0 0 3px rgba(79, 122, 100, 0.18);
 }
 
 /* Four summary cards ------------------------------------------------------ */

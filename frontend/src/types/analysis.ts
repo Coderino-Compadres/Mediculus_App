@@ -36,15 +36,39 @@ export interface AnalysisWindow {
   entryCount: number
 }
 
-/** One day on the mood/stress line chart. */
+/**
+ * One day on the line chart.
+ *
+ * Every answer the chart can draw, in the unit the patient gave it — the 1-5
+ * mood tiles stay 1-5 here and the sliders stay 0-10. Normalizing onto the
+ * chart's shared 0-10 axis is the chart's job (see `components/TrendChart.tsx`),
+ * not this layer's: a point that already carried a scaled number would be
+ * unreadable next to the entry it came from.
+ *
+ * null (or a missing emotion key) means the day was never rated on that
+ * question — never a zero. The chart breaks its line there rather than
+ * interpolating a value the patient never gave.
+ */
 export interface TrendPoint {
   date: string
   /** '27.08' — the x-axis tick. */
   dayLabel: string
   /** 1-5 (MOOD_RANK); null when the day has no entry or skipped the mood tiles. */
   mood: number | null
-  /** The 0-10 'Stres' rating; null when the day has no entry or never rated it. */
-  stress: number | null
+  /** The 0-10 energy slider. */
+  energy: number | null
+  /** The 0-10 tension slider. */
+  tension: number | null
+  /**
+   * The 0-10 intensity of each emotion the day actually rated, keyed by name.
+   *
+   * A missing key is "not rated", which is why this is a partial record rather
+   * than ten nullable fields. 'Stres' lives in here like the other nine — it is
+   * one of the ten emotions (utils/emotions.ts), stored on the diary row only
+   * because the form puts an alert threshold on it, and giving it a field of its
+   * own here would mean two places to read one number from.
+   */
+  emotions: Partial<Record<EmotionName, number>>
 }
 
 /** One bar of "Udział emocji". */
