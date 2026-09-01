@@ -130,8 +130,8 @@ function SafetyPlanView({ plan, care }: SafetyPlanViewProps) {
       </div>
 
       <p className="safety-plan-lead">
-        Ten plan ułożyłaś lub ułożyłeś razem ze swoim specjalistą. Możesz do niego wracać, kiedy
-        potrzebujesz — zmiany wprowadza specjalista podczas wizyty.
+        Ten plan powstał wspólnie ze specjalistą. Możesz do niego wracać, kiedy potrzebujesz —
+        zmiany wprowadza specjalista podczas wizyty.
       </p>
 
       {/* First, and marked out from the rest. Ochre, which is the tone this app
