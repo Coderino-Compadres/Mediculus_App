@@ -17,7 +17,7 @@ const MENU_ITEMS: { label: string; to: string }[] = [
   // TODO: not in the mockup, but confirmed as a high-priority feature (US-PT-13)
   // — added as a plain menu entry for now, no escalation logic yet.
   { label: routeTitle(ROUTES.safetyPlan), to: ROUTES.safetyPlan },
-  { label: 'Przejdź do części dietetyczno-psychodietetycznej', to: ROUTES.diet },
+  { label: 'Przejdź do części dietetycznej i psychodietetycznej', to: ROUTES.diet },
 ]
 
 /** Header dropdown menu, shared by every screen with a home-style header (Home, DiaryEntry, …). */
