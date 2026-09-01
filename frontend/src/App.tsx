@@ -11,6 +11,7 @@ import JournalDetail from './pages/JournalDetail'
 import Reports from './pages/Reports'
 import ReportDetail from './pages/ReportDetail'
 import Analysis from './pages/Analysis'
+import SafetyPlan from './pages/SafetyPlan'
 import PlaceholderPage from './pages/PlaceholderPage'
 import NotFound from './pages/NotFound'
 import OfflineBanner from './components/OfflineBanner'
@@ -147,6 +148,14 @@ function App() {
             element={
               <RequireAuth>
                 <Analysis />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.safetyPlan}
+            element={
+              <RequireAuth>
+                <SafetyPlan />
               </RequireAuth>
             }
           />

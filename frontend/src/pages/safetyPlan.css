@@ -1,0 +1,228 @@
+/* "Plan bezpieczeństwa".
+ *
+ * The page frame comes from journals.css (.journals-page / .journals-header), the
+ * white card shell from journalDetail.css, the ochre note from home.css and the
+ * support panel from components/crisisLines.css — this file only adds what none of
+ * them has. No new colours: every value below is a theme.css variable.
+ */
+
+/* The support numbers have to be reachable without scrolling, so the page gives
+   away the gap above them rather than the gap between the sections. */
+.safety-plan-page {
+  padding-top: 20px;
+}
+
+/* The plan card, and the same card in its empty state — one shell so that having
+   no plan looks like a normal part of the screen rather than a hole in it. */
+
+.safety-plan-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.safety-plan-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.safety-plan-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+
+.safety-plan-updated {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.safety-plan-lead {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 0 20px;
+}
+
+/* Sections */
+
+.safety-plan-section {
+  margin-bottom: 22px;
+}
+
+.safety-plan-section:last-child {
+  margin-bottom: 0;
+}
+
+.safety-plan-section-title {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-graphite);
+  margin: 0 0 8px;
+}
+
+/* "Sygnały ostrzegawcze" — first, and marked out, because that is what the
+   client said the feature is for. Ochre: the tone this app already uses for
+   "zwróć uwagę" (the entry form's risky-behaviour note, an unfavourable
+   direction on a report), and deliberately NOT the error red of
+   .home-crisis-banner — this is a list the patient wrote about themselves, not a
+   verdict the app is issuing about them. */
+.safety-plan-section-primary {
+  border-left: 4px solid var(--color-ochre);
+  background: var(--color-lavender);
+  border-radius: 0 14px 14px 0;
+  padding: 16px 18px;
+  margin-bottom: 26px;
+}
+
+.safety-plan-section-primary .safety-plan-section-title {
+  font-size: 13px;
+}
+
+.safety-plan-section-hint {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 0 10px;
+}
+
+/* Lists */
+
+.safety-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.safety-plan-list li {
+  position: relative;
+  padding-left: 18px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-graphite);
+}
+
+/* A drawn marker rather than list-style, so the bullet takes the app's green
+   instead of the browser's default text colour. aria-hidden is unnecessary:
+   generated content is not exposed as text by assistive tech, and the <li>
+   already announces the item. */
+.safety-plan-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-sage);
+}
+
+/* Contacts */
+
+.safety-plan-contacts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.safety-plan-contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  background: var(--color-lavender);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.safety-plan-contact-name {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+}
+
+.safety-plan-contact-detail {
+  font-weight: var(--font-weight-regular);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin-left: 8px;
+}
+
+.safety-plan-contact-phone {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-sage-hover);
+  text-decoration: none;
+  /* A tap target that survives a thumb, since this is a number somebody may be
+     dialling while upset. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.safety-plan-contact-phone:hover,
+.safety-plan-contact-phone:focus-visible {
+  text-decoration: underline;
+}
+
+/* A person the plan names without a number — said plainly, rather than rendered
+   as a link that goes nowhere. */
+.safety-plan-contact-nophone {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+}
+
+/* Free text the specialist typed; their line breaks are part of what they wrote. */
+.safety-plan-recommendations {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-graphite);
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* Empty state — the default one. Calm on purpose: no border, no icon, nothing
+   that reads as a warning or as a task left undone. */
+
+.safety-plan-empty p {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-graphite);
+  margin: 14px 0 0;
+}
+
+/* Qualified with .safety-plan-empty so it outranks the paragraph rule above
+   rather than losing to it on specificity. */
+.safety-plan-empty .safety-plan-empty-note {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+}
