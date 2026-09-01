@@ -4,6 +4,9 @@ import { useAuth } from '../auth/authContext'
 import { ApiError } from '../api/client'
 import { fetchHomeDashboard } from '../api/dashboard'
 import { EMOTION_COLORS } from '../utils/emotions'
+import { crisisSupportLine } from '../data/crisisLines'
+import { APP_DISCLAIMER } from '../utils/disclaimer'
+import PhoneLink from '../components/PhoneLink'
 import type { DayMood, HomeDashboard, TechniqueSuggestion, TodayEntry } from '../types/dashboard'
 import { ROUTES } from '../routes'
 import HeaderMenu from '../components/HeaderMenu'
@@ -20,10 +23,18 @@ import './home.css'
 /** Confirmed alarm threshold for "Średni stres" (0-10 scale) — see US-PT-13. */
 const STRESS_ALERT_THRESHOLD = 6
 
-// TODO: fill in the real support line number before this ships; until then the
-// banner below omits the phone sentence rather than showing a fake number to
-// someone in crisis.
-const CRISIS_SUPPORT_PHONE = ''
+/**
+ * The banner's support number comes from `crisisSupportLine()` in
+ * `data/crisisLines.ts` — the same file "Plan bezpieczeństwa" lists, so the two
+ * screens cannot end up naming different numbers. It is chosen by the reader's
+ * age, because none of the published lines is age-neutral; see that file.
+ *
+ * There used to be a local `CRISIS_SUPPORT_PHONE = ''` here with a TODO to fill
+ * in later. Filling it in locally would have given the app two independent
+ * copies of a crisis number, which survives exactly one correction before one of
+ * them is stale — and a stale crisis number is the worst thing this screen could
+ * show.
+ */
 
 const DASHBOARD_ERROR = 'Nie udało się wczytać Twoich danych. Spróbuj ponownie.'
 
@@ -224,6 +235,11 @@ function Home() {
   )
   const { user } = useAuth()
   const firstName = user?.firstName ?? ''
+  // Which support line the banner names. Minors have accounts here, and the two
+  // adult lines are published as adult lines — so this is not a personalisation,
+  // it is the difference between a number somebody can call and one that will
+  // turn them away.
+  const supportLine = crisisSupportLine(user?.isChild ?? null)
   const today = new Date().toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })
 
   const [dashboard, setDashboard] = useState<HomeDashboard | null>(null)
@@ -333,10 +349,17 @@ function Home() {
           {isStressAlert && (
             <section className="home-crisis-banner">
               <p>
-                Zauważyliśmy, że ostatnio jest Ci trudniej.{' '}
-                {CRISIS_SUPPORT_PHONE
-                  ? `Możesz zadzwonić pod numer wsparcia ${CRISIS_SUPPORT_PHONE} albo przejść do swojego planu bezpieczeństwa.`
-                  : 'Możesz przejść do swojego planu bezpieczeństwa.'}
+                Zauważyliśmy, że ostatnio jest Ci trudniej. Możesz zadzwonić pod numer wsparcia{' '}
+                {/* The shared PhoneLink, not a bare anchor: it dials on one tap
+                    and it names the line in its accessible label. That matters
+                    more here than anywhere else on the screen — tabbing into a
+                    bare number link, the only thing announced is nine digits. */}
+                <PhoneLink
+                  phone={supportLine.number}
+                  label={supportLine.name}
+                  className="home-crisis-phone"
+                />{' '}
+                albo przejść do swojego planu bezpieczeństwa.
               </p>
               <Link to={ROUTES.safetyPlan} className="home-crisis-link">
                 Plan bezpieczeństwa →
@@ -352,10 +375,9 @@ function Home() {
         <span className="home-disclaimer-icon" aria-hidden="true">
           ⓘ
         </span>
-        <p>
-          Aplikacja wspiera Cię w codziennym monitorowaniu emocji, ale nie zastępuje pomocy specjalisty.
-          W sytuacji kryzysowej skontaktuj się z lekarzem, terapeutą lub telefonem zaufania.
-        </p>
+        {/* One shared constant — the safety plan repeats this sentence and the
+            two must not drift apart. See utils/disclaimer.ts. */}
+        <p>{APP_DISCLAIMER}</p>
       </section>
     </div>
   )

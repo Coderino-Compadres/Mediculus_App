@@ -14,7 +14,7 @@ export const ROUTES = {
   techniques: '/techniques',
   techniqueDetail: '/techniques/:id',
   profile: '/profile',
-  safetyPlan: '/safety-plan-placeholder',
+  safetyPlan: '/safety-plan',
   diet: '/diet-placeholder',
 } as const
 
@@ -49,7 +49,6 @@ export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
     backTo: ROUTES.modules,
     backLabel: '← Wróć do wyboru modułu',
   },
-  { path: ROUTES.safetyPlan, title: 'Plan bezpieczeństwa' },
 ]
 
 /**
@@ -75,6 +74,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.techniques]: 'Techniki terapeutyczne',
   [ROUTES.techniqueDetail]: 'Technika terapeutyczna',
   [ROUTES.profile]: 'Profil',
+  [ROUTES.safetyPlan]: 'Plan bezpieczeństwa',
   ...Object.fromEntries(PLACEHOLDER_ROUTES.map((route) => [route.path, route.title])),
 }
 

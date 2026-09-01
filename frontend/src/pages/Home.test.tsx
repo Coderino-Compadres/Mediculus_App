@@ -6,6 +6,7 @@ import Home from './Home'
 import { ROUTES } from '../routes'
 import { ApiError } from '../api/client'
 import { EMOTION_COLORS } from '../utils/emotions'
+import { ADULT_SUPPORT_LINE, CRISIS_LINES, YOUTH_SUPPORT_LINE } from '../data/crisisLines'
 import type { DayMood, HomeDashboard } from '../types/dashboard'
 
 const navigate = vi.fn()
@@ -313,14 +314,54 @@ describe('Home — the crisis banner (US-PT-13)', () => {
     expect(screen.queryByText(/ostatnio jest Ci trudniej/i)).not.toBeInTheDocument()
   })
 
-  it('offers no phone number while there is no real one to offer', async () => {
-    /** Showing a placeholder number to someone in crisis is worse than showing
-     *  none — see the TODO on CRISIS_SUPPORT_PHONE. */
-    await renderScreen(dashboard({ averageStress: 8 }))
+  it('offers an adult the adult support line as a real tel: link', async () => {
+    /** It used to offer no number at all: it was a local empty string with a
+     *  TODO, because a placeholder shown to somebody in crisis is worse than
+     *  nothing. It now comes from data/crisisLines.ts — the same file "Plan
+     *  bezpieczeństwa" lists — so the two screens cannot name different numbers.
+     *  A link rather than text, since this is read on a phone. */
+    await renderScreen(dashboard({ averageStress: 8 }), { ...TEST_USER, isChild: false })
 
-    expect(screen.getByText(/możesz przejść do swojego planu bezpieczeństwa/i))
+    // PhoneLink's accessible name carries the line's name as well as the digits,
+    // so this matches on the number rather than equalling it.
+    const phone = screen.getByRole('link', { name: new RegExp(ADULT_SUPPORT_LINE.number.display) })
+    expect(phone).toHaveAttribute('href', `tel:${ADULT_SUPPORT_LINE.number.dial}`)
+    expect(phone).toHaveAccessibleName(new RegExp(ADULT_SUPPORT_LINE.name))
+  })
+
+  it('offers a minor the youth line instead of the adult one', async () => {
+    /** Both account types cross this threshold, and none of the published lines
+     *  is age-neutral — the adult lines say so in their own names. Handing a
+     *  14-year-old one of them is the failure the forYouth flag exists to
+     *  prevent. */
+    await renderScreen(dashboard({ averageStress: 8 }), { ...TEST_USER, isChild: true })
+
+    const phone = screen.getByRole('link', { name: new RegExp(YOUTH_SUPPORT_LINE.number.display) })
+    expect(phone).toHaveAttribute('href', `tel:${YOUTH_SUPPORT_LINE.number.dial}`)
+    expect(YOUTH_SUPPORT_LINE.forYouth).toBe(true)
+  })
+
+  it('treats an unknown age as an adult, like every other is_child check', async () => {
+    /** `is_child` is nullable and needsGuardianLink reads NULL as "not a minor";
+     *  reading it the other way here would make the two definitions disagree.
+     *  Either way the banner links to the plan, where all five lines are shown
+     *  with their audiences. */
+    await renderScreen(dashboard({ averageStress: 8 }), { ...TEST_USER, isChild: null })
+
+    expect(screen.getByRole('link', { name: new RegExp(ADULT_SUPPORT_LINE.number.display) }))
       .toBeInTheDocument()
-    expect(screen.queryByText(/numer wsparcia/i)).not.toBeInTheDocument()
+  })
+
+  it('never names a number the safety plan does not list', async () => {
+    /** The point of the shared source. A number reachable from the banner but
+     *  absent from the screen it links to would be a second, unmaintained copy
+     *  by another name. */
+    for (const line of [ADULT_SUPPORT_LINE, YOUTH_SUPPORT_LINE]) {
+      expect(CRISIS_LINES).toContain(line)
+      // And never the emergency number: this banner fires on a week of raised
+      // stress, which is not an emergency.
+      expect(line.isEmergency).toBe(false)
+    }
   })
 
   it('marks the stress card itself, so the banner and the number agree', async () => {

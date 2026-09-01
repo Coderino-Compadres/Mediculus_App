@@ -1,0 +1,171 @@
+/* The always-visible support-numbers panel on "Plan bezpieczeństwa".
+ *
+ * No new colours: every value below is a theme.css variable. The panel is filled
+ * with --color-sage-hover, which is the app's own green and NOT the error red of
+ * .home-crisis-banner / .home-stat-card-alert. That difference is deliberate and
+ * load-bearing — the red banner means "your data crossed a threshold", this panel
+ * means "here is where help is". Read as the same signal they would tell the user
+ * the app had concluded something about them, which it has not.
+ *
+ * CONTRAST IS MEASURED AGAINST THE ROW, NOT THE PANEL. That distinction bit
+ * once already: the rows lay their own overlay over the panel, so the figure
+ * that matters is text-against-row, and an earlier lighter overlay put the meta
+ * line at 4.00:1 — under AA — while the panel it was checked against said 5.15.
+ * The overlay is therefore darker than the panel rather than lighter. As it
+ * stands: white name on a row is 7.3:1, the meta line 6.1:1, and the emergency
+ * row (white fill, sage text) 6.4:1. Re-measure against .crisis-line if either
+ * value here is touched.
+ */
+
+.crisis-lines {
+  background: var(--color-sage-hover);
+  border-radius: 20px;
+  padding: 22px 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.crisis-lines-heading {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: #fff;
+  margin: 0 0 6px;
+}
+
+.crisis-lines-lead {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.88);
+  margin: 0 0 16px;
+}
+
+.crisis-lines-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crisis-line {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  /* Darker than the panel, not lighter. A white veil separates the row just as
+     well but lifts the floor under every piece of text on it — which is how the
+     meta line ended up below AA. --shadow-tint is theme.css's graphite triplet,
+     so this is still no new colour. */
+  background: rgba(var(--shadow-tint), 0.18);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+/* 112 is not a helpline. A white fill lifts it clear of the four support lines
+   so it does not read as one more number to try. */
+.crisis-line-emergency {
+  background: #fff;
+}
+
+.crisis-line-number {
+  flex-shrink: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 19px;
+  /* Tabular figures so the numbers line up down the column instead of drifting. */
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-decoration: none;
+  /* A comfortable tap target on a phone, where this link is the whole point. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.crisis-line-number:hover,
+.crisis-line-number:focus-visible {
+  text-decoration: underline;
+}
+
+.crisis-line-emergency .crisis-line-number {
+  color: var(--color-sage-hover);
+}
+
+.crisis-line-text {
+  min-width: 0;
+}
+
+.crisis-line-name {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  line-height: 1.35;
+  color: #fff;
+  margin: 0 0 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.crisis-line-emergency .crisis-line-name {
+  color: var(--color-graphite);
+}
+
+/* Text, not only a colour: which lines are for under-18s has to survive being
+   read aloud and being seen by somebody who cannot tell the two greens apart. */
+.crisis-line-badge {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-sage-hover);
+}
+
+.crisis-line-meta {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.crisis-line-emergency .crisis-line-meta {
+  color: var(--color-graphite-muted);
+}
+
+/* The focus floor in index.css is a light ring, which disappears on the sage
+   panel — so the links inside it get a white one. */
+.crisis-lines a:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.crisis-line-emergency a:focus-visible {
+  outline-color: var(--color-sage-hover);
+}
+
+/* On a narrow phone the longest name ('Dziecięcy Telefon Zaufania Rzecznika
+   Praw Dziecka') squeezes the number into two lines next to it; stacking keeps
+   the digits whole and large, which is the part that matters. */
+@media (max-width: 380px) {
+  .crisis-line {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
+
+/* Inside the auth card on LinkGuardian, where there is no page-level flex gap
+   above the panel — see pages/LinkGuardian.tsx for why a blocked minor gets the
+   numbers there at all. */
+.crisis-lines-in-card {
+  margin-top: 24px;
+  text-align: left;
+}

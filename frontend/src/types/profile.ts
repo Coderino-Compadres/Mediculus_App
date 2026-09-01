@@ -1,4 +1,5 @@
 import type { ConsentId } from '../utils/consents'
+import type { PhoneNumber } from '../utils/phone'
 
 /**
  * What the "Profil" screen shows, split by where it comes from.
@@ -22,16 +23,44 @@ export interface ProfileActivity {
 }
 
 /**
- * The "Opieka" card.
+ * The care relationship: who is treating this patient.
  *
- * One field. The card also carried the therapeutic approach and the next/last
- * appointment; all three were removed on request, and the `Visit` shape they
- * needed went with them. If the appointment calendar is ever built, that is
- * where those rows come back from — not from here.
+ * ONE SOURCE, TWO SCREENS. "Profil" shows the specialist under "OPIEKA", and the
+ * safety plan lists them under "Kontakt do terapeuty lub lekarza". It is the same
+ * relationship — `patient.specjalist` in user_db — so it is described once, here,
+ * and read once, from `src/data/profile.ts`. Giving the safety plan a specialist
+ * field of its own would let the same therapist appear on two screens with two
+ * different names or two different numbers the moment a backend fills one in.
+ *
+ * The card also carried the next and last appointment. Both were removed on
+ * request, and the `Visit` shape they needed went with them; if the appointment
+ * calendar is ever built, that is where those rows come back from, not from here.
+ *
+ * `approach` outlived that removal on purpose — see below.
  */
 export interface CareDetails {
   /** The specialist treating the patient, as they should be addressed. */
   specialist: string
+  /**
+   * Therapeutic approach — 'CBT / DBT' in the mockup.
+   *
+   * No longer shown in the profile's "OPIEKA" card (the "Nurt" row was removed on
+   * request), but still read by the safety plan, which prints it as the detail
+   * line under the therapist's name — see `specialistContact` in
+   * components/SafetyPlanView.tsx. So this is not a leftover: dropping it blanks
+   * that line. If it should disappear there too, remove it here and have
+   * `specialistContact` hand back `detail: null`.
+   */
+  approach: string
+  /**
+   * For the safety plan, which needs a number to dial and not just a name.
+   *
+   * Nullable because a name without a number is a real state: `patient.specjalist`
+   * gives the profile card everything it needs, and nothing in the schema says a
+   * contact number exists. When it is null the safety plan says who the therapist
+   * is and stops there, rather than rendering a dead link.
+   */
+  phone: PhoneNumber | null
 }
 
 /** A consent that has been given, and when. */

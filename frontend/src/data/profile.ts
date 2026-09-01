@@ -36,14 +36,36 @@ export const PROFILE_ACTIVITY: ProfileActivity = {
 }
 
 /**
- * TODO(backend): the last of the care details, and the only one with a home in
- * the schema — `patient.specjalist` in user_db, a serializer field away from
- * being real. The therapeutic approach and the two appointment rows were removed
- * from the card on request; the appointment calendar they would have needed is
- * low priority anyway ("zrobimy, jeśli starczy czasu").
+ * The one care record, read by two screens — the profile's "OPIEKA" card and the
+ * safety plan's "Kontakt do terapeuty lub lekarza". See `CareDetails`: neither
+ * screen keeps its own copy, so the two cannot name different therapists.
+ *
+ * TODO(backend): `specialist` and `approach` are `patient.specjalist` in user_db
+ * and need only a serializer. `phone` has no column at all yet — the safety plan
+ * is the first screen that wants to dial the specialist, and where that number
+ * should live (on `specjalist`, or on the plan the specialist writes) is a schema
+ * decision for whoever builds the specialist panel.
+ *
+ * The two appointment rows that used to be here were removed with the profile
+ * card's own rows; the calendar module they needed is low priority anyway
+ * ("zrobimy, jeśli starczy czasu").
  */
 export const PROFILE_CARE: CareDetails = {
+  // EXAMPLE DATA — a made-up specialist, matching the mockup's example patient.
   specialist: 'mgr Marta Zielińska',
+  // Not on the profile card any more (the "Nurt" row was removed), still printed
+  // under the therapist's name on the safety plan.
+  approach: 'CBT / DBT',
+  // null, not a placeholder number.
+  //
+  // It was `000 000 000` — all-zeroes so that no demo device could ring a real
+  // person who never agreed to be anybody's emergency contact. That protected the
+  // bystander but not the patient: it rendered a live `tel:` link under "Kontakt
+  // do terapeuty lub lekarza", and somebody tapping it in a bad moment gets a
+  // failed call that reads as "my therapist's number does not work". null is the
+  // honest value — there is no phone column behind this yet — and it is also what
+  // exercises the "bez numeru w planie" branch, which was otherwise unreachable.
+  phone: null,
 }
 
 /**
