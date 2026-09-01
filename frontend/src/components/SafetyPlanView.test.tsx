@@ -29,8 +29,6 @@ const CARE_WITH_PHONE: CareDetails = {
   specialist: 'mgr Przykładowa',
   approach: 'CBT',
   phone: { dial: '000000000', display: '000 000 000' },
-  nextVisit: null,
-  lastVisit: null,
 }
 
 function renderPlan(data: SafetyPlan, care: CareDetails | null = PROFILE_CARE) {
