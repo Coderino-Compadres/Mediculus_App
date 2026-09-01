@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
+import { useSignOut } from '../hooks/useSignOut'
 import { ROUTES, routeTitle } from '../routes'
 import { roleLabel } from '../utils/roles'
 
@@ -22,8 +23,8 @@ const MENU_ITEMS: { label: string; to: string }[] = [
 /** Header dropdown menu, shared by every screen with a home-style header (Home, DiaryEntry, …). */
 function HeaderMenu() {
   const [open, setOpen] = useState(false)
-  const { user, signOut } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
+  const signOutAndLeave = useSignOut()
   const { pathname } = useLocation()
   const toggle = useRef<HTMLButtonElement>(null)
 
@@ -43,14 +44,8 @@ function HeaderMenu() {
 
   async function onSignOut() {
     setOpen(false)
-    try {
-      await signOut()
-    } catch {
-      // Local session is cleared either way (see AuthProvider.signOut); a failed
-      // logout request still has to land the user back on /login.
-    } finally {
-      navigate(ROUTES.login, { replace: true })
-    }
+    // Shared with the profile screen's own "Wyloguj" — see hooks/useSignOut.ts.
+    await signOutAndLeave()
   }
 
   return (

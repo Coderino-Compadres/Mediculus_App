@@ -1,0 +1,416 @@
+/* "Profil", and the confirmation screens it opens.
+ *
+ * The page frame comes from journals.css (.journals-page / .journals-header), the
+ * confirmation frame and cards from journalDetail.css, the collapsible sections
+ * from diaryEntry.css and every form control from components/auth.css — this file
+ * only adds what none of them has. No new colours: everything below is a
+ * theme.css variable, including the cautionary ochre, which is the same tone the
+ * entry form and the reports use and deliberately not the error red.
+ */
+
+.profile-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.profile-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 12px;
+}
+
+.profile-card h3 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 0 0 8px;
+}
+
+.profile-card-lead {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 0 20px;
+}
+
+/* An all-caps card label, like the mockup's "OPIEKA": a heading by role — it
+   labels the card for a screen reader — and a label by appearance. Qualified with
+   .profile-card so it simply outranks the h2 rule above rather than !important-ing
+   past it. */
+.profile-card h2.profile-section-label {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-graphite-muted);
+  margin: 0 0 14px;
+}
+
+/* Identity */
+
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.profile-avatar {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-sage-light);
+  color: #fff;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 20px;
+  letter-spacing: 0.02em;
+}
+
+.profile-identity-text {
+  min-width: 0;
+}
+
+.profile-identity-text h2 {
+  font-size: 20px;
+  margin: 0 0 4px;
+  /* A long address in the heading slot (an account with no name) wraps rather
+     than pushing the card sideways. */
+  overflow-wrap: anywhere;
+}
+
+.profile-identity-email {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.profile-identity-role {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--color-sage-hover);
+  margin: 6px 0 0;
+}
+
+/* Counters — two, not the mockup's three (see pages/Profile.tsx). */
+
+.profile-counters {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.profile-counter {
+  background: #fff;
+  border-radius: 18px;
+  padding: 18px 12px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.profile-counter-value {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 24px;
+  color: var(--color-graphite);
+}
+
+.profile-counter-label {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+  text-align: center;
+}
+
+/* Care */
+
+.profile-care-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-care-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(var(--shadow-tint), 0.08);
+}
+
+.profile-care-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.profile-care-label {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+}
+
+.profile-care-value {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+  text-align: right;
+}
+
+/* Consents */
+
+.profile-consent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.profile-consent {
+  padding-top: 16px;
+  border-top: 1px solid rgba(var(--shadow-tint), 0.1);
+}
+
+.profile-consent:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.profile-consent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.profile-consent-name {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+}
+
+/* Sage, because "given" is a neutral fact and not an achievement. */
+.profile-consent-status {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--color-success-bg);
+  color: var(--color-sage-hover);
+  white-space: nowrap;
+}
+
+/* A consent that is not held. Muted rather than alarming: not having given one
+   is a state, not a problem — and the row offers nothing to withdraw. */
+.profile-consent-status-absent {
+  background: rgba(var(--shadow-tint), 0.08);
+  color: var(--color-graphite-muted);
+}
+
+/* The consent's own wording, quoted. Set apart from the app's voice on purpose:
+   it is what the user agreed to, not what we are telling them now. */
+.profile-consent-quote {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  border-left: 3px solid var(--color-lavender);
+  padding-left: 12px;
+  margin: 0 0 8px;
+}
+
+.profile-consent-date {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+  margin: 0 0 8px;
+}
+
+/* Buttons */
+
+/* A text-weight action inside a card, for one consent among several — a full
+   button per consent would make the section look like a control panel. */
+.profile-inline-button {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-sage);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.profile-inline-button:hover {
+  text-decoration: underline;
+}
+
+.profile-secondary-button {
+  width: 100%;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  padding: 13px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(var(--shadow-tint), 0.2);
+  background: #fff;
+  color: var(--color-graphite);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.profile-secondary-button:hover:not(:disabled) {
+  background: rgba(var(--shadow-tint), 0.06);
+}
+
+.profile-secondary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Deleting an account is serious, so it is marked — but in the palette's own
+   error tone as an outline, not a filled red block. The screen it opens explains
+   the consequences; the button only has to be distinguishable from the one above
+   it. */
+.profile-danger-outline {
+  border-color: rgba(179, 69, 63, 0.4);
+  color: var(--color-error);
+}
+
+.profile-danger-outline:hover:not(:disabled) {
+  background: var(--color-error-bg);
+}
+
+/* The confirming button on a closure screen — filled, because by then it is the
+   screen's primary action and the user has read what it does. */
+.profile-danger-button {
+  background: var(--color-error);
+}
+
+.profile-danger-button:hover:not(:disabled) {
+  background: #983831;
+}
+
+.profile-signout {
+  margin-top: 4px;
+}
+
+/* Sub-blocks inside the data-and-consents card. */
+
+.profile-subsection {
+  padding-top: 20px;
+  margin-top: 20px;
+  border-top: 1px solid rgba(var(--shadow-tint), 0.1);
+}
+
+.profile-subsection-text {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 0 12px;
+}
+
+/* Confirmation screens */
+
+.profile-confirm-lead {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-graphite);
+  /* Not `margin: 0` — that beats the auto side margins .journal-detail-page gives
+     its children, and the paragraph would sit left of every card on the screen. */
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.profile-confirm-list {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite);
+  margin: 0 0 16px;
+  padding-left: 20px;
+}
+
+.profile-confirm-list li + li {
+  margin-top: 6px;
+}
+
+/* Ochre, like every other cautionary marker in the app — never the error red.
+   Losing your data is a consequence you chose, not a mistake you made. */
+.profile-confirm-warning {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: #7a5a17;
+  background: rgba(224, 180, 92, 0.18);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 0;
+}
+
+.profile-confirm-note {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 12px 0 20px;
+}
+
+/* "This will work once the backend is connected." Deliberately neutral: not a
+   success (nothing happened) and not an error (nothing failed). */
+.profile-pending-notice {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite);
+  background: var(--color-lavender);
+  border: 1px solid rgba(var(--shadow-tint), 0.14);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 12px 0 0;
+}
+
+/* An open question shown to the user rather than hidden in a comment, because
+   the alternative was inventing an answer they might act on. */
+.profile-todo-box {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite);
+  background: var(--color-lavender);
+  border: 1px dashed rgba(var(--shadow-tint), 0.28);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 0;
+}
+
+/* Wider viewports: the counters and the care rows have room to spread, and the
+   page frame's own 640px column (journals.css) keeps the text measure readable
+   without any fixed width of ours. */
+@media (min-width: 520px) {
+  .profile-counters {
+    gap: 16px;
+  }
+}

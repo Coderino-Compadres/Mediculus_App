@@ -32,28 +32,11 @@
 }
 
 .techniques-section-heading {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px;
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
   font-size: 18px;
   color: var(--color-graphite);
   margin: 0 0 12px;
-}
-
-/* The time horizon the four groups are ordered by — the ordering is the point of
-   the grouping, and the headings alone do not say what it is. */
-.techniques-section-horizon {
-  font-family: var(--font-body);
-  font-weight: var(--font-weight-regular);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  color: var(--color-graphite-muted);
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: #fff;
 }
 
 /* One technique */

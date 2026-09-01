@@ -35,16 +35,16 @@ export const SCHOOL_BADGES: Record<TechniqueSchool, string> = {
 /**
  * Level 2 — the four DBT groups, ordered by time horizon (minutes → weeks).
  *
- * `horyzont` is shown under the heading because the group names alone do not say
- * what orders them, and the order is the whole point of the grouping: a person
- * opening the app at stress 8/10 should reach the first group, not read four
- * headings and guess.
+ * The horizon itself ('minuty', 'nawyki', …) used to ride along as a `horyzont`
+ * field and was drawn as a pill next to each heading; it was removed on request.
+ * The ORDER is what carries that meaning now — a person opening the app at
+ * stress 8/10 reaches the first group — so keep these four in this sequence.
  */
-export const DBT_GROUPS: { group: TechniqueGroup; label: string; horyzont: string }[] = [
-  { group: 'kryzys', label: 'Kiedy jest naprawdę ciężko', horyzont: 'minuty' },
-  { group: 'odpornosc', label: 'Codzienna odporność', horyzont: 'nawyki' },
-  { group: 'relacje', label: 'Relacje i rozmowy', horyzont: 'konkretna sytuacja' },
-  { group: 'akceptacja', label: 'Kiedy nie mogę tego zmienić', horyzont: 'tygodnie' },
+export const DBT_GROUPS: { group: TechniqueGroup; label: string }[] = [
+  { group: 'kryzys', label: 'Kiedy jest naprawdę ciężko' },
+  { group: 'odpornosc', label: 'Codzienna odporność' },
+  { group: 'relacje', label: 'Relacje i rozmowy' },
+  { group: 'akceptacja', label: 'Kiedy nie mogę tego zmienić' },
 ]
 
 /**
@@ -107,7 +107,7 @@ export function techniquesForSchool(school: TechniqueSchool): Technique[] {
 
 export interface TechniqueSections {
   /** The four groups, in time-horizon order, empty ones dropped. */
-  sections: { group: TechniqueGroup; label: string; horyzont: string; techniques: Technique[] }[]
+  sections: { group: TechniqueGroup; label: string; techniques: Technique[] }[]
   /**
    * Everything the four groups did not claim.
    *

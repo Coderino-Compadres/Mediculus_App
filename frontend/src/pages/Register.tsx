@@ -5,6 +5,7 @@ import FormField from '../components/FormField'
 import ConsentField from '../components/ConsentField'
 import SelectField, { type SelectOption } from '../components/SelectField'
 import { useAuthForm, FORM_ERROR } from '../hooks/useAuthForm'
+import { CONSENTS, CONSENT_IDS, type ConsentId } from '../utils/consents'
 import { useAuth } from '../auth/authContext'
 import { ACCOUNT_TYPES, REGISTER_FIELDS, register } from '../api/auth'
 import {
@@ -41,9 +42,11 @@ const ACCOUNT_TYPE_OPTIONS: SelectOption[] = [
   { value: ACCOUNT_TYPES.parent, label: 'Konto rodzica lub opiekuna' },
 ]
 
-const INITIAL_CONSENTS = {
-  dataConsent: false,
-  servicesConsent: false,
+// Keyed by ConsentId, so the boxes and the wording below cannot drift apart:
+// utils/consents.ts is the one place either is declared.
+const INITIAL_CONSENTS: Record<ConsentId, boolean> = {
+  [CONSENT_IDS.data]: false,
+  [CONSENT_IDS.services]: false,
 }
 
 /**
@@ -82,7 +85,7 @@ function Register() {
   const [consents, setConsents] = useState(INITIAL_CONSENTS)
 
   function handleConsentChange(event: ChangeEvent<HTMLInputElement>) {
-    const { name, checked } = event.target as { name: keyof typeof INITIAL_CONSENTS; checked: boolean }
+    const { name, checked } = event.target as { name: ConsentId; checked: boolean }
     setConsents((prev) => ({ ...prev, [name]: checked }))
     setStatus('idle')
     setFormError(null)
@@ -220,20 +223,16 @@ function Register() {
         />
 
         <div className="auth-consents">
-          <ConsentField
-            id="dataConsent"
-            label="Wyrażam zgodę na przetwarzanie moich danych osobowych, w tym danych o zdrowiu, w aplikacji Mediculus zgodnie z RODO (art. 9)."
-            checked={consents.dataConsent}
-            onChange={handleConsentChange}
-            error={errors.dataConsent}
-          />
-          <ConsentField
-            id="servicesConsent"
-            label="Wyrażam zgodę na korzystanie z usług Fundacji Mediculus oraz akceptuję regulamin świadczenia usług."
-            checked={consents.servicesConsent}
-            onChange={handleConsentChange}
-            error={errors.servicesConsent}
-          />
+          {CONSENTS.map((consent) => (
+            <ConsentField
+              key={consent.id}
+              id={consent.id}
+              label={consent.label}
+              checked={consents[consent.id]}
+              onChange={handleConsentChange}
+              error={errors[consent.id]}
+            />
+          ))}
         </div>
 
         <button type="submit" className="auth-submit" disabled={submitting}>
