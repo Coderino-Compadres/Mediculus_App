@@ -180,6 +180,16 @@ function MoodChart({ week }: { week: DayMood[] }) {
 // ---- Technique suggestion --------------------------------------------------------
 
 function TechniqueCard({ technique }: { technique: TechniqueSuggestion }) {
+  // TODO: the card names a technique and links to the catalogue, but the two
+  // cannot meet yet. The suggestion is read out of `raport` (core/dashboard.py),
+  // which nothing writes — so the only names it ever carries are the seeded ones
+  // ('Body scan', 'Dziennik emocji', 'Technika 5-4-3-2-1'), and none of them is
+  // in the catalogue, whose content comes from the client's DBT materials. So
+  // tapping a named suggestion lands on a list of eleven other techniques.
+  // Deliberately not papered over with a name→slug mapping here: the fix is for
+  // `raport` to reference a technique by id once something writes it (see the
+  // "still to do" list in CLAUDE.md), or for this card to stop being a link.
+  // Left as it is because the card is explicitly staying on mock data for now.
   return (
     <Link to={ROUTES.techniques} className="home-technique-card">
       <div>

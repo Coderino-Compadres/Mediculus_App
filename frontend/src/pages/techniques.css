@@ -1,0 +1,113 @@
+/* Page-level parts of "Techniki terapeutyczne" and one technique's screen. The
+   frame, header and cards come from journals.css / journalDetail.css; the row,
+   badge and step list from components/techniques.css. */
+
+.techniques-intro {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  /* Not `margin: 0` — that would beat the auto side margins .journals-page gives
+     its direct children, and the paragraph would sit left of every card. */
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* A note under a list that is not empty but is incomplete (the relaxation tab). */
+.techniques-note {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  text-align: center;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Groups inside the DBT tab */
+
+.techniques-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.techniques-section-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 12px;
+}
+
+/* The time horizon the four groups are ordered by — the ordering is the point of
+   the grouping, and the headings alone do not say what it is. */
+.techniques-section-horizon {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-regular);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--color-graphite-muted);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #fff;
+}
+
+/* One technique */
+
+.technique-detail-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.technique-detail-group {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+}
+
+/* Reads as a date line in journalDetail.css, which capitalises it — a module
+   name must not be. */
+.technique-detail-module {
+  text-transform: none;
+}
+
+/* Scoped through the card on purpose: `.journal-detail-card > p` in
+   journalDetail.css is more specific than a bare `.technique-detail-intro`, so
+   the two declarations below were being overridden and did nothing. The blank
+   line in the relaxation intros survived only because that rule's `pre-wrap`
+   happens to preserve it too — i.e. this worked by accident. */
+.journal-detail-card .technique-detail-intro {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-graphite);
+  margin: 0;
+  /* The two relaxation entries open with a line of their own above the shared
+     TIPP description, separated by a blank line in the data. */
+  white-space: pre-line;
+}
+
+.technique-detail-back-link {
+  display: block;
+  text-align: center;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-sage-hover);
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px 18px;
+  text-decoration: none;
+  box-shadow: var(--shadow-card);
+}
+
+.technique-detail-back-link:hover {
+  color: var(--color-sage);
+}
