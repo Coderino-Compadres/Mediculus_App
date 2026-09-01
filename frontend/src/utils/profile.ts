@@ -5,7 +5,6 @@
  */
 
 import { fromIsoDate } from './days'
-import type { Visit } from '../types/profile'
 
 /**
  * The initials for the avatar circle.
@@ -36,22 +35,6 @@ export function initials(firstName: string | null, lastName: string | null, emai
 export function fullName(firstName: string | null, lastName: string | null): string | null {
   const name = [firstName?.trim(), lastName?.trim()].filter(Boolean).join(' ')
   return name || null
-}
-
-/** '19 sierpnia' — a day, in the form the rest of the app writes dates. */
-function dayLabel(iso: string): string {
-  return fromIsoDate(iso).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })
-}
-
-/**
- * '19 sierpnia, 17:00', or just '19 sierpnia' when the hour is unknown.
- *
- * The time is printed verbatim rather than parsed into a Date: it is already a
- * wall-clock time in the patient's own timezone, and round-tripping it through
- * one is how an appointment moves by an hour.
- */
-export function visitLabel(visit: Visit): string {
-  return visit.time ? `${dayLabel(visit.date)}, ${visit.time}` : dayLabel(visit.date)
 }
 
 /** '14 lipca 2026' — a consent date needs its year; it can be years old. */

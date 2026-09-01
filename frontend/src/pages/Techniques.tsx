@@ -106,10 +106,7 @@ function Techniques() {
         <div className="techniques-sections">
           {grouped.sections.map((section) => (
             <section key={section.group} className="techniques-section">
-              <h2 className="techniques-section-heading">
-                {section.label}
-                <span className="techniques-section-horizon">{section.horyzont}</span>
-              </h2>
+              <h2 className="techniques-section-heading">{section.label}</h2>
               <div className="journals-list">
                 {section.techniques.map((technique) => (
                   <TechniqueRow key={technique.id} technique={technique} school={school} />

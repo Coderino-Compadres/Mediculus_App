@@ -10,7 +10,7 @@ import ServicesConsentWithdrawal from '../components/ServicesConsentWithdrawal'
 import { useAuth } from '../auth/authContext'
 import { useSignOut } from '../hooks/useSignOut'
 import { PROFILE_ACTIVITY, PROFILE_CARE } from '../data/profile'
-import { fullName, visitLabel } from '../utils/profile'
+import { fullName } from '../utils/profile'
 import { roleLabel } from '../utils/roles'
 import type { AccountClosureReason } from '../types/profile'
 // The page frame, the confirmation frame and the collapsible sections. auth.css
@@ -147,21 +147,13 @@ function Profile() {
         <h2 id="profile-care" className="profile-section-label">
           OPIEKA
         </h2>
+        {/* One row. "Nurt" and the two appointment rows were removed on
+            request — the appointment calendar is low priority anyway ("zrobimy,
+            jeśli starczy czasu"), so nothing here was waiting on it. The row
+            that stays is the one with a home in the schema: `patient.specjalist`
+            in user_db, a serializer away from being real. */}
         <div className="profile-care-list">
           <CareRow label="Terapeuta" value={PROFILE_CARE.specialist} />
-          <CareRow label="Nurt" value={PROFILE_CARE.approach} />
-          {/* TODO(kalendarz wizyt): these two rows come from the appointment
-              calendar, which the team moved to low priority ("zrobimy, jeśli
-              starczy czasu"). If it is never built they either disappear or become
-              something the specialist fills in by hand — a decision about who owns
-              the data, so not one to settle in the markup. The two rows above do
-              not depend on it: they are `patient.specjalist` in user_db. */}
-          {PROFILE_CARE.nextVisit && (
-            <CareRow label="Najbliższa wizyta" value={visitLabel(PROFILE_CARE.nextVisit)} />
-          )}
-          {PROFILE_CARE.lastVisit && (
-            <CareRow label="Ostatnia wizyta" value={visitLabel(PROFILE_CARE.lastVisit)} />
-          )}
         </div>
 
         {/*

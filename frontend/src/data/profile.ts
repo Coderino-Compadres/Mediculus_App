@@ -36,23 +36,14 @@ export const PROFILE_ACTIVITY: ProfileActivity = {
 }
 
 /**
- * TODO(kalendarz wizyt): `nextVisit` and `lastVisit` come from the appointment
- * calendar, which the team moved to low priority ("zrobimy, jeśli starczy
- * czasu"). If it is never built, these two rows either disappear from the card or
- * become something the specialist fills in by hand — which is a decision about
- * who owns the data, so it is not one to settle here. `specialist` and
- * `approach` do not depend on it: they are `patient.specjalist` in user_db and
- * need only a serializer.
+ * TODO(backend): the last of the care details, and the only one with a home in
+ * the schema — `patient.specjalist` in user_db, a serializer field away from
+ * being real. The therapeutic approach and the two appointment rows were removed
+ * from the card on request; the appointment calendar they would have needed is
+ * low priority anyway ("zrobimy, jeśli starczy czasu").
  */
 export const PROFILE_CARE: CareDetails = {
   specialist: 'mgr Marta Zielińska',
-  approach: 'CBT / DBT',
-  // NOTE: an absolute date in hardcoded example data goes stale on its own —
-  // this one was copied from the mockup (drawn on 14 August) and by the end of
-  // August the card was labelling a bygone date "Najbliższa wizyta". Until the
-  // calendar module supplies it, bump this when it passes.
-  nextVisit: { date: '2026-09-15', time: '17:00' },
-  lastVisit: { date: '2026-08-11', time: null },
 }
 
 /**

@@ -21,22 +21,17 @@ export interface ProfileActivity {
   streakDays: number
 }
 
-/** One appointment, as much of it as is known. */
-export interface Visit {
-  /** 'YYYY-MM-DD', the local calendar day — same shape as the diary's dates. */
-  date: string
-  /** 'HH:MM', or null when only the day is known (the mockup shows both cases). */
-  time: string | null
-}
-
-/** The "Opieka" card. */
+/**
+ * The "Opieka" card.
+ *
+ * One field. The card also carried the therapeutic approach and the next/last
+ * appointment; all three were removed on request, and the `Visit` shape they
+ * needed went with them. If the appointment calendar is ever built, that is
+ * where those rows come back from — not from here.
+ */
 export interface CareDetails {
   /** The specialist treating the patient, as they should be addressed. */
   specialist: string
-  /** Therapeutic approach — 'CBT / DBT' in the mockup. */
-  approach: string
-  nextVisit: Visit | null
-  lastVisit: Visit | null
 }
 
 /** A consent that has been given, and when. */
