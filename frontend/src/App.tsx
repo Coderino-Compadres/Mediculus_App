@@ -13,6 +13,7 @@ import ReportDetail from './pages/ReportDetail'
 import Analysis from './pages/Analysis'
 import Techniques from './pages/Techniques'
 import TechniqueDetail from './pages/TechniqueDetail'
+import Profile from './pages/Profile'
 import PlaceholderPage from './pages/PlaceholderPage'
 import NotFound from './pages/NotFound'
 import OfflineBanner from './components/OfflineBanner'
@@ -165,6 +166,14 @@ function App() {
             element={
               <RequireAuth>
                 <TechniqueDetail />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.profile}
+            element={
+              <RequireAuth>
+                <Profile />
               </RequireAuth>
             }
           />
