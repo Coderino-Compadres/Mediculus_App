@@ -168,23 +168,6 @@ function AccountClosureConfirm({
             <li key={item}>{item}</li>
           ))}
         </ul>
-
-        {/* Ochre, like every other cautionary marker in this app — never the
-            error red. It is a consequence, not a mistake. */}
-        <p className="profile-confirm-warning">
-          Tej operacji nie można cofnąć. Nie ma kosza ani kopii, do której da się wrócić — jeśli
-          chcesz zachować swoje wpisy i raporty, pobierz je najpierw w sekcji „Twoje dane i zgody”.
-        </p>
-
-        {/* TODO(prawnik + klientka): the list above is what the screen promises,
-            and it may promise too much. If diary entries and the reports shared
-            with a specialist count as medical records, the organization can be
-            obliged to keep them — in which case some of this cannot be deleted on
-            request and the wording has to say so (pseudonymization instead of
-            deletion is the likely answer; medical_db already holds nothing but
-            `id_medical`). Same open question as the medical-device classification
-            on the project's legal list. Settle it before the backend is written,
-            not after: a delete that quietly keeps things is worse than no delete. */}
       </section>
 
       <section className="journal-detail-card">

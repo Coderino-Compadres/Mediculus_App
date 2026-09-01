@@ -1,24 +1,28 @@
-import { useState } from 'react'
 import { CONSENT_GRANTS } from '../data/profile'
-import { PendingBackendError, requestDataExport } from '../api/account'
 import { CONSENTS, type ConsentDefinition } from '../utils/consents'
 import { consentDateLabel } from '../utils/profile'
 import type { AccountClosureReason } from '../types/profile'
 
 /**
- * "Twoje dane i zgody" — the consents, the export, and the way out.
+ * "Twoje dane i zgody" — the consents and the way out.
  *
  * Not in the mockup, and not an extra either. The "Bezpieczeństwo" section of the
- * requirements names three things by hand — full control over the consents that
- * were given, an export of all the user's data, and permanent deletion of the
- * account with its data — and this app processes health data (registration cites
- * RODO art. 9) and is meant to be used by minors as well. That makes these
- * obligations rather than features. RODO art. 7(3) adds the shape: withdrawing a
- * consent has to be as easy as giving it, and giving it is one tap on a
- * registration form, while withdrawing it did not exist anywhere in the app.
+ * requirements names full control over the consents that were given and
+ * permanent deletion of the account with its data — and this app processes health
+ * data (registration cites RODO art. 9) and is meant to be used by minors as
+ * well. That makes these obligations rather than features. RODO art. 7(3) adds
+ * the shape: withdrawing a consent has to be as easy as giving it, and giving it
+ * is one tap on a registration form, while withdrawing it did not exist anywhere
+ * in the app.
  *
  * Which is why the section is here on the screen, in full, rather than behind a
  * TODO. What is behind a TODO is only the *execution* — see api/account.ts.
+ *
+ * The data export named in the same requirements section is deliberately NOT
+ * here: it was removed on request. It stays an outstanding obligation (RODO
+ * art. 15 access, art. 20 portability) rather than a dropped feature, so when it
+ * comes back it belongs in this section, next to the consents it sits beside in
+ * the requirements.
  *
  * The two consents were collected separately, so they have to be withdrawable
  * separately (art. 7(3) again: consent is per purpose). Three paths, because
@@ -65,36 +69,12 @@ function ProfileDataRights({
     }
   }
 
-  // The export is a direct action rather than a screen — nothing about it is
-  // irreversible — so its answer is a notice right here under the button.
-  const [exportNotice, setExportNotice] = useState<string | null>(null)
-  const [exporting, setExporting] = useState(false)
-
-  async function onExport() {
-    setExporting(true)
-    setExportNotice(null)
-    try {
-      await requestDataExport()
-      // TODO: unreachable until the endpoint exists; then this is where the file
-      // (or the "we will e-mail it" answer) is handled.
-    } catch (error) {
-      setExportNotice(
-        error instanceof PendingBackendError
-          ? error.message
-          : 'Nie udało się przygotować eksportu. Spróbuj ponownie.',
-      )
-    } finally {
-      setExporting(false)
-    }
-  }
-
   return (
     <section className="profile-card" aria-labelledby="profile-data-rights">
       <h2 id="profile-data-rights">Twoje dane i zgody</h2>
       <p className="profile-card-lead">
         Zgody, których udzieliłaś lub udzieliłeś przy zakładaniu konta, możesz wycofać w każdej
-        chwili — osobno albo obie naraz. Możesz też pobrać wszystkie swoje dane lub trwale usunąć
-        konto.
+        chwili — osobno albo obie naraz. Możesz też trwale usunąć konto.
       </p>
 
       <div className="profile-consent-list">
@@ -151,31 +131,6 @@ function ProfileDataRights({
       >
         Wycofaj obie zgody naraz
       </button>
-
-      <div className="profile-subsection">
-        <h3>Eksport danych</h3>
-        <p className="profile-subsection-text">
-          Pobierzesz wszystko, co aplikacja o Tobie przechowuje: wpisy z dzienniczka razem z ocenami
-          nastroju i emocji, wygenerowane raporty tygodniowe oraz dane konta.
-        </p>
-        {/* TODO(klientka): the file format is not settled — PDF is what a person
-            can open and reads like the weekly report; JSON is what RODO art. 20
-            (portability) is actually about, being the form another controller
-            could ingest. Possibly both. See api/account.ts. */}
-        <button
-          type="button"
-          className="profile-secondary-button"
-          onClick={() => void onExport()}
-          disabled={exporting}
-        >
-          {exporting ? 'Przygotowywanie…' : 'Pobierz moje dane'}
-        </button>
-        {exportNotice && (
-          <p className="profile-pending-notice" role="status">
-            {exportNotice}
-          </p>
-        )}
-      </div>
 
       <div className="profile-subsection">
         <h3>Usunięcie konta</h3>

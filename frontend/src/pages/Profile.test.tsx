@@ -13,7 +13,6 @@ vi.mock('../api/account', async (importOriginal) => {
     ...actual,
     deleteAccount: vi.fn(actual.deleteAccount),
     withdrawConsent: vi.fn(actual.withdrawConsent),
-    requestDataExport: vi.fn(actual.requestDataExport),
   }
 })
 const { deleteAccount, withdrawConsent } = await import('../api/account')
@@ -147,12 +146,11 @@ describe('Profile', () => {
     expect(screen.queryByText(PENDING_BACKEND_MESSAGE)).toBeNull()
   })
 
-  it('says the export is not wired up yet rather than pretending to download', async () => {
+  it('offers no data export — it was removed from this screen', () => {
     renderWithProviders(<Profile />)
 
-    await open('Pobierz moje dane')
-
-    expect(await screen.findByText(PENDING_BACKEND_MESSAGE)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /pobierz moje dane/i })).toBeNull()
+    expect(screen.queryByText(/eksport/i)).toBeNull()
   })
 
   it('validates the new e-mail with the same rule as registration', async () => {

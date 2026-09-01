@@ -1,6 +1,17 @@
 /**
- * The account-level actions the profile screen offers: data export, consent
- * withdrawal, account deletion.
+ * The account-level actions the profile screen offers: consent withdrawal and
+ * account deletion.
+ *
+ * Data export was here too and was removed from the profile on request. The stub
+ * went with it rather than being left unreferenced — but the obligation did not
+ * (RODO art. 15 and art. 20), and the notes that were attached to it are worth
+ * keeping for whoever brings it back: it is the one endpoint here that spans
+ * **both** databases, so the join is `patient.id_medical` in application code
+ * rather than a query; it leaves the deployment as a document full of health
+ * data, so it needs what GET /api/reports/<week>/pdf/ already has (`Cache-Control:
+ * no-store`, an attachment disposition, a throttle); and the format was never
+ * settled — PDF is what a person can open, JSON is what art. 20 portability is
+ * actually about, and it may well be both.
  *
  * Every function here is a **stub that performs no request and always rejects**.
  * That is deliberate, and it is the honest shape for this state of the project:
@@ -44,27 +55,6 @@ export class PendingBackendError extends Error {
     this.name = 'PendingBackendError'
     this.endpoint = endpoint
   }
-}
-
-/**
- * Everything the app holds about the signed-in user, as a file they can keep.
- *
- * TODO(backend): `POST /api/account/export/`, answering with a file (or with a
- * job id, if building it is slow — the diary can be long). Two things it has to
- * get right that no other endpoint here does: it spans **both** databases, so
- * the join is `patient.id_medical` in application code and not a query; and it
- * leaves the deployment as a document containing health data, which means the
- * same handling GET /api/reports/<week>/pdf/ already has — `Cache-Control:
- * no-store`, an attachment disposition, and a throttle, since assembling it is
- * CPU on a synchronous worker.
- *
- * TODO(klientka): the format is not settled. PDF reads like the weekly report
- * and is what a person can actually open; JSON is what RODO art. 20
- * (portability) is really about, since it is the machine-readable form another
- * controller could ingest. Those are different deliverables and possibly both.
- */
-export function requestDataExport(): Promise<void> {
-  return Promise.reject(new PendingBackendError('POST /api/account/export/'))
 }
 
 /**
