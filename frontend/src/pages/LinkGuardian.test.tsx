@@ -6,6 +6,7 @@ import LinkGuardian from './LinkGuardian'
 import { ROUTES } from '../routes'
 import { ApiError } from '../api/client'
 import type { AuthUser } from '../api/auth'
+import { CRISIS_LINES } from '../data/crisisLines'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -252,5 +253,48 @@ describe('the only other way out', () => {
 
     renderScreen(WAITING)
     expect(screen.getByRole('button', { name: /wyloguj/i })).toBeInTheDocument()
+  })
+})
+
+describe('the helplines a blocked minor can still reach', () => {
+  /**
+   * This is the only screen an unlinked minor can open: RequireAuth redirects
+   * them here from everywhere else, "Plan bezpieczeństwa" included, and there is
+   * no header menu on this page. Without the support panel, a 15-year-old
+   * waiting on a guardian who has not logged in yet has no route to any helpline
+   * in the app at all — the two lines published for under-18s among them.
+   *
+   * The guardian gate is about a minor not WRITING clinical data (RODO art. 8).
+   * Public national numbers are neither clinical data nor something a guardian
+   * consents to, so they are not what the gate is meant to withhold.
+   */
+  it('shows every number while the child is still choosing whom to ask', () => {
+    renderScreen(MINOR)
+
+    for (const line of CRISIS_LINES) {
+      expect(screen.getByRole('link', { name: new RegExp(line.number.display) }))
+        .toHaveAttribute('href', `tel:${line.number.dial}`)
+    }
+  })
+
+  it('shows them again while the child is waiting for an answer', () => {
+    /** The longer of the two states, and the one where nothing else on screen
+     *  can be acted on. */
+    renderScreen(WAITING)
+
+    for (const line of CRISIS_LINES) {
+      expect(screen.getByRole('link', { name: new RegExp(line.number.display) }))
+        .toHaveAttribute('href', `tel:${line.number.dial}`)
+    }
+  })
+
+  it('includes the lines published for under-18s, which is who is on this screen', () => {
+    renderScreen(WAITING)
+
+    const youth = CRISIS_LINES.filter((line) => line.forYouth)
+    expect(youth.length).toBeGreaterThan(0)
+    for (const line of youth) {
+      expect(screen.getByRole('link', { name: new RegExp(line.number.display) })).toBeInTheDocument()
+    }
   })
 })

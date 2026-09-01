@@ -460,6 +460,27 @@
   line-height: 1.5;
 }
 
+/* The support number inside the banner: a real tel: link, so it dials with one
+   tap.
+
+   Underlined EXPLICITLY, not left to the user agent's default, and graphite
+   rather than --color-error. Two reasons, both measured: --color-error on
+   --color-error-bg over the lavender page is 4.13:1, under AA for the 14px
+   sentence this link sits inside, while graphite clears 10:1; and inside an
+   already-red banner a red word does not read as a link at all, so the underline
+   is what carries the affordance and it should not depend on a UA default that a
+   future anchor reset would remove.
+
+   (.home-crisis-link below has the same 4.13:1 problem and is left alone here —
+   it predates this change and is not this screen's only route to the plan.) */
+.home-crisis-phone {
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-graphite);
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
 .home-crisis-link {
   font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);

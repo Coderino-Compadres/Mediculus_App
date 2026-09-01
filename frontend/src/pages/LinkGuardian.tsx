@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
+import CrisisLines from '../components/CrisisLines'
 import FormField from '../components/FormField'
 import { useAuthForm } from '../hooks/useAuthForm'
 import { useAuth } from '../auth/authContext'
@@ -26,6 +27,16 @@ import { validateEmail } from '../utils/validation'
  *
  * Two states, because naming a guardian and being vouched for are not the same
  * thing: the form, and then the wait for an answer the child cannot give itself.
+ *
+ * BOTH STATES CARRY THE SUPPORT NUMBERS, and that is not decoration. This is the
+ * only screen an unlinked minor can reach: RequireAuth redirects them here from
+ * everywhere else, including "Plan bezpieczeństwa", and there is no header menu
+ * on this page. Without the panel below, a 15-year-old waiting on a guardian who
+ * has not logged in yet has no route to any helpline in the app at all — the two
+ * lines published for under-18s included. The guardian gate exists so that an
+ * unvouched-for minor does not WRITE clinical data (RODO art. 8); a list of
+ * public national numbers is neither clinical data nor anything a guardian
+ * consents to, so it is not what the gate is for.
  */
 function LinkGuardian() {
   const { user } = useAuth()
@@ -219,6 +230,7 @@ function GuardianLayout({
       }
     >
       {children}
+      <CrisisLines className="crisis-lines-in-card" />
     </AuthLayout>
   )
 }
