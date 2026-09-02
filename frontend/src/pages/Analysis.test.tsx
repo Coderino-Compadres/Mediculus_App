@@ -7,7 +7,6 @@ import { ApiError } from '../api/client'
 import {
   ANALYSIS_WINDOW_DAYS,
   HEATMAP_MIN_DAYS,
-  TREND_CHART_MAX_DAYS,
   weekdayIndex,
 } from '../utils/analysis'
 import { fromIsoDate } from '../utils/days'
@@ -147,15 +146,55 @@ describe('Analysis — the window caption', () => {
 })
 
 describe('Analysis — the trend chart', () => {
-  it('caps its own subtitle at the chart window, not the analysis window', async () => {
+  it('names the same period as the caption above it', async () => {
+    /** The chart used to say "ostatnie 14 dni" under a caption saying 30, which
+     *  is what made a bar reading "20 dni" in "Udział emocji" look like a bug.
+     *  One window, stated the same way in both places. */
     mockedFetch.mockResolvedValue(consecutive(30))
     renderWithProviders(<Analysis />)
 
-    // Deliberately shorter than the 30-day window above it — see TREND_CHART_MAX_DAYS.
     expect(
-      await screen.findByText(`Nastrój, ostatnie ${TREND_CHART_MAX_DAYS} dni`),
+      await screen.findByText(`Nastrój, ostatnie ${ANALYSIS_WINDOW_DAYS} dni`),
     ).toBeInTheDocument()
     expect(screen.getByText(/z ostatnich 30 dni/)).toBeInTheDocument()
+    expect(screen.queryByText(/ostatnie 14 dni/)).toBeNull()
+  })
+
+  it('draws a point for every day of the window', async () => {
+    mockedFetch.mockResolvedValue(consecutive(30))
+    const { container } = renderWithProviders(<Analysis />)
+
+    await screen.findByText(`Nastrój, ostatnie ${ANALYSIS_WINDOW_DAYS} dni`)
+
+    expect(container.querySelectorAll('.analysis-line-dot'))
+      .toHaveLength(ANALYSIS_WINDOW_DAYS)
+  })
+
+  it('thins the date labels so thirty of them do not overlap', async () => {
+    /** The reason the cap existed. A 'dd.mm' tick is about 26 viewBox units and
+     *  thirty of them would sit 10 apart, so only every Nth is printed — with
+     *  today always among them, since the thinning counts back from the end. */
+    mockedFetch.mockResolvedValue(consecutive(30))
+    const { container } = renderWithProviders(<Analysis />)
+
+    await screen.findByText(`Nastrój, ostatnie ${ANALYSIS_WINDOW_DAYS} dni`)
+    const ticks = Array.from(container.querySelectorAll<SVGTextElement>('.analysis-line-tick'))
+    const xs = ticks.map((tick) => Number(tick.getAttribute('x')))
+
+    expect(ticks.length).toBeGreaterThan(1)
+    expect(ticks.length).toBeLessThan(ANALYSIS_WINDOW_DAYS)
+    for (let index = 1; index < xs.length; index += 1) {
+      expect(xs[index] - xs[index - 1]).toBeGreaterThanOrEqual(32)
+    }
+  })
+
+  it('labels every day when there are few enough to fit', async () => {
+    mockedFetch.mockResolvedValue(consecutive(6))
+    const { container } = renderWithProviders(<Analysis />)
+
+    await screen.findByText('Nastrój, ostatnie 6 dni')
+
+    expect(container.querySelectorAll('.analysis-line-tick')).toHaveLength(6)
   })
 
   it('shows only as many days as the patient has', async () => {
@@ -229,20 +268,31 @@ describe('Analysis — the trend chart', () => {
     expect(await screen.findByText(/nie ma oceny „nastrój”/)).toBeInTheDocument()
   })
 
-  it('words its empty state against its own window, not the analysis window', async () => {
-    // Entries 16-29 days back and nothing since: the chart's 14 days hold
-    // nothing while the screen's 30 do. "Żaden wpis z tego okresu" would be
-    // contradicted twice on the same screen — by the caption counting three of
-    // them and by the mood average computed from them.
+  it('now draws entries that sit 16-29 days back, instead of calling the chart empty', async () => {
+    /** THE CASE THE OLD CAP GOT WRONG. Three entries, none in the last fifteen
+     *  days: the chart said "żaden wpis" directly between a caption counting
+     *  three of them and a mood card averaging them. They are inside the window
+     *  the chart draws now, so it draws them. */
     mockedFetch.mockResolvedValue([entry(29), entry(20), entry(16)])
+    const { container } = renderWithProviders(<Analysis />)
+
+    await screen.findByText(/z 3 wpisów z ostatnich 30 dni/)
+
+    expect(container.querySelectorAll('.analysis-line-dot')).toHaveLength(3)
+    expect(screen.queryByText(/nie ma oceny „nastrój”/)).toBeNull()
+  })
+
+  it('still words the empty state against the window when a series really is unrated', async () => {
+    /** The sentence stays: the window can hold plenty of entries and none that
+     *  rated the series the picker is on. */
+    mockedFetch.mockResolvedValue(consecutive(30, { mood: null, emotions: [] }))
     renderWithProviders(<Analysis />)
 
     expect(
       await screen.findByText(
-        `Żaden wpis z ostatnich ${TREND_CHART_MAX_DAYS} dni nie ma oceny „nastrój”.`,
+        `Żaden wpis z ostatnich ${ANALYSIS_WINDOW_DAYS} dni nie ma oceny „nastrój”.`,
       ),
     ).toBeInTheDocument()
-    expect(screen.getByText(/z 3 wpisów z ostatnich 30 dni/)).toBeInTheDocument()
   })
 
   it('keeps the picker reachable when the chosen series has nothing to draw', async () => {

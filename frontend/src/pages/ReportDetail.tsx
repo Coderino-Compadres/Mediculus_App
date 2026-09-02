@@ -42,6 +42,11 @@ const TRIGGER_BAR_COLOR = 'var(--color-sage-light)'
 
 const PDF_ERROR = 'Nie udało się pobrać raportu. Spróbuj ponownie.'
 
+/**
+ * The emotions ranking, whose bars measure average intensity — see
+ * `ReportRankingBars`. `count` stays the day count: it is still on the row, as
+ * the second number, it is simply not what the length draws any more.
+ */
 function emotionRows(report: WeeklyReport): RankingRow[] {
   return report.emotions.map((entry) => ({
     label: entry.emotion,
@@ -186,10 +191,16 @@ function ReportDetail() {
         <HeaderMenu />
       </header>
 
-      {/* TODO: no "Wyślij terapeucie" button here, and that is deliberate —
+      {/* One action, centred. "Pobierz PDF" is the only one: it saves a file to
+          the patient's own device, which is not an act of sharing.
+
+          TODO: no "Wyślij terapeucie" button here, and that is deliberate —
           sharing is not a patient decision (see the visibility note on the list
-          screen). "Pobierz PDF" stays: it saves a file to the patient's own
-          device, which is not an act of sharing. */}
+          screen).
+
+          There used to be a "Pełna analiza" link beside it, to /analysis. It was
+          removed on request; the analysis is reachable from the header menu,
+          which is where every other screen is reached from. */}
       <section className="report-hero">
         <p className="report-hero-label">RAPORT TYGODNIOWY</p>
         <h2 className="report-hero-range">{report.rangeLabel}</h2>
@@ -205,9 +216,6 @@ function ReportDetail() {
           >
             {downloading ? 'Przygotowywanie…' : 'Pobierz PDF'}
           </button>
-          <Link to={ROUTES.analysis} className="report-hero-button report-hero-button-outline">
-            Pełna analiza
-          </Link>
         </div>
       </section>
 
@@ -227,9 +235,10 @@ function ReportDetail() {
       </section>
 
       <section className="journal-detail-card">
-        <h2>Najczęściej odczuwane emocje</h2>
+        <h2>Najsilniej odczuwane emocje</h2>
         <ReportRankingBars
           rows={emotionRows(report)}
+          measure="average"
           emptyText="W tym tygodniu żadna emocja nie została oceniona."
         />
       </section>

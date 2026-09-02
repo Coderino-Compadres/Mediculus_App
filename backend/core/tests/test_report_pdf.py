@@ -396,7 +396,7 @@ class RendererEdgeTests(SimpleTestCase):
     def test_every_section_heading_is_present(self):
         lines = texts(build_story(sample_report(), EMAIL))
 
-        for heading in ('Podsumowanie', 'Najczęściej odczuwane emocje',
+        for heading in ('Podsumowanie', 'Najsilniej odczuwane emocje',
                         'Najczęstsze wyzwalacze', 'Dni z zachowaniem ryzykownym'):
             self.assertIn(heading, lines)
 

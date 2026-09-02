@@ -13,6 +13,12 @@ vi.mock('./api/auth', async (importOriginal) => ({
   logout: vi.fn(),
 }))
 vi.mock('./api/dashboard', () => ({ fetchHomeDashboard: vi.fn(() => new Promise(() => {})) }))
+vi.mock('./api/profile', () => ({ fetchAccountProfile: vi.fn(() => new Promise(() => {})) }))
+vi.mock('./api/guardian', () => ({
+  fetchGuardianInvitations: vi.fn(() => Promise.resolve([])),
+  acceptGuardianInvitation: vi.fn(),
+  rejectGuardianInvitation: vi.fn(),
+}))
 vi.mock('./api/diary', () => ({
   fetchTodayEntry: vi.fn(() => new Promise(() => {})),
   saveTodayEntry: vi.fn(),
@@ -162,5 +168,87 @@ describe('the linking form is only for accounts that need it', () => {
 
     expect(await screen.findByLabelText(/hasło/i)).toBeInTheDocument()
     expect(screen.queryByLabelText(/adres e-mail rodzica/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('a guardian account has its own view', () => {
+  /**
+   * A guardian gets no `patient` row at registration, so every screen behind
+   * `_require_patient` answers them 403. They used to be dropped on the module
+   * chooser regardless and offered a tile into the patient app, which then
+   * failed on a refusal the screen could only word as "coś poszło nie tak".
+   */
+  const GUARDIAN = { ...TEST_USER, role: 'rodzic', isPatient: false, isChild: null }
+
+  it('lands on the parent panel after logging in, not on the module chooser', async () => {
+    mockedFetchUser.mockResolvedValueOnce(GUARDIAN)
+
+    renderAt(ROUTES.login)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Panel rodzica' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Gdzie dzisiaj zaczynamy/i })).toBeNull()
+  })
+
+  it('lands there from the bare address too', async () => {
+    mockedFetchUser.mockResolvedValueOnce(GUARDIAN)
+
+    renderAt('/')
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Panel rodzica' }),
+    ).toBeInTheDocument()
+  })
+
+  it('is pushed off the patient app rather than shown a refusal', async () => {
+    mockedFetchUser.mockResolvedValue(GUARDIAN)
+
+    for (const route of [ROUTES.modules, ROUTES.home, ROUTES.journals, ROUTES.reports]) {
+      const { unmount } = renderAt(route)
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Panel rodzica' }),
+      ).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('keeps the profile, which is the one shared screen', async () => {
+    /** Identity, the consent register (art. 7(3): withdrawing has to be as easy
+     *  as consenting) and the password form all work for a guardian — only the
+     *  clinical half of that screen is left out, by the screen itself. */
+    mockedFetchUser.mockResolvedValueOnce(GUARDIAN)
+
+    renderAt(ROUTES.profile)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Profil' })).toBeInTheDocument()
+  })
+
+  it('does not let a patient onto the parent panel', async () => {
+    mockedFetchUser.mockResolvedValueOnce(TEST_USER)
+
+    renderAt(ROUTES.parentHome)
+
+    expect(
+      await screen.findByRole('heading', { name: /Gdzie dzisiaj zaczynamy/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('sends a visitor on the parent panel to login, not to the panel', async () => {
+    mockedFetchUser.mockResolvedValueOnce(null)
+
+    renderAt(ROUTES.parentHome)
+
+    expect(await screen.findByLabelText(/hasło/i)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Panel rodzica' })).toBeNull()
+  })
+
+  it('waits for the session before deciding, rather than flashing the panel', async () => {
+    mockedFetchUser.mockReturnValueOnce(new Promise(() => {}))
+
+    const { container } = renderAt(ROUTES.parentHome)
+
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Panel rodzica' })).toBeNull()
   })
 })

@@ -109,3 +109,59 @@ describe('HeaderMenu — signing out', () => {
     expect(navigate).toHaveBeenCalledWith(ROUTES.login, { replace: true })
   })
 })
+
+describe('HeaderMenu — a guardian account', () => {
+  /**
+   * A guardian has no `patient` row, so every patient entry answers them 403 and
+   * App.tsx redirects them off those routes. The menu has to agree with the
+   * router: a link the router immediately undoes is worse than no link.
+   */
+  const GUARDIAN = { ...TEST_USER, role: 'rodzic', isPatient: false, isChild: null }
+
+  it('leads home to the parent panel, not to the patient dashboard', async () => {
+    renderWithProviders(<HeaderMenu />, { user: GUARDIAN })
+    await openMenu()
+
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toHaveAttribute(
+      'href', ROUTES.parentHome,
+    )
+  })
+
+  it('offers the profile, which is genuinely theirs', async () => {
+    /** Identity, the consent register and the password form all work for a
+     *  guardian; only the clinical half of that screen is left out. */
+    renderWithProviders(<HeaderMenu />, { user: GUARDIAN })
+    await openMenu()
+
+    expect(screen.getByRole('link', { name: 'Profil' })).toHaveAttribute('href', ROUTES.profile)
+  })
+
+  it('offers nothing from the patient app', async () => {
+    renderWithProviders(<HeaderMenu />, { user: GUARDIAN })
+    await openMenu()
+
+    for (const href of [
+      ROUTES.home, ROUTES.journals, ROUTES.reports, ROUTES.analysis,
+      ROUTES.techniques, ROUTES.safetyPlan, ROUTES.diet,
+    ]) {
+      expect(document.querySelector(`a[href="${href}"]`)).toBeNull()
+    }
+  })
+
+  it('still signs out — it is the only way off the parent screen', async () => {
+    renderWithProviders(<HeaderMenu />, { user: GUARDIAN })
+    await openMenu()
+
+    expect(screen.getByRole('button', { name: 'Wyloguj' })).toBeInTheDocument()
+  })
+
+  it('leaves the patient menu untouched', async () => {
+    renderWithProviders(<HeaderMenu />, { user: TEST_USER })
+    await openMenu()
+
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toHaveAttribute(
+      'href', ROUTES.home,
+    )
+    expect(screen.getByRole('link', { name: 'Dzienniczki' })).toBeInTheDocument()
+  })
+})

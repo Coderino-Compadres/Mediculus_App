@@ -4,6 +4,8 @@ export const ROUTES = {
   register: '/register',
   modules: '/modules',
   linkGuardian: '/link-guardian',
+  /** The guardian's own landing screen — see pages/ParentHome.tsx. */
+  parentHome: '/parent',
   home: '/home',
   journals: '/journals',
   journalDetail: '/journals/:id',
@@ -64,6 +66,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.register]: 'Rejestracja',
   [ROUTES.linkGuardian]: 'Powiązanie z opiekunem',
   [ROUTES.modules]: 'Wybór modułu',
+  [ROUTES.parentHome]: 'Panel rodzica',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',

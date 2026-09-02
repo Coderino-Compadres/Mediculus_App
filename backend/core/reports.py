@@ -321,10 +321,14 @@ def _build_summary(entries, stats, previous, emotions, risky_days):
     ]
 
     if emotions:
+        # emotions[0] is the *strongest* now, not the most frequent — the
+        # sentence has to say which, or it would put a frequency claim on a row
+        # that is first for a different reason. See _rank_emotions.
         top = emotions[0]
         sentences.append(
-            f"Najczęściej zapisywana emocja: {top['emotion']} "
-            f"({top['days']} {plural_days(top['days'])})."
+            f"Najsilniej odczuwana emocja: {top['emotion']} "
+            f"(śr. {format_number(top['avg_intensity'], 1)} / {LEVEL_SCALE_MAX}, "
+            f"{top['days']} {plural_days(top['days'])})."
         )
 
     if previous is None:
@@ -367,29 +371,44 @@ def start_of_week(day):
 
 
 def _rank_emotions(ratings):
-    """The emotions rated this week: how often, and how strongly on average.
+    """The emotions rated this week: how strongly on average, and how often.
 
     All of them, not a top few: the week's emotions are the point of the
     section, and an emotion left out would read as one that was not felt rather
     than as one that did not fit. The ten-name vocabulary is the only bound
     there is, and an emotion nobody rated has no entry to rank.
 
-    Ordered by how often, not how strongly — the section is "Najczęściej
-    odczuwane emocje", and a single very bad day would otherwise outrank a
-    feeling that ran through the whole week. The average is the second number on
-    the row rather than the sort key.
+    ORDERED BY INTENSITY, NOT BY FREQUENCY, and that is a reversal. It used to
+    rank by the day count, on the reasoning that a single very bad day should
+    not outrank a feeling that ran through the whole week — which is a fair
+    argument about *ordering* and was the wrong one to let decide the *bar*.
+    Week 2026-08-24 is the case that settled it: 'Smutek' was rated on five days
+    at an average of 0.8/10 and drew a bar 83% as long as the week's strongest
+    feeling, while 'Spokój' at 6.3 drew the same bar as 'Lęk' at 2.5. A
+    specialist reading those bars sees a sad week; the diary does not describe
+    one. Frequency is still on the row, as the second number, and the summary
+    chips still compare it week to week — how *often* an emotion appears is a
+    real question, it is just not the one a length can answer here.
+
+    Ties break on the day count and then on declaration order, so two emotions
+    at the same average land in a stable, explainable order rather than
+    whichever the sort happened to see first.
 
     `avg_intensity` is never null: a row exists only because the emotion was
     rated at least once, and every rating carries an intensity.
     """
+    averages = {
+        emotion: _average(intensities) for emotion, intensities in ratings.items()
+    }
     ranked = sorted(
-        ratings.items(), key=lambda pair: (-len(pair[1]), EMOTION_ORDER[pair[0]]),
+        ratings.items(),
+        key=lambda pair: (-averages[pair[0]], -len(pair[1]), EMOTION_ORDER[pair[0]]),
     )
     return [
         {
             'emotion': emotion,
             'days': len(intensities),
-            'avg_intensity': _average(intensities),
+            'avg_intensity': averages[emotion],
         }
         for emotion, intensities in ranked
     ]

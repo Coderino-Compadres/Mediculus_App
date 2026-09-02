@@ -408,7 +408,11 @@ class SummaryTests(ReportTestCase):
         summary = self.only_report()['summary']
 
         self.assertIn(f'2 wpisy z {DAYS_IN_WEEK} dni', summary)
-        self.assertIn('Lęk (2 dni)', summary)
+        # The sentence names emotions[0], which is the strongest now rather than
+        # the most frequent — so it says "Najsilniej" and leads with the average.
+        # Calling it "najczęściej" over an intensity-ordered list would put a
+        # frequency claim on a row that is first for another reason.
+        self.assertIn('Najsilniej odczuwana emocja: Lęk (śr. 3,0 / 10, 2 dni)', summary)
 
     def test_the_first_week_says_there_is_nothing_to_compare_with(self):
         self.entry(self.week, mood='good')
@@ -662,10 +666,11 @@ class LimitTests(ReportTestCase):
         emotions = self.only_report()['emotions']
 
         self.assertEqual(len(emotions), 10)
-        # All ten were rated once, so the order is purely declaration order.
+        # Ten distinct intensities on one day, so the order is purely the
+        # average, strongest first — 10 for 'Stres' down to 1 for 'Lęk'.
         self.assertEqual([row['emotion'] for row in emotions], [
-            'Radość', 'Smutek', 'Lęk', 'Złość', 'Stres',
-            'Poczucie winy', 'Frustracja', 'Wstyd', 'Bezradność', 'Spokój',
+            'Stres', 'Spokój', 'Radość', 'Wstyd', 'Poczucie winy',
+            'Bezradność', 'Frustracja', 'Złość', 'Smutek', 'Lęk',
         ])
 
     def test_an_emotion_the_week_never_rated_has_no_row(self):
@@ -1053,12 +1058,12 @@ class SummaryEdgeTests(ReportTestCase):
     def test_a_single_day_of_an_emotion_is_declined_too(self):
         self.entry(self.week, scales={'anxiety_scale': 4})
 
-        self.assertIn('Lęk (1 dzień)', self.only_report()['summary'])
+        self.assertIn('1 dzień)', self.only_report()['summary'])
 
     def test_a_week_with_no_emotion_rated_says_nothing_about_one(self):
         self.entry(self.week, mood='good')
 
-        self.assertNotIn('Najczęściej zapisywana emocja', self.only_report()['summary'])
+        self.assertNotIn('Najsilniej odczuwana emocja', self.only_report()['summary'])
 
     def test_the_mood_sentence_carries_both_numbers(self):
         self.entry(self.previous_week, mood='bad')
@@ -1313,18 +1318,66 @@ class EmotionIntensityTests(ReportTestCase):
         for row in self.only_report()['emotions']:
             self.assertIsInstance(row['avg_intensity'], float)
 
-    def test_the_ranking_is_still_ordered_by_days_not_by_intensity(self):
-        """The heading is "Najczęściej odczuwane emocje". A single very bad day
-        must not outrank a feeling that ran through the whole week."""
+    def test_the_ranking_is_ordered_by_intensity_not_by_days(self):
+        """The reversal, and the reason the section is now "Najsilniej".
+
+        Three faint days of 'Smutek' against one overwhelming day of 'Lęk': the
+        ranking used to put 'Smutek' first and draw it the longer bar, which is
+        a defensible ordering and was an indefensible *length*. Both follow the
+        average now.
+        """
         for offset in range(3):
             self.entry(self.week, offset=offset, scales={'sadness_scale': 1})
         self.entry(self.week, offset=4, scales={'anxiety_scale': 10})
 
         self.assertEqual([row['emotion'] for row in self.only_report()['emotions']],
-                         ['Smutek', 'Lęk'])
+                         ['Lęk', 'Smutek'])
 
-    def test_the_intensity_does_not_disturb_the_declaration_order_tie_break(self):
-        self.entry(self.week, scales={'sadness_scale': 1, 'anxiety_scale': 9})
+    def test_the_day_count_is_still_on_every_row(self):
+        """Frequency did not stop being a reading — it stopped being the bar."""
+        for offset in range(3):
+            self.entry(self.week, offset=offset, scales={'sadness_scale': 1})
+        self.entry(self.week, offset=4, scales={'anxiety_scale': 10})
+
+        self.assertEqual(self.emotions()['Smutek']['days'], 3)
+        self.assertEqual(self.emotions()['Lęk']['days'], 1)
+
+    def test_the_real_week_that_prompted_the_change(self):
+        """2026-08-24, reduced to the two rows that made the point.
+
+        'Smutek' was rated on five days averaging 0.8 and drew a bar 83% as long
+        as the week's strongest feeling; 'Spokój' at 6.3 drew the same bar as
+        'Lęk' at 2.5. Whatever the ordering, those lengths described a week the
+        diary did not contain.
+        """
+        for offset in range(5):
+            self.entry(self.week, offset=offset, scales={'sadness_scale': 1})
+        for offset in range(2):
+            self.entry(self.week, offset=offset, scales={'calm_scale': 6})
+
+        ranked = [row['emotion'] for row in self.only_report()['emotions']]
+
+        self.assertEqual(ranked, ['Spokój', 'Smutek'])
+        self.assertGreater(self.emotions()['Spokój']['avg_intensity'],
+                           self.emotions()['Smutek']['avg_intensity'])
+        # …and the frequency the old order was built on is the other way round.
+        self.assertGreater(self.emotions()['Smutek']['days'],
+                           self.emotions()['Spokój']['days'])
+
+    def test_an_equal_average_breaks_on_the_day_count(self):
+        """The first tie-break: same intensity, so the one felt on more days
+        goes first. Deterministic beats whichever the sort happened to see."""
+        for offset in range(2):
+            self.entry(self.week, offset=offset, scales={'anxiety_scale': 5})
+        self.entry(self.week, offset=3, scales={'sadness_scale': 5})
+
+        self.assertEqual([row['emotion'] for row in self.only_report()['emotions']],
+                         ['Lęk', 'Smutek'])
+
+    def test_an_equal_average_and_day_count_break_on_declaration_order(self):
+        """The last tie-break, unchanged: core/emotions.py's own order, which
+        test_emotions.py pins against the frontend character for character."""
+        self.entry(self.week, scales={'sadness_scale': 5, 'anxiety_scale': 5})
 
         self.assertEqual([row['emotion'] for row in self.only_report()['emotions']],
                          ['Smutek', 'Lęk'])

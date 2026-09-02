@@ -3,9 +3,16 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { useSignOut } from '../hooks/useSignOut'
 import { ROUTES, routeTitle } from '../routes'
+import { isGuardian } from '../api/auth'
 import { roleLabel } from '../utils/roles'
+import type { AuthUser } from '../api/auth'
 
-const MENU_ITEMS: { label: string; to: string }[] = [
+interface MenuItem {
+  label: string
+  to: string
+}
+
+const PATIENT_ITEMS: MenuItem[] = [
   // First, because every other entry leads away from it and several screens
   // have no back arrow of their own — without it the menu is a one-way trip.
   { label: 'Strona główna', to: ROUTES.home },
@@ -19,6 +26,31 @@ const MENU_ITEMS: { label: string; to: string }[] = [
   { label: routeTitle(ROUTES.safetyPlan), to: ROUTES.safetyPlan },
   { label: 'Przejdź do części dietetycznej i psychodietetycznej', to: ROUTES.diet },
 ]
+
+/**
+ * A guardian's menu, which is short because their view is one screen.
+ *
+ * Every patient entry is left out rather than disabled: a guardian has no
+ * `patient` row, so the diary, the reports, the analysis and the safety plan all
+ * answer them 403, and App.tsx redirects them away from those routes anyway.
+ * A menu that lists screens you are bounced off is worse than a short one.
+ * "Profil" stays because it is genuinely theirs — identity, the consent register
+ * and the password form all work for a guardian account.
+ */
+const GUARDIAN_ITEMS: MenuItem[] = [
+  { label: 'Strona główna', to: ROUTES.parentHome },
+  { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
+]
+
+/**
+ * What this account may navigate to.
+ *
+ * Keyed on the role, matching App.tsx's redirects — the two have to agree, or
+ * the menu offers a link the router immediately undoes.
+ */
+function menuItems(user: AuthUser | null): MenuItem[] {
+  return user && isGuardian(user) ? GUARDIAN_ITEMS : PATIENT_ITEMS
+}
 
 /** Header dropdown menu, shared by every screen with a home-style header (Home, DiaryEntry, …). */
 function HeaderMenu() {
@@ -75,7 +107,7 @@ function HeaderMenu() {
                 )}
               </div>
             )}
-            {MENU_ITEMS.map((item) => (
+            {menuItems(user).map((item) => (
               <Link
                 key={item.to}
                 to={item.to}

@@ -201,6 +201,19 @@ export function needsGuardianLink(user: AuthUser): boolean {
 }
 
 /**
+ * Whether this is a guardian's account.
+ *
+ * Keyed on the role rather than on the absence of a `patient` row, because the
+ * two are not the same question and this one is about what the account *is*: a
+ * specialist has no patient row either, and neither of them should be sent to
+ * the parent panel. `hasPatientProfile` below answers the other question — what
+ * the account may *read* — and the two are deliberately separate.
+ */
+export function isGuardian(user: AuthUser): boolean {
+  return user.role === GUARDIAN_ROLE
+}
+
+/**
  * Whether this account is a clinical subject — i.e. has a `patient` row.
  *
  * Mirrors `_require_patient` in core/views.py, which is what actually enforces

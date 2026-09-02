@@ -5,7 +5,7 @@ import LoadError from '../components/LoadError'
 import Pagination from '../components/Pagination'
 import { ApiError } from '../api/client'
 import { fetchWeeklyReports } from '../api/reports'
-import { DAYS_IN_WEEK, formatDelta, pluralDays } from '../utils/reports'
+import { DAYS_IN_WEEK, LEVEL_SCALE_MAX, formatDelta, formatNumber, pluralDays } from '../utils/reports'
 import type { ReportMetric, WeeklyReport } from '../types/report'
 import { usePagination } from '../hooks/usePagination'
 import { reportDetailPath } from '../routes'
@@ -64,9 +64,14 @@ function ReportRow({ report, onOpen }: { report: WeeklyReport; onOpen: () => voi
           <span className="journal-row-chip">
             {report.entryCount} z {DAYS_IN_WEEK} dni z wpisem
           </span>
+          {/* The two strongest, and labelled with the intensity that put them
+              there. They used to read "Lęk 6 dni", which was the right number
+              while the ranking was by frequency and a stale one the moment it
+              stopped being — the row would have named the strongest emotion and
+              then explained it with a day count. */}
           {report.emotions.slice(0, 2).map((emotion) => (
             <span key={emotion.emotion} className="journal-row-chip">
-              {emotion.emotion} {emotion.days} {pluralDays(emotion.days)}
+              {emotion.emotion} {formatNumber(emotion.avgIntensity, 1)}/{LEVEL_SCALE_MAX}
             </span>
           ))}
         </div>
