@@ -218,6 +218,13 @@ REST_FRAMEWORK = {
         'login_account': '15/hour',
         # Not a security cap but a capacity one — see ReportPdfThrottle.
         'report_pdf': '30/hour',
+        # POST /api/account/password/ verifies the *current* password, which
+        # makes it a second place to guess one — from a session someone left
+        # open on a borrowed phone, where the attacker has the app but not the
+        # password they need to take the account over. Its own scope rather than
+        # 'auth': changing what bounds login guessing must not quietly change
+        # what bounds this.
+        'password_change': '10/hour',
     },
     # How many proxies sit in front of us, and therefore how much of
     # X-Forwarded-For to believe. Unset, DRF keys the throttle on the *whole*
@@ -247,6 +254,12 @@ if not DEBUG:
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        # Django's default list is ('username', 'first_name', 'last_name',
+        # 'email') — three of which core.User does not have, since it is a plain
+        # domain model rather than an auth user. Without naming the real columns
+        # the validator compares the password against `email` alone and silently
+        # ignores the name it was given at registration.
+        'OPTIONS': {'user_attributes': ('email', 'name', 'surname')},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',

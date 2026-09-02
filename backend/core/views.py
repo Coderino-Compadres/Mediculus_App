@@ -20,6 +20,7 @@ from rest_framework.views import APIView
 
 from django.utils import timezone
 
+from .account import build_account_profile
 from .authentication import end_session, start_session
 from .dashboard import build_home_dashboard
 from .frequency import build_year_frequency, years_with_entries
@@ -31,10 +32,11 @@ from .models import Patient
 from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
 from .serializers import (GuardianLinkSerializer, LoginSerializer,
-                          RegisterSerializer, UserSerializer)
+                          PasswordChangeSerializer, RegisterSerializer,
+                          UserSerializer)
 from .throttling import (AuthThrottle, GuardianLinkThrottle,
-                         LoginAccountThrottle, ReportPdfThrottle,
-                         attempts_warning)
+                         LoginAccountThrottle, PasswordChangeThrottle,
+                         ReportPdfThrottle, attempts_warning)
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
@@ -150,7 +152,7 @@ class MeView(APIView):
         return Response(UserSerializer(request.user).data)
 
 
-def _require_patient(request, refusal, *, require_guardian_link=True):
+def _require_patient(request, refusal, *, require_guardian_link=True, with_care=False):
     """The `patient` row behind the session, or a refusal.
 
     Shared by every endpoint that reads or writes clinical data: the session is
@@ -173,9 +175,16 @@ def _require_patient(request, refusal, *, require_guardian_link=True):
     RODO art. 8 makes a minor's consent the guardian's to give. Nothing enforces
     that the two definitions stay in step, so change them together.
     """
-    patient = (
-        Patient.objects.filter(user=request.user).only('id_medical', 'is_child').first()
-    )
+    patients = Patient.objects.filter(user=request.user)
+    if with_care:
+        # The profile screen names the treating specialist, whose name lives on
+        # their own `user` row — one query instead of three. Opt-in rather than
+        # always, because every other caller wants the two columns below and
+        # nothing else.
+        patients = patients.select_related('specjalist__user')
+    else:
+        patients = patients.only('id_medical', 'is_child')
+    patient = patients.first()
     if patient is None:
         raise PermissionDenied(refusal)
     # Only a minor is asked the question, so an adult patient costs no extra
@@ -204,6 +213,10 @@ GUARDIAN_GATE_REFUSAL = (
 )
 
 INVITATION_NOT_FOUND = 'Nie znaleziono zaproszenia oczekującego na odpowiedź.'
+
+PROFILE_REFUSAL = (
+    'Ta część profilu jest dostępna tylko dla konta pacjenta.'
+)
 
 REPORT_REFUSAL = 'Raporty są dostępne tylko dla konta pacjenta.'
 
@@ -300,6 +313,59 @@ class GuardianInvitationRejectView(APIView):
     def post(self, request, id_parent_child):
         if not reject_invitation(request.user, id_parent_child):
             raise NotFound(INVITATION_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AccountProfileView(APIView):
+    """GET /api/account/profile/ — the counters and the care card on "Profil".
+
+    Only the half of that screen that is neither identity nor consent. Identity
+    (name, e-mail, account type) already arrives on /api/auth/me/, and so do the
+    two consent timestamps — they are columns on `user`, they are what the route
+    guard's payload is for, and asking for them a second time here would be two
+    endpoints that can disagree about one row.
+
+    What is left needs medical_db, which is why it is a separate URL and why it
+    is gated: `_require_patient` turns away an account with no `patient` row.
+    A guardian reaching this would otherwise be told they have written 0 entries
+    and have no therapist — both true of a row that does not exist, and both
+    read as a clinical record rather than as "this question does not apply to
+    you". The frontend does not call this for such accounts at all
+    (`hasPatientProfile` in src/api/auth.ts, which mirrors the same rule); the
+    refusal is here because a route guard is not enforcement.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, PROFILE_REFUSAL, with_care=True)
+        return Response(build_account_profile(patient))
+
+
+class PasswordChangeView(APIView):
+    """POST /api/account/password/ — change the signed-in account's password.
+
+    Deliberately NOT behind `_require_patient`: every account has a password,
+    including the guardians and specialists who are not clinical subjects, and a
+    minor still waiting for a guardian must be able to change theirs while the
+    gate is closed. `IsAuthenticated` (the project default) is the whole
+    requirement.
+
+    CSRF is enforced by `SessionUserAuthentication`, like every other
+    authenticated write here — the hand-applied `@csrf_protect` on login and
+    register exists only because those callers have no session yet.
+
+    Answers 204 with no body. There is nothing to send back: the user did not
+    change, and echoing anything about the password would be one more place it
+    could be logged.
+    """
+
+    throttle_classes = [PasswordChangeThrottle]
+
+    def post(self, request):
+        serializer = PasswordChangeSerializer(
+            data=request.data, context={'user': request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

@@ -25,6 +25,8 @@ urlpatterns = [
         'guardian/invitations/<uuid:id_parent_child>/reject/',
         views.GuardianInvitationRejectView.as_view(), name='guardian-invitation-reject',
     ),
+    path('account/profile/', views.AccountProfileView.as_view(), name='account-profile'),
+    path('account/password/', views.PasswordChangeView.as_view(), name='account-password'),
     path('dashboard/home/', views.HomeDashboardView.as_view(), name='home-dashboard'),
     path('analysis/frequency/', views.FrequencyView.as_view(), name='analysis-frequency'),
     path('diary/', views.DiaryHistoryView.as_view(), name='diary-history'),

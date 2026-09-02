@@ -84,12 +84,18 @@ def _average(values):
     return round(sum(known) / len(known), 1)
 
 
-def _streak_days(id_medical, today):
+def streak_days(id_medical, today=None):
     """Consecutive days with an entry, ending today or yesterday.
 
     Yesterday counts as the end of the streak too: a run of six days should not
     read as broken from midnight until whenever the person writes today's entry.
+
+    Public because the profile screen shows the same number as the home screen
+    (`core/account.py`). One definition, so the two cannot disagree about a run
+    the patient is in the middle of — which is exactly the sort of number that
+    reads as a bug when two screens answer it differently.
     """
+    today = today or timezone.localdate()
     since, _ = day_bounds(today - datetime.timedelta(days=STREAK_LOOKBACK_DAYS), today)
     written = {
         local_date(moment)
@@ -170,7 +176,7 @@ def build_home_dashboard(id_medical, today=None):
         }
 
     return {
-        'streak_days': _streak_days(id_medical, today),
+        'streak_days': streak_days(id_medical, today),
         'today_entry': today_entry,
         'week': week,
         'average_stress': _average([diary.stress_level for diary in by_day.values()]),

@@ -1,11 +1,27 @@
-import { describe, expect, it } from 'vitest'
-import { screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '../test/render'
 import SafetyPlan from './SafetyPlan'
 import { ROUTES } from '../routes'
 import { CRISIS_LINES } from '../data/crisisLines'
 import { SAFETY_PLAN } from '../data/safetyPlan'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
+import type { AccountProfile } from '../types/profile'
+
+vi.mock('../api/profile', () => ({ fetchAccountProfile: vi.fn() }))
+const { fetchAccountProfile } = await import('../api/profile')
+const mockedProfile = vi.mocked(fetchAccountProfile)
+
+/** The care relationship this screen names under "Kontakt do terapeuty". */
+const ACCOUNT_PROFILE: AccountProfile = {
+  activity: { entryCount: 8, streakDays: 6 },
+  care: { specialist: 'mgr Marta Zielińska', approach: 'CBT / DBT', phone: null },
+}
+
+beforeEach(() => {
+  mockedProfile.mockReset()
+  mockedProfile.mockResolvedValue(ACCOUNT_PROFILE)
+})
 
 /**
  * The screen itself: what it is composed of and in what order.
@@ -18,6 +34,13 @@ import { APP_DISCLAIMER } from '../utils/disclaimer'
  */
 function renderScreen() {
   return renderWithProviders(<SafetyPlan />, { route: ROUTES.safetyPlan })
+}
+
+/** …and waits for the therapist's name, which arrives over the network. */
+async function renderScreenWithCare() {
+  const result = renderScreen()
+  await waitFor(() => expect(mockedProfile).toHaveBeenCalled())
+  return result
 }
 
 describe('SafetyPlan', () => {
@@ -80,5 +103,46 @@ describe('SafetyPlan', () => {
     renderScreen()
 
     expect(document.querySelector('nav.bottom-nav')).not.toBeInTheDocument()
+  })
+})
+
+describe('SafetyPlan — the treating specialist', () => {
+  it('names the same therapist the profile card names, from one request', async () => {
+    /** One source, so the two screens cannot disagree about who is treating this
+     *  patient — see `CareDetails`. */
+    await renderScreenWithCare()
+
+    expect(await screen.findByText(/mgr Marta Zielińska/)).toBeInTheDocument()
+  })
+
+  it('keeps the crisis lines on screen while the therapist is still loading', async () => {
+    /** The one indispensable half of this screen is local and unconditional. A
+     *  never-resolving request must not be able to hold it back. */
+    mockedProfile.mockReturnValue(new Promise(() => {}))
+
+    renderScreen()
+
+    for (const line of CRISIS_LINES) {
+      expect(screen.getByRole('link', { name: new RegExp(line.number.display) }))
+        .toHaveAttribute('href', `tel:${line.number.dial}`)
+    }
+  })
+
+  it('omits the contact section rather than showing an empty one when there is no therapist', async () => {
+    mockedProfile.mockResolvedValue({ ...ACCOUNT_PROFILE, care: null })
+
+    await renderScreenWithCare()
+
+    expect(screen.queryByText(/mgr Marta Zielińska/)).toBeNull()
+    // And the numbers that do not depend on it are untouched.
+    expect(screen.getByRole('link', { name: new RegExp(CRISIS_LINES[0].number.display) }))
+      .toBeInTheDocument()
+  })
+
+  it('draws no dead tel: link for the therapist, because no column holds a number', async () => {
+    await renderScreenWithCare()
+
+    await screen.findByText(/mgr Marta Zielińska/)
+    expect(screen.getByText(/bez numeru w planie/i)).toBeInTheDocument()
   })
 })

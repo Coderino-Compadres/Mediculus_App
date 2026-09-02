@@ -13,8 +13,8 @@
  * settled — PDF is what a person can open, JSON is what art. 20 portability is
  * actually about, and it may well be both.
  *
- * Every function here is a **stub that performs no request and always rejects**.
- * That is deliberate, and it is the honest shape for this state of the project:
+ * `changePassword` is real. The other two are **stubs that perform no request
+ * and always reject**, and that is deliberate rather than unfinished:
  *
  * - the client gets to see and click the complete feature, which is what the
  *   "Bezpieczeństwo" requirements ask for;
@@ -22,19 +22,29 @@
  *   signatures below are the request bodies, and the doc comments say which
  *   endpoint each one is waiting for;
  * - and the user is never told their consent was withdrawn or their account
- *   deleted when nothing of the sort happened. A false success on *these three*
+ *   deleted when nothing of the sort happened. A false success on *those two*
  *   actions is not a cosmetic lie: somebody could stop using the app believing
  *   their health data is gone.
  *
- * So each one rejects with a `PendingBackendError`, and the screens render its
+ * So each rejects with a `PendingBackendError`, and the screens render its
  * message as a plain notice rather than as an error — nothing failed, the half
  * that does the work simply does not exist yet.
  *
- * When these become real, they belong behind `apiRequest` from ./client like
- * every other call (session cookie + CSRF header), and the screens should need
- * no change beyond deleting the notice branch.
+ * Neither is blocked on effort. Consent withdrawal needs the client to settle
+ * what withdrawing the services consent *does* (see ServicesConsentWithdrawal)
+ * and needs its own recorded moment in the schema, and deletion needs the legal
+ * question about retaining clinical records answered first — building either on
+ * a guess is worse than shipping the screen without it.
+ *
+ * Changing the e-mail address has no function here at all, for a third reason:
+ * it is not one endpoint but two, since a new address has to be confirmed from
+ * a message sent *to it*, and there is no mail out of this deployment. A bare
+ * "set the address" would let a typo lock an account out of its own recovery.
+ * ProfileEmailForm says "we will confirm it", which stays honest until it can be
+ * built.
  */
 
+import { apiRequest } from './client'
 import type { AccountClosureReason, ConsentWithdrawalScope } from '../types/profile'
 
 export const PENDING_BACKEND_MESSAGE =
@@ -101,4 +111,48 @@ export function deleteAccount(input: DeleteAccountInput): Promise<void> {
   return Promise.reject(
     new PendingBackendError(`DELETE /api/account/ (reason: ${input.reason})`),
   )
+}
+
+export interface ChangePasswordInput {
+  /** Re-typed even though the session is live: see the note below. */
+  currentPassword: string
+  newPassword: string
+  confirmNewPassword: string
+}
+
+/**
+ * API field name -> form field name, so a server verdict lands on the input that
+ * produced it — the same job `REGISTER_FIELDS` does for registration.
+ */
+export const PASSWORD_FIELDS: Record<string, string> = {
+  current_password: 'currentPassword',
+  new_password: 'newPassword',
+  new_password_confirm: 'confirmNewPassword',
+}
+
+/**
+ * Sets a new password for the signed-in account.
+ *
+ * The current password goes with it and is checked **server-side**: a live
+ * session proves the device, not the person holding it, and the whole value of
+ * that field is that taking an account over needs the password too. This
+ * function only carries it.
+ *
+ * The new password is validated again by Django's own validators, which reject
+ * things `validatePassword` here does not — a common password of twelve
+ * characters, or one that resembles the account's own e-mail. That verdict
+ * arrives as a field error and `useAuthForm` places it, via PASSWORD_FIELDS.
+ *
+ * Resolves with nothing: the endpoint answers 204, because there is no state to
+ * hand back and echoing anything about a password is one more place it lives.
+ */
+export async function changePassword(input: ChangePasswordInput): Promise<void> {
+  await apiRequest<void>('/api/account/password/', {
+    method: 'POST',
+    body: {
+      current_password: input.currentPassword,
+      new_password: input.newPassword,
+      new_password_confirm: input.confirmNewPassword,
+    },
+  })
 }

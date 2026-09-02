@@ -62,14 +62,23 @@ class UserSerializer(serializers.ModelSerializer):
 
     id = serializers.UUIDField(source='id_user', read_only=True)
     role = serializers.SerializerMethodField()
+    is_patient = serializers.SerializerMethodField()
     is_child = serializers.SerializerMethodField()
     guardian_status = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'name', 'surname', 'date_of_birth', 'role', 'is_child',
-            'guardian_status',
+            'id', 'email', 'name', 'surname', 'date_of_birth', 'role',
+            'is_patient', 'is_child', 'guardian_status',
+            # The consent register the profile screen reads back. Sent as the
+            # stored moment, not a boolean and not a date: RODO art. 7(1) puts
+            # the burden of proving consent on us, and the profile has to be
+            # able to show *when*. NULL means never granted, which is what makes
+            # "Nieudzielona" a state the screen can render rather than one it has
+            # to infer. Registration writes both, so an account created through
+            # the form always has them; rows seeded by mock_data.sql do not.
+            'data_consent_at', 'services_consent_at',
         ]
         read_only_fields = fields
 
@@ -77,10 +86,37 @@ class UserSerializer(serializers.ModelSerializer):
         # user_role is nullable in the schema, so a user without one is valid.
         return user.user_role.name if user.user_role_id else None
 
+    def _patient(self, user):
+        """The `patient` row behind this user, looked up once per serialization.
+
+        Two fields need it and one of them calls the other, so without the cache
+        this was three queries — on the endpoint the frontend hits at every app
+        start and after every 403. Keyed by user rather than a plain attribute
+        because a serializer instance can be reused across a list.
+        """
+        if not hasattr(self, '_patients'):
+            self._patients = {}
+        if user.pk not in self._patients:
+            self._patients[user.pk] = Patient.objects.filter(user=user).first()
+        return self._patients[user.pk]
+
+    def get_is_patient(self, user):
+        """Whether a `patient` row exists — `_require_patient`'s first check.
+
+        Its own field rather than something the frontend infers, because the
+        obvious inference is wrong: `is_child` is None both for an account with
+        no patient row *and* for a patient row that never answered the question
+        (nullable column, and mock_data.sql predates it being set). Reading
+        `is_child !== null` would therefore hide the profile's counters from a
+        patient the backend happily serves.
+        """
+        return self._patient(user) is not None
+
     def get_is_child(self, user):
-        # None means "not a patient at all" (a guardian), which is why this reads
-        # the patient row rather than deriving anything from date_of_birth.
-        patient = Patient.objects.filter(user=user).first()
+        # None means either "not a patient at all" (a guardian) or a patient row
+        # that never answered — `is_patient` above is what tells the two apart.
+        # Read off the patient row rather than derived from date_of_birth.
+        patient = self._patient(user)
         return patient.is_child if patient else None
 
     def get_guardian_status(self, user):
@@ -95,6 +131,30 @@ class UserSerializer(serializers.ModelSerializer):
         if self.get_is_child(user) is not True:
             return None
         return guardian.guardian_status(user)
+
+
+def check_password_strength(password, user):
+    """Django's own validators, run with the user they need to be worth anything.
+
+    `validate_password(password)` — no second argument — is what this used to be,
+    and it quietly disabled one of the four configured validators:
+    `UserAttributeSimilarityValidator.validate()` returns immediately when `user`
+    is None, so a password identical to the account's own e-mail address passed
+    registration. Nothing about the call looked wrong, which is why it survived;
+    the only way to see it is from the outside, by registering with one.
+
+    `user` may be unsaved — at registration there is no row yet, and the
+    validator only reads attributes off it. Which attributes is set in
+    AUTH_PASSWORD_VALIDATORS' OPTIONS, because core.User has `name`/`surname`
+    rather than Django's `first_name`/`last_name`.
+
+    Raises DRF's ValidationError with the messages as a list, so the caller can
+    put them under whichever field submitted the password.
+    """
+    try:
+        validate_password(password, user=user)
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(list(exc.messages)) from exc
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -153,13 +213,6 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError('Konto z tym adresem e-mail już istnieje.')
         return value
 
-    def validate_password(self, value):
-        try:
-            validate_password(value)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(list(exc.messages)) from exc
-        return value
-
     def validate_date_of_birth(self, value):
         # localdate(), not utcnow(): "today" has to mean today where the person
         # filling the form is, or someone born today is rejected for a few hours.
@@ -189,8 +242,35 @@ class RegisterSerializer(serializers.Serializer):
                 {'password_confirm': 'Hasła nie są identyczne.'}
             )
 
+        self._check_password_strength(attrs)
         self._check_age_matches_account_type(attrs)
         return attrs
+
+    def _check_password_strength(self, attrs):
+        """Here rather than in a `validate_password` method, and that is the fix.
+
+        A field-level validator sees only its own value, so the similarity check
+        had nothing to compare the password against (see
+        `check_password_strength`). By the time `validate()` runs, `attrs` holds
+        the address and the name the account is being created with, which is
+        exactly what that check needs.
+
+        Re-raised under 'password' so the message still lands on the input that
+        produced it — `REGISTER_FIELDS` in src/api/auth.ts maps it back.
+        """
+        password = attrs.get('password')
+        # Absent when the field itself failed (blank); that error is the one to
+        # report, not a strength complaint about nothing.
+        if not password:
+            return
+        try:
+            check_password_strength(password, User(
+                email=attrs.get('email'),
+                name=attrs.get('name'),
+                surname=attrs.get('surname'),
+            ))
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({'password': exc.detail}) from exc
 
     def _check_age_matches_account_type(self, attrs):
         """The declared account type has to agree with the date of birth.
@@ -319,6 +399,98 @@ def _password_matches(raw_password, encoded):
         # Unrecognised algorithm prefix — a password nobody can match.
         check_password(raw_password, _get_unmatchable_hash())
         return False
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    """Changes the signed-in account's password. POST /api/account/password/.
+
+    THE CURRENT PASSWORD IS ASKED FOR AGAIN, and checked here rather than only in
+    the browser. A live session is not proof that the person holding it is the
+    account owner — a phone left unlocked on a table is the ordinary case, not an
+    exotic one — and the whole value of this field is that taking an account over
+    needs the password and not just the device. `PasswordChangeThrottle` bounds
+    how often it can be guessed.
+
+    IT IS NOT VALIDATED FOR STRENGTH, only for presence. Rows seeded by
+    mock_data.sql, and accounts created before the 8-character rule, hold
+    passwords that would fail today's validators — running them through would
+    put "min. 8 znaków" under *Obecne hasło* and leave those accounts unable to
+    submit the form at all, which is the one outcome a password-change screen
+    must not produce. Whether the password is right is this serializer's
+    judgement, not the field's. src/components/ProfilePasswordForm.tsx makes the
+    same call for the same reason.
+
+    The new password goes through Django's validators *with the user*, so it can
+    be refused for resembling the account's own e-mail or name — see
+    `check_password_strength`.
+    """
+
+    current_password = serializers.CharField(
+        write_only=True, trim_whitespace=False,
+        error_messages={
+            'blank': 'Podaj obecne hasło.', 'required': 'Podaj obecne hasło.',
+        },
+    )
+    new_password = serializers.CharField(
+        write_only=True, trim_whitespace=False,
+        error_messages={'blank': 'Podaj nowe hasło.', 'required': 'Podaj nowe hasło.'},
+    )
+    new_password_confirm = serializers.CharField(
+        write_only=True, trim_whitespace=False,
+        error_messages={'blank': 'Powtórz nowe hasło.', 'required': 'Powtórz nowe hasło.'},
+    )
+
+    WRONG_CURRENT_PASSWORD = 'Obecne hasło jest nieprawidłowe.'
+    SAME_AS_CURRENT = 'Nowe hasło musi różnić się od obecnego.'
+
+    @property
+    def user(self):
+        return self.context['user']
+
+    def validate_current_password(self, value):
+        # Unlike login, naming which half is wrong leaks nothing: the caller is
+        # already signed in as this account, so they know it exists.
+        if not _password_matches(value, self.user.password_hash):
+            raise serializers.ValidationError(self.WRONG_CURRENT_PASSWORD)
+        return value
+
+    def validate(self, attrs):
+        if attrs.get('new_password') != attrs.get('new_password_confirm'):
+            raise serializers.ValidationError(
+                {'new_password_confirm': 'Hasła nie są identyczne.'}
+            )
+
+        # A request-level error rather than a field one: blaming either input for
+        # the two being equal would be arbitrary, and the frontend renders
+        # `detail` above the form for exactly this case.
+        if (
+            attrs.get('new_password')
+            and attrs['new_password'] == attrs.get('current_password')
+        ):
+            raise serializers.ValidationError({'detail': self.SAME_AS_CURRENT})
+
+        if attrs.get('new_password'):
+            try:
+                check_password_strength(attrs['new_password'], self.user)
+            except serializers.ValidationError as exc:
+                raise serializers.ValidationError({'new_password': exc.detail}) from exc
+        return attrs
+
+    def save(self):
+        """Writes the new hash, and nothing else.
+
+        Other sessions of this account deliberately survive. Django's usual
+        answer (`update_session_auth_hash`) invalidates them because its sessions
+        carry a hash of the password; ours carry `core_user_id` and nothing more
+        (see core/authentication.py), so there is no hash to go stale. Signing
+        the other devices out is a real feature — the one you want after "I think
+        somebody knows my password" — but it needs a way to enumerate an
+        account's sessions, which this deployment does not have, and doing half
+        of it silently would be worse than not claiming it.
+        """
+        self.user.password_hash = make_password(self.validated_data['new_password'])
+        self.user.save(update_fields=['password_hash', 'updated_at'])
+        return self.user
 
 
 class GuardianLinkSerializer(serializers.Serializer):

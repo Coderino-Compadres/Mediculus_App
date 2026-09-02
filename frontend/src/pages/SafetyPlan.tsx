@@ -2,7 +2,7 @@ import HeaderMenu from '../components/HeaderMenu'
 import CrisisLines from '../components/CrisisLines'
 import SafetyPlanEmpty from '../components/SafetyPlanEmpty'
 import SafetyPlanView from '../components/SafetyPlanView'
-import { PROFILE_CARE } from '../data/profile'
+import { useAccountProfile } from '../hooks/useAccountProfile'
 import { SAFETY_PLAN } from '../data/safetyPlan'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
 // journals.css is the page frame (.journals-page / .journals-header), reused
@@ -37,11 +37,19 @@ import './safetyPlan.css'
  *   2. the plan, or the explanation of what a plan is.
  *   3. the same disclaimer the home screen carries, from one shared constant.
  *
- * THE DATA IS HARDCODED, IN TWO FILES OF ITS OWN. `data/crisisLines.ts` is
- * permanent (public numbers, no endpoint wanted — see the note there);
- * `data/safetyPlan.ts` is a stand-in, and its header says how to flip it to the
- * empty state for a review with the client. Neither belongs in this file: when a
- * backend arrives, this screen should change by swapping an import for a fetch.
+ * THE PLAN ITSELF IS STILL HARDCODED; THE THERAPIST IS NOT. `data/crisisLines.ts`
+ * is permanent (public numbers, no endpoint wanted — see the note there) and
+ * `data/safetyPlan.ts` is a stand-in whose header says how to flip it to the
+ * empty state for a review with the client. The care relationship, though, is
+ * real: it comes from `useAccountProfile`, the same request the profile's
+ * "OPIEKA" card reads, which is the whole reason `CareDetails` has one source —
+ * the two screens must not be able to name different therapists.
+ *
+ * While it loads, and for an account it does not apply to, `care` is null and
+ * the "Kontakt do terapeuty" section is simply absent — the same state as a
+ * patient with nobody assigned, which `SafetyPlanView` already renders. The
+ * crisis lines above it never depend on any of that, which is the point of
+ * their being first on the page.
  *
  * TODO(ostrzeganie na podstawie zachowań ryzykownych): asked what this feature is
  * for, the client answered that it is not the phone numbers — it is that a
@@ -63,6 +71,12 @@ import './safetyPlan.css'
  * markup.
  */
 function SafetyPlan() {
+  // Failure is not surfaced here on purpose: this screen's one indispensable
+  // half — the crisis lines — is local, and an error box above them would push
+  // the numbers down the page to report that a name is missing. A missing
+  // therapist already looks like a missing therapist.
+  const { data: profile } = useAccountProfile()
+
   return (
     <div className="journals-page safety-plan-page">
       <header className="journals-header">
@@ -77,7 +91,11 @@ function SafetyPlan() {
           without scrolling whether or not a plan exists. */}
       <CrisisLines />
 
-      {SAFETY_PLAN ? <SafetyPlanView plan={SAFETY_PLAN} care={PROFILE_CARE} /> : <SafetyPlanEmpty />}
+      {SAFETY_PLAN ? (
+        <SafetyPlanView plan={SAFETY_PLAN} care={profile?.care ?? null} />
+      ) : (
+        <SafetyPlanEmpty />
+      )}
 
       {/* Word for word what /home says, from one constant — see utils/disclaimer.ts.
           Two screens describing the app's limits in two slightly different ways is

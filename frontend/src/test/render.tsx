@@ -11,8 +11,13 @@ export const TEST_USER: AuthUser = {
   lastName: 'Testowy',
   dateOfBirth: '1994-06-18',
   role: 'patient',
+  isPatient: true,
   isChild: false,
   guardianStatus: null,
+  // Both granted, as registration writes them — the ordinary account. A screen
+  // testing the "Nieudzielona" state overrides one with null.
+  dataConsentAt: '2026-06-18T09:31:02Z',
+  servicesConsentAt: '2026-06-18T09:31:02Z',
 }
 
 /**

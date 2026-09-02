@@ -87,6 +87,7 @@ def clinical_urls(diary_id, report_id):
     """
     return [
         ('get', reverse('core:home-dashboard')),
+        ('get', reverse('core:account-profile')),
         ('get', reverse('core:analysis-frequency')),
         ('get', reverse('core:diary-today')),
         ('put', reverse('core:diary-today')),
@@ -273,6 +274,28 @@ class GateDoesNotTrapTheChildTests(GateTestCase):
 
     def test_the_gate_does_not_reach_logout(self):
         self.assertEqual(self.client.post(reverse('core:logout')).status_code, 204)
+
+    def test_an_unlinked_minor_can_still_change_their_password(self):
+        """Not a clinical endpoint, and deliberately not gated.
+
+        Everyone has a password, including the accounts that are not clinical
+        subjects at all — and a minor waiting on a guardian who has reason to
+        change theirs (a shoulder-surfer, a shared device) must not be told to
+        come back once somebody else answers a form. `PasswordChangeView` is
+        therefore the one write here that does not go through
+        `_require_patient`; this pins that it stays that way.
+        """
+        response = self.client.post(
+            reverse('core:account-password'),
+            {
+                'current_password': 'TajneHaslo123',
+                'new_password': 'ZupelnieInne987',
+                'new_password_confirm': 'ZupelnieInne987',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 204)
 
 
 class GuardianSideTests(GateTestCase):

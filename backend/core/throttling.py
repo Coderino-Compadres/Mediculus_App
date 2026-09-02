@@ -153,6 +153,28 @@ class ReportPdfThrottle(UserRateThrottle):
     scope = 'report_pdf'
 
 
+class PasswordChangeThrottle(UserRateThrottle):
+    """Per-account cap on POST /api/account/password/.
+
+    The endpoint verifies the current password before setting a new one, which
+    makes it a second oracle for guessing that password — reachable from a
+    session left open on a borrowed or stolen phone, where the attacker already
+    has the app and needs only the password to lock the owner out of it. The
+    login cap does nothing here: the caller is signed in, so no address is
+    submitted and nothing lands on `login_account`.
+
+    Keyed on the account by `UserRateThrottle`, which is the right key for a
+    threat that is already inside one session — an IP cap would be bypassed by
+    the same phone changing networks.
+
+    Its own scope, deliberately not the shared 'auth' one (see the note on
+    GuardianLinkThrottle): one name covering two policies means changing the
+    login limit silently changes this one.
+    """
+
+    scope = 'password_change'
+
+
 # How many attempts have to be left before the response starts saying so. Below
 # this the warning is worth more than the silence: a person who has forgotten
 # which password they used gets a chance to stop and think, and there is no

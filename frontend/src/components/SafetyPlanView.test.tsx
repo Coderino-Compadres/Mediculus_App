@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import SafetyPlanView from './SafetyPlanView'
 import SafetyPlanEmpty from './SafetyPlanEmpty'
-import { PROFILE_CARE } from '../data/profile'
 import type { CareDetails } from '../types/profile'
 import type { SafetyPlan } from '../types/safetyPlan'
 
@@ -21,9 +20,20 @@ function plan(overrides: Partial<SafetyPlan> = {}): SafetyPlan {
 }
 
 /**
- * A care relationship that does carry a number. The shipped `PROFILE_CARE.phone`
- * is null (there is no phone column behind it yet), so a test about how a number
- * is rendered has to supply one rather than lean on the fixture.
+ * The care relationship as the API actually answers with it: a name, whatever
+ * `specjalist.specjalization` holds, and no number — there is no phone column in
+ * the schema, so `api/profile.ts` maps `phone` to null unconditionally.
+ */
+const CARE: CareDetails = {
+  specialist: 'mgr Marta Zielińska',
+  approach: 'CBT / DBT',
+  phone: null,
+}
+
+/**
+ * One that does carry a number, for the rendering path `CARE` cannot reach. It
+ * exists so the `tel:` branch is asserted before a column ever appears — the day
+ * one does, this is the test that already covers it.
  */
 const CARE_WITH_PHONE: CareDetails = {
   specialist: 'mgr Przykładowa',
@@ -31,7 +41,7 @@ const CARE_WITH_PHONE: CareDetails = {
   phone: { dial: '000000000', display: '000 000 000' },
 }
 
-function renderPlan(data: SafetyPlan, care: CareDetails | null = PROFILE_CARE) {
+function renderPlan(data: SafetyPlan, care: CareDetails | null = CARE) {
   return render(<SafetyPlanView plan={data} care={care} />)
 }
 
@@ -104,15 +114,16 @@ describe('SafetyPlanView — what the specialist wrote', () => {
      *  under two different names or on two different numbers. */
     renderPlan(plan())
 
-    expect(screen.getByText(new RegExp(PROFILE_CARE.specialist))).toBeInTheDocument()
+    expect(screen.getByText(new RegExp(CARE.specialist))).toBeInTheDocument()
   })
 
   it('renders no dead tel: link for the number the app does not have yet', () => {
-    /** PROFILE_CARE.phone is null because there is no phone column behind it.
-     *  A placeholder here would render a live link that fails when tapped —
+    /** `care.phone` is null for every account today, because no column holds a
+     *  specialist's number and api/profile.ts says so rather than guessing. A
+     *  placeholder here would render a live link that fails when tapped —
      *  which, under "Kontakt do terapeuty lub lekarza", reads to the patient as
      *  their therapist's number being out of service. */
-    expect(PROFILE_CARE.phone).toBeNull()
+    expect(CARE.phone).toBeNull()
 
     renderPlan(plan({ trustedPeople: [] }))
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
@@ -141,7 +152,7 @@ describe('SafetyPlanView — what the specialist wrote', () => {
     )
 
     expect(screen.getByText(/dr Jan Przykładowy/)).toBeInTheDocument()
-    expect(screen.queryByText(new RegExp(PROFILE_CARE.specialist))).not.toBeInTheDocument()
+    expect(screen.queryByText(new RegExp(CARE.specialist))).not.toBeInTheDocument()
     // Their number has to survive the override too. Without this the whole
     // alternative-contact phone path is unasserted: it could be dropped and
     // every test here would still pass, which is how a plan naming a

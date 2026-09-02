@@ -5,6 +5,7 @@ import {
   cancelGuardianInvitation,
   fetchCurrentUser,
   GUARDIAN_STATUS,
+  hasPatientProfile,
   isGuardianInvitationPending,
   linkGuardian,
   login,
@@ -30,8 +31,11 @@ const USER_PAYLOAD = {
   surname: 'Testowy',
   date_of_birth: '1994-06-18',
   role: 'patient',
+  is_patient: true,
   is_child: false,
   guardian_status: null,
+  data_consent_at: '2026-06-18T09:31:02Z',
+  services_consent_at: '2026-06-18T09:31:02Z',
 }
 
 beforeEach(() => mockedRequest.mockReset())
@@ -53,8 +57,11 @@ describe('login', () => {
       lastName: 'Testowy',
       dateOfBirth: '1994-06-18',
       role: 'patient',
+      isPatient: true,
       isChild: false,
       guardianStatus: null,
+      dataConsentAt: '2026-06-18T09:31:02Z',
+      servicesConsentAt: '2026-06-18T09:31:02Z',
     })
   })
 })
@@ -242,5 +249,97 @@ describe('needsGuardianLink', () => {
     expect(
       needsGuardianLink(await signedIn({ ...USER_PAYLOAD, role: 'rodzic', is_child: null })),
     ).toBe(false)
+  })
+})
+
+describe('consent timestamps', () => {
+  it('carries both moments through, so the profile shows a real date', async () => {
+    /** They used to be a constant reading 14 July 2026 for every account. A
+     *  consent record is evidence (RODO art. 7(1)), and evidence identical for
+     *  everybody proves nothing about anybody. */
+    mockedRequest.mockResolvedValueOnce({
+      ...USER_PAYLOAD,
+      data_consent_at: '2026-03-09T21:15:00Z',
+      services_consent_at: '2026-03-09T21:15:00Z',
+    })
+
+    const user = await fetchCurrentUser()
+
+    expect(user?.dataConsentAt).toBe('2026-03-09T21:15:00Z')
+    expect(user?.servicesConsentAt).toBe('2026-03-09T21:15:00Z')
+  })
+
+  it('keeps a consent that was never granted as null rather than inventing one', async () => {
+    /** The column is NULL for every row mock_data.sql seeds, and that is what
+     *  lets the profile say "Nieudzielona" as a fact. */
+    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, services_consent_at: null })
+
+    const user = await fetchCurrentUser()
+
+    expect(user?.servicesConsentAt).toBeNull()
+  })
+
+  it('survives an older payload that carries neither key', async () => {
+    /** Same tolerance `guardian_status` already has: a field the deployed
+     *  backend has not got yet must not make the session unreadable. */
+    const { data_consent_at, services_consent_at, ...older } = USER_PAYLOAD
+    void data_consent_at
+    void services_consent_at
+    mockedRequest.mockResolvedValueOnce(older)
+
+    const user = await fetchCurrentUser()
+
+    expect(user?.dataConsentAt).toBeNull()
+    expect(user?.servicesConsentAt).toBeNull()
+  })
+})
+
+describe('hasPatientProfile', () => {
+  /**
+   * Mirrors `_require_patient` in core/views.py, whose first check is simply
+   * whether a `patient` row exists. Getting it wrong is visible either way: too
+   * strict hides a patient's own counters, too loose fires a request that
+   * answers 403 and shows a guardian an error box.
+   */
+  async function ask(payload: Record<string, unknown>) {
+    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, ...payload })
+    return hasPatientProfile((await fetchCurrentUser())!)
+  }
+
+  it('is true for an adult patient and for a minor', async () => {
+    expect(await ask({ is_patient: true, is_child: false })).toBe(true)
+    expect(await ask({ is_patient: true, is_child: true })).toBe(true)
+  })
+
+  it('is false for an account with no patient row, whatever its role says', async () => {
+    expect(await ask({ is_patient: false, is_child: null, role: 'rodzic' })).toBe(false)
+  })
+
+  it('is true for a patient row that never answered the minor question', async () => {
+    /** THE CASE THIS FIELD EXISTS FOR. `is_child` is nullable and mock_data.sql
+     *  predates it being set, so such a row is indistinguishable from a
+     *  guardian's absent one — and the backend serves it (see
+     *  test_guardian_gate.UngatedAccountTests). Inferring from `is_child` would
+     *  hide a patient's own counters from them. */
+    expect(await ask({ is_patient: true, is_child: null })).toBe(true)
+  })
+
+  it('does not key on the role, which is a nullable text column', async () => {
+    /** `user_role` is looked up by name from data mock_data.sql seeds, so a
+     *  patient with a missing role row is possible — and still a patient. */
+    expect(await ask({ is_patient: true, is_child: false, role: null })).toBe(true)
+  })
+
+  it('falls back to is_child for a backend that does not send the field yet', async () => {
+    /** The deployed backend may be a release behind. An adult patient still
+     *  reads as one; only the `is_child` NULL row is misread, which is the
+     *  narrower of the two mistakes and goes away on the next deploy. */
+    const { is_patient, ...older } = USER_PAYLOAD
+    void is_patient
+    mockedRequest.mockResolvedValueOnce(older)
+    expect(hasPatientProfile((await fetchCurrentUser())!)).toBe(true)
+
+    mockedRequest.mockResolvedValueOnce({ ...older, is_child: null })
+    expect(hasPatientProfile((await fetchCurrentUser())!)).toBe(false)
   })
 })
