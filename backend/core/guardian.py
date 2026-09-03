@@ -71,6 +71,28 @@ def pending_invitations(guardian):
     return [serialize_invitation(link) for link in links]
 
 
+def accepted_children(guardian):
+    """The children this guardian has actually vouched for, with their `user` row.
+
+    `accepted_at__isnull=False` is load-bearing rather than tidy: a pending
+    invitation is a request nobody has answered, and letting one through here
+    would hand an adult a report on a child's account before that child's
+    guardian — possibly a different adult — had agreed to anything. The gate on
+    the child's own side reads the same column, so the two cannot disagree about
+    what "linked" means.
+
+    Ordered like `pending_invitations`, and for the same reason: `parent_child`
+    has no created_at, so the child's own name is what keeps the list stable
+    between requests.
+    """
+    return list(
+        ParentChild.objects
+        .filter(parent=guardian, accepted_at__isnull=False)
+        .select_related('child')
+        .order_by('child__name', 'child__surname', 'child__email')
+    )
+
+
 def accept_invitation(guardian, invitation_id):
     """Accept one invitation. False when this guardian has no such invitation.
 

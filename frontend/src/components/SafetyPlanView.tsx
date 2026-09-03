@@ -30,9 +30,13 @@ interface SafetyPlanViewProps {
   plan: SafetyPlan
   /**
    * The care relationship, from the same source the profile's "OPIEKA" card
-   * reads (`src/data/profile.ts`). Passed in rather than imported here so the
-   * page stays the one place that says where this screen's data comes from —
-   * which is what makes swapping in a backend an import change.
+   * reads — `GET /api/account/profile/`, via `useAccountProfile`. Passed in
+   * rather than fetched here so the page stays the one place that says where
+   * this screen's data comes from.
+   *
+   * Null while it loads, for an account with no `patient` row, and for a patient
+   * with nobody assigned yet. All three render the same way: no "Kontakt do
+   * terapeuty" section, rather than a heading with a blank under it.
    */
   care: CareDetails | null
 }

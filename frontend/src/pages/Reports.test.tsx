@@ -306,3 +306,28 @@ describe('Reports — pagination', () => {
     expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
   })
 })
+
+describe('Reports — the two chips on a row', () => {
+  it('names the strongest emotions and labels them with the intensity', async () => {
+    /** The row surfaces the top of the same ranking the detail screen draws,
+     *  which is ordered by intensity — so the chip has to say the intensity.
+     *  It used to read "Lęk 6 dni", which explained a strongest-first row with
+     *  a frequency. */
+    mockedFetch.mockResolvedValue([
+      reportFixture({
+        emotions: [
+          { emotion: 'Spokój', days: 6, avgIntensity: 6.3 },
+          { emotion: 'Radość', days: 4, avgIntensity: 6.25 },
+          { emotion: 'Smutek', days: 5, avgIntensity: 0.8 },
+        ],
+      }),
+    ])
+
+    renderWithProviders(<Reports />)
+
+    expect(await screen.findByText('Spokój 6,3/10')).toBeInTheDocument()
+    expect(screen.getByText('Radość 6,3/10')).toBeInTheDocument()
+    // Only two, so the row stays a summary rather than a second ranking.
+    expect(screen.queryByText(/Smutek/)).toBeNull()
+  })
+})

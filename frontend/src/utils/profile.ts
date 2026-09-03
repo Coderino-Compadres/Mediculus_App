@@ -4,8 +4,6 @@
  * utils/roles.ts exist).
  */
 
-import { fromIsoDate } from './days'
-
 /**
  * The initials for the avatar circle.
  *
@@ -37,9 +35,22 @@ export function fullName(firstName: string | null, lastName: string | null): str
   return name || null
 }
 
-/** '14 lipca 2026' — a consent date needs its year; it can be years old. */
-export function consentDateLabel(iso: string): string {
-  return fromIsoDate(iso).toLocaleDateString('pl-PL', {
+/**
+ * '14 lipca 2026' — a consent date needs its year; it can be years old.
+ *
+ * Takes the full instant the column stores (`2026-07-14T09:31:02Z`), not a
+ * 'YYYY-MM-DD' string, and renders the calendar day it falls on in the reader's
+ * own zone. The time is deliberately not shown: it is kept because RODO art.
+ * 7(1) asks us to be able to prove *when*, and a date is what a person reading
+ * their own profile needs.
+ *
+ * Returns null for a value that is not a date at all, so a malformed column
+ * shows the consent without a date rather than the words "Invalid Date".
+ */
+export function consentDateLabel(iso: string): string | null {
+  const moment = new Date(iso)
+  if (Number.isNaN(moment.getTime())) return null
+  return moment.toLocaleDateString('pl-PL', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

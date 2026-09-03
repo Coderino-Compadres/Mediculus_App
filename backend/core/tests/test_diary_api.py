@@ -49,6 +49,8 @@ class DiaryEntryTestCase(TestCase):
         user_role = UserRole.objects.get_or_create(name=role)[0]
         user = User.objects.create(
             user_role=user_role, email=email, password_hash=make_password('TajneHaslo123'),
+            data_consent_at=timezone.now(),
+            services_consent_at=timezone.now(),
         )
         return Patient.objects.create(user=user, is_child=False)
 
@@ -80,6 +82,8 @@ class AccessTests(DiaryEntryTestCase):
         guardian = User.objects.create(
             user_role=UserRole.objects.get_or_create(name='rodzic')[0],
             email='rodzic@example.com',
+            data_consent_at=timezone.now(),
+            services_consent_at=timezone.now(),
         )
         self.sign_in(guardian)
 

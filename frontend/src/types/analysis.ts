@@ -115,11 +115,11 @@ export interface AnalysisHeatmap {
  * Which stretch "Częstotliwość wpisów" covers, and how it cuts that stretch up.
  *
  * The section has a period of its own rather than following the rest of the
- * screen: the other charts answer "what is going on with me lately" and are
+ * screen: everything else answers "what is going on with me lately" and is
  * deliberately capped at ANALYSIS_WINDOW_DAYS, while this one answers "am I
- * keeping this up", which is a question about the long run. The line chart is
- * already a third window (TREND_CHART_MAX_DAYS), so a section stating its own
- * range is the existing convention here, not a new one.
+ * keeping this up", which is a question about the long run. It is now the *only*
+ * section with a range of its own — the line chart used to be a third window and
+ * follows the screen's since — which is why its subtitle names the bucket.
  *
  * The bucket grows with the range on purpose, which is what keeps the bar count
  * near a dozen at every setting -- a year cut into weeks would be 52 bars, and
@@ -203,7 +203,9 @@ export interface AnalysisInsight {
 
 export interface Analysis {
   window: AnalysisWindow
-  /** At most TREND_CHART_MAX_DAYS days — a shorter window than the rest of the screen. */
+  /** One point per day of `window`, oldest first — the same stretch as the rest
+   *  of the screen. Days with no entry are present, as points with nothing
+   *  rated: the x-axis is a calendar. */
   trend: TrendPoint[]
   summary: AnalysisSummary
   heatmap: AnalysisHeatmap

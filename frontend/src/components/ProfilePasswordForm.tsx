@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react'
 import FormField from './FormField'
+import { PASSWORD_FIELDS, changePassword } from '../api/account'
 import { useAuthForm, FORM_ERROR } from '../hooks/useAuthForm'
 import { validateConfirmPassword, validatePassword } from '../utils/validation'
 
@@ -24,13 +25,16 @@ function validateCurrentPassword(value: string): string | null {
  * them. Whether the current password is right is the server's judgement anyway;
  * this field only has to be filled in.
  *
- * TODO(backend): nothing is sent. When the endpoint exists it must verify the
- * current password server-side — the field below proves nothing on its own, it
- * is there so the user is not asked to re-authenticate on a separate screen. The
- * new password also has to go through Django's validators, which can reject
- * things this form accepts (a common password of 12 characters); that verdict
- * lands on the right input on its own, because `useAuthForm` already places
- * server field errors.
+ * The form posts to `POST /api/account/password/`, which does the two things
+ * this screen cannot: it verifies the current password (the field below proves
+ * nothing on its own — it is here so the user is not sent to a separate
+ * re-authentication screen) and it runs the new one through Django's validators,
+ * which reject things these checks accept, such as a common password of twelve
+ * characters or one that resembles the account's own e-mail. Those verdicts land
+ * on the right input by themselves: `useAuthForm` places server field errors,
+ * and `PASSWORD_FIELDS` is the name mapping that gets them there.
+ *
+ * The session survives on purpose — see `PasswordChangeSerializer.save`.
  */
 function ProfilePasswordForm() {
   const { values, errors, formError, status, submitting, handleChange, handleSubmit } = useAuthForm({
@@ -59,7 +63,8 @@ function ProfilePasswordForm() {
               : null,
         }
       },
-      submit: async () => {},
+      submit: (currentValues) => changePassword(currentValues),
+      fields: PASSWORD_FIELDS,
     })
   }
 
@@ -73,7 +78,7 @@ function ProfilePasswordForm() {
 
       {status === 'success' && (
         <p className="auth-success" role="status">
-          Hasło wygląda poprawnie. Zmiana zostanie zapisana po podłączeniu backendu.
+          Hasło zostało zmienione. Następnym razem zaloguj się nowym hasłem.
         </p>
       )}
 

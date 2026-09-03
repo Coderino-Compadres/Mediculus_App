@@ -18,6 +18,9 @@
  * burden of proof on us and "yes" without a date proves nothing.
  */
 
+import type { AuthUser } from '../api/auth'
+import type { ConsentGrant } from '../types/profile'
+
 export const CONSENT_IDS = {
   data: 'dataConsent',
   services: 'servicesConsent',
@@ -66,6 +69,34 @@ export const CONSENTS: ConsentDefinition[] = [
     withdrawalEffect: 'undecided',
   },
 ]
+
+/**
+ * Which consents this account has actually granted, and when.
+ *
+ * Read off the session user rather than fetched: `data_consent_at` and
+ * `services_consent_at` are columns on the same `user` row /api/auth/me/ already
+ * answers with. Until this existed the profile showed everybody the same
+ * hardcoded 14 July 2026 — which of all the placeholder values in the app was
+ * the worst one to invent, since a consent record is the evidence art. 7(1) puts
+ * the burden of producing on us.
+ *
+ * A consent that was never granted gets **no entry**, which is what lets the
+ * screen render "Nieudzielona" as a fact rather than infer it. That is a real
+ * state: rows seeded by mock_data.sql have neither column set, and registration
+ * is the only thing that writes them.
+ *
+ * Declaration order follows CONSENTS, so both screens list them the same way.
+ */
+export function consentGrants(user: AuthUser): ConsentGrant[] {
+  const granted: Record<ConsentId, string | null> = {
+    [CONSENT_IDS.data]: user.dataConsentAt,
+    [CONSENT_IDS.services]: user.servicesConsentAt,
+  }
+  return CONSENTS.flatMap((consent) => {
+    const grantedAt = granted[consent.id]
+    return grantedAt ? [{ id: consent.id, grantedAt }] : []
+  })
+}
 
 export function consentById(id: ConsentId): ConsentDefinition {
   const found = CONSENTS.find((consent) => consent.id === id)

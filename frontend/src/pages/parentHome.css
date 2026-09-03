@@ -1,0 +1,72 @@
+/* The guardian's landing screen. The page frame, the greeting and the logo come
+   from moduleSelect.css — this file is only what is different: the pinned menu
+   and the placeholder card. */
+
+.parent-page {
+  /* The anchor for .parent-menu below. */
+  position: relative;
+}
+
+.parent-menu {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+/* Deliberately reads as unfinished. A dashed edge and no shadow, so that a card
+   with nothing behind it does not sit on the page looking like a feature — the
+   patient screens use solid white cards with a soft shadow for content that is
+   real, and this must not be mistaken for one. */
+.parent-placeholder {
+  width: 100%;
+  max-width: 720px;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 40px 32px;
+  border: 2px dashed rgba(var(--shadow-tint), 0.25);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.55);
+  text-align: center;
+}
+
+.parent-placeholder-badge {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-graphite-muted);
+  margin: 0 0 12px;
+}
+
+.parent-placeholder h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 24px;
+  color: var(--color-graphite);
+  margin: 0 0 12px;
+}
+
+.parent-placeholder p {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  margin: 0 auto;
+  max-width: 52ch;
+}
+
+.parent-placeholder-note {
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+@media (max-width: 600px) {
+  .parent-placeholder {
+    padding: 32px 20px;
+  }
+
+  .parent-menu {
+    top: 16px;
+    right: 16px;
+  }
+}

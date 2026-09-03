@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   ANALYSIS_WINDOW_DAYS,
   HEATMAP_MIN_DAYS,
-  TREND_CHART_MAX_DAYS,
   WEEKDAYS,
   buildAnalysis,
   buildFrequency,
@@ -117,12 +116,31 @@ describe('buildAnalysis — the rolling window', () => {
 })
 
 describe('buildAnalysis — the trend', () => {
-  it('never covers more days than the chart cap, even on a full window', () => {
-    expect(analysisOf(consecutive(ANALYSIS_WINDOW_DAYS)).trend).toHaveLength(TREND_CHART_MAX_DAYS)
+  it('covers the whole window, the same stretch as the rest of the screen', () => {
+    /** It used to stop at fourteen days while the caption, the cards and the
+     *  bar charts covered thirty — three periods on one screen, and a reader
+     *  seeing "20 dni" under a chart of 14 points had nothing to reconcile them
+     *  with. The fourteen-day cap was a rendering limit; it is answered in
+     *  TrendChart now, by thinning the labels. */
+    expect(analysisOf(consecutive(ANALYSIS_WINDOW_DAYS)).trend)
+      .toHaveLength(ANALYSIS_WINDOW_DAYS)
   })
 
-  it('shrinks to the history when there is less of it than the cap', () => {
+  it('shrinks to the history when the account is younger than the window', () => {
     expect(analysisOf([entry(4), entry(0)]).trend).toHaveLength(5)
+  })
+
+  it('still holds a day with no entry, so the x-axis stays a calendar', () => {
+    /** Thirty points means more gaps, not fewer: an unwritten day is a point
+     *  with nothing rated rather than one left out. */
+    // The local `entry` rates nothing by default, so the mood is passed in —
+    // otherwise this would assert that null points are null.
+    const analysis = analysisOf([entry(29, { mood: 'bad' }), entry(0, { mood: 'good' })])
+
+    expect(analysis.trend).toHaveLength(30)
+    expect(analysis.trend.filter((point) => point.mood !== null)).toHaveLength(2)
+    expect(analysis.trend[0].date).toBe(isoDaysAgo(29))
+    expect(analysis.trend.at(-1)?.date).toBe(isoDaysAgo(0))
   })
 
   it('keeps a day with no entry as a gap rather than closing it', () => {

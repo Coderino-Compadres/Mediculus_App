@@ -37,16 +37,27 @@ beforeEach(() => {
 })
 
 describe('ReportDetail', () => {
-  it('shows the week it covers and the two header actions, and nothing that shares it', async () => {
+  it('shows the week it covers and its one action, and nothing that shares it', async () => {
     mockedFetch.mockResolvedValue(reportFixture())
     renderWithProviders(<ReportDetail />)
 
     expect(await screen.findByRole('heading', { name: 'Raport' })).toBeInTheDocument()
     expect(screen.getAllByText('10 – 16 sierpnia 2026').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Pobierz PDF' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Pełna analiza' })).toHaveAttribute('href', ROUTES.analysis)
     // Sharing is the specialist's side of the model, not a button here.
     expect(screen.queryByRole('button', { name: /wyślij|udostępnij/i })).toBeNull()
+  })
+
+  it('no longer offers "Pełna analiza" — removed on request', async () => {
+    /** The analysis is reachable from the header menu, like every other screen.
+     *  Asserted rather than just deleted, so the link does not drift back in. */
+    mockedFetch.mockResolvedValue(reportFixture())
+    renderWithProviders(<ReportDetail />)
+
+    await screen.findByRole('heading', { name: 'Raport' })
+
+    expect(screen.queryByRole('link', { name: /pełna analiza/i })).toBeNull()
+    expect(document.querySelector(`a[href="${ROUTES.analysis}"]`)).toBeNull()
   })
 
   it('asks the server for the week in the route, not for the whole diary', async () => {
@@ -83,7 +94,7 @@ describe('ReportDetail', () => {
     mockedFetch.mockResolvedValue(reportFixture({ emotions: [{ emotion: 'Lęk', days: 3, avgIntensity: 6.5 }] }))
     const { container } = renderWithProviders(<ReportDetail />)
 
-    await screen.findByText('Najczęściej odczuwane emocje')
+    await screen.findByText('Najsilniej odczuwane emocje')
     const fills = container.querySelectorAll<HTMLElement>('.report-ranking-fill')
 
     expect(fills[0].style.backgroundColor).toBe('rgb(155, 133, 196)')
@@ -401,7 +412,7 @@ describe('ReportDetail — how strongly, next to how often', () => {
     }))
     renderWithProviders(<ReportDetail />)
 
-    await screen.findByText('Najczęściej odczuwane emocje')
+    await screen.findByText('Najsilniej odczuwane emocje')
     const row = screen.getByText('Smutek').closest('.report-ranking-row')
 
     expect(row).toHaveTextContent('2 dni')
@@ -463,7 +474,7 @@ describe('ReportDetail — how strongly, next to how often', () => {
     }))
     const { container } = renderWithProviders(<ReportDetail />)
 
-    await screen.findByText('Najczęściej odczuwane emocje')
+    await screen.findByText('Najsilniej odczuwane emocje')
 
     for (const emotion of all) {
       expect(screen.getByText(emotion)).toBeInTheDocument()
@@ -472,18 +483,64 @@ describe('ReportDetail — how strongly, next to how often', () => {
     expect(container.querySelectorAll('.report-ranking-average')).toHaveLength(all.length)
   })
 
-  it('the bar still measures how often, not how strongly', async () => {
-    // Otherwise a single very intense day would draw a longer bar than a
-    // feeling that ran all week, under a heading that says "najczęściej".
+  it('the bar measures how strongly, not how often', async () => {
+    /** THE REVERSAL. Four faint days of 'Smutek' used to draw a full-length bar
+     *  and one overwhelming day of 'Lęk' a quarter of one — the numbers were on
+     *  the rows the whole time, and the bars said the opposite. */
     mockedFetch.mockResolvedValue(reportFixture({
       emotions: [
-        { emotion: 'Smutek', days: 4, avgIntensity: 1 },
         { emotion: 'Lęk', days: 1, avgIntensity: 10 },
+        { emotion: 'Smutek', days: 4, avgIntensity: 1 },
       ],
     }))
     const { container } = renderWithProviders(<ReportDetail />)
 
-    await screen.findByText('Najczęściej odczuwane emocje')
+    await screen.findByText('Najsilniej odczuwane emocje')
+    const fills = container.querySelectorAll<HTMLElement>('.report-ranking-fill')
+
+    expect(fills[0].style.width).toBe('100%')
+    expect(fills[1].style.width).toBe('10%')
+  })
+
+  it('scales the emotion bars against the 0-10 rating scale, not against the top row', async () => {
+    /** A calm week has to look like one. Scaled against the longest row, the
+     *  strongest feeling fills the bar whether it averaged 9 or 1.5, and every
+     *  week would draw the same picture. */
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: [
+        { emotion: 'Spokój', days: 5, avgIntensity: 2 },
+        { emotion: 'Lęk', days: 2, avgIntensity: 1 },
+      ],
+    }))
+    const { container } = renderWithProviders(<ReportDetail />)
+
+    await screen.findByText('Najsilniej odczuwane emocje')
+    const fills = container.querySelectorAll<HTMLElement>('.report-ranking-fill')
+
+    expect(fills[0].style.width).toBe('20%')
+    expect(fills[1].style.width).toBe('10%')
+  })
+
+  it('leads the row with the number the bar draws, and keeps the other one', async () => {
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: [{ emotion: 'Smutek', days: 5, avgIntensity: 0.8 }],
+    }))
+    renderWithProviders(<ReportDetail />)
+
+    await screen.findByText('Najsilniej odczuwane emocje')
+    const row = screen.getByText('Smutek').closest('.report-ranking-row')
+
+    expect(row?.textContent).toMatch(/śr\. 0,8 \/ 10.*5 dni/)
+  })
+
+  it('still measures the triggers by their day count — a place has no intensity', async () => {
+    mockedFetch.mockResolvedValue(reportFixture({
+      emotions: [],
+      triggers: [{ trigger: 'Praca', days: 4 }, { trigger: 'Dom', days: 1 }],
+    }))
+    const { container } = renderWithProviders(<ReportDetail />)
+
+    await screen.findByText('Najczęstsze wyzwalacze')
     const fills = container.querySelectorAll<HTMLElement>('.report-ranking-fill')
 
     expect(fills[0].style.width).toBe('100%')

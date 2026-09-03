@@ -34,19 +34,6 @@ import type {
 export const ANALYSIS_WINDOW_DAYS = 30
 
 /**
- * The line chart is capped shorter than the rest of the screen, on purpose.
- *
- * Thirty points across a phone's width is a few pixels per day: the line stops
- * being readable as a shape and starts being a texture. Fourteen days still
- * shows the swing between one week and the next, which is what the chart is for.
- * The cards, the heat map and both bar charts keep the full window — they are
- * summaries, and more days only makes them steadier.
- *
- * This is a deliberate design decision, not an oversight or an off-by-window bug.
- */
-export const TREND_CHART_MAX_DAYS = 14
-
-/**
  * How many days must carry a "pora dnia" before the heat map is drawn at all.
  *
  * The grid is 7 × 4 cells. At a handful of days most of them are empty and the
@@ -313,7 +300,17 @@ function emotionIntensities(entry: JournalListEntry): Partial<Record<EmotionName
 }
 
 /**
- * One point per calendar day of the (shorter) trend window, oldest first.
+ * One point per calendar day of the window, oldest first — the same window
+ * every other section of the screen uses.
+ *
+ * It used to be capped at fourteen days while the caption, the cards and the
+ * bar charts covered thirty, which put three periods on one screen and left the
+ * reader to notice. The cap existed for a rendering reason and not a
+ * statistical one — thirty daily labels across a phone's width collide — so it
+ * was removed here and answered where the problem actually is: `TrendChart`
+ * thins the date ticks to fit and shrinks the dots when the days are close
+ * together. If ANALYSIS_WINDOW_DAYS is ever raised well past thirty, that is
+ * the code to look at before assuming the chart still reads.
  *
  * Days with no entry are present as points with nothing rated rather than left
  * out: the x-axis is a calendar, so dropping them would silently close the gap
@@ -324,10 +321,9 @@ function emotionIntensities(entry: JournalListEntry): Partial<Record<EmotionName
  * built for one series would make that a reload of the screen.
  */
 function buildTrend(byDate: Map<string, JournalListEntry>, today: Date, windowDays: number): TrendPoint[] {
-  const days = Math.min(TREND_CHART_MAX_DAYS, windowDays)
   const points: TrendPoint[] = []
 
-  for (let offset = days - 1; offset >= 0; offset -= 1) {
+  for (let offset = windowDays - 1; offset >= 0; offset -= 1) {
     const date = addDays(today, -offset)
     const iso = toIsoDate(date)
     const entry = byDate.get(iso)

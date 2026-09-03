@@ -6,9 +6,6 @@ is generated locally and only referenced from the other database later.
 """
 
 import datetime
-import unittest
-from unittest.mock import patch
-
 from unittest.mock import patch
 
 from django.conf import settings
@@ -43,6 +40,8 @@ def create_user(email='anna@example.com', password=VALID_PASSWORD, role='patient
     user_role = UserRole.objects.get_or_create(name=role)[0] if role else None
     return User.objects.create(
         user_role=user_role, email=email, password_hash=make_password(password),
+        data_consent_at=timezone.now(),
+        services_consent_at=timezone.now(),
     )
 
 
@@ -377,7 +376,10 @@ class LoginTests(AuthTestCase):
 
     def test_a_row_whose_password_hash_is_not_a_hash_fails_cleanly(self):
         """scripts/mock_data.sql seeds 'mock_hash_placeholder' — must not 500."""
-        User.objects.create(email='mock@example.com', password_hash='mock_hash_placeholder')
+        User.objects.create(email='mock@example.com', password_hash='mock_hash_placeholder',
+    data_consent_at=timezone.now(),
+    services_consent_at=timezone.now(),
+)
 
         response = self.client.post(
             reverse('core:login'),
@@ -1019,7 +1021,13 @@ class LoginAttemptsWarningTests(LoginAccountTestCase):
 
 
 class PasswordPolicyTests(AuthTestCase):
-    """AUTH_PASSWORD_VALIDATORS lists four validators; not all of them run."""
+    """AUTH_PASSWORD_VALIDATORS lists four validators, and all four run.
+
+    That was not always true: the similarity one was listed and dead, because
+    `validate_password(value)` was called without the user it compares against.
+    The two tests at the bottom are what notices if it goes back to sleep — the
+    only symptom is from outside, since nothing about the call looked wrong.
+    """
 
     def setUp(self):
         super().setUp()
@@ -1063,16 +1071,14 @@ class PasswordPolicyTests(AuthTestCase):
         self.assertIn('password', response.data)
         self.assertNotIn('password_confirm', response.data)
 
-    @unittest.expectedFailure
     def test_a_password_identical_to_the_email_is_refused(self):
-        """DOCUMENTS A KNOWN HOLE — remove the decorator once it is fixed.
+        """UserAttributeSimilarityValidator, which used to be listed and dead.
 
-        UserAttributeSimilarityValidator is listed in AUTH_PASSWORD_VALIDATORS
-        but never gets a user to compare against: `validate_password(value)` in
-        RegisterSerializer is called with one argument, so the validator has
-        nothing to look at and silently passes everything. It reads attributes
-        with getattr, so passing an object carrying email/name/surname is enough
-        to wake it up — it does not need a django.contrib.auth user.
+        It reads the attributes off whatever object it is handed, so an unsaved
+        core.User carrying email/name/surname is enough — it does not need a
+        django.contrib.auth user. The check runs from `validate()` rather than
+        from a `validate_password` method precisely so that those three values
+        are known by the time it runs.
         """
         password = REGISTRATION['email']
 
@@ -1083,11 +1089,19 @@ class PasswordPolicyTests(AuthTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+        self.assertIn('password', response.data)
 
-    @unittest.expectedFailure
-    def test_a_password_identical_to_the_surname_is_refused(self):
-        """Same hole as above, from the angle a real person would hit it."""
-        password = f"{REGISTRATION['surname']}{REGISTRATION['surname']}"
+    def test_a_password_built_from_the_surname_is_refused(self):
+        """The same validator, from the angle a real person walks into it.
+
+        'Testowy2024' is a surname and a year — long enough for the length
+        validator, not numeric, not on the common list, so this passes every
+        other check and is refused only for resembling the name on the account.
+        Which also makes it the test that fails if `user_attributes` in
+        AUTH_PASSWORD_VALIDATORS stops naming `surname`: Django's default list
+        has `last_name`, a field core.User does not have.
+        """
+        password = f"{REGISTRATION['surname']}2024"
 
         response = self.client.post(
             reverse('core:register'),
@@ -1096,3 +1110,4 @@ class PasswordPolicyTests(AuthTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+        self.assertIn('password', response.data)

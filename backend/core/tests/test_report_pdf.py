@@ -10,6 +10,7 @@ from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.test import SimpleTestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from reportlab.platypus import Paragraph, Table
 
@@ -284,6 +285,8 @@ class PdfEndpointTests(ReportTestCase):
         guardian = User.objects.create(
             user_role=UserRole.objects.get_or_create(name='rodzic')[0],
             email='rodzic@example.com', password_hash=make_password('TajneHaslo123'),
+            data_consent_at=timezone.now(),
+            services_consent_at=timezone.now(),
         )
         self.sign_in(guardian)
 
@@ -396,7 +399,7 @@ class RendererEdgeTests(SimpleTestCase):
     def test_every_section_heading_is_present(self):
         lines = texts(build_story(sample_report(), EMAIL))
 
-        for heading in ('Podsumowanie', 'Najczęściej odczuwane emocje',
+        for heading in ('Podsumowanie', 'Najsilniej odczuwane emocje',
                         'Najczęstsze wyzwalacze', 'Dni z zachowaniem ryzykownym'):
             self.assertIn(heading, lines)
 

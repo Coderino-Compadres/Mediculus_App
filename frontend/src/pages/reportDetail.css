@@ -60,15 +60,24 @@
   margin: 6px 0 0;
 }
 
+/* One action now, centred rather than stretched across the card. The row keeps
+   its flex/gap so a second action could come back without a layout rewrite. */
 .report-hero-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
   margin-top: 18px;
 }
 
 .report-hero-button {
-  flex: 1 1 140px;
+  /* Sized to its label, not stretched: a lone button filling the whole card
+     reads as a banner rather than as something to press. The min-width keeps it
+     comfortably tappable while "Przygotowywanie…" is showing, which is the
+     longest the label ever gets — without it the button would jump wider
+     mid-download. */
+  flex: 0 1 auto;
+  min-width: 180px;
   text-align: center;
   font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);
@@ -80,11 +89,6 @@
   color: var(--color-sage-hover);
   text-decoration: none;
   cursor: pointer;
-}
-
-.report-hero-button-outline {
-  background: transparent;
-  color: #fff;
 }
 
 .report-hero-button:hover {

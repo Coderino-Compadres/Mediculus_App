@@ -1,6 +1,6 @@
-import { CONSENT_GRANTS } from '../data/profile'
-import { CONSENTS, type ConsentDefinition } from '../utils/consents'
+import { CONSENTS, consentGrants, type ConsentDefinition } from '../utils/consents'
 import { consentDateLabel } from '../utils/profile'
+import type { AuthUser } from '../api/auth'
 import type { AccountClosureReason } from '../types/profile'
 
 /**
@@ -18,6 +18,13 @@ import type { AccountClosureReason } from '../types/profile'
  * Which is why the section is here on the screen, in full, rather than behind a
  * TODO. What is behind a TODO is only the *execution* — see api/account.ts.
  *
+ * The dates are real. They come off the session user (`consentGrants`), which
+ * reads `user.data_consent_at` / `services_consent_at` — the columns migration
+ * 0004 added and registration writes. They used to be a constant reading
+ * 14 July 2026 for everybody, which of all the placeholders in the app was the
+ * one that mattered: art. 7(1) makes the consent record evidence, and evidence
+ * that is the same for every account proves nothing about any of them.
+ *
  * The data export named in the same requirements section is deliberately NOT
  * here: it was removed on request. It stays an outstanding obligation (RODO
  * art. 15 access, art. 20 portability) rather than a dropped feature, so when it
@@ -34,12 +41,17 @@ import type { AccountClosureReason } from '../types/profile'
  */
 
 function ProfileDataRights({
+  user,
   onOpenClosure,
   onOpenServicesWithdrawal,
 }: {
+  /** The signed-in account, which is where the consent register lives. */
+  user: AuthUser
   onOpenClosure: (reason: AccountClosureReason) => void
   onOpenServicesWithdrawal: () => void
 }) {
+  const grants = consentGrants(user)
+
   /**
    * Which screen a single consent's withdrawal leads to.
    *
@@ -79,17 +91,18 @@ function ProfileDataRights({
 
       <div className="profile-consent-list">
         {CONSENTS.map((consent) => {
-          const grant = CONSENT_GRANTS.find((entry) => entry.id === consent.id)
+          const grant = grants.find((entry) => entry.id === consent.id)
+          const grantedOn = grant && consentDateLabel(grant.grantedAt)
           return (
             <div key={consent.id} className="profile-consent">
               <div className="profile-consent-head">
                 <span className="profile-consent-name">{consent.shortLabel}</span>
                 {/* Read off the grant record rather than written in: a consent
                     register whose status can only ever say "granted" is the one
-                    thing a consent register must not be. The moment a withdrawal
-                    removes the record — or the day the two dates come from
-                    `user.*_consent_at` instead of a constant — this says so on
-                    its own. */}
+                    thing a consent register must not be. The record now *is*
+                    `user.*_consent_at`, so an account that never granted one —
+                    every row mock_data.sql seeds — says "Nieudzielona" on its
+                    own, and so will one whose withdrawal clears the column. */}
                 <span
                   className={
                     grant
@@ -104,9 +117,10 @@ function ProfileDataRights({
                   registration form asked. A paraphrase here would mean the user
                   is withdrawing something they never read. */}
               <p className="profile-consent-quote">{consent.label}</p>
-              {grant && (
-                <p className="profile-consent-date">Udzielona {consentDateLabel(grant.grantedAt)}</p>
-              )}
+              {/* The status above already says "Udzielona"; this line adds the
+                  date, so a column holding something unparseable drops the line
+                  rather than printing "Invalid Date" next to a legal claim. */}
+              {grantedOn && <p className="profile-consent-date">Udzielona {grantedOn}</p>}
               {/* Nothing to withdraw when it was never given. */}
               {grant && (
                 <button

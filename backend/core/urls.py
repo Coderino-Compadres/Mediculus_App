@@ -17,6 +17,7 @@ urlpatterns = [
         'guardian/invitations/',
         views.GuardianInvitationsView.as_view(), name='guardian-invitations',
     ),
+    path('guardian/children/', views.GuardianChildrenView.as_view(), name='guardian-children'),
     path(
         'guardian/invitations/<uuid:id_parent_child>/accept/',
         views.GuardianInvitationAcceptView.as_view(), name='guardian-invitation-accept',
@@ -24,6 +25,16 @@ urlpatterns = [
     path(
         'guardian/invitations/<uuid:id_parent_child>/reject/',
         views.GuardianInvitationRejectView.as_view(), name='guardian-invitation-reject',
+    ),
+    path('account/profile/', views.AccountProfileView.as_view(), name='account-profile'),
+    path('account/password/', views.PasswordChangeView.as_view(), name='account-password'),
+    path(
+        'account/consents/withdraw/',
+        views.ConsentWithdrawView.as_view(), name='account-consents-withdraw',
+    ),
+    path(
+        'account/consents/restore/',
+        views.ConsentRestoreView.as_view(), name='account-consents-restore',
     ),
     path('dashboard/home/', views.HomeDashboardView.as_view(), name='home-dashboard'),
     path('analysis/frequency/', views.FrequencyView.as_view(), name='analysis-frequency'),

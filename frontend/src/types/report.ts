@@ -51,7 +51,7 @@ export interface ReportMetric {
   delta: Delta
 }
 
-/** One row of the "Najczęściej odczuwane emocje" ranking. */
+/** One row of the "Najsilniej odczuwane emocje" ranking, strongest first. */
 export interface EmotionSummary {
   emotion: EmotionName
   /** Days in the week on which the entry rated this emotion. */

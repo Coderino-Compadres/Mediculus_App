@@ -168,21 +168,26 @@ def average_intensity(value):
 
 
 def _ranking(rows, styles, empty_message):
-    """A ranking as 'name … N dni … śr. X / 10' lines.
+    """A ranking as 'name … śr. X / 10 … N dni' lines.
 
     Bars would need a colour per emotion, and colour here is what the module
-    docstring says it will not do. The third column is empty for triggers: a
-    place has no intensity, and leaving the column in place keeps the two
-    rankings aligned down the page.
+    docstring says it will not do — which also means the ordering is the only
+    thing carrying the ranking on paper, so it has to be the same ordering the
+    screen draws (by intensity for emotions; see reports._rank_emotions).
+
+    The intensity column comes before the day count, matching which of the two
+    the ranking is now sorted on. It is empty for triggers: a place has no
+    intensity, and leaving the column in place keeps the two rankings aligned
+    down the page.
     """
     if not rows:
         return Paragraph(empty_message, styles['muted'])
     table = Table(
         [[Paragraph(text(label), styles['body']),
-          Paragraph(f'{days} {plural_days(days)}', styles['body']),
-          Paragraph('' if average is None else average_intensity(average), styles['muted'])]
+          Paragraph('' if average is None else average_intensity(average), styles['body']),
+          Paragraph(f'{days} {plural_days(days)}', styles['muted'])]
          for label, days, average in rows],
-        colWidths=[100 * mm, 30 * mm, 40 * mm],
+        colWidths=[100 * mm, 40 * mm, 30 * mm],
     )
     table.setStyle(TableStyle([
         ('LINEBELOW', (0, 0), (-1, -2), 0.5, RULE),
@@ -285,7 +290,7 @@ def build_story(report, patient_email, styles=None):
         _metric_cards(report, styles),
         _section('Podsumowanie', Paragraph(text(report['summary']), styles['body']), styles),
         _section(
-            'Najczęściej odczuwane emocje',
+            'Najsilniej odczuwane emocje',
             _ranking(
                 [(row['emotion'], row['days'], row['avg_intensity'])
                  for row in report['emotions']],

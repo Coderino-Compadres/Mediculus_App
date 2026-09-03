@@ -1,0 +1,114 @@
+/* The screen a locked account is held on. Deliberately plain: this is not an
+   error and not a warning, it is a decision the person made and can unmake. */
+
+.consents-page {
+  flex-grow: 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 40px 20px 56px;
+  background: var(--color-lavender);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.consents-card {
+  width: 100%;
+  max-width: 620px;
+  background: #fff;
+  border-radius: 24px;
+  padding: 32px 28px;
+  box-shadow: var(--shadow-card);
+}
+
+.consents-card h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0 0 12px;
+}
+
+.consents-lead,
+.consents-note {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  margin: 0 0 12px;
+}
+
+.consents-note {
+  font-size: 14px;
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(var(--shadow-tint), 0.1);
+}
+
+.consents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 24px 0 0;
+}
+
+.consent-item {
+  border: 1px solid rgba(var(--shadow-tint), 0.12);
+  border-radius: 16px;
+  padding: 16px 18px;
+}
+
+.consent-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.consent-item-name {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+}
+
+.consent-item-status {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+  white-space: nowrap;
+}
+
+.consent-item-status-missing {
+  color: var(--color-error);
+}
+
+.consent-item-quote {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-graphite-muted);
+  margin: 0 0 12px;
+}
+
+.consents-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.consents-actions .auth-submit {
+  flex: 1 1 200px;
+}
+
+.consents-error {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin: 16px 0 0;
+}

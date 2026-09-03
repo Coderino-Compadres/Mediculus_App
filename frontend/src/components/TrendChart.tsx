@@ -140,23 +140,55 @@ const PLOT_HEIGHT = VIEW_HEIGHT - PADDING.top - PADDING.bottom
  *  line, never the grid. */
 const AXIS_TICKS = [0, LEVEL_SCALE_MAX / 2, LEVEL_SCALE_MAX]
 
-/** Beyond this many points every second date label is dropped; they overlap
- *  otherwise. The parity is counted from the *end* — see `showsTick`. */
-const DENSE_LABEL_THRESHOLD = 8
+/**
+ * The closest two date labels may sit, centre to centre, in viewBox units.
+ *
+ * A 'dd.mm' tick is five glyphs at `font-size: 9px` (analysis.css), so roughly
+ * 26 units wide; this leaves a few units of air between neighbours. It is the
+ * constraint that used to be expressed as "cap the chart at 14 days" — the line
+ * itself is perfectly readable at thirty points, it was the labels underneath
+ * that collided, so the limit belongs here rather than on how much history the
+ * chart is allowed to show.
+ */
+const MIN_LABEL_SPACING = 32
+
+/**
+ * Print every Nth date, chosen so the labels do not overlap.
+ *
+ * Derived from the spacing rather than from a point-count threshold, so it
+ * holds at any window length: 30 days label every third or fourth day, 14 label
+ * every other, and anything up to about nine labels every day.
+ */
+function tickStep(count: number): number {
+  if (count <= 1) return 1
+  const gap = PLOT_WIDTH / (count - 1)
+  return Math.max(1, Math.ceil(MIN_LABEL_SPACING / gap))
+}
 
 /**
  * Whether this day's date is printed under the chart.
  *
  * Counted backwards from the last point, so today is always labelled and the
  * thinning never puts two ticks side by side. Counting forwards and then
- * exempting the last point — the obvious way to keep today — collides at every
- * even point count, which includes the 14 the chart shows by default: indices
- * 12 and 13 would both render, about 25 viewBox units apart, under labels about
- * that wide.
+ * exempting the last point — the obvious way to keep today — collides whenever
+ * the count is not a multiple of the step: the last two ticks would render a
+ * fraction of a label apart.
  */
 function showsTick(index: number, count: number): boolean {
-  if (count <= DENSE_LABEL_THRESHOLD) return true
-  return (count - 1 - index) % 2 === 0
+  return (count - 1 - index) % tickStep(count) === 0
+}
+
+/**
+ * Dots shrink when the days are packed close.
+ *
+ * At thirty points the gap is about 10 units and a radius-3 dot with its 1.5
+ * white stroke is 9 across — the markers would read as a bead chain rather than
+ * as points on a line. Below the threshold nothing changes, so the fourteen-day
+ * view of a young account looks exactly as it did.
+ */
+function dotRadius(count: number): number {
+  if (count <= 1) return 3
+  return PLOT_WIDTH / (count - 1) < 14 ? 2 : 3
 }
 
 function xFor(index: number, count: number): number {
@@ -254,11 +286,11 @@ function TrendChart({ points, days }: { points: TrendPoint[]; days: number }) {
       </div>
 
       {!hasData ? (
-        /* "z ostatnich N dni", never "z tego okresu": the chart is capped at
-           TREND_CHART_MAX_DAYS while the caption above it and the summary cards
-           cover the full 30-day window. A patient whose entries all sit 15-30
-           days back would otherwise read "żaden wpis z tego okresu" directly
-           between a caption counting nine of them and a card averaging them. */
+        /* "z ostatnich N dni", never "z tego okresu". The chart now covers the
+           same window as the caption above it, so the two can no longer
+           disagree about the period — but the sentence still names it, because
+           this empty state is about one *series*: the window may hold plenty of
+           entries and simply none that rated the emotion the picker is on. */
         <p className="analysis-empty">
           {days === 1
             ? `Dzisiejszy wpis nie ma oceny „${series.label.toLowerCase()}”.`
@@ -312,7 +344,7 @@ function TrendChart({ points, days }: { points: TrendPoint[]; days: number }) {
                   className="analysis-line-dot"
                   cx={dot.x}
                   cy={dot.y}
-                  r={3}
+                  r={dotRadius(points.length)}
                   fill={series.color}
                 >
                   <title>{`${points[dot.index].dayLabel} — ${series.label.toLowerCase()} ${formatValue(dot.value)}`}</title>

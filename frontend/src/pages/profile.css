@@ -173,6 +173,36 @@
   text-align: right;
 }
 
+/* Nobody assigned yet — a sentence, not an empty card. */
+.profile-care-empty {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+/* Loading and failure for the half of this screen that comes over the network.
+   Same shape as .journals-status, which is the pattern the other list screens
+   use — one place on the page, in the flow, rather than a floating spinner. */
+.profile-status {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite-muted);
+  text-align: center;
+  padding: 20px 16px;
+}
+
+.profile-status p {
+  margin: 0;
+}
+
+.profile-status-error {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-radius: 14px;
+}
+
 /* Consents */
 
 .profile-consent-list {

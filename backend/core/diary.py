@@ -247,6 +247,40 @@ def load_history(id_medical):
     return [serialize_entry(diary) for diary in diaries]
 
 
+def count_entries(id_medical):
+    """How many entries this patient has written, all time.
+
+    Counts rows, which is exactly what `load_history` lists, so the profile's
+    "wpisów" counter and the archive can never disagree about how much has been
+    written. One entry per calendar day is the product rule and nothing in the
+    schema enforces it, so a day holding two rows counts as two here — the same
+    two the archive shows.
+
+    Deliberately not capped at MAX_HISTORY_ENTRIES: that cap bounds the size of a
+    *list*, and a COUNT(*) has no such problem. Past it the counter would be the
+    true total next to a list missing its oldest rows, which is the point at
+    which the archive needs real pagination rather than a bigger number.
+    """
+    return Diary.objects.filter(id_medical=id_medical).count()
+
+
+def last_entry_date(id_medical):
+    """The calendar day of the most recent entry, or None for an empty diary.
+
+    A date, never the entry: this is what the guardian's summary reports, and
+    "kiedy ostatnio" is the whole of the answer it is allowed to give. Read in
+    `settings.TIME_ZONE` like every other day-shaped question here, so it agrees
+    with the streak rather than being a day out for a late-evening entry.
+    """
+    latest = (
+        Diary.objects.filter(id_medical=id_medical)
+        .order_by('-created_at')
+        .values_list('created_at', flat=True)
+        .first()
+    )
+    return None if latest is None else local_date(latest)
+
+
 def load_entry(id_medical, id_diary):
     """One entry by id, or None when it is not this patient's.
 

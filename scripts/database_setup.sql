@@ -45,6 +45,13 @@ CREATE TABLE IF NOT EXISTS "user" (
     -- than booleans because art. 7(1) puts the burden of proof on us.
     data_consent_at TIMESTAMPTZ,
     services_consent_at TIMESTAMPTZ,
+    -- And when each was withdrawn, if it was. Not a reset of the column above:
+    -- art. 7(3) makes withdrawal a right, so it is its own fact rather than the
+    -- erasure of the fact that consent was given. A consent counts as active
+    -- when granted and not withdrawn since -- backend/core/consents.py is the
+    -- one place that comparison is written.
+    data_consent_withdrawn_at TIMESTAMPTZ,
+    services_consent_withdrawn_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
@@ -109,6 +116,12 @@ CREATE TABLE IF NOT EXISTS parent_child (
 ALTER TABLE "user"
     ADD COLUMN IF NOT EXISTS data_consent_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS services_consent_at TIMESTAMPTZ;
+
+-- The withdrawal side of the same two consents. Mirrors
+-- core/migrations/0010_consent_withdrawal.py.
+ALTER TABLE "user"
+    ADD COLUMN IF NOT EXISTS data_consent_withdrawn_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS services_consent_withdrawn_at TIMESTAMPTZ;
 
 -- Same reasoning for the guardian invitation's answer: NULL means the child has
 -- named this guardian and the guardian has not decided yet. Mirrors

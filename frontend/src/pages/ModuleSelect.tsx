@@ -1,12 +1,18 @@
 import { useNavigate } from 'react-router-dom'
 import mediculusLogo from '../assets/mediculus-logo.jpeg'
-import GuardianInvitations from '../components/GuardianInvitations'
 import { useAuth } from '../auth/authContext'
-import { GUARDIAN_ROLE } from '../api/auth'
 import { ROUTES } from '../routes'
 import './moduleSelect.css'
 
 /**
+ * The patient's module chooser.
+ *
+ * The guardian invitation card used to live here, because this was the first
+ * screen *every* account landed on. It moved to pages/ParentHome.tsx together
+ * with the guardians themselves: both tiles below lead into the patient app,
+ * which answers a guardian 403, so App.tsx now redirects them to their own
+ * screen and this one is a patient's alone.
+ *
  * The rest of the project (Login/Register/App/main) is still plain JS/JSX;
  * this screen and Home.tsx are the first two written in TypeScript.
  */
@@ -15,9 +21,6 @@ function ModuleSelect() {
   const navigate = useNavigate()
 
   const firstName = user?.firstName ?? ''
-  // Only a guardian account can have anything to answer, and this is the first
-  // screen they land on after logging in — a child is blocked until they do.
-  const isGuardian = user?.role === GUARDIAN_ROLE
 
   return (
     <div className="module-page">
@@ -27,8 +30,6 @@ function ModuleSelect() {
         <h1>Gdzie dzisiaj zaczynamy?</h1>
         <p className="module-subtitle">Możesz przechodzić między modułami w każdej chwili.</p>
       </div>
-
-      {isGuardian && <GuardianInvitations />}
 
       <div className="module-tiles">
         <button

@@ -4,22 +4,37 @@ import type { PhoneNumber } from '../utils/phone'
 /**
  * What the "Profil" screen shows, split by where it comes from.
  *
- * The split is the point. Identity — name, e-mail, account type — is data the
- * app genuinely holds about the signed-in user: it is collected at registration
- * and arrives through `useAuth()`, so it is never described here. Everything in
- * this file is the other half: figures and care details that have no endpoint
- * yet and are read from `src/data/profile.ts` until they do.
+ * The split is still the point, but both halves are real now. Identity — name,
+ * e-mail, account type — and the two consent moments are columns on `user` and
+ * arrive with the session through `useAuth()`. Everything in this file is the
+ * other half: the counters and the care relationship, which need medical_db and
+ * therefore have a URL of their own, `GET /api/account/profile/`.
  *
- * Keeping that half behind these types is what makes the switch to a real API a
- * change of import in one file rather than a rewrite of the screen.
+ * `src/data/profile.ts` used to stand in for all of it, hardcoded to the
+ * mockup's example patient — eight entries, a six-day streak, a therapist
+ * called Marta Zielińska and two consents granted on 14 July 2026. It is gone;
+ * `src/api/profile.ts` is what these shapes are filled from.
  */
 
 /** The two counters under the identity card. */
 export interface ProfileActivity {
-  /** Diary entries written, all time. */
+  /** Diary entries written, all time — the same rows "Dzienniczki" lists. */
   entryCount: number
-  /** Consecutive days with an entry, ending today or yesterday. */
+  /** Consecutive days with an entry, ending today or yesterday — /home's streak. */
   streakDays: number
+}
+
+/**
+ * The answer from `GET /api/account/profile/`.
+ *
+ * Only ever asked for by an account that has a `patient` row: the endpoint is
+ * behind `_require_patient`, so a guardian gets a 403 rather than a profile
+ * full of zeroes. See `hasPatientProfile` in src/api/auth.ts.
+ */
+export interface AccountProfile {
+  activity: ProfileActivity
+  /** null when nobody is assigned yet — an ordinary state, not a failure. */
+  care: CareDetails | null
 }
 
 /**
@@ -28,9 +43,9 @@ export interface ProfileActivity {
  * ONE SOURCE, TWO SCREENS. "Profil" shows the specialist under "OPIEKA", and the
  * safety plan lists them under "Kontakt do terapeuty lub lekarza". It is the same
  * relationship — `patient.specjalist` in user_db — so it is described once, here,
- * and read once, from `src/data/profile.ts`. Giving the safety plan a specialist
+ * and fetched once, by `useAccountProfile`. Giving the safety plan a specialist
  * field of its own would let the same therapist appear on two screens with two
- * different names or two different numbers the moment a backend fills one in.
+ * different names or two different numbers.
  *
  * The card also carried the next and last appointment. Both were removed on
  * request, and the `Visit` shape they needed went with them; if the appointment
@@ -39,7 +54,13 @@ export interface ProfileActivity {
  * `approach` outlived that removal on purpose — see below.
  */
 export interface CareDetails {
-  /** The specialist treating the patient, as they should be addressed. */
+  /**
+   * The specialist treating the patient, as they should be addressed.
+   *
+   * Never empty: the backend falls back to the specialist's e-mail when their
+   * `user` row carries no name, because an assigned specialist with a blank
+   * name is a broken record rather than an absent relationship.
+   */
   specialist: string
   /**
    * Therapeutic approach — 'CBT / DBT' in the mockup.
@@ -47,11 +68,13 @@ export interface CareDetails {
    * No longer shown in the profile's "OPIEKA" card (the "Nurt" row was removed on
    * request), but still read by the safety plan, which prints it as the detail
    * line under the therapist's name — see `specialistContact` in
-   * components/SafetyPlanView.tsx. So this is not a leftover: dropping it blanks
-   * that line. If it should disappear there too, remove it here and have
-   * `specialistContact` hand back `detail: null`.
+   * components/SafetyPlanView.tsx.
+   *
+   * Nullable, because what fills it is `specjalist.specjalization` — the closest
+   * thing the schema holds, and not necessarily the nurt the mockup meant. An
+   * unfilled column blanks that detail line, which `ContactRow` already handles.
    */
-  approach: string
+  approach: string | null
   /**
    * For the safety plan, which needs a number to dial and not just a name.
    *
@@ -63,10 +86,17 @@ export interface CareDetails {
   phone: PhoneNumber | null
 }
 
-/** A consent that has been given, and when. */
+/**
+ * A consent that has been given, and when.
+ *
+ * Built from the session user by `consentGrants` in utils/consents.ts rather
+ * than fetched: `user.data_consent_at` / `services_consent_at` already arrive on
+ * /api/auth/me/. A consent that was never granted has no entry at all, which is
+ * what lets the screen say "Nieudzielona" without inferring it.
+ */
 export interface ConsentGrant {
   id: ConsentId
-  /** 'YYYY-MM-DD'. Mirrors `user.data_consent_at` / `user.services_consent_at`. */
+  /** A full ISO instant, as the column stores it — not a date string. */
   grantedAt: string
 }
 

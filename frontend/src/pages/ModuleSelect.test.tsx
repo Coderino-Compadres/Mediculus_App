@@ -13,30 +13,27 @@ const mockedFetch = vi.mocked(fetchGuardianInvitations)
 
 beforeEach(() => mockedFetch.mockReset())
 
-describe('the guardian invitation card', () => {
-  it('is asked for on a guardian account', async () => {
-    // This is the first screen after logging in, and a child's account stays
-    // blocked until the invitation on it is answered.
-    mockedFetch.mockResolvedValueOnce([
-      {
-        id: 'd0000000-0000-0000-0000-000000000001',
-        childName: 'Ola',
-        childSurname: 'Testowa',
-        childEmail: 'dziecko@wp.pl',
-      },
-    ])
-
-    renderWithProviders(<ModuleSelect />, {
-      user: { ...TEST_USER, role: 'rodzic', isChild: null },
-    })
-
-    expect(await screen.findByRole('button', { name: /zaakceptuj/i })).toBeInTheDocument()
-  })
-
-  it('is not even fetched for a patient account', async () => {
+describe('the guardian invitation card is no longer on this screen', () => {
+  /**
+   * It moved to pages/ParentHome.tsx with the guardians themselves — both tiles
+   * here lead into the patient app, which answers a guardian 403, so App.tsx
+   * redirects them to their own screen. Covered in full there; what matters here
+   * is that this screen does not ask for invitations any more, whoever is on it.
+   */
+  it('is not fetched for a patient account', async () => {
     renderWithProviders(<ModuleSelect />, { user: TEST_USER })
 
     await waitFor(() => expect(screen.getByText(/Psychoterapia/)).toBeInTheDocument())
     expect(mockedFetch).not.toHaveBeenCalled()
+  })
+
+  it('is not fetched even if a guardian somehow renders this screen', async () => {
+    renderWithProviders(<ModuleSelect />, {
+      user: { ...TEST_USER, role: 'rodzic', isPatient: false, isChild: null },
+    })
+
+    await waitFor(() => expect(screen.getByText(/Psychoterapia/)).toBeInTheDocument())
+    expect(mockedFetch).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /zaakceptuj/i })).toBeNull()
   })
 })

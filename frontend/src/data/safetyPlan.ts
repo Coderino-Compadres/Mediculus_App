@@ -71,7 +71,7 @@ export const EXAMPLE_PLAN: SafetyPlan = {
     { id: 'trusted-2', name: 'Kasia', relation: 'przyjaciółka', phone: { dial: '000000000', display: '000 000 000' } },
   ],
   // null in the ordinary case: the treating specialist reaches this screen from
-  // `PROFILE_CARE` (src/data/profile.ts), the same source the profile's "Opieka"
+  // the care relationship (`useAccountProfile`), the same source the "Opieka"
   // card reads. This field is only for a contact the specialist wrote in
   // *instead* — a GP or a psychiatrist outside the foundation.
   alternativeContact: null,

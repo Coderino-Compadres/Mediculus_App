@@ -4,6 +4,11 @@ export const ROUTES = {
   register: '/register',
   modules: '/modules',
   linkGuardian: '/link-guardian',
+  /** Where an account whose RODO consents are not in force is held — the only
+   *  screen it may reach. See pages/ConsentsRequired.tsx. */
+  consents: '/consents',
+  /** The guardian's own landing screen — see pages/ParentHome.tsx. */
+  parentHome: '/parent',
   home: '/home',
   journals: '/journals',
   journalDetail: '/journals/:id',
@@ -63,7 +68,9 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.login]: 'Logowanie',
   [ROUTES.register]: 'Rejestracja',
   [ROUTES.linkGuardian]: 'Powiązanie z opiekunem',
+  [ROUTES.consents]: 'Wymagane zgody',
   [ROUTES.modules]: 'Wybór modułu',
+  [ROUTES.parentHome]: 'Panel rodzica',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',
