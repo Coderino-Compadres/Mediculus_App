@@ -60,20 +60,53 @@ export interface AuthUser {
    * art. 7(1) is why they are moments and not booleans: the burden of proving
    * consent is ours, and "yes" without a date proves nothing.
    */
-  dataConsentAt: string | null
-  servicesConsentAt: string | null
   /**
-   * Whether the account may use the app at all.
+   * Both consents, as the server reports them.
    *
-   * Both consents, not either — see `needsConsents`. Defaulted to `true` when
-   * the field is absent so a backend a release behind does not lock every
-   * account out of the app on deploy; the server refuses on its own regardless,
-   * so the worst a stale client does is show a screen and get a 403.
+   * **`active` is read, never recomputed.** It used to be derived in the browser
+   * from the two timestamps, and that produced the one bug this shape exists to
+   * prevent: the payload rendered `granted_at` and `withdrawn_at` in different
+   * zones, comparing them as strings said a withdrawn consent still held, and
+   * the screen offering it back showed no button. `core/consents.is_active` is
+   * the single definition; anything here that reimplements it is free to
+   * disagree with the gate that actually enforces it.
+   *
+   * `active` at the top is both of them — see `needsConsents`.
    */
-  consentsActive: boolean
-  /** When each consent was withdrawn, if it was — null means it still holds. */
-  dataConsentWithdrawnAt: string | null
-  servicesConsentWithdrawnAt: string | null
+  consents: Consents
+}
+
+export interface Consent {
+  grantedAt: string | null
+  withdrawnAt: string | null
+  active: boolean
+}
+
+export interface Consents {
+  active: boolean
+  data: Consent
+  services: Consent
+}
+
+/**
+ * What a payload with no `consents` block becomes.
+ *
+ * `active: true` so a backend a release behind does not lock every account out
+ * of the app on deploy; the server refuses on its own regardless, so the worst
+ * a stale client does is draw a screen and collect a 403.
+ */
+const CONSENTS_UNKNOWN: Consents = {
+  active: true,
+  data: { grantedAt: null, withdrawnAt: null, active: true },
+  services: { grantedAt: null, withdrawnAt: null, active: true },
+}
+
+function toConsent(payload: ConsentPayload): Consent {
+  return {
+    grantedAt: payload.granted_at,
+    withdrawnAt: payload.withdrawn_at,
+    active: payload.active,
+  }
 }
 
 export function toAuthUser(payload: UserPayload): AuthUser {
@@ -91,11 +124,13 @@ export function toAuthUser(payload: UserPayload): AuthUser {
     isPatient: payload.is_patient ?? payload.is_child !== null,
     isChild: payload.is_child,
     guardianStatus: payload.guardian_status ?? null,
-    dataConsentAt: payload.data_consent_at ?? null,
-    servicesConsentAt: payload.services_consent_at ?? null,
-    consentsActive: payload.consents?.active ?? true,
-    dataConsentWithdrawnAt: payload.consents?.data.withdrawn_at ?? null,
-    servicesConsentWithdrawnAt: payload.consents?.services.withdrawn_at ?? null,
+    consents: payload.consents
+      ? {
+          active: payload.consents.active,
+          data: toConsent(payload.consents.data),
+          services: toConsent(payload.consents.services),
+        }
+      : CONSENTS_UNKNOWN,
   }
 }
 
@@ -243,7 +278,7 @@ export function needsGuardianLink(user: AuthUser): boolean {
  * `mock_data.sql` have neither, and they belong on the same screen.
  */
 export function needsConsents(user: AuthUser): boolean {
-  return !user.consentsActive
+  return !user.consents.active
 }
 
 /**

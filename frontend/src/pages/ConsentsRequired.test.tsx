@@ -21,23 +21,52 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => navigate }
 })
 
+const GRANTED = '2026-06-18T09:31:02Z'
+const WITHDRAWN = '2026-09-01T10:00:00Z'
+
 /** Both consents withdrawn — the account this screen exists for. */
-const LOCKED = {
+const LOCKED: AuthUser = {
   ...TEST_USER,
-  consentsActive: false,
-  dataConsentWithdrawnAt: '2026-09-01T10:00:00Z',
-  servicesConsentWithdrawnAt: '2026-09-01T10:00:00Z',
+  consents: {
+    active: false,
+    data: { grantedAt: GRANTED, withdrawnAt: WITHDRAWN, active: false },
+    services: { grantedAt: GRANTED, withdrawnAt: WITHDRAWN, active: false },
+  },
 }
 
 /** Only the services one gone. Still locked: the app needs both. */
-const HALF_LOCKED = {
+const HALF_LOCKED: AuthUser = {
   ...TEST_USER,
-  consentsActive: false,
-  dataConsentWithdrawnAt: null,
-  servicesConsentWithdrawnAt: '2026-09-01T10:00:00Z',
+  consents: {
+    active: false,
+    data: { grantedAt: GRANTED, withdrawnAt: null, active: true },
+    services: { grantedAt: GRANTED, withdrawnAt: WITHDRAWN, active: false },
+  },
 }
 
-const RESTORED = { ...TEST_USER, consentsActive: true }
+/**
+ * The shape that caused the reported bug: withdrawn *after* being granted, but
+ * rendered so that a string comparison says otherwise. The screen must still
+ * offer the consent back.
+ */
+const LOCKED_MIXED_ZONES: AuthUser = {
+  ...TEST_USER,
+  consents: {
+    active: false,
+    data: {
+      grantedAt: '2026-09-03T12:53:33.632094+02:00',
+      withdrawnAt: '2026-09-03T10:53:33.842499Z',
+      active: false,
+    },
+    services: {
+      grantedAt: '2026-09-03T12:53:33.632094+02:00',
+      withdrawnAt: '2026-09-03T10:53:33.842499Z',
+      active: false,
+    },
+  },
+}
+
+const RESTORED: AuthUser = { ...TEST_USER }
 
 beforeEach(() => {
   navigate.mockReset()
@@ -87,6 +116,29 @@ describe('ConsentsRequired — what it says', () => {
 
     expect(screen.getAllByText('Wycofana')).toHaveLength(2)
     expect(screen.getAllByText(/Wycofana 1 września 2026/)).toHaveLength(2)
+  })
+
+  it('offers the consents back even when the two dates sort the wrong way as strings', () => {
+    /** THE REPORTED BUG, pinned. A consent withdrawn a fraction of a second
+     *  after it was granted came back with `withdrawn_at` in UTC and
+     *  `granted_at` in Europe/Warsaw; comparing those strings said the consent
+     *  still held, so this screen showed "Udzielona" and no button, and the
+     *  account was stuck with nothing but the logout link. Nothing here derives
+     *  `active` any more — it is read from the server. */
+    render(LOCKED_MIXED_ZONES)
+
+    expect(screen.getAllByText('Wycofana')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Przywróć tę zgodę' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Przywróć obie zgody' })).toBeInTheDocument()
+    expect(screen.queryByText('Udzielona')).toBeNull()
+  })
+
+  it('is never a dead end: a locked account always has something to press', () => {
+    for (const user of [LOCKED, HALF_LOCKED, LOCKED_MIXED_ZONES]) {
+      const { unmount } = render(user)
+      expect(screen.getAllByRole('button', { name: /Przywróć/ }).length).toBeGreaterThan(0)
+      unmount()
+    }
   })
 
   it('shows the one that still holds as granted, without a restore button', () => {

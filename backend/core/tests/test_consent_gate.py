@@ -375,3 +375,61 @@ class GateOrderTests(ConsentTestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(str(response.data['detail']), CONSENT_GATE_REFUSAL)
+
+
+class PayloadConsistencyTests(ConsentTestCase):
+    """One rendering of one instant, which is not a matter of taste.
+
+    Both timestamps used to reach the browser in different zones — the declared
+    model fields through DRF's DateTimeField in `settings.TIME_ZONE`, the ones
+    inside `consents` as raw datetimes the JSON encoder wrote in UTC. A screen
+    compared them as strings, `'…T10:…Z' <= '…T12:…+02:00'` came out true, and a
+    withdrawn consent read as still in force: the account was sent to the screen
+    offering the consents back and that screen offered nothing.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.sign_in(self.patient.user)
+
+    def me(self):
+        response = self.client.get(reverse('core:me'))
+        self.assertEqual(response.status_code, 200)
+        return response.data
+
+    def test_granted_and_withdrawn_are_rendered_the_same_way(self):
+        withdraw(self.patient.user, 'all')
+
+        consent = self.me()['consents']['data']
+
+        self.assertEqual(consent['granted_at'][-6:], consent['withdrawn_at'][-6:],
+                         'znaczniki czasu w różnych strefach — patrz docstring')
+
+    def test_sorting_them_as_strings_agrees_with_sorting_them_as_moments(self):
+        """The property the screen used to depend on, now guaranteed."""
+        withdraw(self.patient.user, 'all')
+
+        consent = self.me()['consents']['data']
+
+        self.assertEqual(
+            consent['withdrawn_at'] > consent['granted_at'],
+            datetime.datetime.fromisoformat(consent['withdrawn_at'])
+            > datetime.datetime.fromisoformat(consent['granted_at']),
+        )
+
+    def test_the_duplicate_top_level_fields_are_gone(self):
+        """They said the same thing in another format, which is how the two
+        could disagree at all."""
+        payload = self.me()
+
+        self.assertNotIn('data_consent_at', payload)
+        self.assertNotIn('services_consent_at', payload)
+
+    def test_active_is_on_the_wire_so_nothing_has_to_recompute_it(self):
+        withdraw(self.patient.user, 'services')
+
+        consents = self.me()['consents']
+
+        self.assertFalse(consents['active'])
+        self.assertTrue(consents['data']['active'])
+        self.assertFalse(consents['services']['active'])

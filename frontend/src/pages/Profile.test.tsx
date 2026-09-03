@@ -436,7 +436,13 @@ describe('Profile — an account that is not a clinical subject', () => {
 describe('Profile — the consent register', () => {
   it('shows the date this account actually consented, not one date for everybody', async () => {
     await renderProfile({
-      user: { ...TEST_USER, dataConsentAt: '2026-03-09T21:15:00Z' },
+      user: {
+        ...TEST_USER,
+        consents: {
+          ...TEST_USER.consents,
+          data: { grantedAt: '2026-03-09T21:15:00Z', withdrawnAt: null, active: true },
+        },
+      },
     })
 
     // The moment is stored, the day is what a person reading their own profile
@@ -447,7 +453,15 @@ describe('Profile — the consent register', () => {
   it('says "Nieudzielona" for a consent that was never granted', async () => {
     /** A real state: registration writes both columns, but rows seeded by
      *  mock_data.sql have neither. */
-    await renderProfile({ user: { ...TEST_USER, servicesConsentAt: null } })
+    await renderProfile({
+      user: {
+        ...TEST_USER,
+        consents: {
+          ...TEST_USER.consents,
+          services: { grantedAt: null, withdrawnAt: null, active: false },
+        },
+      },
+    })
 
     expect(screen.getByText('Nieudzielona')).toBeInTheDocument()
     // Nothing to withdraw when it was never given, so only one button is left.

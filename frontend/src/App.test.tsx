@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import App from './App'
 import { ROUTES } from './routes'
 import { TEST_USER } from './test/render'
+import type { AuthUser } from './api/auth'
 
 // Keep the real module and swap only what talks to the network: Register.tsx
 // imports ACCOUNT_TYPES from here, and a wholesale replacement would strip it.
@@ -266,11 +267,24 @@ describe('an account whose consents are not in force', () => {
    * somebody thought to check". `core/permissions.py` enforces the same thing on
    * the server; this is only about which screen gets drawn.
    */
-  const LOCKED = {
+  // Annotated, so a change to the shape of `consents` fails here instead of
+  // quietly leaving the fixture unlocked and every test below passing for the
+  // wrong reason — which is exactly what an unannotated spread did once.
+  const LOCKED: AuthUser = {
     ...TEST_USER,
-    consentsActive: false,
-    dataConsentWithdrawnAt: '2026-09-01T10:00:00Z',
-    servicesConsentWithdrawnAt: '2026-09-01T10:00:00Z',
+    consents: {
+      active: false,
+      data: {
+        grantedAt: '2026-06-18T09:31:02Z',
+        withdrawnAt: '2026-09-01T10:00:00Z',
+        active: false,
+      },
+      services: {
+        grantedAt: '2026-06-18T09:31:02Z',
+        withdrawnAt: '2026-09-01T10:00:00Z',
+        active: false,
+      },
+    },
   }
 
   const HEADING = /Bez zgód nie możemy prowadzić Twojego konta/

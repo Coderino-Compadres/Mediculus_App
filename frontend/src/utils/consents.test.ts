@@ -19,13 +19,32 @@ const USER: AuthUser = {
   isPatient: true,
   isChild: false,
   guardianStatus: null,
-  dataConsentAt: '2026-03-09T21:15:00Z',
-  servicesConsentAt: '2026-03-09T21:15:00Z',
-  // Both consents in force — the ordinary account. A test about the locked
-  // screen sets `consentsActive: false` and a withdrawal date.
-  consentsActive: true,
-  dataConsentWithdrawnAt: null,
-  servicesConsentWithdrawnAt: null,
+  consents: {
+    active: true,
+    data: { grantedAt: '2026-03-09T21:15:00Z', withdrawnAt: null, active: true },
+    services: { grantedAt: '2026-03-09T21:15:00Z', withdrawnAt: null, active: true },
+  },
+}
+
+/** The same account with one consent withdrawn — `grantedAt` stays, as the
+ *  column does; only `active` turns off. */
+function withoutServices(user: AuthUser): AuthUser {
+  return { ...user, consents: { ...user.consents, active: false,
+    services: { ...user.consents.services, active: false,
+                withdrawnAt: '2026-09-01T10:00:00Z' } } }
+}
+
+function withoutData(user: AuthUser): AuthUser {
+  return { ...user, consents: { ...user.consents, active: false,
+    data: { ...user.consents.data, active: false,
+            withdrawnAt: '2026-09-01T10:00:00Z' } } }
+}
+
+/** Never granted either — every row mock_data.sql seeds. */
+function withNothing(user: AuthUser): AuthUser {
+  return { ...user, consents: { active: false,
+    data: { grantedAt: null, withdrawnAt: null, active: false },
+    services: { grantedAt: null, withdrawnAt: null, active: false } } }
 }
 
 describe('consentGrants', () => {
@@ -42,11 +61,19 @@ describe('consentGrants', () => {
     )
   })
 
+  it('omits a consent that is no longer in force, even though its date survives', () => {
+    /** THE REGRESSION. `granted_at` stays on the row after a withdrawal (art.
+     *  7(1): the proof that consent was given is not ours to erase), so keying
+     *  on its presence listed a withdrawn consent as "Udzielona". */
+    expect(consentGrants(withoutServices(USER)).map((g) => g.id))
+      .toEqual([CONSENT_IDS.data])
+  })
+
   it('omits a consent that was never granted rather than dating it', () => {
     /** NULL is what every row mock_data.sql seeds holds, and it is what a
      *  withdrawal would leave behind. No entry is what lets the screen render
      *  "Nieudzielona" as a fact instead of inferring it. */
-    const grants = consentGrants({ ...USER, servicesConsentAt: null })
+    const grants = consentGrants(withoutServices(USER))
 
     expect(grants).toHaveLength(1)
     expect(grants[0].id).toBe(CONSENT_IDS.data)
@@ -54,14 +81,14 @@ describe('consentGrants', () => {
 
   it('is empty for an account that granted neither', () => {
     expect(
-      consentGrants({ ...USER, dataConsentAt: null, servicesConsentAt: null }),
+      consentGrants(withNothing(USER)),
     ).toEqual([])
   })
 
   it('keeps the two apart — they were collected separately and go separately', () => {
     /** Art. 7(3): consent is per purpose, so one timestamp covering both would
      *  be the wrong shape and would make one withdrawal look like two. */
-    const grants = consentGrants({ ...USER, dataConsentAt: null })
+    const grants = consentGrants(withoutData(USER))
 
     expect(grants).toHaveLength(1)
     expect(grants[0].id).toBe(CONSENT_IDS.services)

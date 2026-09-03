@@ -80,21 +80,26 @@ export const CONSENTS: ConsentDefinition[] = [
  * the worst one to invent, since a consent record is the evidence art. 7(1) puts
  * the burden of producing on us.
  *
- * A consent that was never granted gets **no entry**, which is what lets the
- * screen render "Nieudzielona" as a fact rather than infer it. That is a real
- * state: rows seeded by mock_data.sql have neither column set, and registration
- * is the only thing that writes them.
+ * A consent that is not in force gets **no entry** — never granted, or granted
+ * and since withdrawn — which is what lets the screen render "Nieudzielona" as a
+ * fact rather than infer it. Both are real states: rows seeded by mock_data.sql
+ * have neither column set, and withdrawal leaves `granted_at` where it is.
  *
  * Declaration order follows CONSENTS, so both screens list them the same way.
  */
 export function consentGrants(user: AuthUser): ConsentGrant[] {
-  const granted: Record<ConsentId, string | null> = {
-    [CONSENT_IDS.data]: user.dataConsentAt,
-    [CONSENT_IDS.services]: user.servicesConsentAt,
+  const state: Record<ConsentId, { grantedAt: string | null; active: boolean }> = {
+    [CONSENT_IDS.data]: user.consents.data,
+    [CONSENT_IDS.services]: user.consents.services,
   }
   return CONSENTS.flatMap((consent) => {
-    const grantedAt = granted[consent.id]
-    return grantedAt ? [{ id: consent.id, grantedAt }] : []
+    const { grantedAt, active } = state[consent.id]
+    // `active`, not merely a date: `granted_at` survives a withdrawal on
+    // purpose (art. 7(1) — the proof that consent was given is not ours to
+    // erase), so keying on its presence would list a withdrawn consent as
+    // "Udzielona". Today the gate keeps such an account off this screen
+    // entirely, which makes the mistake invisible rather than harmless.
+    return active && grantedAt ? [{ id: consent.id, grantedAt }] : []
   })
 }
 

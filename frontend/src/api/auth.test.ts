@@ -35,8 +35,11 @@ const USER_PAYLOAD = {
   is_patient: true,
   is_child: false,
   guardian_status: null,
-  data_consent_at: '2026-06-18T09:31:02Z',
-  services_consent_at: '2026-06-18T09:31:02Z',
+  consents: {
+    active: true,
+    data: { granted_at: '2026-06-18T09:31:02Z', withdrawn_at: null, active: true },
+    services: { granted_at: '2026-06-18T09:31:02Z', withdrawn_at: null, active: true },
+  },
 }
 
 beforeEach(() => mockedRequest.mockReset())
@@ -61,13 +64,11 @@ describe('login', () => {
       isPatient: true,
       isChild: false,
       guardianStatus: null,
-      dataConsentAt: '2026-06-18T09:31:02Z',
-      servicesConsentAt: '2026-06-18T09:31:02Z',
-      // Defaulted true when the payload carries no `consents` block, so a
-      // backend a release behind does not lock every account out on deploy.
-      consentsActive: true,
-      dataConsentWithdrawnAt: null,
-      servicesConsentWithdrawnAt: null,
+      consents: {
+        active: true,
+        data: { grantedAt: '2026-06-18T09:31:02Z', withdrawnAt: null, active: true },
+        services: { grantedAt: '2026-06-18T09:31:02Z', withdrawnAt: null, active: true },
+      },
     })
   })
 })
@@ -265,38 +266,49 @@ describe('consent timestamps', () => {
      *  everybody proves nothing about anybody. */
     mockedRequest.mockResolvedValueOnce({
       ...USER_PAYLOAD,
-      data_consent_at: '2026-03-09T21:15:00Z',
-      services_consent_at: '2026-03-09T21:15:00Z',
+      consents: {
+        active: true,
+        data: { granted_at: '2026-03-09T21:15:00Z', withdrawn_at: null, active: true },
+        services: { granted_at: '2026-03-09T21:15:00Z', withdrawn_at: null, active: true },
+      },
     })
 
     const user = await fetchCurrentUser()
 
-    expect(user?.dataConsentAt).toBe('2026-03-09T21:15:00Z')
-    expect(user?.servicesConsentAt).toBe('2026-03-09T21:15:00Z')
+    expect(user?.consents.data.grantedAt).toBe('2026-03-09T21:15:00Z')
+    expect(user?.consents.services.grantedAt).toBe('2026-03-09T21:15:00Z')
   })
 
   it('keeps a consent that was never granted as null rather than inventing one', async () => {
     /** The column is NULL for every row mock_data.sql seeds, and that is what
      *  lets the profile say "Nieudzielona" as a fact. */
-    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, services_consent_at: null })
+    mockedRequest.mockResolvedValueOnce({
+      ...USER_PAYLOAD,
+      consents: {
+        active: false,
+        data: { granted_at: '2026-03-09T21:15:00Z', withdrawn_at: null, active: true },
+        services: { granted_at: null, withdrawn_at: null, active: false },
+      },
+    })
 
     const user = await fetchCurrentUser()
 
-    expect(user?.servicesConsentAt).toBeNull()
+    expect(user?.consents.services.grantedAt).toBeNull()
+    expect(user?.consents.services.active).toBe(false)
   })
 
-  it('survives an older payload that carries neither key', async () => {
+  it('survives an older payload that carries no consents block', async () => {
     /** Same tolerance `guardian_status` already has: a field the deployed
-     *  backend has not got yet must not make the session unreadable. */
-    const { data_consent_at, services_consent_at, ...older } = USER_PAYLOAD
-    void data_consent_at
-    void services_consent_at
+     *  backend has not got yet must not make the session unreadable — and here
+     *  it must not lock every account out of the app either. */
+    const { consents, ...older } = USER_PAYLOAD
+    void consents
     mockedRequest.mockResolvedValueOnce(older)
 
     const user = await fetchCurrentUser()
 
-    expect(user?.dataConsentAt).toBeNull()
-    expect(user?.servicesConsentAt).toBeNull()
+    expect(user?.consents.active).toBe(true)
+    expect(user?.consents.data.grantedAt).toBeNull()
   })
 })
 
@@ -364,9 +376,11 @@ describe('consent state', () => {
 
     const user = await fetchCurrentUser()
 
-    expect(user?.consentsActive).toBe(false)
-    expect(user?.dataConsentWithdrawnAt).toBe('2026-09-01T10:00:00Z')
-    expect(user?.servicesConsentWithdrawnAt).toBeNull()
+    expect(user?.consents.active).toBe(false)
+    expect(user?.consents.data.active).toBe(false)
+    expect(user?.consents.data.withdrawnAt).toBe('2026-09-01T10:00:00Z')
+    expect(user?.consents.services.active).toBe(true)
+    expect(user?.consents.services.withdrawnAt).toBeNull()
   })
 
   it('needsConsents mirrors the flag, so one definition decides the gate', async () => {
@@ -389,5 +403,40 @@ describe('consent state', () => {
     mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
 
     expect(needsConsents((await fetchCurrentUser())!)).toBe(false)
+  })
+})
+
+describe('consent state is read, never recomputed', () => {
+  /**
+   * THE BUG THIS PINS. `granted_at` and `withdrawn_at` used to reach the browser
+   * in different renderings of the same clock — the declared serializer fields
+   * came out in Europe/Warsaw (`+02:00`), the ones inside `consents` came out in
+   * UTC (`Z`) — and the screen compared them as strings. For a consent withdrawn
+   * a fraction of a second after it was granted, `'…T10:…Z' <= '…T12:…+02:00'` is
+   * true, so a withdrawn consent read as active: the restore screen showed
+   * "Udzielona" and no button, and the account had nowhere to go.
+   *
+   * The payload is consistent now, but the durable fix is that nothing here
+   * derives `active` at all.
+   */
+  it('trusts the server even when the timestamps sort the other way as strings', async () => {
+    // The same instant, one rendered in Europe/Warsaw and one in UTC — which is
+    // how the payload used to arrive.
+    const grantedAt = '2026-09-03T12:53:33.632094+02:00'
+    const withdrawnAt = '2026-09-03T10:53:33.842499Z'
+    const consent = { granted_at: grantedAt, withdrawn_at: withdrawnAt, active: false }
+    mockedRequest.mockResolvedValueOnce({
+      ...USER_PAYLOAD,
+      consents: { active: false, data: consent, services: consent },
+    })
+
+    const user = await fetchCurrentUser()
+
+    // Sorted as text the withdrawal looks earlier; sorted as moments it is not.
+    expect(withdrawnAt <= grantedAt).toBe(true)
+    expect(new Date(withdrawnAt) <= new Date(grantedAt)).toBe(false)
+    // The account stays locked either way, because nothing here compares them.
+    expect(user?.consents.data.active).toBe(false)
+    expect(needsConsents(user!)).toBe(true)
   })
 })
