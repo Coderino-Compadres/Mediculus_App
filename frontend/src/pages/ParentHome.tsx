@@ -1,4 +1,5 @@
 import mediculusLogo from '../assets/mediculus-logo.jpeg'
+import GuardianChildren from '../components/GuardianChildren'
 import GuardianInvitations from '../components/GuardianInvitations'
 import HeaderMenu from '../components/HeaderMenu'
 import { useAuth } from '../auth/authContext'
@@ -24,24 +25,23 @@ import './parentHome.css'
  *
  * WHAT IS ACTUALLY HERE. Two things, and the split matters:
  *
- *   1. the invitations card, which is real and is the guardian's one live
- *      function. It moved here from /modules along with the guardian, because a
- *      minor's account is blocked until it is answered (RODO art. 8) and the
- *      guardian is now the only person who can answer it. Leaving it on a screen
- *      they can no longer reach would have stranded every child mid-signup —
- *      which is why this screen is not *only* the placeholder below;
- *   2. the placeholder, for everything else the parent panel is meant to be.
+ *   1. the invitations card, which is the guardian's one *action*. It moved here
+ *      from /modules along with the guardian, because a minor's account is
+ *      blocked until it is answered (RODO art. 8) and the guardian is now the
+ *      only person who can answer it. Leaving it on a screen they can no longer
+ *      reach would have stranded every child mid-signup;
+ *   2. the summary of each linked child's account, which is what a guardian
+ *      comes here to read;
+ *   3. the placeholder, for whatever the panel grows into next.
  *
- * THE PLACEHOLDER SAYS NOTHING ABOUT WHAT THE PARENT WILL SEE. That is the whole
- * reason it is worded the way it is. What a guardian may read of a minor's
- * record is undecided and is not a UI question: the diary is health data the
- * child writes about themselves, the reports are written for the treating
- * specialist, and the app's one firm rule in this area runs the other way — with
- * eating disorders the tendency to hide information rises, which is why the
- * patient cannot cut the specialist off (see the note in pages/Reports.tsx).
- * Promising "podgląd dzienniczka dziecka" on a placeholder would be answering
- * that in markup, and a client reviewing this screen would reasonably read it as
- * settled.
+ * WHAT THE SUMMARY SHOWS IS A DECIDED LINE, NOT A FIRST PASS. It reports
+ * engagement — how much the child has written, whether a run is going, when the
+ * last entry was — and nothing of what any of it says. See the header of
+ * components/GuardianChildren.tsx for the argument, and CHILD_SUMMARY_FIELDS in
+ * core/account.py for the list the backend will send. The placeholder below
+ * therefore still promises nothing about content: whether a guardian may ever
+ * read a minor's diary is a clinical and legal question, not a UI one, and
+ * answering it in markup would let a client read it as settled.
  */
 function ParentHome() {
   const { user } = useAuth()
@@ -67,16 +67,19 @@ function ParentHome() {
         </p>
       </div>
 
-      {/* Above the placeholder, deliberately. It is the one thing on this screen
-          that does something, and somebody is waiting on the other side of it. */}
+      {/* First, deliberately. It is the one thing on this screen that needs an
+          answer, and somebody is waiting on the other side of it. */}
       <GuardianInvitations />
+
+      {/* Then what the guardian actually came for, once they have answered. */}
+      <GuardianChildren />
 
       <section className="parent-placeholder" aria-labelledby="parent-placeholder-heading">
         <p className="parent-placeholder-badge">W BUDOWIE</p>
         <h2 id="parent-placeholder-heading">Panel rodzica powstaje</h2>
         <p>
-          Na razie możesz tu odpowiedzieć na zaproszenie od dziecka i zarządzać swoim kontem.
-          Reszta panelu — w tym to, co opiekun widzi z konta dziecka — jest jeszcze ustalana
+          Możesz tu odpowiedzieć na zaproszenie od dziecka, sprawdzić, czy korzysta z
+          aplikacji, i zarządzać swoim kontem. Reszta panelu jest jeszcze ustalana
           z Fundacją.
         </p>
         <p className="parent-placeholder-note">

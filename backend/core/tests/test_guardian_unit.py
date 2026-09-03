@@ -26,6 +26,9 @@ from core.models import ParentChild, Patient, User, UserRole
 
 
 def create_user(email, role='rodzic', **fields):
+    # Consented, like every account the registration form creates: core/consents.py locks one whose consents are not in force, so a helper that skipped them would build a user no endpoint would serve.
+    fields.setdefault('data_consent_at', timezone.now())
+    fields.setdefault('services_consent_at', timezone.now())
     return User.objects.create(
         user_role=UserRole.objects.get_or_create(name=role)[0] if role else None,
         email=email, password_hash=make_password('TajneHaslo123'), **fields,

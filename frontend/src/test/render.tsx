@@ -18,6 +18,11 @@ export const TEST_USER: AuthUser = {
   // testing the "Nieudzielona" state overrides one with null.
   dataConsentAt: '2026-06-18T09:31:02Z',
   servicesConsentAt: '2026-06-18T09:31:02Z',
+  // Both consents in force — the ordinary account. A test about the locked
+  // screen sets `consentsActive: false` and a withdrawal date.
+  consentsActive: true,
+  dataConsentWithdrawnAt: null,
+  servicesConsentWithdrawnAt: null,
 }
 
 /**

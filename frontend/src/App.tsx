@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
 import LinkGuardian from './pages/LinkGuardian'
+import ConsentsRequired from './pages/ConsentsRequired'
 import ParentHome from './pages/ParentHome'
 import Home from './pages/Home'
 import DiaryEntry from './pages/DiaryEntry'
@@ -22,7 +23,7 @@ import OfflineBanner from './components/OfflineBanner'
 import RouteChange from './components/RouteChange'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/authContext'
-import { isGuardian, needsGuardianLink } from './api/auth'
+import { isGuardian, needsConsents, needsGuardianLink } from './api/auth'
 import { PLACEHOLDER_ROUTES, ROUTES } from './routes'
 import type { AuthUser } from './api/auth'
 
@@ -70,9 +71,18 @@ function RequireAuth({
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
   if (!user) return <Navigate to={ROUTES.login} replace />
+  // Checked before everything else, because it is the outer question: without
+  // the consents there is no lawful basis to process anything, whoever has or
+  // has not vouched for the account — and unlike the guardian gate, this is one
+  // the account's own owner can clear by themselves.
+  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
   // A minor's account is unusable until a guardian's account vouches for it, so
   // every other screen leads back to the one form that can fix that.
   if (needsGuardianLink(user)) return <Navigate to={ROUTES.linkGuardian} replace />
+  // Note the order: `allowGuardian` exempts /profile from the *guardian*
+  // redirect only. There is no exemption from the consent gate — the profile is
+  // where a consent is withdrawn, and staying on it afterwards would leave the
+  // account looking at its own data with no basis to be shown it.
   if (!allowGuardian && isGuardian(user)) {
     return <Navigate to={ROUTES.parentHome} replace />
   }
@@ -84,7 +94,22 @@ function RequireGuardian({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
   if (!user) return <Navigate to={ROUTES.login} replace />
+  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
   return isGuardian(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
+}
+
+/**
+ * The consent screen, and only for an account that needs it.
+ *
+ * The mirror of the redirect above, for the same reason `RequireGuardianLink`
+ * exists: a screen that says "your account is stopped" must not be reachable by
+ * an account that is running.
+ */
+function RequireConsents({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <AuthPending />
+  if (!user) return <Navigate to={ROUTES.login} replace />
+  return needsConsents(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
 }
 
 /** The same, for the one screen only an unlinked minor belongs on. */
@@ -92,12 +117,14 @@ function RequireGuardianLink({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
   if (!user) return <Navigate to={ROUTES.login} replace />
+  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
   return needsGuardianLink(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
 }
 
 function GuestOnly({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
+  if (user && needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
   return user ? <Navigate to={homeRouteFor(user)} replace /> : <>{children}</>
 }
 
@@ -106,6 +133,7 @@ function LandingRedirect() {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
   if (!user) return <Navigate to={ROUTES.login} replace />
+  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
   return <Navigate to={homeRouteFor(user)} replace />
 }
 
@@ -135,6 +163,14 @@ function App() {
               <GuestOnly>
                 <Register />
               </GuestOnly>
+            }
+          />
+          <Route
+            path={ROUTES.consents}
+            element={
+              <RequireConsents>
+                <ConsentsRequired />
+              </RequireConsents>
             }
           />
           <Route

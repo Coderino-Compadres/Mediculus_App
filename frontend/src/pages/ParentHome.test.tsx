@@ -7,11 +7,22 @@ import { ROUTES } from '../routes'
 
 vi.mock('../api/guardian', () => ({
   fetchGuardianInvitations: vi.fn(),
+  fetchGuardianChildren: vi.fn(),
   acceptGuardianInvitation: vi.fn(),
   rejectGuardianInvitation: vi.fn(),
 }))
-const { fetchGuardianInvitations } = await import('../api/guardian')
+const { fetchGuardianInvitations, fetchGuardianChildren } = await import('../api/guardian')
 const mockedFetch = vi.mocked(fetchGuardianInvitations)
+const mockedChildren = vi.mocked(fetchGuardianChildren)
+
+const LINKED_CHILD = {
+  id: 'c0000000-0000-0000-0000-000000000001',
+  childName: 'Ola',
+  childSurname: 'Testowa',
+  childEmail: 'dziecko@wp.pl',
+  linkedAt: '2026-08-12T09:31:02Z',
+  activity: { entryCount: 12, streakDays: 4, lastEntryDate: '2026-09-01' },
+}
 
 /** A guardian: role 'rodzic', and no `patient` row of any kind. */
 const GUARDIAN = { ...TEST_USER, role: 'rodzic', isPatient: false, isChild: null }
@@ -26,6 +37,8 @@ const INVITATION = {
 beforeEach(() => {
   mockedFetch.mockReset()
   mockedFetch.mockResolvedValue([])
+  mockedChildren.mockReset()
+  mockedChildren.mockResolvedValue([])
 })
 
 function renderScreen(user = GUARDIAN) {
@@ -113,7 +126,7 @@ describe('ParentHome — the invitation card came with the guardian', () => {
   it('reaches the placeholder even when the invitations fail to load', async () => {
     /** The two are independent: a failed card must not take the screen with it,
      *  and the card says so itself rather than rendering nothing. */
-    mockedFetch.mockRejectedValue(new Error('sieć'))
+    mockedFetch.mockImplementation(() => Promise.reject(new Error('sieć')))
 
     renderScreen()
 
@@ -147,5 +160,57 @@ describe('ParentHome — the way out', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Wyloguj' }))
 
     await waitFor(() => expect(signOut).toHaveBeenCalled())
+  })
+})
+
+describe('ParentHome — the child summary', () => {
+  it('shows the linked child between the invitation card and the placeholder', async () => {
+    mockedChildren.mockResolvedValue([LINKED_CHILD])
+
+    const { container } = renderScreen()
+
+    expect(await screen.findByRole('heading', { name: 'Ola Testowa' })).toBeInTheDocument()
+    const summary = container.querySelector('.child-section')
+    const placeholder = container.querySelector('.parent-placeholder')
+    // 4 = the argument follows the node it is called on.
+    expect(summary?.compareDocumentPosition(placeholder!))
+      .toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
+  it('summarises the account without a word about its contents', async () => {
+    mockedChildren.mockResolvedValue([LINKED_CHILD])
+
+    renderScreen()
+
+    await screen.findByRole('heading', { name: 'Ola Testowa' })
+    expect(screen.getByText('12')).toBeInTheDocument()
+    expect(screen.getByText(/nie widzisz treści jego wpisów/i)).toBeInTheDocument()
+  })
+
+  it('does not ask for children on a screen a guardian has not reached', async () => {
+    /** The request goes out from this screen only, and only the guardian gets
+     *  this screen — App.tsx guards it. */
+    renderScreen()
+
+    await screen.findByRole('heading', { name: 'Panel rodzica powstaje' })
+    expect(mockedChildren).toHaveBeenCalledTimes(1)
+  })
+
+  it('still reaches the placeholder when the summary fails to load', async () => {
+    mockedChildren.mockImplementation(() => Promise.reject(new Error('sieć')))
+
+    renderScreen()
+
+    expect(
+      await screen.findByRole('heading', { name: 'Panel rodzica powstaje' }),
+    ).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Nie udało się wczytać/)
+  })
+
+  it('shows no summary section for a guardian with no accepted link', async () => {
+    const { container } = renderScreen()
+
+    await screen.findByRole('heading', { name: 'Panel rodzica powstaje' })
+    await waitFor(() => expect(container.querySelector('.child-section')).toBeNull())
   })
 })

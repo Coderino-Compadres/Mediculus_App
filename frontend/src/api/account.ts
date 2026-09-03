@@ -45,6 +45,7 @@
  */
 
 import { apiRequest } from './client'
+import { toAuthUser, type AuthUser, type UserPayload } from './auth'
 import type { AccountClosureReason, ConsentWithdrawalScope } from '../types/profile'
 
 export const PENDING_BACKEND_MESSAGE =
@@ -70,16 +71,46 @@ export class PendingBackendError extends Error {
 /**
  * Withdraws one consent, or both at once.
  *
- * TODO(backend): `POST /api/account/consents/withdraw/` with `{ scope }`.
- * Withdrawing is not a flag flip — the timestamp columns record that consent was
- * given, so a withdrawal needs its own recorded moment (art. 7(1) again: the
- * burden of proof is ours in both directions). Note that `scope: 'data'` and
- * `scope: 'all'` end the account, so they land in the same place as
- * `deleteAccount` and must not be able to disagree with it about what is removed.
+ * **This locks the account; it does not delete it.** The older reading — that
+ * losing the art. 9 consent ends the account, so withdrawal and deletion are the
+ * same act — is gone: it made exercising a right (art. 7(3)) indistinguishable
+ * from destroying your own record, and irreversible an hour later when you
+ * changed your mind. Nothing is removed. The app stops processing, and the only
+ * screen that answers is the one offering the consent back.
+ *
+ * Withdrawal has its own recorded moment rather than clearing the grant — art.
+ * 7(1) cuts both ways, and a cleared column would make "never consented" and
+ * "consented then withdrew" the same row. See core/consents.py.
+ *
+ * Answers with the updated user, so the caller can hand it to the session and
+ * let the route guard move the app — the same convention as `linkGuardian`.
  */
-export function withdrawConsent(scope: ConsentWithdrawalScope): Promise<void> {
-  return Promise.reject(
-    new PendingBackendError(`POST /api/account/consents/withdraw/ (scope: ${scope})`),
+export async function withdrawConsent(scope: ConsentWithdrawalScope): Promise<AuthUser> {
+  return toAuthUser(
+    await apiRequest<UserPayload>('/api/account/consents/withdraw/', {
+      method: 'POST',
+      body: { scope },
+    }),
+  )
+}
+
+/**
+ * Grants a withdrawn consent again, from the screen the locked account lands on.
+ *
+ * No password, deliberately — see `ConsentRestoreView`. This is the direction
+ * that unblocks an account, so friction here costs somebody who changed their
+ * mind and protects nobody.
+ *
+ * Answers with the updated user for the same reason `withdrawConsent` does: the
+ * route guard reads `consentsActive`, so handing the new one to the session is
+ * what moves the app back out of the locked screen.
+ */
+export async function restoreConsent(scope: ConsentWithdrawalScope): Promise<AuthUser> {
+  return toAuthUser(
+    await apiRequest<UserPayload>('/api/account/consents/restore/', {
+      method: 'POST',
+      body: { scope },
+    }),
   )
 }
 

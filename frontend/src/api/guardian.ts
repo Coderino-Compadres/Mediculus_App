@@ -51,3 +51,69 @@ export async function acceptGuardianInvitation(id: string): Promise<void> {
 export async function rejectGuardianInvitation(id: string): Promise<void> {
   await apiRequest<void>(`/api/guardian/invitations/${id}/reject/`, { method: 'POST' })
 }
+
+/** As `core.account.build_linked_children` returns it. */
+interface ChildActivityPayload {
+  entry_count: number
+  streak_days: number
+  /** 'YYYY-MM-DD', or null for a diary with nothing in it yet. */
+  last_entry_date: string | null
+}
+
+interface LinkedChildPayload {
+  id: string
+  child_name: string | null
+  child_surname: string | null
+  child_email: string | null
+  linked_at: string | null
+  activity: ChildActivityPayload | null
+}
+
+export interface ChildActivity {
+  entryCount: number
+  streakDays: number
+  lastEntryDate: string | null
+}
+
+export interface LinkedChild {
+  /** The `parent_child` row — a React key, and nothing to look anything up with. */
+  id: string
+  childName: string | null
+  childSurname: string | null
+  childEmail: string | null
+  /** When this guardian accepted, as an ISO instant. */
+  linkedAt: string | null
+  /** null when the linked account has no patient row — see build_child_activity. */
+  activity: ChildActivity | null
+}
+
+function toChild(payload: LinkedChildPayload): LinkedChild {
+  return {
+    id: payload.id,
+    childName: payload.child_name,
+    childSurname: payload.child_surname,
+    childEmail: payload.child_email,
+    linkedAt: payload.linked_at,
+    activity: payload.activity && {
+      entryCount: payload.activity.entry_count,
+      streakDays: payload.activity.streak_days,
+      lastEntryDate: payload.activity.last_entry_date,
+    },
+  }
+}
+
+/**
+ * The children this guardian has vouched for, with a summary of each account.
+ *
+ * ENGAGEMENT, NEVER CONTENT — the payload carries how much has been written and
+ * when, and nothing about what it says. That is a deliberate line rather than a
+ * stage on the way to showing more: a minor who knows a parent reads their diary
+ * writes a different diary. See CHILD_SUMMARY_FIELDS in core/account.py.
+ *
+ * Only accepted links. A guardian who was named but has not answered gets an
+ * empty list — being named is not being their guardian yet.
+ */
+export async function fetchGuardianChildren(): Promise<LinkedChild[]> {
+  const payload = await apiRequest<LinkedChildPayload[]>('/api/guardian/children/')
+  return payload.map(toChild)
+}

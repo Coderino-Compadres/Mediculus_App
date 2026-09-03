@@ -40,6 +40,8 @@ def create_user(email='anna@example.com', password=VALID_PASSWORD, role='patient
     user_role = UserRole.objects.get_or_create(name=role)[0] if role else None
     return User.objects.create(
         user_role=user_role, email=email, password_hash=make_password(password),
+        data_consent_at=timezone.now(),
+        services_consent_at=timezone.now(),
     )
 
 
@@ -374,7 +376,10 @@ class LoginTests(AuthTestCase):
 
     def test_a_row_whose_password_hash_is_not_a_hash_fails_cleanly(self):
         """scripts/mock_data.sql seeds 'mock_hash_placeholder' — must not 500."""
-        User.objects.create(email='mock@example.com', password_hash='mock_hash_placeholder')
+        User.objects.create(email='mock@example.com', password_hash='mock_hash_placeholder',
+    data_consent_at=timezone.now(),
+    services_consent_at=timezone.now(),
+)
 
         response = self.client.post(
             reverse('core:login'),

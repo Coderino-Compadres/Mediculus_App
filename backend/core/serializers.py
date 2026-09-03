@@ -15,6 +15,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from . import guardian
+from .consents import SCOPES, consent_state, has_active_consents
 from .models import ParentChild, Patient, User, UserRole
 
 # What the registration form's "account type" choice means in the schema. Role
@@ -63,6 +64,7 @@ class UserSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(source='id_user', read_only=True)
     role = serializers.SerializerMethodField()
     is_patient = serializers.SerializerMethodField()
+    consents = serializers.SerializerMethodField()
     is_child = serializers.SerializerMethodField()
     guardian_status = serializers.SerializerMethodField()
 
@@ -70,7 +72,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'name', 'surname', 'date_of_birth', 'role',
-            'is_patient', 'is_child', 'guardian_status',
+            'is_patient', 'is_child', 'guardian_status', 'consents',
             # The consent register the profile screen reads back. Sent as the
             # stored moment, not a boolean and not a date: RODO art. 7(1) puts
             # the burden of proving consent on us, and the profile has to be
@@ -99,6 +101,29 @@ class UserSerializer(serializers.ModelSerializer):
         if user.pk not in self._patients:
             self._patients[user.pk] = Patient.objects.filter(user=user).first()
         return self._patients[user.pk]
+
+    def get_consents(self, user):
+        """Both consents, each with when it was granted, when withdrawn, and
+        whether it currently holds.
+
+        The frontend gates on `active` and shows the dates, so all three travel
+        rather than a single boolean: a screen offering a consent back has to be
+        able to say when it was given and when it was withdrawn, and deriving
+        that from two nullable timestamps in the browser would be a second copy
+        of the comparison in core/consents.py.
+        """
+        state = consent_state(user)
+        return {
+            'active': has_active_consents(user),
+            **{
+                name: {
+                    'granted_at': value['granted_at'],
+                    'withdrawn_at': value['withdrawn_at'],
+                    'active': value['active'],
+                }
+                for name, value in state.items()
+            },
+        }
 
     def get_is_patient(self, user):
         """Whether a `patient` row exists — `_require_patient`'s first check.
@@ -491,6 +516,23 @@ class PasswordChangeSerializer(serializers.Serializer):
         self.user.password_hash = make_password(self.validated_data['new_password'])
         self.user.save(update_fields=['password_hash', 'updated_at'])
         return self.user
+
+
+class ConsentScopeSerializer(serializers.Serializer):
+    """Which consent a withdrawal or a restore covers.
+
+    'all' is a scope of its own rather than two requests: consenting to both was
+    one gesture on the registration form, and art. 7(3) asks for withdrawal to
+    be no harder than that.
+    """
+
+    scope = serializers.ChoiceField(
+        choices=sorted(SCOPES),
+        error_messages={
+            'required': 'Wskaż, której zgody dotyczy decyzja.',
+            'invalid_choice': 'Nieznany zakres zgody.',
+        },
+    )
 
 
 class GuardianLinkSerializer(serializers.Serializer):

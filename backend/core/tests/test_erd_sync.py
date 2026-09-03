@@ -39,12 +39,19 @@ DIAGRAMMED_MODELS = [
 #: deleted from here, and adding one to the models fails it until either the
 #: diagram or this list catches up. An empty dict is the goal.
 #:
-#: `user`'s two consent columns arrived with migration 0004, `parent_child`'s
-#: with 0007. `patient.id_medical` and `raport.id_technique` have simply never
+#: `user`'s consent columns arrived with migrations 0004 (granted) and 0010
+#: (withdrawn) — four columns, and one subject: consent is a pair of moments per
+#: purpose, and the diagram shows neither half. Drawing only the newest two would
+#: leave the picture saying something stranger than saying nothing, so all four
+#: wait for one pass over the entity (hand work — there is no drawio CLI here).
+#: `parent_child`'s arrived with 0007. `patient.id_medical` and `raport.id_technique` have simply never
 #: been drawn — the first of the two is the pseudonymized join the whole
 #: two-database split is built on, so it is the one worth drawing first.
 KNOWN_ERD_GAPS = {
-    'user': {'data_consent_at', 'services_consent_at'},
+    'user': {
+        'data_consent_at', 'services_consent_at',
+        'data_consent_withdrawn_at', 'services_consent_withdrawn_at',
+    },
     'patient': {'id_medical'},
     'parent_child': {'accepted_at'},
     'raport': {'id_technique'},

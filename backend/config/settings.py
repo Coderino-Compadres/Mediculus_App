@@ -200,8 +200,15 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'core.authentication.SessionUserAuthentication',
     ],
+    # Two defaults, both closed. IsAuthenticated keeps a new endpoint private;
+    # HasActiveConsents keeps it away from an account whose RODO consents are not
+    # in force, which the app has no lawful basis to process anything for. The
+    # handful of views that legitimately opt out use core.permissions.
+    # CONSENT_EXEMPT rather than spelling the list out, so the exempt set stays
+    # one grep — see the note in that module.
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
+        'core.permissions.HasActiveConsents',
     ],
     'UNAUTHENTICATED_USER': None,
     # Applied to the login/register endpoints only (core.throttling.AuthThrottle);

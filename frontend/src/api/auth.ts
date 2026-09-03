@@ -6,7 +6,7 @@
 import { ApiError, apiRequest, type FieldErrors } from './client'
 
 /** As `core.serializers.UserSerializer` returns it. */
-interface UserPayload {
+export interface UserPayload {
   id: string
   email: string | null
   name: string | null
@@ -21,6 +21,21 @@ interface UserPayload {
   /** ISO instants, or null for a consent that was never granted. */
   data_consent_at: string | null
   services_consent_at: string | null
+  /** Per-consent state plus the one flag the route guard reads. */
+  consents?: ConsentsPayload
+}
+
+interface ConsentPayload {
+  granted_at: string | null
+  withdrawn_at: string | null
+  active: boolean
+}
+
+interface ConsentsPayload {
+  /** Both consents in force. Mirrors `has_active_consents` in core/consents.py. */
+  active: boolean
+  data: ConsentPayload
+  services: ConsentPayload
 }
 
 export interface AuthUser {
@@ -47,9 +62,21 @@ export interface AuthUser {
    */
   dataConsentAt: string | null
   servicesConsentAt: string | null
+  /**
+   * Whether the account may use the app at all.
+   *
+   * Both consents, not either — see `needsConsents`. Defaulted to `true` when
+   * the field is absent so a backend a release behind does not lock every
+   * account out of the app on deploy; the server refuses on its own regardless,
+   * so the worst a stale client does is show a screen and get a 403.
+   */
+  consentsActive: boolean
+  /** When each consent was withdrawn, if it was — null means it still holds. */
+  dataConsentWithdrawnAt: string | null
+  servicesConsentWithdrawnAt: string | null
 }
 
-function toAuthUser(payload: UserPayload): AuthUser {
+export function toAuthUser(payload: UserPayload): AuthUser {
   return {
     id: payload.id,
     email: payload.email,
@@ -66,6 +93,9 @@ function toAuthUser(payload: UserPayload): AuthUser {
     guardianStatus: payload.guardian_status ?? null,
     dataConsentAt: payload.data_consent_at ?? null,
     servicesConsentAt: payload.services_consent_at ?? null,
+    consentsActive: payload.consents?.active ?? true,
+    dataConsentWithdrawnAt: payload.consents?.data.withdrawn_at ?? null,
+    servicesConsentWithdrawnAt: payload.consents?.services.withdrawn_at ?? null,
   }
 }
 
@@ -198,6 +228,22 @@ export async function linkGuardian(input: LinkGuardianInput): Promise<AuthUser> 
  */
 export function needsGuardianLink(user: AuthUser): boolean {
   return user.isChild === true && user.guardianStatus !== GUARDIAN_STATUS.accepted
+}
+
+/**
+ * Whether the app has to stop and ask for consent back.
+ *
+ * Mirrors `has_active_consents` in core/consents.py, which is what actually
+ * enforces it — this only decides which screen to draw. Both consents are
+ * required: they were collected separately because they cover different
+ * purposes, and there is no mode of the app that runs on one of them.
+ *
+ * True for an account that never granted a consent as well as one that withdrew
+ * it. Those are different histories and the same present: rows seeded by
+ * `mock_data.sql` have neither, and they belong on the same screen.
+ */
+export function needsConsents(user: AuthUser): boolean {
+  return !user.consentsActive
 }
 
 /**

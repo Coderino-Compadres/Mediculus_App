@@ -6,6 +6,7 @@ import {
   fetchCurrentUser,
   GUARDIAN_STATUS,
   hasPatientProfile,
+  needsConsents,
   isGuardianInvitationPending,
   linkGuardian,
   login,
@@ -62,6 +63,11 @@ describe('login', () => {
       guardianStatus: null,
       dataConsentAt: '2026-06-18T09:31:02Z',
       servicesConsentAt: '2026-06-18T09:31:02Z',
+      // Defaulted true when the payload carries no `consents` block, so a
+      // backend a release behind does not lock every account out on deploy.
+      consentsActive: true,
+      dataConsentWithdrawnAt: null,
+      servicesConsentWithdrawnAt: null,
     })
   })
 })
@@ -341,5 +347,47 @@ describe('hasPatientProfile', () => {
 
     mockedRequest.mockResolvedValueOnce({ ...older, is_child: null })
     expect(hasPatientProfile((await fetchCurrentUser())!)).toBe(false)
+  })
+})
+
+describe('consent state', () => {
+  it('reads the gate flag and both withdrawal moments off the payload', async () => {
+    mockedRequest.mockResolvedValueOnce({
+      ...USER_PAYLOAD,
+      consents: {
+        active: false,
+        data: { granted_at: '2026-03-09T21:15:00Z',
+                withdrawn_at: '2026-09-01T10:00:00Z', active: false },
+        services: { granted_at: '2026-03-09T21:15:00Z', withdrawn_at: null, active: true },
+      },
+    })
+
+    const user = await fetchCurrentUser()
+
+    expect(user?.consentsActive).toBe(false)
+    expect(user?.dataConsentWithdrawnAt).toBe('2026-09-01T10:00:00Z')
+    expect(user?.servicesConsentWithdrawnAt).toBeNull()
+  })
+
+  it('needsConsents mirrors the flag, so one definition decides the gate', async () => {
+    mockedRequest.mockResolvedValueOnce({
+      ...USER_PAYLOAD,
+      consents: {
+        active: false,
+        data: { granted_at: null, withdrawn_at: null, active: false },
+        services: { granted_at: null, withdrawn_at: null, active: false },
+      },
+    })
+
+    expect(needsConsents((await fetchCurrentUser())!)).toBe(true)
+  })
+
+  it('does not lock an account out when the backend sends no consents block', async () => {
+    /** A deployed backend a release behind must not black out every client.
+     *  The server refuses on its own regardless, so the worst a stale client
+     *  does is show a screen and collect a 403. */
+    mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
+
+    expect(needsConsents((await fetchCurrentUser())!)).toBe(false)
   })
 })

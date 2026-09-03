@@ -37,6 +37,9 @@ class AccountTestCase(TestCase):
         cache.clear()
 
     def make_user(self, email, role='patient', **fields):
+        # Consented, like every account the registration form creates: core/consents.py locks one whose consents are not in force, so a helper that skipped them would build a user no endpoint would serve.
+        fields.setdefault('data_consent_at', timezone.now())
+        fields.setdefault('services_consent_at', timezone.now())
         return User.objects.create(
             user_role=UserRole.objects.get_or_create(name=role)[0] if role else None,
             email=email, password_hash=make_password(PASSWORD), **fields,
@@ -272,7 +275,8 @@ class ConsentDatesTests(AccountTestCase):
         """Not everything in this table came through the form — mock_data.sql
         seeds rows with neither column set, and 'Nieudzielona' has to be a state
         the screen can render rather than one it has to infer."""
-        user = self.make_user('stara@example.com')
+        user = self.make_user(
+            'stara@example.com', data_consent_at=None, services_consent_at=None)
 
         payload = self.me(user)
 
@@ -283,7 +287,8 @@ class ConsentDatesTests(AccountTestCase):
         """They were collected separately and are withdrawable separately (art.
         7(3)), so one timestamp for both would be the wrong shape."""
         moment = timezone.now()
-        user = self.make_user('polowiczna@example.com', data_consent_at=moment)
+        user = self.make_user(
+            'polowiczna@example.com', data_consent_at=moment, services_consent_at=None)
 
         payload = self.me(user)
 

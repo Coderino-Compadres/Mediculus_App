@@ -14,8 +14,13 @@ vi.mock('./api/auth', async (importOriginal) => ({
 }))
 vi.mock('./api/dashboard', () => ({ fetchHomeDashboard: vi.fn(() => new Promise(() => {})) }))
 vi.mock('./api/profile', () => ({ fetchAccountProfile: vi.fn(() => new Promise(() => {})) }))
+vi.mock('./api/account', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api/account')>()),
+  restoreConsent: vi.fn(() => new Promise(() => {})),
+}))
 vi.mock('./api/guardian', () => ({
   fetchGuardianInvitations: vi.fn(() => Promise.resolve([])),
+  fetchGuardianChildren: vi.fn(() => Promise.resolve([])),
   acceptGuardianInvitation: vi.fn(),
   rejectGuardianInvitation: vi.fn(),
 }))
@@ -250,5 +255,130 @@ describe('a guardian account has its own view', () => {
 
     expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Panel rodzica' })).toBeNull()
+  })
+})
+
+describe('an account whose consents are not in force', () => {
+  /**
+   * Withdrawing a consent locks the account rather than deleting it, and the
+   * lock has to mean one screen and nothing else — the app has no lawful basis
+   * to process anything for this account, so "nothing" cannot mean "the screens
+   * somebody thought to check". `core/permissions.py` enforces the same thing on
+   * the server; this is only about which screen gets drawn.
+   */
+  const LOCKED = {
+    ...TEST_USER,
+    consentsActive: false,
+    dataConsentWithdrawnAt: '2026-09-01T10:00:00Z',
+    servicesConsentWithdrawnAt: '2026-09-01T10:00:00Z',
+  }
+
+  const HEADING = /Bez zgód nie możemy prowadzić Twojego konta/
+
+  it('is sent to the consent screen from every other route', async () => {
+    mockedFetchUser.mockResolvedValue(LOCKED)
+
+    for (const route of [
+      ROUTES.home, ROUTES.modules, ROUTES.diaryEntry, ROUTES.journals,
+      ROUTES.reports, ROUTES.analysis, ROUTES.techniques, ROUTES.safetyPlan,
+      '/',
+    ]) {
+      const { unmount } = renderAt(route)
+      expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('is sent there from the profile too, which has no exemption from this gate', async () => {
+    /** `/profile` opts out of the *guardian* redirect only. It is where a
+     *  consent is withdrawn, and staying on it afterwards would leave the
+     *  account looking at its own data with no basis to be shown it. */
+    mockedFetchUser.mockResolvedValueOnce(LOCKED)
+
+    renderAt(ROUTES.profile)
+
+    expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1, name: 'Profil' })).toBeNull()
+  })
+
+  it('is sent there instead of to the login page it is already past', async () => {
+    mockedFetchUser.mockResolvedValueOnce(LOCKED)
+
+    renderAt(ROUTES.login)
+
+    expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
+  })
+
+  it('reaches the consent screen directly', async () => {
+    mockedFetchUser.mockResolvedValueOnce(LOCKED)
+
+    renderAt(ROUTES.consents)
+
+    expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
+  })
+
+  it('outranks the guardian gate for a minor who is behind both', async () => {
+    /** The consent gate is the outer question — without a lawful basis there is
+     *  nothing to process, whoever has or has not vouched for the account — and
+     *  it is the only one of the two the owner can clear by themselves. */
+    mockedFetchUser.mockResolvedValueOnce({
+      ...LOCKED, isChild: true, guardianStatus: 'none' as const,
+    })
+
+    renderAt(ROUTES.home)
+
+    expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/adres e-mail rodzica/i)).toBeNull()
+  })
+
+  it('sends a locked guardian to the consent screen, not to the parent panel', async () => {
+    mockedFetchUser.mockResolvedValueOnce({
+      ...LOCKED, role: 'rodzic', isPatient: false, isChild: null,
+    })
+
+    renderAt(ROUTES.parentHome)
+
+    expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
+  })
+
+  it('waits for the session before deciding, rather than flashing the screen', async () => {
+    mockedFetchUser.mockReturnValueOnce(new Promise(() => {}))
+
+    const { container } = renderAt(ROUTES.consents)
+
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: HEADING })).toBeNull()
+  })
+})
+
+describe('the consent screen is only for accounts that need it', () => {
+  it('pushes a consenting patient off it', async () => {
+    mockedFetchUser.mockResolvedValueOnce(TEST_USER)
+
+    renderAt(ROUTES.consents)
+
+    expect(
+      await screen.findByRole('heading', { name: /Gdzie dzisiaj zaczynamy/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('pushes a consenting guardian off it, to their own screen', async () => {
+    mockedFetchUser.mockResolvedValueOnce({
+      ...TEST_USER, role: 'rodzic', isPatient: false, isChild: null,
+    })
+
+    renderAt(ROUTES.consents)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Panel rodzica' }),
+    ).toBeInTheDocument()
+  })
+
+  it('sends a visitor to login rather than to the consent screen', async () => {
+    mockedFetchUser.mockResolvedValueOnce(null)
+
+    renderAt(ROUTES.consents)
+
+    expect(await screen.findByLabelText(/hasło/i)).toBeInTheDocument()
   })
 })

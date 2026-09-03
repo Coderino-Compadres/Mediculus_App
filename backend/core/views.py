@@ -20,20 +20,23 @@ from rest_framework.views import APIView
 
 from django.utils import timezone
 
-from .account import build_account_profile
+from .account import build_account_profile, build_linked_children
 from .authentication import end_session, start_session
 from .dashboard import build_home_dashboard
 from .frequency import build_year_frequency, years_with_entries
 from .diary import (DiaryEntrySerializer, load_entry, load_history,
                     load_today_entry, save_today_entry)
-from .guardian import (STATUS_ACCEPTED, accept_invitation, cancel_invitation,
-                       guardian_status, pending_invitations, reject_invitation)
+from .guardian import (STATUS_ACCEPTED, accept_invitation, accepted_children,
+                       cancel_invitation, guardian_status, pending_invitations,
+                       reject_invitation)
+from .consents import SCOPES, consent_state, restore, withdraw
 from .models import Patient
+from .permissions import CONSENT_EXEMPT
 from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
-from .serializers import (GuardianLinkSerializer, LoginSerializer,
-                          PasswordChangeSerializer, RegisterSerializer,
-                          UserSerializer)
+from .serializers import (ConsentScopeSerializer, GuardianLinkSerializer,
+                          LoginSerializer, PasswordChangeSerializer,
+                          RegisterSerializer, UserSerializer)
 from .throttling import (AuthThrottle, GuardianLinkThrottle,
                          LoginAccountThrottle, PasswordChangeThrottle,
                          ReportPdfThrottle, attempts_warning)
@@ -131,6 +134,10 @@ class LoginView(APIView):
 class LogoutView(APIView):
     """POST /api/auth/logout/ — drop the session server-side, not just the cookie."""
 
+    # Exempt from the consent gate: an account that cannot use the app must
+    # still be able to leave it.
+    permission_classes = CONSENT_EXEMPT
+
     def post(self, request):
         end_session(request)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -146,7 +153,10 @@ class MeView(APIView):
     src/api/client.ts treats both as "not logged in".
     """
 
-    permission_classes = [IsAuthenticated]
+    # Exempt from the consent gate, and load-bearing: this is how the frontend's
+    # route guard learns *why* it was refused, so gating it would leave the app
+    # unable to tell "log in" apart from "restore your consents".
+    permission_classes = CONSENT_EXEMPT
 
     def get(self, request):
         return Response(UserSerializer(request.user).data)
@@ -286,6 +296,37 @@ class GuardianInvitationsView(APIView):
         return Response(pending_invitations(request.user))
 
 
+class GuardianChildrenView(APIView):
+    """GET /api/guardian/children/ — the accounts this guardian has vouched for.
+
+    The parent panel's home screen. Filtered by `parent=request.user` with no
+    permission of its own, exactly like the invitations list: an account nobody
+    named as their guardian gets an empty list, and there is no id in the URL to
+    point at somebody else's child.
+
+    WHAT IT ANSWERS WITH IS THE WHOLE DESIGN — engagement, never content. See
+    `CHILD_SUMMARY_FIELDS` in core/account.py for the list and the reasoning; the
+    short version is that a minor who knows a parent reads their diary writes a
+    different diary. `test_guardian_children_api.py` pins the omissions, because
+    the day somebody adds `avg_mood` here it will look like an improvement.
+
+    Only accepted links: a pending invitation is a request nobody has answered,
+    and reporting on a child before their guardian agreed would be the gate
+    working in one direction only.
+    """
+
+    def get(self, request):
+        links = accepted_children(request.user)
+        # One query for every child's patient row rather than one per child —
+        # and the only place this view touches user_db's clinical side at all.
+        patients = Patient.objects.filter(
+            user_id__in=[link.child_id for link in links]
+        ).only('user_id', 'id_medical')
+        return Response(build_linked_children(
+            links, {patient.user_id: patient for patient in patients},
+        ))
+
+
 class GuardianInvitationAcceptView(APIView):
     """POST /api/guardian/invitations/<id>/accept/ — the consent the child cannot give.
 
@@ -367,6 +408,48 @@ class PasswordChangeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ConsentWithdrawView(APIView):
+    """POST /api/account/consents/withdraw/ — stop the app processing anything.
+
+    Exempt from the consent gate so the two consent endpoints are always
+    reachable; withdrawing when already withdrawn is a no-op rather than an
+    error, which is what makes a double-tapped button harmless.
+
+    THE ACCOUNT IS LOCKED, NOT DELETED. Nothing is removed here — see the module
+    docstring in core/consents.py for why the harsher reading was dropped. The
+    answer carries the updated user, so the frontend can send them to the
+    re-consent screen without re-asking /api/auth/me/, exactly as the guardian
+    link endpoint does.
+    """
+
+    permission_classes = CONSENT_EXEMPT
+
+    def post(self, request):
+        serializer = ConsentScopeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        withdraw(request.user, serializer.validated_data['scope'])
+        return Response(UserSerializer(request.user).data)
+
+
+class ConsentRestoreView(APIView):
+    """POST /api/account/consents/restore/ — grant a withdrawn consent again.
+
+    No password, deliberately, and not an oversight. Restoring is the direction
+    that *unblocks* an account, so friction here costs a user who has changed
+    their mind and protects nobody: anybody who could reach this endpoint is
+    already inside the session, and the worst they can do with it is give a
+    consent back that its owner can withdraw again in two taps.
+    """
+
+    permission_classes = CONSENT_EXEMPT
+
+    def post(self, request):
+        serializer = ConsentScopeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        restore(request.user, serializer.validated_data['scope'])
+        return Response(UserSerializer(request.user).data)
 
 
 class HomeDashboardView(APIView):

@@ -21,6 +21,11 @@ const USER: AuthUser = {
   guardianStatus: null,
   dataConsentAt: '2026-03-09T21:15:00Z',
   servicesConsentAt: '2026-03-09T21:15:00Z',
+  // Both consents in force — the ordinary account. A test about the locked
+  // screen sets `consentsActive: false` and a withdrawal date.
+  consentsActive: true,
+  dataConsentWithdrawnAt: null,
+  servicesConsentWithdrawnAt: null,
 }
 
 describe('consentGrants', () => {

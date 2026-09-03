@@ -31,6 +31,13 @@ class User(models.Model):
     # than as a boolean. NULL means "never granted".
     data_consent_at = models.DateTimeField(null=True, blank=True)
     services_consent_at = models.DateTimeField(null=True, blank=True)
+    # And the moment each was withdrawn, if it was. Not a reset of the column
+    # above: art. 7(3) makes withdrawal a right, so it is a fact to record
+    # rather than the erasure of the fact that consent was once given. A consent
+    # is active when granted and not withdrawn since -- see core/consents.py,
+    # which is the one place that comparison is written.
+    data_consent_withdrawn_at = models.DateTimeField(null=True, blank=True)
+    services_consent_withdrawn_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

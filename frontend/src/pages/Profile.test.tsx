@@ -27,6 +27,14 @@ const mockedChangePassword = vi.mocked(changePassword)
 const mockedDelete = vi.mocked(deleteAccount)
 const mockedWithdraw = vi.mocked(withdrawConsent)
 
+/** The account as it comes back from a withdrawal: consents no longer in force. */
+const LOCKED_USER = {
+  ...TEST_USER,
+  consentsActive: false,
+  dataConsentWithdrawnAt: '2026-09-02T10:00:00Z',
+  servicesConsentWithdrawnAt: '2026-09-02T10:00:00Z',
+}
+
 /** What GET /api/account/profile/ answers with for the ordinary patient. */
 function accountProfile(overrides: Partial<AccountProfile> = {}): AccountProfile {
   return {
@@ -52,13 +60,12 @@ beforeEach(() => {
   // about who was *not* called.
   mockedDelete.mockReset()
   mockedWithdraw.mockReset()
-  // Back to the real stubs, which reject with PendingBackendError.
+  // Deletion is still a stub that rejects; withdrawal is real and answers with
+  // the now-locked account, which is what moves the app to /consents.
   mockedDelete.mockImplementation(() =>
     Promise.reject(new PendingBackendError('DELETE /api/account/')),
   )
-  mockedWithdraw.mockImplementation((scope) =>
-    Promise.reject(new PendingBackendError(`withdraw ${scope}`)),
-  )
+  mockedWithdraw.mockImplementation(() => Promise.resolve(LOCKED_USER))
 })
 
 /**
@@ -174,7 +181,12 @@ describe('Profile', () => {
     }
   })
 
-  it('sends the health-data consent and the account deletion to the same confirmation', async () => {
+  it('tells deletion and withdrawal apart, because they no longer do the same thing', async () => {
+    /** They used to share a screen *and* an outcome: losing the art. 9 consent
+     *  was treated as ending the account. Withdrawal locks it now and removes
+     *  nothing, so the list of consequences has to differ — showing "Co
+     *  zostanie usunięte" over a reversible act would be a false statement on
+     *  the one screen whose job is to be precise about consequences. */
     await renderProfile()
 
     await open('Usuń konto')
@@ -182,11 +194,10 @@ describe('Profile', () => {
 
     await open('Anuluj')
 
-    // Withdrawing the art. 9 consent ends the account, so it must not look milder:
-    // the same list of what goes, and a lead that says so.
     await userEvent.click(screen.getAllByRole('button', { name: 'Wycofaj tę zgodę' })[0])
-    expect(screen.getByRole('heading', { name: 'Co zostanie usunięte' })).toBeInTheDocument()
-    expect(screen.getByText(/kończy korzystanie z konta/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Co się stanie' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Co zostanie usunięte' })).toBeNull()
+    expect(screen.getByText(/zostaje nietknięte/)).toBeInTheDocument()
   })
 
   it('withdraws both consents at once through its own path', async () => {
@@ -288,10 +299,9 @@ describe('Profile', () => {
 
     await open('Wycofaj obie zgody naraz')
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
-    await open('Wycofaj zgody i zamknij konto')
+    await open('Wycofaj zgody')
 
-    await screen.findByText(PENDING_BACKEND_MESSAGE)
-    expect(mockedWithdraw).toHaveBeenCalledWith('all')
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('all'))
     expect(mockedDelete).not.toHaveBeenCalled()
   })
 
@@ -300,10 +310,9 @@ describe('Profile', () => {
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Wycofaj tę zgodę' })[0])
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
-    await open('Wycofaj zgodę i zamknij konto')
+    await open('Wycofaj zgodę')
 
-    await screen.findByText(PENDING_BACKEND_MESSAGE)
-    expect(mockedWithdraw).toHaveBeenCalledWith('data')
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('data'))
   })
 
   it('withdrawing only the services consent sends scope "services"', async () => {
@@ -313,8 +322,7 @@ describe('Profile', () => {
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
     await open('Wycofaj zgodę na usługi')
 
-    await screen.findByText(PENDING_BACKEND_MESSAGE)
-    expect(mockedWithdraw).toHaveBeenCalledWith('services')
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('services'))
   })
 
   /*
@@ -340,16 +348,47 @@ describe('Profile', () => {
     expect(screen.queryByText(PENDING_BACKEND_MESSAGE)).toBeNull()
   })
 
-  it('does not say the services consent still stands once it has been withdrawn', async () => {
-    mockedWithdraw.mockResolvedValue(undefined)
-    await renderProfile()
+  it('hands the locked account to the session, which is what moves the app', async () => {
+    /** No navigate() here on purpose: App.tsx's guard reads `consentsActive`
+     *  and sends the account to /consents. A redirect issued from this screen
+     *  as well could disagree with the guard that would have done it anyway. */
+    const setUser = vi.fn()
+    await renderProfile({ setUser })
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Wycofaj tę zgodę' })[1])
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
     await open('Wycofaj zgodę na usługi')
 
-    expect(await screen.findByText(/została wycofana/)).toBeInTheDocument()
-    expect(screen.queryByText(/nadal obowiązuje/)).toBeNull()
+    await waitFor(() => expect(setUser).toHaveBeenCalledWith(LOCKED_USER))
+  })
+
+  it('does not sign the user out when a consent is withdrawn', async () => {
+    /** The account still exists and its owner has to reach the screen offering
+     *  the consents back — signing them out would put it behind a login they
+     *  may not want to perform. Deletion is the one that ends the session. */
+    const signOut = vi.fn().mockResolvedValue(undefined)
+    await renderProfile({ signOut })
+
+    await open('Wycofaj obie zgody naraz')
+    await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
+    await open('Wycofaj zgody')
+
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalled())
+    expect(signOut).not.toHaveBeenCalled()
+  })
+
+  it('no longer describes withdrawal as ending the account', async () => {
+    /** It locks it. Saying otherwise was the old model and would now be a false
+     *  statement about a reversible act. */
+    await renderProfile()
+
+    await open('Wycofaj obie zgody naraz')
+
+    expect(screen.getByText(/Twoje wpisy zostają na miejscu/)).toBeInTheDocument()
+    expect(screen.queryByText(/Co zostanie usunięte/)).toBeNull()
+    // getAllBy: the lead and the list both say it, which is the point.
+    expect(screen.getAllByText(/przywrócić w każdej chwili|zostaje nietknięte/).length)
+      .toBeGreaterThan(0)
   })
 
   it('names the confirmation screen to a screen reader by focusing its heading', async () => {

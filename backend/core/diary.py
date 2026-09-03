@@ -264,6 +264,23 @@ def count_entries(id_medical):
     return Diary.objects.filter(id_medical=id_medical).count()
 
 
+def last_entry_date(id_medical):
+    """The calendar day of the most recent entry, or None for an empty diary.
+
+    A date, never the entry: this is what the guardian's summary reports, and
+    "kiedy ostatnio" is the whole of the answer it is allowed to give. Read in
+    `settings.TIME_ZONE` like every other day-shaped question here, so it agrees
+    with the streak rather than being a day out for a late-evening entry.
+    """
+    latest = (
+        Diary.objects.filter(id_medical=id_medical)
+        .order_by('-created_at')
+        .values_list('created_at', flat=True)
+        .first()
+    )
+    return None if latest is None else local_date(latest)
+
+
 def load_entry(id_medical, id_diary):
     """One entry by id, or None when it is not this patient's.
 

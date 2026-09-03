@@ -44,6 +44,8 @@ class GateTestCase(TestCase):
                 UserRole.objects.get_or_create(name=role)[0] if role else None
             ),
             email=email, password_hash=make_password('TajneHaslo123'),
+            data_consent_at=timezone.now(),
+            services_consent_at=timezone.now(),
         )
 
     def make_patient(self, email='dziecko@example.com', is_child=True):

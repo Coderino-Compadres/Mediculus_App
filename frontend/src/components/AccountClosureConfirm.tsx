@@ -2,31 +2,33 @@ import { useEffect, useState, type FormEvent } from 'react'
 import FormField from './FormField'
 import ProfileConfirmLayout from './ProfileConfirmLayout'
 import { PendingBackendError, deleteAccount, withdrawConsent } from '../api/account'
+import { useAuth } from '../auth/authContext'
 import { useAuthForm } from '../hooks/useAuthForm'
 import { useSignOut } from '../hooks/useSignOut'
 import { validatePassword } from '../utils/validation'
 import type { AccountClosureReason } from '../types/profile'
 
 /**
- * The one confirmation screen for every route that ends the account.
+ * The confirmation for the three ways out: deleting the account, and withdrawing
+ * either the health-data consent or both at once.
  *
- * Three ways in, one screen, on purpose:
- *  - "Usuń konto",
- *  - withdrawing the art. 9 consent to process health data,
- *  - withdrawing both consents at once.
+ * THE THREE NO LONGER SHARE AN OUTCOME, AND THE COPY SAYS SO. Withdrawal used to
+ * be described here as the same act as deletion — the reasoning being that this
+ * app processes health data and nothing else, so without the art. 9 consent
+ * there is no lawful basis to hold anything. The first half is right and the
+ * conclusion was not: stopping the processing does not require destroying the
+ * record, and equating them made exercising a right (art. 7(3)) irreversible an
+ * hour later when somebody changed their mind. Withdrawal now **locks** the
+ * account — pages/ConsentsRequired.tsx is where it lands, and the consents can
+ * be given back from there. Deletion stays irreversible, which is why it is
+ * still its own decision with its own list of what goes.
  *
- * The middle one is not a milder version of the first. This app processes health
- * data and nothing else, so without that consent there is no lawful basis left
- * for it to hold anything — the outcome is the same, and a screen that implied
- * otherwise would be softening a decision the user cannot take back. Duplicating
- * the screen per entry point is how the three would start describing different
- * outcomes, so what varies is only the title and the sentence explaining how the
- * user got here.
+ * One screen for all three anyway, because what varies is the title, the lead
+ * and what happens on success; duplicating it per entry point is how three
+ * screens start describing three different outcomes for two of them.
  *
  * The tone is meant to be plain: no red, no exclamation marks, no attempt to
- * talk anybody out of it. Withdrawing a consent is a right, not a mistake. But
- * nothing is glossed over either — the list below is specific, and the
- * irreversibility is stated once, clearly.
+ * talk anybody out of it. Withdrawing a consent is a right, not a mistake.
  */
 
 interface Copy {
@@ -46,14 +48,14 @@ const COPY: Record<AccountClosureReason, Copy> = {
   'withdraw-data-consent': {
     title: 'Wycofaj zgodę na dane o zdrowiu',
     lead:
-      'Wycofujesz zgodę na przetwarzanie danych o zdrowiu. Aplikacja przetwarza wyłącznie takie dane — bez tej zgody nie ma czego prowadzić, więc wycofanie jej kończy korzystanie z konta i usuwa jego dane. To ten sam skutek co usunięcie konta.',
-    action: 'Wycofaj zgodę i zamknij konto',
+      'Wycofujesz zgodę na przetwarzanie danych o zdrowiu. Aplikacja przetwarza wyłącznie takie dane, więc bez tej zgody konto zostaje zatrzymane — nie otworzysz dzienniczka ani raportów. Nic nie zostanie usunięte i możesz przywrócić zgodę w każdej chwili.',
+    action: 'Wycofaj zgodę',
   },
   'withdraw-all-consents': {
     title: 'Wycofaj obie zgody',
     lead:
-      'Wycofujesz obie zgody naraz — na przetwarzanie danych o zdrowiu i na korzystanie z usług fundacji. Pierwsza z nich jest podstawą działania aplikacji, więc skutek jest ten sam co przy usunięciu konta.',
-    action: 'Wycofaj zgody i zamknij konto',
+      'Wycofujesz obie zgody naraz — na przetwarzanie danych o zdrowiu i na korzystanie z usług fundacji. Konto zostanie zatrzymane do czasu, aż przywrócisz przynajmniej te zgody. Twoje wpisy zostają na miejscu.',
+    action: 'Wycofaj zgody',
   },
 }
 
@@ -71,6 +73,18 @@ const REMOVED_ITEMS = [
   'powiązanie ze specjalistą prowadzącym i jego wgląd w Twoje dane',
 ]
 
+//: What a withdrawal does instead, and the reason this list is separate from the
+//: one above rather than a softened version of it. Nothing here is removed, so
+//: reusing "Co zostanie usunięte" would have been a false statement on a screen
+//: whose whole job is to be precise about consequences — which is exactly what
+//: it was until the outcome changed.
+const LOCKED_ITEMS = [
+  'dzienniczek, raporty i analiza przestają się otwierać',
+  'specjalista prowadzący przestaje widzieć nowe dane',
+  'wszystko, co już zapisałaś lub zapisałeś, zostaje nietknięte',
+  'zgodę możesz przywrócić w każdej chwili i konto wróci do stanu sprzed wycofania',
+]
+
 function AccountClosureConfirm({
   reason,
   onBack,
@@ -79,6 +93,8 @@ function AccountClosureConfirm({
   onBack: () => void
 }) {
   const copy = COPY[reason]
+  const { setUser } = useAuth()
+  const deletes = reason === 'delete-account'
   // Set when the API stub tells us the backend is not there yet. Rendered as a
   // notice, not as an error: nothing failed, and — crucially — nothing happened.
   const [pendingNotice, setPendingNotice] = useState<string | null>(null)
@@ -97,7 +113,12 @@ function AccountClosureConfirm({
    * Keyed on the absence of `pendingNotice`, which is what separates "the stub
    * answered" from "the work happened". Today it never runs.
    */
-  const closed = status === 'success' && pendingNotice === null
+  //
+  // Only for deletion. A withdrawal keeps the session — the account still
+  // exists and its owner has to be able to reach the screen offering the
+  // consents back, which signing them out would put behind a login they may no
+  // longer want to perform.
+  const closed = deletes && status === 'success' && pendingNotice === null
   useEffect(() => {
     if (closed) void signOutAndLeave()
   }, [closed, signOutAndLeave])
@@ -109,13 +130,19 @@ function AccountClosureConfirm({
       }),
       submit: async (currentValues) => {
         try {
-          if (reason === 'delete-account') {
+          if (deletes) {
             await deleteAccount({ password: currentValues.password, reason })
           } else {
             // The scope the backend needs is the one the entry point implies —
             // 'data' alone, or both. Never inferred from a checkbox the user did
             // not see.
-            await withdrawConsent(reason === 'withdraw-data-consent' ? 'data' : 'all')
+            //
+            // Handing the updated account to the session is what moves the app:
+            // `needsConsents` flips, and App.tsx's guard takes over from here to
+            // pages/ConsentsRequired.tsx. No navigate() call, so the redirect
+            // cannot disagree with the guard that would have done it anyway.
+            setUser(await withdrawConsent(
+              reason === 'withdraw-data-consent' ? 'data' : 'all'))
           }
         } catch (error) {
           // The expected outcome today. Swallowed rather than rethrown so the
@@ -147,6 +174,8 @@ function AccountClosureConfirm({
             Twoje konto i dane są nietknięte. Kiedy backend będzie gotowy, to samo potwierdzenie
             wykona operację naprawdę.
           </p>
+          {/* Only deletion can reach this branch: `withdrawConsent` is a real
+              call now and never raises PendingBackendError. */}
           <button type="button" className="auth-submit auth-submit-secondary" onClick={onBack}>
             Wróć do profilu
           </button>
@@ -161,10 +190,13 @@ function AccountClosureConfirm({
 
   return (
     <ProfileConfirmLayout title={copy.title} lead={copy.lead} onBack={onBack}>
+      {/* Two lists, and which one shows is the whole difference between the
+          two decisions this screen serves. Deletion removes things; withdrawal
+          stops the processing and removes nothing. */}
       <section className="journal-detail-card">
-        <h2>Co zostanie usunięte</h2>
+        <h2>{deletes ? 'Co zostanie usunięte' : 'Co się stanie'}</h2>
         <ul className="profile-confirm-list">
-          {REMOVED_ITEMS.map((item) => (
+          {(deletes ? REMOVED_ITEMS : LOCKED_ITEMS).map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
