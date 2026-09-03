@@ -264,12 +264,12 @@ class ConsentDatesTests(AccountTestCase):
         )
 
         self.assertEqual(response.status_code, 201)
-        for field in ('data_consent_at', 'services_consent_at'):
-            with self.subTest(field=field):
-                self.assertIsNotNone(response.data[field])
-                self.assertGreaterEqual(
-                    datetime.datetime.fromisoformat(response.data[field]), before,
-                )
+        for name in ('data', 'services'):
+            with self.subTest(consent=name):
+                granted = response.data['consents'][name]['granted_at']
+                self.assertIsNotNone(granted)
+                self.assertGreaterEqual(datetime.datetime.fromisoformat(granted), before)
+                self.assertTrue(response.data['consents'][name]['active'])
 
     def test_an_account_that_never_granted_one_reports_null(self):
         """Not everything in this table came through the form — mock_data.sql
@@ -280,8 +280,9 @@ class ConsentDatesTests(AccountTestCase):
 
         payload = self.me(user)
 
-        self.assertIsNone(payload['data_consent_at'])
-        self.assertIsNone(payload['services_consent_at'])
+        self.assertIsNone(payload['consents']['data']['granted_at'])
+        self.assertIsNone(payload['consents']['services']['granted_at'])
+        self.assertFalse(payload['consents']['active'])
 
     def test_the_two_consents_are_reported_separately(self):
         """They were collected separately and are withdrawable separately (art.
@@ -292,8 +293,8 @@ class ConsentDatesTests(AccountTestCase):
 
         payload = self.me(user)
 
-        self.assertIsNotNone(payload['data_consent_at'])
-        self.assertIsNone(payload['services_consent_at'])
+        self.assertIsNotNone(payload['consents']['data']['granted_at'])
+        self.assertIsNone(payload['consents']['services']['granted_at'])
 
     def test_is_patient_tells_a_null_is_child_patient_from_a_guardian(self):
         """The two look identical through `is_child` alone, and must not.
@@ -340,8 +341,9 @@ class ConsentDatesTests(AccountTestCase):
 
         payload = self.me(user)
 
-        self.assertIsNotNone(payload['data_consent_at'])
-        self.assertIsNotNone(payload['services_consent_at'])
+        self.assertIsNotNone(payload['consents']['data']['granted_at'])
+        self.assertIsNotNone(payload['consents']['services']['granted_at'])
+        self.assertTrue(payload['consents']['active'])
 
 
 class PasswordChangeTests(AccountTestCase):

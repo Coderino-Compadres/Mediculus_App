@@ -18,6 +18,12 @@ function LevelSlider({ id, label, lowLabel, highLabel, value, onChange, alertThr
         <label htmlFor={id}>{label}</label>
         <span className={isAlert ? 'level-slider-value level-slider-value-alert' : 'level-slider-value'}>
           {value}/10
+          {/* WCAG 1.4.1, the same fix as EmotionSelector: the alert was a
+              colour on its own. No caller passes `alertThreshold` today — the
+              stress alert moved to the emotion chip — but the branch is live
+              code, and one that fails a criterion silently is worse than one
+              that fails it visibly. */}
+          {isAlert && <span className="level-slider-flag"> · wysokie</span>}
         </span>
       </div>
       <input

@@ -72,15 +72,17 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'name', 'surname', 'date_of_birth', 'role',
-            'is_patient', 'is_child', 'guardian_status', 'consents',
-            # The consent register the profile screen reads back. Sent as the
-            # stored moment, not a boolean and not a date: RODO art. 7(1) puts
-            # the burden of proving consent on us, and the profile has to be
-            # able to show *when*. NULL means never granted, which is what makes
-            # "Nieudzielona" a state the screen can render rather than one it has
-            # to infer. Registration writes both, so an account created through
-            # the form always has them; rows seeded by mock_data.sql do not.
-            'data_consent_at', 'services_consent_at',
+            'is_patient', 'is_child', 'guardian_status',
+            # The consent register the profile screen reads back, and the gate
+            # the router reads. One key, not five: `data_consent_at` and
+            # `services_consent_at` used to ride alongside it as declared model
+            # fields, which meant the same instant reached the browser twice in
+            # two renderings — DRF puts declared DateTimeFields in
+            # settings.TIME_ZONE and the method field's raw values in UTC. A
+            # screen compared the two as strings and read a withdrawn consent as
+            # active. Both halves are fixed (see `get_consents`), and the
+            # duplicate is gone so the mistake has nowhere to come back from.
+            'consents',
         ]
         read_only_fields = fields
 
@@ -112,13 +114,25 @@ class UserSerializer(serializers.ModelSerializer):
         that from two nullable timestamps in the browser would be a second copy
         of the comparison in core/consents.py.
         """
+        # Rendered through DRF's own DateTimeField rather than handed over as
+        # raw datetimes. A SerializerMethodField's return value goes to the JSON
+        # encoder untouched, which writes UTC with a 'Z'; the declared fields
+        # above go through DRF and come out in settings.TIME_ZONE with a
+        # '+02:00' offset. Two renderings of the same instant in one payload is
+        # not merely untidy — it cost a real bug: `ConsentsRequired` compared
+        # `withdrawn_at` against `data_consent_at` as *strings*, and
+        # '…T10:…Z' <= '…T12:…+02:00' is true, so a withdrawn consent read as
+        # active and the screen offered no way to restore it.
+        moment = serializers.DateTimeField()
         state = consent_state(user)
         return {
             'active': has_active_consents(user),
             **{
                 name: {
-                    'granted_at': value['granted_at'],
-                    'withdrawn_at': value['withdrawn_at'],
+                    'granted_at': moment.to_representation(value['granted_at'])
+                    if value['granted_at'] else None,
+                    'withdrawn_at': moment.to_representation(value['withdrawn_at'])
+                    if value['withdrawn_at'] else None,
                     'active': value['active'],
                 }
                 for name, value in state.items()

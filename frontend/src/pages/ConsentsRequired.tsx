@@ -40,25 +40,24 @@ import './consentsRequired.css'
 
 const RESTORE_ERROR = 'Nie udało się zapisać zgody. Spróbuj ponownie.'
 
-/** Which consents this account is missing, in the order both screens list them. */
-function missingConsents(user: AuthUser): ConsentDefinition[] {
-  return CONSENTS.filter((consent) => !isActive(user, consent.id))
+/**
+ * One consent's state, as the server reported it.
+ *
+ * **Read, never recomputed**, and that is the fix for the bug this screen
+ * shipped with. It used to derive `active` here by comparing the two timestamps
+ * — and the payload rendered them in different zones, so comparing the strings
+ * said a withdrawn consent still held. The screen then showed "Udzielona" and no
+ * restore button, which left the account with nowhere to go but the logout
+ * link. `core/consents.is_active` is the single definition of this; a second one
+ * in the browser is a second one free to disagree with the gate.
+ */
+function stateOf(user: AuthUser, id: ConsentDefinition['id']) {
+  return id === CONSENT_IDS.data ? user.consents.data : user.consents.services
 }
 
-/**
- * Whether one consent currently holds, from what the session carries.
- *
- * Mirrors `is_active` in core/consents.py: granted, and not withdrawn since. The
- * comparison is here rather than a boolean per consent on the wire because the
- * screen needs both dates anyway — it says when the consent was given and when
- * it was withdrawn.
- */
-function isActive(user: AuthUser, id: ConsentDefinition['id']): boolean {
-  const granted = id === CONSENT_IDS.data ? user.dataConsentAt : user.servicesConsentAt
-  const withdrawn =
-    id === CONSENT_IDS.data ? user.dataConsentWithdrawnAt : user.servicesConsentWithdrawnAt
-  if (!granted) return false
-  return !withdrawn || withdrawn <= granted
+/** Which consents this account is missing, in the order both screens list them. */
+function missingConsents(user: AuthUser): ConsentDefinition[] {
+  return CONSENTS.filter((consent) => !stateOf(user, consent.id).active)
 }
 
 function ConsentsRequired() {
@@ -108,11 +107,7 @@ function ConsentsRequired() {
 
         <div className="consents-list">
           {CONSENTS.map((consent) => {
-            const active = isActive(user!, consent.id)
-            const withdrawnAt =
-              consent.id === CONSENT_IDS.data
-                ? user!.dataConsentWithdrawnAt
-                : user!.servicesConsentWithdrawnAt
+            const { active, withdrawnAt } = stateOf(user!, consent.id)
             const withdrawnOn = active ? null : consentDateLabel(withdrawnAt ?? '')
             const scope: ConsentWithdrawalScope =
               consent.id === CONSENT_IDS.data ? 'data' : 'services'

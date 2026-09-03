@@ -16,13 +16,13 @@ export const TEST_USER: AuthUser = {
   guardianStatus: null,
   // Both granted, as registration writes them — the ordinary account. A screen
   // testing the "Nieudzielona" state overrides one with null.
-  dataConsentAt: '2026-06-18T09:31:02Z',
-  servicesConsentAt: '2026-06-18T09:31:02Z',
   // Both consents in force — the ordinary account. A test about the locked
-  // screen sets `consentsActive: false` and a withdrawal date.
-  consentsActive: true,
-  dataConsentWithdrawnAt: null,
-  servicesConsentWithdrawnAt: null,
+  // screen replaces this block with one whose `active` flags are false.
+  consents: {
+    active: true,
+    data: { grantedAt: '2026-06-18T09:31:02Z', withdrawnAt: null, active: true },
+    services: { grantedAt: '2026-06-18T09:31:02Z', withdrawnAt: null, active: true },
+  },
 }
 
 /**

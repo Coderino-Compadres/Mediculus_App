@@ -174,6 +174,13 @@ function Journals() {
           <button
             key={option.value}
             type="button"
+            // WCAG 4.1.2. Without this the active filter was a colour and
+            // nothing else: a screen reader read four identical buttons and
+            // never said which list it was reading. `aria-pressed` rather than
+            // `aria-current` for the same reason as the other chip rows in this
+            // app (Analysis, TechniqueSchoolTabs) — these are toggles over one
+            // list, not links to somewhere.
+            aria-pressed={filter === option.value}
             className={filter === option.value ? 'journals-filter-chip journals-filter-chip-active' : 'journals-filter-chip'}
             onClick={() => changeFilter(option.value)}
           >

@@ -34,7 +34,13 @@ function TechniqueRow({ technique, school }: TechniqueRowProps) {
       state={{ szkola: school }}
       className="technique-row"
     >
-      <span className="technique-badge" aria-label={`Szkoła: ${SCHOOL_BADGES[badge]}`}>
+      {/* The prefix as real hidden text rather than as `aria-label` on this
+          span. ARIA forbids a label on a role-less element (`role="generic"`),
+          so the old attribute was one assistive tech was entitled to ignore —
+          and where it was honoured it *replaced* the visible "DBT" instead of
+          introducing it. */}
+      <span className="technique-badge">
+        <span className="visually-hidden">Szkoła: </span>
         {SCHOOL_BADGES[badge]}
       </span>
       <div className="journal-row-body">
