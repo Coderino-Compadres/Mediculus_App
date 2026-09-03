@@ -58,6 +58,13 @@ function EmotionSelector({
                 style={isAlert ? undefined : { color }}
               >
                 {entry.intensity ?? 0}/10
+                {/* WCAG 1.4.1. The alert used to be `color: var(--color-error)`
+                    and nothing else, so a reader who cannot tell the red from
+                    the emotion's own hue — or who is using a screen reader —
+                    saw "8/10" and never learned the app had flagged it. The
+                    word carries the same meaning without the colour, and being
+                    real text it reaches assistive tech for free. */}
+                {isAlert && <span className="emotion-intensity-flag"> · wysokie</span>}
               </span>
             </div>
             <input

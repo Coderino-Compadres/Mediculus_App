@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
 import Journals from './Journals'
@@ -429,5 +429,37 @@ describe('Journals — pagination and the filters together', () => {
 
     expect(screen.getByText(/Brak wpisów odpowiadających temu filtrowi/i)).toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+})
+
+describe('Journals — WCAG 4.1.2: the active filter is announced, not only coloured', () => {
+  /**
+   * The chip row used to say which filter was on with a background colour and
+   * nothing else, so a screen reader read four identical buttons and never said
+   * which list it was reading. The other chip rows in this app (Analysis,
+   * TechniqueSchoolTabs) already carried `aria-pressed`; this one did not.
+   */
+  it('marks exactly one chip as pressed', async () => {
+    mockedFetch.mockResolvedValueOnce([])
+    renderWithProviders(<Journals />)
+
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { pressed: true })).toHaveLength(1),
+    )
+  })
+
+  it('moves the pressed state with the filter', async () => {
+    mockedFetch.mockResolvedValueOnce([])
+    renderWithProviders(<Journals />)
+
+    const chip = await screen.findByRole('button', { name: 'Dobre dni' })
+    expect(chip).toHaveAttribute('aria-pressed', 'false')
+
+    await userEvent.click(chip)
+
+    expect(screen.getByRole('button', { name: 'Dobre dni' })).toHaveAttribute(
+      'aria-pressed', 'true',
+    )
+    expect(screen.getAllByRole('button', { pressed: true })).toHaveLength(1)
   })
 })

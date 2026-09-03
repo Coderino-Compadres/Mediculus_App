@@ -122,3 +122,29 @@ describe('the stress alert', () => {
     expect(screen.getByText('10/10')).not.toHaveClass('emotion-intensity-value-alert')
   })
 })
+
+describe('EmotionSelector — WCAG 1.4.1: the alert is not only a colour', () => {
+  /**
+   * At and above the threshold the value used to turn `--color-error` and
+   * nothing else changed. A reader who cannot tell that red from the emotion's
+   * own hue — or anyone using a screen reader — saw "8/10" and never learned
+   * the app had flagged it.
+   */
+  it('says the rating is high in words once it crosses the threshold', () => {
+    renderSelector([{ emotion: STRES, intensity: 7 }], { [STRES]: 6 })
+
+    expect(screen.getByText(/wysokie/)).toBeInTheDocument()
+  })
+
+  it('says nothing below the threshold', () => {
+    renderSelector([{ emotion: STRES, intensity: 5 }], { [STRES]: 6 })
+
+    expect(screen.queryByText(/wysokie/)).toBeNull()
+  })
+
+  it('says nothing when no threshold applies to the emotion', () => {
+    renderSelector([{ emotion: STRES, intensity: 10 }])
+
+    expect(screen.queryByText(/wysokie/)).toBeNull()
+  })
+})

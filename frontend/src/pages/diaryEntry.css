@@ -231,6 +231,16 @@
   color: var(--color-error);
 }
 
+/* The word that carries the alert without the colour (WCAG 1.4.1). Smaller than
+   the number it follows, because it qualifies it rather than competing with it —
+   but not hidden, which is the whole point. */
+.level-slider-flag,
+.emotion-intensity-flag {
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
 .level-slider-input {
   width: 100%;
   accent-color: var(--color-sage);
