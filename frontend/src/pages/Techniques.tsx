@@ -1,5 +1,6 @@
 import { useSearchParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import { useStoredTechniques } from '../hooks/useStoredTechniques'
 import TechniqueRow from '../components/TechniqueRow'
 import TechniqueSchoolTabs from '../components/TechniqueSchoolTabs'
 import type { TechniqueSchool } from '../types/technique'
@@ -53,8 +54,25 @@ const EMPTY_TAB = 'Materiały w przygotowaniu — czekamy na opisy od specjalist
  */
 const RELAXATION_NOTE = 'Kolejne materiały w przygotowaniu.'
 
+/**
+ * Shown when the techniques specialists added could not be loaded.
+ *
+ * The built-in catalogue needs no network, so it is still on screen — which is
+ * exactly why this line has to exist: without it the list looks complete, and
+ * the one thing a catalogue must not do is silently omit something. Worded as
+ * "may be missing" because that is all the browser knows.
+ */
+const STORED_FAILED = 'Nie udało się wczytać technik dodanych przez specjalistów — na liście może brakować kilku pozycji.'
+
 function Techniques() {
   const [params, setParams] = useSearchParams()
+  // Merged into the catalogue rather than listed separately: a technique written
+  // by a specialist is a catalogue entry like any other (the decision behind the
+  // feature), so it belongs in its school's tab and its DBT group. No loading
+  // state over the list — the built-in half is already here, and blanking a
+  // readable catalogue for the length of a request would be a worse screen than
+  // one that fills in a moment later.
+  const { techniques: stored, failed: storedFailed } = useStoredTechniques()
   // Clamped rather than trusted, like the page number on the list screens:
   // `?szkola=cokolwiek` shows the default tab instead of an empty screen.
   const raw = params.get(SCHOOL_PARAM)
@@ -69,9 +87,9 @@ function Techniques() {
     setParams(updated, { replace: true })
   }
 
-  const techniques = techniquesForSchool(school)
+  const techniques = techniquesForSchool(school, stored)
   const counts = Object.fromEntries(
-    SCHOOL_TABS.map((tab) => [tab.school, techniquesForSchool(tab.school).length]),
+    SCHOOL_TABS.map((tab) => [tab.school, techniquesForSchool(tab.school, stored).length]),
   ) as Record<TechniqueSchool, number>
 
   // Only DBT is grouped; the other tabs render a flat list. The group is read
@@ -101,6 +119,12 @@ function Techniques() {
       </p>
 
       <TechniqueSchoolTabs active={school} onChange={changeSchool} counts={counts} />
+
+      {storedFailed && (
+        <p className="techniques-note techniques-note-warning" role="status">
+          {STORED_FAILED}
+        </p>
+      )}
 
       {grouped !== null && (
         <div className="techniques-sections">

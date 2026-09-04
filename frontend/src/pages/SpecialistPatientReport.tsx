@@ -4,58 +4,58 @@ import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
 import ReportSections from '../components/ReportSections'
 import { ApiError } from '../api/client'
-import {
-  fetchReportPdf,
-  fetchWeeklyReport,
-  reportPdfFileName,
-  saveBlob,
-} from '../api/reports'
+import { fetchPatientReport, fetchPatientReportPdf } from '../api/specialist'
+import { reportPdfFileName, saveBlob } from '../api/reports'
 import { DAYS_IN_WEEK } from '../utils/reports'
 import type { WeeklyReport } from '../types/report'
-import { ROUTES, journalDetailPath } from '../routes'
+import { specialistPatientReportsPath } from '../routes'
 import './diaryEntry.css'
 import './journals.css'
 import './reports.css'
 import './reportDetail.css'
+import './specialist.css'
 
 /**
- * One weekly report.
+ * One weekly report, read by the patient's specialist.
  *
- * Structurally read-only, like the archival diary entry it is built from: a
- * report is a summary of a week that has ended, so there is nothing on this
- * screen to edit and no range to pick. What the client asked for is a dated
- * recap — what happened, how it went, what was used — closer to a spreadsheet
- * export than to an essay.
+ * THE SAME DOCUMENT THE PATIENT SEES. The body comes from
+ * components/ReportSections.tsx, which pages/ReportDetail.tsx renders too — one
+ * definition, so a specialist and a patient discussing "the report" are never
+ * holding two different papers. What differs is the frame: the way back leads to
+ * this patient's list rather than to /reports, and the note at the bottom is
+ * written for a reader who did not write the entries.
  *
- * Two things the mockup shows are deliberately absent; see the TODOs below.
+ * ONE DELIBERATE DIFFERENCE IN THE BODY: the flagged days are not links here.
+ * The specialist's access is the weekly reports and nothing else for now, so a
+ * link into the diary entry behind a flagged day would answer a question that is
+ * still open with the client — see the note on `riskyDayPath`.
+ *
+ * The PDF carries the *patient's* address, not the reader's: a printout that
+ * leaves the app has to say whose week it is (core/views.py `ReportPdfBase`).
  */
 
-const LOAD_ERROR = 'Nie udało się wczytać tego raportu. Spróbuj ponownie.'
-
+const LOAD_ERROR = 'Nie udało się wczytać raportu. Spróbuj ponownie.'
+const NOT_FOUND = 'Nie znaleziono raportu dla tego tygodnia u tego pacjenta.'
 const PDF_ERROR = 'Nie udało się pobrać raportu. Spróbuj ponownie.'
 
-function ReportDetail() {
+function SpecialistPatientReport() {
   const navigate = useNavigate()
-  const { id } = useParams<{ id: string }>()
+  const { patientId, reportId } = useParams<{ patientId: string; reportId: string }>()
+  const backTo = specialistPatientReportsPath(patientId ?? '')
 
   const [report, setReport] = useState<WeeklyReport | null>(null)
-  const [loading, setLoading] = useState(Boolean(id))
+  const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  // Bumped by the retry button; the effect below lists it as a dependency, so
-  // trying again re-runs the one load rather than a second copy of it.
   const [attempt, setAttempt] = useState(0)
   const retry = () => setAttempt((value) => value + 1)
   const [downloading, setDownloading] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
 
-  // One report by its week id. A 404 is "no such report" rather than an error —
-  // an id naming a week with no entries and a wrong id are worded the same,
-  // since neither tells the patient anything they can act on.
   useEffect(() => {
-    if (!id) return
+    if (!patientId || !reportId) return
     let cancelled = false
 
-    fetchWeeklyReport(id)
+    fetchPatientReport(patientId, reportId)
       .then((loaded) => {
         if (cancelled) return
         setReport(loaded)
@@ -64,6 +64,9 @@ function ReportDetail() {
       .catch((cause: unknown) => {
         if (cancelled) return
         setReport(null)
+        // A week with no entries, a week that does not exist and a patient who
+        // is not this specialist's all answer 404 — and the wording covers all
+        // three, because none of them is something to act on differently.
         setLoadError(
           cause instanceof ApiError && cause.status === 404
             ? null
@@ -77,18 +80,14 @@ function ReportDetail() {
     return () => {
       cancelled = true
     }
-  }, [id, attempt])
+  }, [patientId, reportId, attempt])
 
-  /**
-   * The file comes from the server, fetched rather than linked to: the request
-   * has to carry the session cookie, and a refusal has to land on this screen
-   * instead of rendering as raw JSON in a new tab.
-   */
   async function downloadPdf(current: WeeklyReport) {
+    if (!patientId) return
     setDownloading(true)
     setPdfError(null)
     try {
-      saveBlob(await fetchReportPdf(current.id), reportPdfFileName(current))
+      saveBlob(await fetchPatientReportPdf(patientId, current.id), reportPdfFileName(current))
     } catch (cause: unknown) {
       setPdfError((cause instanceof ApiError && cause.formMessage) || PDF_ERROR)
     } finally {
@@ -114,7 +113,7 @@ function ReportDetail() {
           message={loadError}
           onRetry={retry}
         />
-        <Link to={ROUTES.reports}>← Wróć do Raportów</Link>
+        <Link to={backTo}>← Wróć do raportów pacjenta</Link>
       </div>
     )
   }
@@ -122,8 +121,8 @@ function ReportDetail() {
   if (!report) {
     return (
       <div className="report-detail-page">
-        <p className="journal-detail-not-found">Nie znaleziono takiego raportu.</p>
-        <Link to={ROUTES.reports}>← Wróć do Raportów</Link>
+        <p className="journal-detail-not-found">{NOT_FOUND}</p>
+        <Link to={backTo}>← Wróć do raportów pacjenta</Link>
       </div>
     )
   }
@@ -134,29 +133,19 @@ function ReportDetail() {
         <button
           type="button"
           className="journal-detail-back"
-          aria-label="Wróć do Raportów"
-          onClick={() => navigate(ROUTES.reports)}
+          aria-label="Wróć do raportów pacjenta"
+          onClick={() => navigate(backTo)}
         >
           ←
         </button>
         <div className="journal-detail-header-titles">
           <p className="journal-detail-module-label">PSYCHOTERAPIA</p>
-          <h1>Raport</h1>
+          <h1>Raport pacjenta</h1>
           <p className="journal-detail-date">{report.rangeLabel}</p>
         </div>
         <HeaderMenu />
       </header>
 
-      {/* One action, centred. "Pobierz PDF" is the only one: it saves a file to
-          the patient's own device, which is not an act of sharing.
-
-          TODO: no "Wyślij terapeucie" button here, and that is deliberate —
-          sharing is not a patient decision (see the visibility note on the list
-          screen).
-
-          There used to be a "Pełna analiza" link beside it, to /analysis. It was
-          removed on request; the analysis is reachable from the header menu,
-          which is where every other screen is reached from. */}
       <section className="report-hero">
         <p className="report-hero-label">RAPORT TYGODNIOWY</p>
         <h2 className="report-hero-range">{report.rangeLabel}</h2>
@@ -175,33 +164,28 @@ function ReportDetail() {
         </div>
       </section>
 
-      {/* TODO: the "PDF na maila" fallback delivery is still missing — there is
-          no mail out of this deployment at all. Saving the file is the whole of
-          the export for now. */}
       {pdfError && (
         <p className="report-pdf-status report-pdf-status-error" role="alert">
           {pdfError}
         </p>
       )}
 
-      {/* The body of the report — metrics, rankings, flagged days, summary —
-          comes from components/ReportSections.tsx, which the specialist's view of
-          the same week renders too. One definition, so the two readers are never
-          holding different papers. The flagged days link into the diary here,
-          which is the one thing the specialist's copy does not do. */}
-      <ReportSections report={report} riskyDayPath={journalDetailPath} />
+      {/* No `riskyDayPath`: the flagged days render as text rather than as links
+          into the patient's diary — see the header of this file. */}
+      <ReportSections report={report} />
 
       <section className="journal-detail-info-banner">
         <span className="journal-detail-info-icon" aria-hidden="true">
           ⓘ
         </span>
         <p>
-          Raport podsumowuje tylko to, co zapisałeś/zapisałaś w dzienniczkach w tym tygodniu. Dni bez
-          wpisu nie są liczone jako złe dni — po prostu ich tu nie ma.
+          Raport podsumowuje tylko to, co pacjent zapisał w dzienniczkach w tym
+          tygodniu. Dni bez wpisu nie są liczone jako złe dni — po prostu ich tu
+          nie ma.
         </p>
       </section>
     </div>
   )
 }
 
-export default ReportDetail
+export default SpecialistPatientReport

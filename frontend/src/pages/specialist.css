@@ -1,0 +1,304 @@
+/* Shared by every screen of the specialist panel. The page frames come from
+   moduleSelect.css (the panel's home) and journals.css (the list screens); this
+   file is only what those two do not have. */
+
+/* The tool cards on the panel's home screen. Solid white with a shadow, like
+   every card holding something real — deliberately not the dashed placeholder
+   look of parentHome.css, because these lead somewhere. */
+.specialist-tools {
+  width: 100%;
+  max-width: 720px;
+  margin-bottom: 24px;
+}
+
+.specialist-tools-heading {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 12px;
+}
+
+.specialist-tool {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    'title arrow'
+    'text text';
+  gap: 4px 12px;
+  align-items: center;
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 12px;
+  text-decoration: none;
+}
+
+.specialist-tool-title {
+  grid-area: title;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 17px;
+  color: var(--color-graphite);
+}
+
+.specialist-tool-text {
+  grid-area: text;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+}
+
+.specialist-tool-arrow {
+  grid-area: arrow;
+  font-size: 18px;
+  color: var(--color-graphite-muted);
+}
+
+/* What the panel does *not* show. Quiet, and not a card: it is a statement of
+   scope, not a feature. */
+.specialist-scope {
+  width: 100%;
+  max-width: 720px;
+  border: 1px solid rgba(var(--shadow-tint), 0.2);
+  border-radius: 18px;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.specialist-scope h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 0 0 6px;
+}
+
+.specialist-scope p {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+/* The list screens' subtitle (whose patient this is) and the way back. */
+.journals-subtitle {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}
+
+.journals-back {
+  display: inline-block;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite);
+  margin-bottom: 16px;
+}
+
+/* The panel's forms. auth.css supplies .auth-field and its error text; this is
+   the frame around them and the few controls it does not have. */
+.specialist-form {
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 24px;
+}
+
+.specialist-form textarea,
+.specialist-form input,
+.specialist-form select {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-body);
+  font-size: 15px;
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--shadow-tint), 0.25);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--color-graphite);
+}
+
+.specialist-form input[type='checkbox'] {
+  width: auto;
+}
+
+.specialist-form-hint {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 12px;
+}
+
+.specialist-form-submit {
+  display: inline-block;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  color: #fff;
+  background: var(--color-graphite);
+  border: none;
+  border-radius: 12px;
+  padding: 12px 22px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.specialist-form-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.specialist-new-link {
+  margin-bottom: 20px;
+}
+
+.specialist-fieldset {
+  border: 1px solid rgba(var(--shadow-tint), 0.2);
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin: 0 0 16px;
+}
+
+.specialist-fieldset legend {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  padding: 0 6px;
+}
+
+.specialist-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin-bottom: 8px;
+}
+
+.specialist-step {
+  border-top: 1px solid rgba(var(--shadow-tint), 0.15);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.specialist-step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.specialist-step-number {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+}
+
+/* The invitation code: shown once, so it is the loudest thing on its screen.
+   Monospace and spaced out because it is read off a screen and typed by hand. */
+.specialist-code {
+  width: 100%;
+  max-width: 720px;
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 20px;
+}
+
+.specialist-code h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 17px;
+  color: var(--color-graphite);
+  margin: 0 0 8px;
+}
+
+.specialist-code-value {
+  font-family: ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+  font-size: 26px;
+  letter-spacing: 0.12em;
+  color: var(--color-graphite);
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.specialist-code-note {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  margin: 0 0 8px;
+}
+
+/* The panel's own lists: issued invitations, and the specialist's techniques. */
+.specialist-list {
+  width: 100%;
+  max-width: 720px;
+}
+
+.specialist-list-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  background: #fff;
+  border-radius: 18px;
+  padding: 16px 20px;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 12px;
+}
+
+.specialist-list-title {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 16px;
+  color: var(--color-graphite);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.specialist-list-meta {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.specialist-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* A draft is content patients cannot see, so the list has to say which is which
+   at a glance. */
+.specialist-draft {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-graphite-muted);
+  margin-left: 8px;
+}
+
+@media (max-width: 600px) {
+  .specialist-list-row {
+    flex-direction: column;
+  }
+}

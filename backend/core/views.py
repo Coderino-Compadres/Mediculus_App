@@ -31,15 +31,21 @@ from .guardian import (STATUS_ACCEPTED, accept_invitation, accepted_children,
                        reject_invitation)
 from .consents import SCOPES, consent_state, restore, withdraw
 from .models import Patient
+from .parent_invitations import (list_invitations, revoke,
+                                serialize_invitation as serialize_parent_invitation)
 from .permissions import CONSENT_EXEMPT
 from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
 from .serializers import (ConsentScopeSerializer, GuardianLinkSerializer,
-                          LoginSerializer, PasswordChangeSerializer,
-                          RegisterSerializer, UserSerializer)
+                          LoginSerializer, ParentInvitationCreateSerializer,
+                          PasswordChangeSerializer, RegisterSerializer,
+                          SpecialistPatientInviteSerializer, UserSerializer)
+from . import specialist as specialist_rules
+from . import techniques as technique_rules
 from .throttling import (AuthThrottle, GuardianLinkThrottle,
                          LoginAccountThrottle, PasswordChangeThrottle,
-                         ReportPdfThrottle, attempts_warning)
+                         ReportPdfThrottle, SpecialistInviteThrottle,
+                         attempts_warning)
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
@@ -162,7 +168,10 @@ class MeView(APIView):
         return Response(UserSerializer(request.user).data)
 
 
-def _require_patient(request, refusal, *, require_guardian_link=True, with_care=False):
+def _require_patient(
+    request, refusal, *, require_guardian_link=True, with_care=False,
+    with_pending_specialist=False,
+):
     """The `patient` row behind the session, or a refusal.
 
     Shared by every endpoint that reads or writes clinical data: the session is
@@ -186,7 +195,12 @@ def _require_patient(request, refusal, *, require_guardian_link=True, with_care=
     that the two definitions stay in step, so change them together.
     """
     patients = Patient.objects.filter(user=request.user)
-    if with_care:
+    if with_pending_specialist:
+        # The card that answers a specialist's invitation names the person
+        # asking, whose name is on their own `user` row — one query instead of
+        # three, the same opt-in as `with_care` and for the same reason.
+        patients = patients.select_related('specjalist_pending__user')
+    elif with_care:
         # The profile screen names the treating specialist, whose name lives on
         # their own `user` row — one query instead of three. Opt-in rather than
         # always, because every other caller wants the two columns below and
@@ -595,13 +609,14 @@ class PdfRenderer(BaseRenderer):
         return data
 
 
-class ReportPdfView(APIView):
-    """GET /api/reports/<week-id>/pdf/ — the same report as a file.
+class ReportPdfBase(APIView):
+    """What both PDF endpoints need, shared so they cannot drift apart.
 
-    Rendered from the payload `ReportDetailView` answers with, not from a second
-    reading of the diary, so the document and the screen cannot drift apart.
-
-    Three things the JSON endpoints do not need:
+    The patient's own `/api/reports/<week-id>/pdf/` and the specialist's
+    `/api/specialist/patients/<id>/reports/<week-id>/pdf/` differ in exactly two
+    things — whose reports are built, and whose address is printed on the
+    document — and in nothing about how a PDF is served. Three of those details
+    are easy to get wrong and invisible when you do:
 
     - `Content-Disposition: attachment`, with an ASCII filename by construction
       (`pdf_file_name`), so there is no header encoding to get wrong.
@@ -632,21 +647,37 @@ class ReportPdfView(APIView):
             request.accepted_media_type = 'application/json'
         return super().finalize_response(request, response, *args, **kwargs)
 
-    def get(self, request, report_id):
-        patient = _require_patient(request, REPORT_REFUSAL)
-        reports = build_weekly_reports(patient.id_medical, timezone.localdate())
+    def render(self, id_medical, report_id, email):
+        """The file, or a 404 for a week this diary does not support.
+
+        `email` is the only thing in the document that comes from user_db, and
+        it is always the *patient's* — a printout that reaches a specialist has
+        to say whose week it is, and on the specialist's own copy that is still
+        the patient, not the reader. Passed in rather than read here so
+        core/reports.py can go on aggregating medical_db without ever seeing one.
+        """
+        reports = build_weekly_reports(id_medical, timezone.localdate())
         report = find_report(reports, report_id)
         if report is None:
             raise NotFound(REPORT_NOT_FOUND)
 
-        # The address is the only thing in the document that comes from user_db;
-        # it is read here, from the session, so core/reports.py can go on
-        # aggregating medical_db without ever seeing one.
-        document = render_report_pdf(report, request.user.email)
+        document = render_report_pdf(report, email)
         response = HttpResponse(document, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{pdf_file_name(report)}"'
         response['Cache-Control'] = 'no-store'
         return response
+
+
+class ReportPdfView(ReportPdfBase):
+    """GET /api/reports/<week-id>/pdf/ — the patient's own report as a file.
+
+    Rendered from the payload `ReportDetailView` answers with, not from a second
+    reading of the diary, so the document and the screen cannot drift apart.
+    """
+
+    def get(self, request, report_id):
+        patient = _require_patient(request, REPORT_REFUSAL)
+        return self.render(patient.id_medical, report_id, request.user.email)
 
 
 #: Refusal for an account that is not a clinical subject, worded for this screen.
@@ -698,4 +729,435 @@ class FrequencyView(APIView):
             'bucket': 'month',
             'years_with_entries': years_with_entries(patient.id_medical, today),
             'buckets': build_year_frequency(patient.id_medical, year, today),
+        })
+
+
+#: Refusal for an account with no `specjalist` row, worded for the whole panel.
+#:
+#: One message for every specialist endpoint, like GUARDIAN_GATE_REFUSAL: the
+#: reason is a fact about the account rather than about the thing being asked
+#: for, so naming the patient list here would imply the reports are reachable.
+SPECIALIST_REFUSAL = 'Ta część aplikacji jest dostępna tylko dla konta specjalisty.'
+
+#: What a patient meets on the specialist's own screens, and vice versa. Both
+#: exist because the two roles reach for the same nouns — "zaproszenie",
+#: "raport" — and a generic refusal would leave either side unsure whether they
+#: had asked the wrong thing or the wrong way.
+SPECIALIST_INVITATION_NOT_FOUND = (
+    'Nie masz zaproszenia od specjalisty oczekującego na odpowiedź.'
+)
+
+PATIENT_NOT_FOUND = 'Nie znaleziono takiego pacjenta.'
+
+#: The patient's side of the same feature, worded for their screen: this one is
+#: about their own account rather than about the panel.
+SPECIALIST_INVITATION_REFUSAL = (
+    'Zaproszenia od specjalisty dotyczą tylko konta pacjenta.'
+)
+
+PARENT_INVITATION_NOT_FOUND = (
+    'Nie znaleziono zaproszenia, które można anulować.'
+)
+
+TECHNIQUE_NOT_FOUND = 'Nie znaleziono takiej techniki.'
+
+
+def _require_specialist(request):
+    """The `specjalist` row behind the session, or a refusal.
+
+    The specialist half of `_require_patient`, and deliberately the same shape:
+    the session is the only identity input, so there is no specialist id in any
+    URL, and what authorizes is the existence of the row rather than the role
+    name on `user` (a nullable text column seeded by SQL — see
+    `core.specialist.specjalist_for`).
+
+    Note what this does **not** grant. Being a specialist opens the panel and
+    nothing else: which patients' reports are readable is decided per request by
+    `assigned_patient`, i.e. by whose invitation was accepted. Registration is
+    self-service, so this refusal is a routing decision, not the access control.
+    """
+    specjalist = specialist_rules.specjalist_for(request.user)
+    if specjalist is None:
+        raise PermissionDenied(SPECIALIST_REFUSAL)
+    return specjalist
+
+
+def _assigned_patient(specjalist, patient_id):
+    """One of this specialist's accepted patients, or 404.
+
+    404 rather than 403 for a patient who is somebody else's, which is the
+    convention every id-carrying URL here follows (/api/diary/<id>/,
+    /api/guardian/invitations/<id>/…): a 403 would confirm that the account
+    exists and is a patient, which is exactly what the invitation form takes
+    care not to answer.
+    """
+    patient = specialist_rules.assigned_patient(specjalist, patient_id)
+    if patient is None:
+        raise NotFound(PATIENT_NOT_FOUND)
+    return patient
+
+
+class SpecialistPatientsView(APIView):
+    """GET/POST /api/specialist/patients/ — the caseload, and asking to join it.
+
+    GET answers with two lists, accepted and pending, because a pending
+    invitation grants nothing and a screen must not be able to render one as a
+    patient by forgetting to read a status field. What each row carries is
+    `PATIENT_SUMMARY_FIELDS` in core/specialist.py — identity and engagement, no
+    clinical content; the content is the weekly reports, one screen further in.
+
+    POST asks a patient, named by e-mail, to be treated by this specialist. It
+    creates a *request*: `SpecialistPatientInviteSerializer` sets
+    `id_specjalist_pending` and the patient answers on their own screen. Every
+    way the address can fail gets the same refusal — see that serializer — and
+    `SpecialistInviteThrottle` is what keeps the shared refusal worth having.
+
+    **The cap applies to POST only**, via `get_throttles`. It is there because
+    *asking about an address* is a question worth bounding; reading your own
+    caseload is not, and the panel reads it on every screen it has — a cap on
+    GET would lock a specialist out of their own list by the middle of a working
+    day, which is a real outage in exchange for nothing.
+    """
+
+    def get_throttles(self):
+        return [SpecialistInviteThrottle()] if self.request.method == 'POST' else []
+
+    def get(self, request):
+        specjalist = _require_specialist(request)
+        return Response(specialist_rules.build_patient_list(specjalist))
+
+    def post(self, request):
+        specjalist = _require_specialist(request)
+        serializer = SpecialistPatientInviteSerializer(
+            data=request.data, context={'specjalist': specjalist},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            specialist_rules.build_patient_list(specjalist),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SpecialistPatientView(APIView):
+    """DELETE /api/specialist/patients/<id>/ — end the relationship, or drop the request.
+
+    THE ONLY SIDE THAT CAN DROP AN ACCEPTED LINK. That is the client's rule and
+    not an oversight of the patient's screen: with eating disorders the tendency
+    to hide information rises, so a patient-side "stop sharing" would switch the
+    reports off exactly in the cases they exist for (see the TODO in
+    frontend/src/pages/Reports.tsx, which has survived one attempt to turn this
+    into an opt-in already). A patient who wants out asks the specialist.
+
+    A patient who is not this specialist's answers 404, like every other
+    id-carrying URL here.
+    """
+
+    def delete(self, request, patient_id):
+        specjalist = _require_specialist(request)
+        if not specialist_rules.drop_link(specjalist, patient_id):
+            raise NotFound(PATIENT_NOT_FOUND)
+        return Response(specialist_rules.build_patient_list(specjalist))
+
+
+class SpecialistPatientReportListView(APIView):
+    """GET /api/specialist/patients/<id>/reports/ — one patient's weekly reports.
+
+    The same documents the patient sees on their own /reports, built by the same
+    `build_weekly_reports` from the same rows — so a specialist and a patient
+    can never be looking at two different accounts of one week, which is the
+    whole reason the aggregation lives on the server.
+
+    Two gates, in this order: a `specjalist` row (or the panel is not yours), and
+    `assigned_patient` (or this is not your patient). The second is the real one
+    — registration is self-service, so being a specialist means nothing until
+    somebody accepts you.
+    """
+
+    def get(self, request, patient_id):
+        specjalist = _require_specialist(request)
+        patient = _assigned_patient(specjalist, patient_id)
+        return Response(build_weekly_reports(patient.id_medical, timezone.localdate()))
+
+
+class SpecialistPatientReportDetailView(APIView):
+    """GET /api/specialist/patients/<id>/reports/<week-id>/ — one of them.
+
+    Building every report to return one is the honest cost of deriving them
+    (a week's numbers are meaningless without the week before it), exactly as on
+    the patient's own detail endpoint.
+    """
+
+    def get(self, request, patient_id, report_id):
+        specjalist = _require_specialist(request)
+        patient = _assigned_patient(specjalist, patient_id)
+        reports = build_weekly_reports(patient.id_medical, timezone.localdate())
+        report = find_report(reports, report_id)
+        if report is None:
+            raise NotFound(REPORT_NOT_FOUND)
+        return Response(report)
+
+
+class SpecialistPatientReportPdfView(ReportPdfBase):
+    """GET /api/specialist/patients/<id>/reports/<week-id>/pdf/ — as a file.
+
+    The document carries the **patient's** address, not the specialist's: a
+    printout that leaves the app has to say whose week it is, and on this copy
+    the reader is not the subject. Everything else about serving it is shared
+    with the patient's own endpoint — see `ReportPdfBase`.
+    """
+
+    def get(self, request, patient_id, report_id):
+        specjalist = _require_specialist(request)
+        patient = _assigned_patient(specjalist, patient_id)
+        return self.render(patient.id_medical, report_id, patient.user.email)
+
+
+class SpecialistParentInvitationsView(APIView):
+    """GET/POST /api/specialist/parent-invitations/ — codes for guardian accounts.
+
+    POST answers with the plaintext code **once**, and that is the only time it
+    exists anywhere: the row holds a hash, exactly as `user.password_hash` does,
+    so a database dump is not a set of usable invitations (see
+    core/parent_invitations.py). A specialist who loses a code revokes the
+    invitation and issues another; there is deliberately no endpoint that reads
+    one back, and the list below never contains one.
+
+    GET lists this specialist's invitations, redeemed and expired ones included:
+    a specialist needs to see that the parent did register, and an expired
+    invitation is the answer to "why can they not log in".
+
+    The cap is on POST only, for the reason given on `SpecialistPatientsView`:
+    issuing a code names an address, and listing your own invitations does not.
+    """
+
+    def get_throttles(self):
+        return [SpecialistInviteThrottle()] if self.request.method == 'POST' else []
+
+    def get(self, request):
+        specjalist = _require_specialist(request)
+        return Response(list_invitations(specjalist))
+
+    def post(self, request):
+        specjalist = _require_specialist(request)
+        serializer = ParentInvitationCreateSerializer(
+            data=request.data, context={'specjalist': specjalist},
+        )
+        serializer.is_valid(raise_exception=True)
+        invitation, code = serializer.save()
+        return Response(
+            {
+                # Once. The `invitation` half is what the list will show from
+                # now on; `code` exists in this response and nowhere else.
+                'code': code,
+                'invitation': serialize_parent_invitation(invitation),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SpecialistParentInvitationView(APIView):
+    """DELETE /api/specialist/parent-invitations/<id>/ — withdraw an unused code.
+
+    A redeemed invitation is not deletable: the account it created exists, and
+    dropping the row would not un-create it — it would only lose the record of
+    where that guardian came from. Unlinking a guardian is a different action on
+    `parent_child`, and it does not exist yet.
+    """
+
+    def delete(self, request, invitation_id):
+        specjalist = _require_specialist(request)
+        if not revoke(specjalist, invitation_id):
+            raise NotFound(PARENT_INVITATION_NOT_FOUND)
+        return Response(list_invitations(specjalist))
+
+
+class SpecialistTechniquesView(APIView):
+    """GET/POST /api/specialist/techniques/ — the techniques this specialist wrote.
+
+    GET includes unpublished drafts, which is the point of the panel: a technique
+    is written over more than one sitting, and `description_ready` is what
+    decides whether patients can open it yet.
+
+    POST writes a catalogue entry. What a specialist writes is **visible to every
+    patient**, not only their own — the decision behind this feature — which is
+    why there is no per-patient assignment here and why `author_id_specjalist`
+    records who to ask about the wording rather than who may read it.
+    """
+
+    def get(self, request):
+        specjalist = _require_specialist(request)
+        return Response([
+            technique_rules.serialize_technique(technique)
+            for technique in technique_rules.for_specjalist(specjalist)
+        ])
+
+    def post(self, request):
+        specjalist = _require_specialist(request)
+        serializer = technique_rules.TechniqueSerializer(
+            data=request.data, context={'specjalist': specjalist},
+        )
+        serializer.is_valid(raise_exception=True)
+        technique = serializer.save()
+        return Response(
+            technique_rules.serialize_technique(technique),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SpecialistTechniqueView(APIView):
+    """PUT/DELETE /api/specialist/techniques/<id>/ — correct or withdraw one.
+
+    Only the author's own: `find_for_specjalist` filters on
+    `author_id_specjalist`, so a colleague's technique answers exactly like a
+    nonexistent one. Clinical text corrections are expected here — the whole
+    catalogue is content awaiting review — and a specialist correcting somebody
+    else's wording is a conversation, not a form.
+
+    PUT rather than PATCH: the form submits its whole state, so a field left out
+    is an answer taken back rather than one left unchanged — the same rule as
+    /api/diary/today/, and for the same reason (a merge would make a cleared
+    field indistinguishable from an untouched one).
+    """
+
+    def put(self, request, id_technique):
+        specjalist = _require_specialist(request)
+        technique = technique_rules.find_for_specjalist(specjalist, id_technique)
+        if technique is None:
+            raise NotFound(TECHNIQUE_NOT_FOUND)
+        serializer = technique_rules.TechniqueSerializer(
+            technique, data=request.data, context={'specjalist': specjalist},
+        )
+        serializer.is_valid(raise_exception=True)
+        return Response(technique_rules.serialize_technique(serializer.save()))
+
+    def delete(self, request, id_technique):
+        specjalist = _require_specialist(request)
+        technique = technique_rules.find_for_specjalist(specjalist, id_technique)
+        if technique is None:
+            raise NotFound(TECHNIQUE_NOT_FOUND)
+        # `raport.id_technique` is SET_NULL, so a report that suggested this
+        # technique keeps its figures and loses the suggestion — which is the
+        # honest outcome for a technique its author withdrew.
+        technique.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TechniqueCatalogueView(APIView):
+    """GET /api/techniques/ — the techniques a specialist has published.
+
+    Only half the catalogue: the techniques the app ships with are still
+    hardcoded in the frontend (see core/techniques.py for why they have not been
+    moved), and the screen merges the two by slug.
+
+    No `_require_patient`, deliberately. A catalogue of published techniques is
+    not patient data — nothing here is about anybody — and a guardian reading the
+    same descriptions their child is reading is a reasonable thing to allow.
+    `published()` is what limits it: drafts and anything flagged
+    'wymagaSpecjalisty' never leave the panel.
+    """
+
+    def get(self, request):
+        return Response([
+            technique_rules.serialize_technique(technique)
+            for technique in technique_rules.published()
+        ])
+
+
+#: Why the three specialist-invitation endpoints opt out of the guardian gate.
+#:
+#: A minor waiting for a guardian is refused everywhere else, and these three are
+#: the exception for the same reason `POST /api/auth/guardian/` is: gating them
+#: is a deadlock. The flow the specialist panel exists to serve is a clinician
+#: sitting with a family — the child registers, the specialist asks to treat
+#: them, and the specialist then issues the code the *parent* registers with,
+#: which is what lifts the gate. But issuing that code requires the child to be
+#: this specialist's patient, and accepting is how a child becomes one. Gated,
+#: the child could never accept, so the code could never be issued, so the gate
+#: would never lift.
+#:
+#: WHAT ACCEPTING WHILE GATED ACTUALLY GRANTS: nothing. Every clinical endpoint
+#: stays gated, so the child cannot write a diary entry, so the reports the
+#: specialist may now read are derived from no rows at all. By the time there is
+#: anything to read, a guardian has accepted the account.
+#:
+#: The alternative was letting a specialist issue a parent code for a merely
+#: *pending* patient, and that is much worse: it needs no action from the child
+#: at all, so anybody who registered as a specialist could attach a guardian
+#: account they control to any minor whose address they know. Here the child has
+#: to accept, which is a deliberate act by the person the account belongs to.
+GUARDIAN_GATE_EXEMPT_REASON = 'specialist invitation — see the note above'
+
+
+class SpecialistInvitationView(APIView):
+    """GET /api/account/specialist-invitation/ — the patient's side of the ask.
+
+    Answers `{"invitation": null}` for a patient nobody has asked, which is the
+    normal case rather than an error: the card this feeds sits on the patient's
+    home screen and has to know to draw nothing.
+
+    Behind `_require_patient`, so a guardian or a specialist is refused rather
+    than told they have no invitation — a true statement about a row that does
+    not exist, and one that reads as a clinical record. **Not** behind the
+    guardian gate: see `GUARDIAN_GATE_EXEMPT_REASON` above.
+    """
+
+    def get(self, request):
+        patient = _require_patient(
+            request, SPECIALIST_INVITATION_REFUSAL,
+            # See GUARDIAN_GATE_EXEMPT_REASON: gating this is a deadlock, and
+            # accepting while gated grants access to an empty diary.
+            require_guardian_link=False, with_pending_specialist=True,
+        )
+        return Response({
+            'invitation': specialist_rules.pending_invitation(patient),
+        })
+
+
+class SpecialistInvitationAcceptView(APIView):
+    """POST /api/account/specialist-invitation/accept/ — agree to be treated.
+
+    This is the consent behind the whole specialist view: from here on that
+    specialist can read this patient's weekly reports. Accepting twice is the
+    same answer arriving twice (a double-tapped button), not an error.
+
+    Note what accepting gives up, because the screen says it in words: the
+    patient cannot undo it. Dropping the link is the specialist's action — see
+    `SpecialistPatientView` for the client's reasoning.
+    """
+
+    def post(self, request):
+        patient = _require_patient(
+            request, SPECIALIST_INVITATION_REFUSAL,
+            # See GUARDIAN_GATE_EXEMPT_REASON: gating this is a deadlock, and
+            # accepting while gated grants access to an empty diary.
+            require_guardian_link=False, with_pending_specialist=True,
+        )
+        if not specialist_rules.accept_invitation(patient):
+            raise NotFound(SPECIALIST_INVITATION_NOT_FOUND)
+        return Response({
+            'invitation': specialist_rules.pending_invitation(patient),
+        })
+
+
+class SpecialistInvitationRejectView(APIView):
+    """POST /api/account/specialist-invitation/reject/ — refuse it.
+
+    The pending column is cleared and no refusal is recorded, exactly as a
+    refused guardian invitation deletes its row: a stored "no" would be a state
+    nobody in the app can act on, while an absent invitation lets the specialist
+    ask again after talking to them.
+    """
+
+    def post(self, request):
+        patient = _require_patient(
+            request, SPECIALIST_INVITATION_REFUSAL,
+            # See GUARDIAN_GATE_EXEMPT_REASON: gating this is a deadlock, and
+            # accepting while gated grants access to an empty diary.
+            require_guardian_link=False, with_pending_specialist=True,
+        )
+        if not specialist_rules.reject_invitation(patient):
+            raise NotFound(SPECIALIST_INVITATION_NOT_FOUND)
+        return Response({
+            'invitation': specialist_rules.pending_invitation(patient),
         })

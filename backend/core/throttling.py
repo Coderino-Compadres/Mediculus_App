@@ -153,6 +153,27 @@ class ReportPdfThrottle(UserRateThrottle):
     scope = 'report_pdf'
 
 
+class SpecialistInviteThrottle(UserRateThrottle):
+    """Per-account cap on the two forms a specialist names somebody with.
+
+    `POST /api/specialist/patients/` answers whether an address belongs to a
+    patient account without a specialist, and `POST
+    /api/specialist/parent-invitations/` answers whether an address has an
+    account at all. Both answer with one shared refusal precisely so that neither
+    is an enumeration oracle — and a shared refusal is only as good as the
+    number of times it can be asked, because "refused" versus "accepted" is
+    itself an answer. This is what bounds the asking.
+
+    Its own scope rather than the shared 'auth' one, for the reason on
+    PasswordChangeThrottle: one name covering two policies means changing the
+    login limit silently changes this. Keyed on the account, which is the right
+    key here — registration is self-service, so a new IP is free and a new
+    specialist account is not (it needs an address nobody has used).
+    """
+
+    scope = 'specialist_invite'
+
+
 class PasswordChangeThrottle(UserRateThrottle):
     """Per-account cap on POST /api/account/password/.
 

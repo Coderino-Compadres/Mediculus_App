@@ -132,6 +132,9 @@ class SchemaDriftTests(SimpleTestCase):
     def test_parent_child_matches(self):
         self.assert_table_matches('parent_child')
 
+    def test_parent_invitation_matches(self):
+        self.assert_table_matches('parent_invitation')
+
     def test_the_dropped_column_is_gone_from_both_sides(self):
         # core.0006 removed it; if either side kept it, a fresh setup and a
         # migrated database would no longer be the same schema.

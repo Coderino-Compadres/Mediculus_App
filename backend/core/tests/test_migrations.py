@@ -29,6 +29,10 @@ RAW_SQL_MIGRATIONS = {
     'core.migrations.0006_drop_overall_feeling': 'medical',
     'core.migrations.0007_parent_child_accepted_at': 'default',
     'core.migrations.0009_diary_time_of_day': 'medical',
+    'core.migrations.0010_consent_withdrawal': 'default',
+    'core.migrations.0011_specjalist_patient_invitation': 'default',
+    'core.migrations.0012_parent_invitation': 'default',
+    'core.migrations.0013_technique_catalogue': 'medical',
 }
 
 
@@ -98,7 +102,10 @@ class IdempotencyTests(SimpleTestCase):
         for module_path in ('core.migrations.0004_user_consents',
                             'core.migrations.0005_diary_entry_fields',
                             'core.migrations.0007_parent_child_accepted_at',
-                            'core.migrations.0009_diary_time_of_day'):
+                            'core.migrations.0009_diary_time_of_day',
+                            'core.migrations.0010_consent_withdrawal',
+                            'core.migrations.0011_specjalist_patient_invitation',
+                            'core.migrations.0013_technique_catalogue'):
             with self.subTest(migration=module_path):
                 for operation in run_sql_operations(module_path):
                     self.assertRegex(operation.sql, r'ADD COLUMN IF NOT EXISTS')
@@ -214,6 +221,61 @@ class StateAndDatabaseAgreeTests(SimpleTestCase):
 
         self.assertEqual(added, set(re.findall(r'ADD COLUMN IF NOT EXISTS (\w+)', sql)))
         self.assertEqual(added, {'time_of_day'})
+
+    def test_0011_adds_the_same_two_columns_on_both_halves(self):
+        """Compared by *column* rather than by field name: `specjalist_pending`
+        is a ForeignKey whose db_column is `id_specjalist_pending`, so the two
+        halves legitimately spell it differently."""
+        state_ops, sql = self.state_and_sql(
+            'core.migrations.0011_specjalist_patient_invitation')
+        added = {
+            op.field.db_column or op.name
+            for op in state_ops if isinstance(op, migrations.AddField)
+        }
+
+        self.assertEqual(added, set(re.findall(r'ADD COLUMN IF NOT EXISTS (\w+)', sql)))
+        self.assertEqual(added, {'id_specjalist_pending', 'specjalist_accepted_at'})
+
+    def test_0012_creates_the_table_the_model_declares(self):
+        """A CreateModel rather than AddFields, so the check is that the state
+        half creates exactly the table the database half does."""
+        state_ops, sql = self.state_and_sql('core.migrations.0012_parent_invitation')
+        created = [op for op in state_ops if isinstance(op, migrations.CreateModel)]
+
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0].options['db_table'], 'parent_invitation')
+        self.assertRegex(sql, r'CREATE TABLE IF NOT EXISTS parent_invitation')
+
+        from core.models import ParentInvitation
+        self.assertEqual(
+            {name for name, _ in created[0].fields},
+            {field.name for field in ParentInvitation._meta.local_fields},
+        )
+
+    def test_0012_can_be_rolled_back(self):
+        for operation in run_sql_operations('core.migrations.0012_parent_invitation'):
+            self.assertRegex(operation.reverse_sql, r'DROP TABLE IF EXISTS parent_invitation')
+
+    def test_0013_adds_the_catalogue_columns_on_both_halves(self):
+        state_ops, sql = self.state_and_sql('core.migrations.0013_technique_catalogue')
+        added = {op.name for op in state_ops if isinstance(op, migrations.AddField)}
+
+        self.assertEqual(added, set(re.findall(r'ADD COLUMN IF NOT EXISTS (\w+)', sql)))
+        self.assertEqual(added, {
+            'slug', 'subtitle', 'schools', 'dbt_group', 'dbt_module',
+            'availability', 'intro', 'steps', 'duration_min',
+            'description_ready', 'author_id_specjalist', 'created_at',
+            'updated_at',
+        })
+
+    def test_0013_keeps_the_seeded_rows_out_of_the_patient_catalogue(self):
+        """`description_ready` defaulting to TRUE would have published the four
+        rows mock_data.sql seeds the moment this migration ran — they carry a
+        name and a sentence, not the structure the detail screen renders."""
+        _, sql = self.state_and_sql('core.migrations.0013_technique_catalogue')
+
+        self.assertRegex(
+            sql, r'description_ready BOOLEAN NOT NULL DEFAULT FALSE')
 
     def test_0004_adds_the_same_consent_columns_on_both_halves(self):
         state_ops, sql = self.state_and_sql('core.migrations.0004_user_consents')

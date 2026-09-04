@@ -36,7 +36,8 @@ PASSWORD = 'TajneHaslo123'
 #:
 #: Built as a list rather than checked endpoint by endpoint so that adding a URL
 #: to core/urls.py and forgetting the gate shows up here as a missing entry.
-def all_urls(diary_id, report_id, invitation_id):
+def all_urls(diary_id, report_id, invitation_id, patient_id=None):
+    patient_id = patient_id or invitation_id
     return [
         ('get', reverse('core:me')),
         ('post', reverse('core:logout')),
@@ -59,6 +60,25 @@ def all_urls(diary_id, report_id, invitation_id):
         ('get', reverse('core:report-list')),
         ('get', reverse('core:report-detail', args=[report_id])),
         ('get', reverse('core:report-pdf', args=[report_id])),
+        ('get', reverse('core:technique-catalogue')),
+        ('get', reverse('core:specialist-invitation')),
+        ('post', reverse('core:specialist-invitation-accept')),
+        ('post', reverse('core:specialist-invitation-reject')),
+        ('get', reverse('core:specialist-patients')),
+        ('post', reverse('core:specialist-patients')),
+        ('delete', reverse('core:specialist-patient', args=[patient_id])),
+        ('get', reverse('core:specialist-patient-reports', args=[patient_id])),
+        ('get', reverse(
+            'core:specialist-patient-report', args=[patient_id, report_id])),
+        ('get', reverse(
+            'core:specialist-patient-report-pdf', args=[patient_id, report_id])),
+        ('get', reverse('core:specialist-parent-invitations')),
+        ('post', reverse('core:specialist-parent-invitations')),
+        ('delete', reverse('core:specialist-parent-invitation', args=[invitation_id])),
+        ('get', reverse('core:specialist-techniques')),
+        ('post', reverse('core:specialist-techniques')),
+        ('put', reverse('core:specialist-technique', args=[1])),
+        ('delete', reverse('core:specialist-technique', args=[1])),
     ]
 
 

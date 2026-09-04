@@ -151,3 +151,80 @@ describe('the tab in the address', () => {
     expect(isTechniqueSchool(null)).toBe(false)
   })
 })
+
+/**
+ * The two halves of the catalogue: the techniques the app ships with
+ * (`data/techniques.ts`, mocked above) and the ones specialists wrote, which
+ * arrive from /api/techniques/ and are passed in as an argument.
+ *
+ * The argument is optional everywhere on purpose — a screen that has not loaded
+ * them, or a test that does not care, behaves exactly as it did before the
+ * specialist panel existed. Every test above this block relies on that.
+ */
+describe('techniques a specialist added', () => {
+  it('appear in their school’s tab alongside the built-in ones', () => {
+    catalogue(technique({ id: 'tipp', nazwa: 'TIPP' }))
+    const stored = [technique({ id: 'radykalna-akceptacja', nazwa: 'Radykalna akceptacja' })]
+
+    expect(techniquesForSchool('dbt', stored).map((entry) => entry.id)).toEqual([
+      // Built-in first: it is the reviewed material, and a technique added last
+      // week should not push TIPP down the crisis section.
+      'tipp',
+      'radykalna-akceptacja',
+    ])
+  })
+
+  it('land in their DBT group like any other technique', () => {
+    catalogue()
+    const stored = [technique({ id: 'nowa', grupa: 'akceptacja' })]
+
+    const { sections, ungrouped } = groupedTechniques(techniquesForSchool('dbt', stored))
+
+    expect(sections.map((section) => section.group)).toEqual(['akceptacja'])
+    expect(ungrouped).toEqual([])
+  })
+
+  it('open from their own URL', () => {
+    catalogue()
+    const stored = [technique({ id: 'nowa' })]
+
+    expect(findTechnique('nowa', stored)?.id).toBe('nowa')
+  })
+
+  it('are withheld while they are still drafts', () => {
+    // `opisGotowy: false` is a technique whose name exists before its content.
+    // The same gate as the built-in half, applied in one place, so a draft is
+    // missing from the tab *and* from its own URL.
+    catalogue()
+    const stored = [technique({ id: 'szkic', opisGotowy: false })]
+
+    expect(techniquesForSchool('dbt', stored)).toEqual([])
+    expect(findTechnique('szkic', stored)).toBeUndefined()
+  })
+
+  it('are withheld when flagged as needing a specialist present', () => {
+    catalogue()
+    const stored = [technique({ id: 'tipp-temperatura', dostepnosc: 'wymagaSpecjalisty' })]
+
+    expect(techniquesForSchool('dbt', stored)).toEqual([])
+    expect(findTechnique('tipp-temperatura', stored)).toBeUndefined()
+  })
+
+  it('never shadow a built-in technique that claims the same slug', () => {
+    // The backend refuses to write a BUILTIN_SLUGS collision, so this is a
+    // backstop for the case the two lists drift — and it fails towards the
+    // reviewed text rather than towards whichever half is read first.
+    catalogue(technique({ id: 'tipp', nazwa: 'TIPP (katalog)' }))
+    const stored = [technique({ id: 'tipp', nazwa: 'TIPP (specjalista)' })]
+
+    expect(techniquesForSchool('dbt', stored)).toHaveLength(1)
+    expect(findTechnique('tipp', stored)?.nazwa).toBe('TIPP (katalog)')
+  })
+
+  it('change nothing when the argument is left out', () => {
+    catalogue(technique({ id: 'tipp' }))
+
+    expect(techniquesForSchool('dbt')).toHaveLength(1)
+    expect(findTechnique('tipp')?.id).toBe('tipp')
+  })
+})

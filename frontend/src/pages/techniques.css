@@ -23,6 +23,13 @@
   margin-bottom: 0;
 }
 
+/* The catalogue's database half failed to load, so some entries may be missing.
+   Ochre rather than the error red, like every other "worth knowing" note in
+   this app: the built-in catalogue is still on screen and readable. */
+.techniques-note-warning {
+  color: #8a6416;
+}
+
 /* Groups inside the DBT tab */
 
 .techniques-sections {

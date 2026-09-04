@@ -10,6 +10,7 @@ import PhoneLink from '../components/PhoneLink'
 import type { DayMood, HomeDashboard, TechniqueSuggestion, TodayEntry } from '../types/dashboard'
 import { ROUTES } from '../routes'
 import HeaderMenu from '../components/HeaderMenu'
+import SpecialistInvitationCard from '../components/SpecialistInvitation'
 import './home.css'
 
 /**
@@ -302,6 +303,12 @@ function Home() {
         </div>
         <HeaderMenu />
       </header>
+
+      {/* Above everything the patient came here for, and above the loading
+          state, because a specialist is waiting on the other side of it and
+          nothing else on this screen depends on the answer. Draws nothing at all
+          when there is no invitation, which is almost always. */}
+      <SpecialistInvitationCard />
 
       <section className="home-welcome">
         <div>

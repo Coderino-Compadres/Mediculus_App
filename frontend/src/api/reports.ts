@@ -29,7 +29,10 @@ interface DeltaPayload {
   tone: Delta['tone']
 }
 
-interface ReportPayload {
+/** Exported for api/specialist.ts: a specialist reads the same payload through
+ *  a different URL, and one mapping means the two views cannot disagree about
+ *  a week. */
+export interface ReportPayload {
   id: string
   week_start: string
   week_end: string
@@ -53,7 +56,7 @@ function toDelta(payload: DeltaPayload): Delta {
   }
 }
 
-function toReport(payload: ReportPayload): WeeklyReport {
+export function toReport(payload: ReportPayload): WeeklyReport {
   return {
     id: payload.id,
     weekStart: payload.week_start,

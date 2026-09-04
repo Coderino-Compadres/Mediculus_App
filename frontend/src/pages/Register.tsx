@@ -28,6 +28,10 @@ const INITIAL_VALUES = {
   email: '',
   password: '',
   confirmPassword: '',
+  // Both only apply to one account type, and both are sent only when filled —
+  // see `register` in api/auth.ts.
+  specialization: '',
+  invitationCode: '',
 }
 
 // A guardian's account is not a patient account: it gets no diary of its own,
@@ -40,6 +44,12 @@ const ACCOUNT_TYPE_OPTIONS: SelectOption[] = [
   { value: ACCOUNT_TYPES.patient, label: 'Konto pacjenta' },
   { value: ACCOUNT_TYPES.minorPatient, label: 'Konto pacjenta małoletniego' },
   { value: ACCOUNT_TYPES.parent, label: 'Konto rodzica lub opiekuna' },
+  // A specialist registers here like everybody else, and that is safe because of
+  // what the role does *not* grant: every patient-facing endpoint refuses them,
+  // and the reports they may read are the reports of patients who accepted their
+  // invitation. `patient.id_specjalist` is not self-assignable — see the note on
+  // ACCOUNT_TYPES in core/serializers.py.
+  { value: ACCOUNT_TYPES.specialist, label: 'Konto specjalisty' },
 ]
 
 // Keyed by ConsentId, so the boxes and the wording below cannot drift apart:
@@ -67,6 +77,23 @@ function accountTypeConflict(accountType: string, dateOfBirth: string): string |
     return 'Podana data urodzenia oznacza osobę pełnoletnią. Wybierz „konto pacjenta” albo popraw datę urodzenia.'
   }
   return null
+}
+
+/**
+ * The specialist's own required field, checked here so the answer does not need
+ * a round-trip. Mirrors `_check_specialist_fields` in core/serializers.py, which
+ * is what actually decides.
+ *
+ * Why it is required at all: the patient reads it next to the specialist's name
+ * when deciding whether to accept them, and on the care card afterwards. An
+ * account without it asks somebody to agree to be treated by a person with no
+ * stated role.
+ */
+function validateSpecialization(accountType: string, value: string): string | null {
+  if (accountType !== ACCOUNT_TYPES.specialist) return null
+  return value.trim()
+    ? null
+    : 'Podaj swoją specjalizację — pacjent widzi ją przy Twoim nazwisku.'
 }
 
 function Register() {
@@ -103,6 +130,9 @@ function Register() {
           lastName: validateName(currentValues.lastName, 'nazwisko'),
           dateOfBirth,
           email: validateEmail(currentValues.email),
+          specialization: validateSpecialization(
+            currentValues.accountType, currentValues.specialization,
+          ),
           password: validatePassword(currentValues.password),
           confirmPassword: validateConfirmPassword(currentValues.confirmPassword, currentValues.password),
           dataConsent: validateConsent(
@@ -159,6 +189,23 @@ function Register() {
           error={errors.accountType}
           disabled={submitting}
         />
+        {/* Only for the account type that needs it. Rendered conditionally rather
+            than always: an empty "specjalizacja" on a patient's registration form
+            is a question they cannot answer, and a stray value would be silently
+            ignored by the backend. */}
+        {values.accountType === ACCOUNT_TYPES.specialist && (
+          <FormField
+            id="specialization"
+            label="Specjalizacja"
+            type="text"
+            autoComplete="off"
+            placeholder="np. psychoterapia poznawczo-behawioralna"
+            value={values.specialization}
+            onChange={handleChange}
+            error={errors.specialization}
+            disabled={submitting}
+          />
+        )}
         <FormField
           id="firstName"
           label="Imię"
@@ -200,6 +247,24 @@ function Register() {
           error={errors.email}
           disabled={submitting}
         />
+        {/* The code a specialist hands a parent (core/parent_invitations.py).
+            Optional — a guardian can register without one and be named by the
+            child afterwards — but never silently ignored: a code that does not
+            match refuses the registration rather than creating an unlinked
+            account that looks like it worked. */}
+        {values.accountType === ACCOUNT_TYPES.parent && (
+          <FormField
+            id="invitationCode"
+            label="Kod od specjalisty (jeśli masz)"
+            type="text"
+            autoComplete="off"
+            placeholder="np. ABCD-EFGH-JKMN"
+            value={values.invitationCode}
+            onChange={handleChange}
+            error={errors.invitationCode}
+            disabled={submitting}
+          />
+        )}
         <FormField
           id="password"
           label="Hasło"
