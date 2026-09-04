@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
-import ReportChangeChips from '../components/ReportChangeChips'
-import ReportMetricCard from '../components/ReportMetricCard'
-import ReportRankingBars, { type RankingRow } from '../components/ReportRankingBars'
+import ReportSections from '../components/ReportSections'
 import { ApiError } from '../api/client'
 import {
   fetchReportPdf,
@@ -12,9 +10,7 @@ import {
   reportPdfFileName,
   saveBlob,
 } from '../api/reports'
-import { fromIsoDate } from '../utils/days'
-import { EMOTION_COLORS } from '../utils/emotions'
-import { DAYS_IN_WEEK, pluralDays } from '../utils/reports'
+import { DAYS_IN_WEEK } from '../utils/reports'
 import type { WeeklyReport } from '../types/report'
 import { ROUTES, journalDetailPath } from '../routes'
 import './diaryEntry.css'
@@ -36,47 +32,7 @@ import './reportDetail.css'
 
 const LOAD_ERROR = 'Nie udało się wczytać tego raportu. Spróbuj ponownie.'
 
-/** Triggers have no palette of their own, so they share one sage tone rather
- *  than borrowing colours that mean an emotion elsewhere in the app. */
-const TRIGGER_BAR_COLOR = 'var(--color-sage-light)'
-
 const PDF_ERROR = 'Nie udało się pobrać raportu. Spróbuj ponownie.'
-
-/**
- * The emotions ranking, whose bars measure average intensity — see
- * `ReportRankingBars`. `count` stays the day count: it is still on the row, as
- * the second number, it is simply not what the length draws any more.
- */
-function emotionRows(report: WeeklyReport): RankingRow[] {
-  return report.emotions.map((entry) => ({
-    label: entry.emotion,
-    count: entry.days,
-    // The one palette, shared with the diary and the home chart.
-    color: EMOTION_COLORS[entry.emotion],
-    average: entry.avgIntensity,
-  }))
-}
-
-function triggerRows(report: WeeklyReport): RankingRow[] {
-  return report.triggers.map((entry) => ({
-    label: entry.trigger,
-    count: entry.days,
-    color: TRIGGER_BAR_COLOR,
-  }))
-}
-
-/** 'Środa, 19 sierpnia' — enough to find the day in the diary.
- *
- * The first letter is raised here rather than with `text-transform: capitalize`,
- * which would raise the month's too: Polish month names are lower case. */
-function riskyDayLabel(date: string): string {
-  const label = fromIsoDate(date).toLocaleDateString('pl-PL', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
-  return label.charAt(0).toUpperCase() + label.slice(1)
-}
 
 function ReportDetail() {
   const navigate = useNavigate()
@@ -228,78 +184,12 @@ function ReportDetail() {
         </p>
       )}
 
-      <section className="report-metrics">
-        {report.metrics.map((metric) => (
-          <ReportMetricCard key={metric.key} metric={metric} />
-        ))}
-      </section>
-
-      <section className="journal-detail-card">
-        <h2>Najsilniej odczuwane emocje</h2>
-        <ReportRankingBars
-          rows={emotionRows(report)}
-          measure="average"
-          emptyText="W tym tygodniu żadna emocja nie została oceniona."
-        />
-      </section>
-
-      <section className="journal-detail-card">
-        <h2>Najczęstsze wyzwalacze</h2>
-        <ReportRankingBars
-          rows={triggerRows(report)}
-          emptyText="W tym tygodniu żaden wpis nie wskazywał miejsca ani sytuacji."
-        />
-      </section>
-
-      {/* The section stays visible even when it is empty: for a specialist, "no
-          flagged days this week" is itself a reading, and a section that appears
-          only on bad weeks would announce them from the table of contents. */}
-      <section className="journal-detail-card">
-        <h2>Zachowania ryzykowne</h2>
-        {report.riskyDays.length === 0 ? (
-          <p className="report-empty">Brak oznaczonych zachowań ryzykownych w tym tygodniu.</p>
-        ) : (
-          <>
-            <p className="report-risky-count">
-              <span className="risky-behavior-icon" aria-hidden="true">
-                !
-              </span>
-              Zachowanie ryzykowne oznaczone w {report.riskyDays.length} z {DAYS_IN_WEEK}{' '}
-              {pluralDays(DAYS_IN_WEEK)}.
-            </p>
-            <div className="report-risky-list">
-              {report.riskyDays.map((day) => (
-                <Link key={day.entryId} to={journalDetailPath(day.entryId)} className="report-risky-row">
-                  <div>
-                    <span className="report-risky-date">{riskyDayLabel(day.date)}</span>
-                    <p className="report-risky-note">
-                      {day.notePreview || 'Dzień oznaczony bez opisu.'}
-                    </p>
-                  </div>
-                  <span className="journal-row-arrow" aria-hidden="true">
-                    →
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </>
-        )}
-      </section>
-
-      {/* TODO: "Skuteczność technik" from the mockup goes here. It needs a way to
-          rate a technique after applying it, which the app does not have yet
-          (extension-priority feature) — a percentage computed from nothing would
-          be a made-up number in a document a therapist reads. */}
-
-      {/* TODO: "Realizacja celów" from the mockup goes here, after the techniques
-          section. It needs the therapeutic-goals system, which does not exist yet
-          either (also an extension). */}
-
-      <section className="journal-detail-card">
-        <h2>Podsumowanie tygodnia</h2>
-        <p className="report-summary-text">{report.summary}</p>
-        <ReportChangeChips changes={report.changes} />
-      </section>
+      {/* The body of the report — metrics, rankings, flagged days, summary —
+          comes from components/ReportSections.tsx, which the specialist's view of
+          the same week renders too. One definition, so the two readers are never
+          holding different papers. The flagged days link into the diary here,
+          which is the one thing the specialist's copy does not do. */}
+      <ReportSections report={report} riskyDayPath={journalDetailPath} />
 
       <section className="journal-detail-info-banner">
         <span className="journal-detail-info-icon" aria-hidden="true">

@@ -100,9 +100,41 @@ function isPublished(technique: Technique): boolean {
   return technique.opisGotowy && technique.dostepnosc === 'ogolna'
 }
 
-/** Every published technique tagged with this school, in declaration order. */
-export function techniquesForSchool(school: TechniqueSchool): Technique[] {
-  return TECHNIQUES.filter((technique) => isPublished(technique) && technique.szkola.includes(school))
+/**
+ * The whole catalogue: the techniques the app ships with, plus the ones
+ * specialists wrote.
+ *
+ * TWO HALVES, ONE LIST, AND THE ORDER IS DELIBERATE. The hardcoded half comes
+ * first: it is the reviewed material (see `data/techniques.ts`), it is what the
+ * mockup's tabs were designed around, and a technique added last week should not
+ * push TIPP down the crisis section. Specialists' techniques follow, in the order
+ * the API sent them.
+ *
+ * `stored` is what `fetchStoredTechniques` returned, or an empty array — every
+ * function here takes it as an optional argument rather than reading a store,
+ * so a screen that has not loaded it (or a test that does not care) behaves
+ * exactly as it did before this feature existed.
+ *
+ * A slug appearing in both halves keeps the built-in one. The backend refuses to
+ * write a `BUILTIN_SLUGS` collision in the first place, so this is a backstop
+ * for the case the two lists drift — and it fails towards the reviewed text.
+ */
+function catalogue(stored: Technique[] = []): Technique[] {
+  const builtinIds = new Set(TECHNIQUES.map((technique) => technique.id))
+  return [
+    ...TECHNIQUES,
+    ...stored.filter((technique) => !builtinIds.has(technique.id)),
+  ]
+}
+
+/** Every published technique tagged with this school, in catalogue order. */
+export function techniquesForSchool(
+  school: TechniqueSchool,
+  stored: Technique[] = [],
+): Technique[] {
+  return catalogue(stored).filter(
+    (technique) => isPublished(technique) && technique.szkola.includes(school),
+  )
 }
 
 export interface TechniqueSections {
@@ -134,8 +166,13 @@ export function groupedTechniques(techniques: Technique[]): TechniqueSections {
 }
 
 /** One technique by id — the same gates as the list, so a URL cannot bypass them. */
-export function findTechnique(id: string | undefined): Technique | undefined {
-  return TECHNIQUES.find((technique) => technique.id === id && isPublished(technique))
+export function findTechnique(
+  id: string | undefined,
+  stored: Technique[] = [],
+): Technique | undefined {
+  return catalogue(stored).find(
+    (technique) => technique.id === id && isPublished(technique),
+  )
 }
 
 /**

@@ -232,6 +232,12 @@ REST_FRAMEWORK = {
         # 'auth': changing what bounds login guessing must not quietly change
         # what bounds this.
         'password_change': '10/hour',
+        # The two forms where a specialist names a person by e-mail. Both give
+        # one deliberately uninformative refusal, and this is what keeps that
+        # refusal from being asked often enough to map the user table anyway —
+        # see SpecialistInviteThrottle. A specialist taking on a new caseload
+        # invites a handful of people a day, not sixty an hour.
+        'specialist_invite': '60/hour',
     },
     # How many proxies sit in front of us, and therefore how much of
     # X-Forwarded-For to believe. Unset, DRF keys the throttle on the *whole*

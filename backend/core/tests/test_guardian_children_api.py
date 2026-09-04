@@ -230,9 +230,16 @@ class NothingClinicalTests(ChildrenTestCase):
         self.assertEqual(set(self.children()[0]['activity']), set(CHILD_SUMMARY_FIELDS))
 
     def test_the_row_carries_nothing_beyond_identity_link_and_activity(self):
+        """`consents_active` is a fact about the account, not about the diary:
+        it is why the activity is missing when it is, and without it the card
+        would have to guess between "no diary" and "stopped" — see
+        `build_linked_children`."""
         self.assertEqual(
             set(self.children()[0]),
-            {'id', 'child_name', 'child_surname', 'child_email', 'linked_at', 'activity'},
+            {
+                'id', 'child_name', 'child_surname', 'child_email', 'linked_at',
+                'consents_active', 'activity',
+            },
         )
 
     def test_no_clinical_word_appears_anywhere_in_the_payload(self):
@@ -257,3 +264,72 @@ class NothingClinicalTests(ChildrenTestCase):
                      'core:report-list', 'core:account-profile'):
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(reverse(name)).status_code, 403)
+
+
+class WithdrawnConsentTests(ChildrenTestCase):
+    """A child whose consents are withdrawn is not summarised for anybody.
+
+    The same hole as on the specialist's side, in the same shape and closed the
+    same way: `HasActiveConsents` gates the account *making* the request, and a
+    guardian reads somebody else's data — so without a check on the subject, the
+    app went on deriving a locked account's entry count and streak from its
+    diary and showing them to another person.
+
+    Nothing here is content, and that is not the point: the count comes *from*
+    the diary, so producing it is the processing the withdrawal stopped.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.child = self.make_child()
+        self.entry(self.child)
+        self.entry(self.child, days_ago=1)
+        self.link(self.child)
+        self.sign_in(self.guardian)
+
+    def row(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        return response.data[0]
+
+    def test_no_figures_are_derived_once_the_child_withdraws(self):
+        from core.consents import withdraw
+        withdraw(self.child.user, 'all')
+
+        row = self.row()
+
+        self.assertFalse(row['consents_active'])
+        self.assertIsNone(row['activity'])
+
+    def test_the_child_stays_on_the_list_so_the_guardian_knows_why(self):
+        """Hiding the card would leave a parent thinking the link had broken."""
+        from core.consents import withdraw
+        withdraw(self.child.user, 'all')
+
+        self.assertEqual(self.row()['child_email'], self.child.user.email)
+
+    def test_one_missing_consent_is_enough(self):
+        from core.consents import withdraw
+        withdraw(self.child.user, 'services')
+
+        self.assertIsNone(self.row()['activity'])
+
+    def test_restoring_brings_the_summary_back_unchanged(self):
+        from core.consents import restore, withdraw
+        withdraw(self.child.user, 'all')
+        restore(self.child.user, 'all')
+
+        row = self.row()
+
+        self.assertTrue(row['consents_active'])
+        self.assertEqual(row['activity']['entry_count'], 2)
+
+    def test_an_account_that_never_granted_a_consent_is_treated_the_same(self):
+        """Rows seeded by mock_data.sql have neither column set, and they belong
+        on the same side of this as a withdrawal — exactly as `needsConsents`
+        treats them."""
+        self.child.user.data_consent_at = None
+        self.child.user.services_consent_at = None
+        self.child.user.save(update_fields=['data_consent_at', 'services_consent_at'])
+
+        self.assertIsNone(self.row()['activity'])

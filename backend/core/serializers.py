@@ -16,28 +16,65 @@ from rest_framework import serializers
 
 from . import guardian
 from .consents import SCOPES, consent_state, has_active_consents
-from .models import ParentChild, Patient, User, UserRole
+from . import parent_invitations
+from .specialist import assigned_patient
+from .models import ParentChild, Patient, Specjalist, User, UserRole
 
 # What the registration form's "account type" choice means in the schema. Role
-# names match the rows seeded by scripts/mock_data.sql; a specialist account is
-# still created by the organization, not through the public form.
+# names match the rows seeded by scripts/mock_data.sql.
 #
-# A guardian gets no `patient` row at all: they are not a clinical subject, so
-# they have no id_medical and nothing in medical_db can refer to them.
+# `profile` is which side table the account gets, and the three answers are the
+# whole shape of this app's accounts:
+#
+#   'patient'    a clinical subject: a `patient` row, an id_medical, and rows in
+#                medical_db that refer to it.
+#   'specjalist' a `specjalist` row. Not a clinical subject either — everything
+#                behind `_require_patient` refuses them — but they read the
+#                weekly reports of the patients who accepted them (see
+#                core/specialist.py).
+#   None         a guardian. No side table at all: they have no id_medical and
+#                nothing in medical_db can refer to them.
+#
+# A SPECIALIST REGISTERS THROUGH THIS FORM, and that is safe only because of what
+# the role does *not* grant. Being a specialist gives access to nothing by
+# itself: every patient-facing endpoint refuses them, and the reports they may
+# read are the reports of patients who accepted their invitation. An account
+# that calls itself a specialist and has nobody's agreement sees an empty panel.
+# `patient.id_specjalist` is not self-assignable, and that is the property this
+# rests on — do not add a form that writes it directly.
 ACCOUNT_TYPE_PATIENT = 'patient'
 ACCOUNT_TYPE_MINOR_PATIENT = 'minor_patient'
 ACCOUNT_TYPE_PARENT = 'parent'
+ACCOUNT_TYPE_SPECIALIST = 'specialist'
 
 ACCOUNT_TYPES = {
-    ACCOUNT_TYPE_PATIENT: {'role': 'patient', 'is_child': False},
-    ACCOUNT_TYPE_MINOR_PATIENT: {'role': 'patient', 'is_child': True},
-    ACCOUNT_TYPE_PARENT: {'role': 'rodzic', 'is_child': None},
+    ACCOUNT_TYPE_PATIENT: {
+        'role': 'patient', 'is_child': False, 'profile': 'patient',
+    },
+    ACCOUNT_TYPE_MINOR_PATIENT: {
+        'role': 'patient', 'is_child': True, 'profile': 'patient',
+    },
+    ACCOUNT_TYPE_PARENT: {
+        'role': 'rodzic', 'is_child': None, 'profile': None,
+    },
+    ACCOUNT_TYPE_SPECIALIST: {
+        'role': 'specjalista', 'is_child': None, 'profile': 'specjalist',
+    },
 }
 
 # The one role a `parent_child.id_parent` may point at. Read from ACCOUNT_TYPES
 # rather than spelled again, so the registration form and the linking form can
 # never disagree about what a guardian account is.
 GUARDIAN_ROLE = ACCOUNT_TYPES[ACCOUNT_TYPE_PARENT]['role']
+
+#: The role name a specialist account carries. Read from ACCOUNT_TYPES for the
+#: same reason as the line above — so the registration form and anything that
+#: names the role cannot disagree.
+#:
+#: Note that nothing *authorizes* on this string: a specialist is recognised by
+#: their `specjalist` row (`core.specialist.specjalist_for`), the way a patient is
+#: recognised by their `patient` row. The role is what the UI prints.
+SPECIALIST_ROLE = ACCOUNT_TYPES[ACCOUNT_TYPE_SPECIALIST]['role']
 
 # Rejects typos and swapped digits ('0202-05-14').
 EARLIEST_DATE_OF_BIRTH = datetime.date(1900, 1, 1)
@@ -64,6 +101,7 @@ class UserSerializer(serializers.ModelSerializer):
     id = serializers.UUIDField(source='id_user', read_only=True)
     role = serializers.SerializerMethodField()
     is_patient = serializers.SerializerMethodField()
+    is_specialist = serializers.SerializerMethodField()
     consents = serializers.SerializerMethodField()
     is_child = serializers.SerializerMethodField()
     guardian_status = serializers.SerializerMethodField()
@@ -72,7 +110,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'email', 'name', 'surname', 'date_of_birth', 'role',
-            'is_patient', 'is_child', 'guardian_status',
+            'is_patient', 'is_specialist', 'is_child', 'guardian_status',
             # The consent register the profile screen reads back, and the gate
             # the router reads. One key, not five: `data_consent_at` and
             # `services_consent_at` used to ride alongside it as declared model
@@ -150,6 +188,18 @@ class UserSerializer(serializers.ModelSerializer):
         patient the backend happily serves.
         """
         return self._patient(user) is not None
+
+    def get_is_specialist(self, user):
+        """Whether a `specjalist` row exists — which screen this account lands on.
+
+        Sent rather than inferred from `role`, and for the same reason
+        `is_patient` is: the row is what every specialist endpoint actually
+        checks (`core.specialist.specjalist_for`), while `user_role` is a
+        nullable text column looked up by name from data mock_data.sql seeds. An
+        account whose role says 'specjalista' with no row behind it would be sent
+        to a panel that answers it 403 on every request.
+        """
+        return Specjalist.objects.filter(user=user).exists()
 
     def get_is_child(self, user):
         # None means either "not a patient at all" (a guardian) or a patient row
@@ -235,6 +285,20 @@ class RegisterSerializer(serializers.Serializer):
             'invalid_choice': 'Wybierz jedną z dostępnych opcji rodzaju konta.',
         },
     )
+    # The specialist's own field, and required only for that account type — see
+    # `_check_specialist_fields`. Spelled correctly on the wire although the
+    # column is `specjalist.specjalization`: /api/account/profile/ already sends
+    # it to the care card as `approach`, so the wire has never mirrored that
+    # spelling and adding a second misspelling would only spread it.
+    specialization = serializers.CharField(
+        max_length=200, required=False, allow_blank=True, write_only=True,
+    )
+    # A code from a specialist, for a guardian finishing the registration the
+    # specialist started (core/parent_invitations.py). Optional: a guardian can
+    # still register on their own, and then the child names them afterwards.
+    invitation_code = serializers.CharField(
+        max_length=64, required=False, allow_blank=True, write_only=True,
+    )
     data_consent = serializers.BooleanField(
         write_only=True,
         error_messages={'required': 'Zgoda na przetwarzanie danych jest wymagana, aby założyć konto.'},
@@ -283,6 +347,8 @@ class RegisterSerializer(serializers.Serializer):
 
         self._check_password_strength(attrs)
         self._check_age_matches_account_type(attrs)
+        self._check_specialist_fields(attrs)
+        self._check_invitation(attrs)
         return attrs
 
     def _check_password_strength(self, attrs):
@@ -342,6 +408,75 @@ class RegisterSerializer(serializers.Serializer):
                 '„konto pacjenta” albo popraw datę urodzenia.'
             )
 
+    SPECIALIZATION_REQUIRED = (
+        'Podaj swoją specjalizację — pacjent widzi ją przy Twoim nazwisku.'
+    )
+    SPECIALIST_MUST_BE_ADULT = (
+        'Konto specjalisty może założyć wyłącznie osoba pełnoletnia.'
+    )
+    INVITATION_NOT_FOR_THIS_TYPE = (
+        'Kod zaproszenia dotyczy konta rodzica lub opiekuna. Wybierz ten '
+        'rodzaj konta albo usuń kod.'
+    )
+    INVITATION_INVALID = (
+        'Kod jest nieprawidłowy, wygasł albo został już wykorzystany. '
+        'Sprawdź, czy rejestrujesz się na adres podany przez specjalistę.'
+    )
+
+    def _check_specialist_fields(self, attrs):
+        """A specialist's extra requirements: a specialization, and being an adult.
+
+        The specialization is what the patient reads next to their name on the
+        care card and in the safety plan, so an account without one shows a
+        person with no described role at the moment somebody is deciding whether
+        to accept them. The adulthood check is not the age-vs-type contradiction
+        `_check_age_matches_account_type` guards (a specialist has no `is_child`
+        to disagree with) — it is a plain statement about who may hold a
+        professional account here.
+        """
+        if attrs.get('account_type') != ACCOUNT_TYPE_SPECIALIST:
+            return
+        if not (attrs.get('specialization') or '').strip():
+            raise serializers.ValidationError(
+                {'specialization': self.SPECIALIZATION_REQUIRED}
+            )
+        date_of_birth = attrs.get('date_of_birth')
+        if date_of_birth and age_on(date_of_birth, timezone.localdate()) < ADULT_AGE:
+            raise serializers.ValidationError(
+                {'date_of_birth': self.SPECIALIST_MUST_BE_ADULT}
+            )
+
+    def _check_invitation(self, attrs):
+        """Resolves a specialist's invitation code, or refuses the registration.
+
+        Deliberately **not** silently ignored when it does not match: somebody
+        typing a code is telling us they were told to, and creating an unlinked
+        guardian account instead would look like it worked while leaving the
+        child exactly as stuck as before.
+
+        One message for every way it can fail — unknown, expired, already used,
+        or issued for a different address. They are all "this code will not work
+        here", the parent can act on none of them differently, and telling them
+        apart would say whether a given address has an invitation outstanding.
+
+        The row is carried on `attrs` so `create()` can redeem it inside the same
+        transaction that makes the account: an invitation must not be spent on a
+        registration that then fails.
+        """
+        code = (attrs.get('invitation_code') or '').strip()
+        if not code:
+            return
+        if attrs.get('account_type') != ACCOUNT_TYPE_PARENT:
+            raise serializers.ValidationError(
+                {'invitation_code': self.INVITATION_NOT_FOR_THIS_TYPE}
+            )
+        invitation = parent_invitations.redeem(attrs.get('email'), code)
+        if invitation is None:
+            raise serializers.ValidationError(
+                {'invitation_code': self.INVITATION_INVALID}
+            )
+        attrs['invitation'] = invitation
+
     def create(self, validated_data):
         now = timezone.now()
         account = ACCOUNT_TYPES[validated_data['account_type']]
@@ -364,8 +499,17 @@ class RegisterSerializer(serializers.Serializer):
                     data_consent_at=now,
                     services_consent_at=now,
                 )
-                if account['is_child'] is not None:
+                if account['profile'] == 'patient':
                     Patient.objects.create(user=user, is_child=account['is_child'])
+                elif account['profile'] == 'specjalist':
+                    Specjalist.objects.create(
+                        user=user,
+                        specjalization=validated_data['specialization'].strip(),
+                    )
+
+                invitation = validated_data.get('invitation')
+                if invitation is not None:
+                    self._redeem(invitation, user, now)
         except IntegrityError as exc:
             # validate_email lost a race with a concurrent signup for the same
             # address; the unique index is the actual arbiter.
@@ -373,6 +517,37 @@ class RegisterSerializer(serializers.Serializer):
                 {'email': ['Konto z tym adresem e-mail już istnieje.']}
             ) from exc
         return user
+
+    @staticmethod
+    def _redeem(invitation, guardian, now):
+        """Spends the code and links the guardian to the child, already accepted.
+
+        THE LINK IS ACCEPTED ON CREATION, which is the one way this differs from
+        the child-initiated flow, so it is worth being explicit about why it is
+        not a hole in the art. 8 gate. There, the guardian accepts *because* a
+        minor cannot consent for themselves — and here the guardian does exactly
+        that: they hold a code handed to them in person and they complete the
+        registration with it. The acceptance is the registration. What the
+        specialist contributes is the one fact the app cannot check for itself,
+        that these two people are a family.
+
+        `get_or_create` rather than `create`: a child who already has this exact
+        guardian (the code was issued after the child had named them, say) ends
+        up with one row either way, and `uniq_parent_child` would otherwise turn
+        that into a 500. A child who already has a *different* accepted guardian
+        keeps it and gains a second — refused on the child's own form, allowed
+        here, because a specialist naming both parents of one child is the case
+        that form's "one at a time" rule exists to funnel into a deliberate act.
+        """
+        link, created = ParentChild.objects.get_or_create(
+            parent=guardian, child=invitation.child,
+            defaults={'accepted_at': now},
+        )
+        if not created and link.accepted_at is None:
+            link.accepted_at = now
+            link.save(update_fields=['accepted_at'])
+        parent_invitations.mark_used(invitation, now=now)
+        return link
 
 
 class LoginSerializer(serializers.Serializer):
@@ -641,3 +816,188 @@ class GuardianLinkSerializer(serializers.Serializer):
             parent=validated_data['guardian'], child=self.context['child'],
         )
         return link
+
+
+class SpecialistPatientInviteSerializer(serializers.Serializer):
+    """A specialist asks a patient, named by e-mail, to be treated by them.
+
+    This is the one form that can eventually put a specialist in front of
+    somebody's weekly reports, so what it refuses matters more than what it
+    accepts. Nothing here assigns anything: it sets
+    `patient.id_specjalist_pending`, and the patient decides on their own screen
+    (core/specialist.py). Being asked grants no access at all.
+
+    ONE SHARED REFUSAL, like `GuardianLinkSerializer`, and the reasoning
+    transfers with one addition. An address nobody registered, an address
+    belonging to a guardian or another specialist, and an address belonging to a
+    patient who already has a specialist all answer identically — because
+    registration here is self-service, so any account can use this form to ask
+    "who has an account here, and what kind", and because the last of the three
+    is a clinical fact about a person who has agreed to nothing. The specialist's
+    way out of a mistyped address is the patient in front of them, not a more
+    talkative form.
+
+    Re-inviting a patient who is already this specialist's pending invitation is
+    the same request arriving twice and succeeds; `create` is idempotent.
+    """
+
+    patient_email = serializers.EmailField(
+        max_length=255,
+        error_messages={
+            'blank': 'Podaj adres e-mail pacjenta.',
+            'required': 'Podaj adres e-mail pacjenta.',
+            'invalid': 'Podaj poprawny adres e-mail.',
+        },
+    )
+
+    NOT_INVITABLE = (
+        'Nie znaleziono konta pacjenta, które można zaprosić pod tym adresem. '
+        'Sprawdź adres razem z pacjentem.'
+    )
+    OWN_ADDRESS = 'To Twój własny adres. Podaj adres konta pacjenta.'
+    #: Told apart from NOT_INVITABLE deliberately, and it is the one case that
+    #: can be: this patient is already on the list above the form, so saying so
+    #: reveals nothing the specialist cannot see — while the shared message left
+    #: them reading "nie znaleziono" about somebody they were looking at.
+    ALREADY_MINE = 'Ten pacjent jest już na Twojej liście.'
+
+    @property
+    def specjalist(self):
+        return self.context['specjalist']
+
+    def validate_patient_email(self, value):
+        # Stored lowercased by registration, which is what makes this
+        # case-insensitive.
+        return value.lower()
+
+    def validate(self, attrs):
+        specjalist = self.specjalist
+        patient = (
+            Patient.objects
+            .filter(user__email=attrs['patient_email'])
+            .select_related('user')
+            .first()
+        )
+
+        # Before the shared refusal, so a specialist typing their own address
+        # gets an answer they can act on — mirroring OWN_ADDRESS on the guardian
+        # form. A specialist has no `patient` row, so this cannot be reached by
+        # the lookup above; it is read off the session instead.
+        if attrs['patient_email'] == (specjalist.user.email or '').lower():
+            raise serializers.ValidationError({'patient_email': self.OWN_ADDRESS})
+
+        if patient is None:
+            raise serializers.ValidationError({'patient_email': self.NOT_INVITABLE})
+        # Already this specialist's, which is the one refusal that can name its
+        # reason (see ALREADY_MINE). Checked before the shared one below, so the
+        # honest answer wins wherever it is available.
+        if patient.specjalist_id == specjalist.pk:
+            raise serializers.ValidationError({'patient_email': self.ALREADY_MINE})
+        # Treated by somebody else. Dropping a link is an action on the panel's
+        # own list, not something a re-invite should do quietly — and whose
+        # patient this is stays unsaid.
+        if patient.specjalist_id is not None:
+            raise serializers.ValidationError({'patient_email': self.NOT_INVITABLE})
+        # Somebody else is already asking. One pending invitation per patient, so
+        # a patient is never made to choose between two specialists in a form
+        # that has no room to explain either.
+        if patient.specjalist_pending_id not in (None, specjalist.pk):
+            raise serializers.ValidationError({'patient_email': self.NOT_INVITABLE})
+
+        attrs['patient'] = patient
+        return attrs
+
+    def create(self, validated_data):
+        patient = validated_data['patient']
+        patient.specjalist_pending = self.specjalist
+        patient.save(update_fields=['specjalist_pending'])
+        return patient
+
+
+class ParentInvitationCreateSerializer(serializers.Serializer):
+    """A specialist issues a code for a guardian's account, tied to one child.
+
+    The child is chosen from this specialist's own accepted patients — a
+    `patient_id` naming anybody else is refused rather than 404'd, because unlike
+    a URL id this is a form field and the panel populated the select itself, so a
+    mismatch is either tampering or a stale screen.
+
+    Only for a minor. `parent_child` exists because a minor cannot consent to
+    processing their own health data (RODO art. 8); an adult patient with a
+    guardian attached would be a link the whole gate has no meaning for.
+
+    The address must not already have an account, and that is refused at issue
+    time rather than at redemption: the code is redeemed by *registering*, so an
+    existing account would make the code a dead one the specialist has already
+    handed over. The message hedges deliberately ("możliwe, że") — it is the one
+    place this form says anything about an address, and the guardian route (the
+    child names them) is the answer either way.
+    """
+
+    patient_id = serializers.UUIDField(
+        error_messages={
+            'required': 'Wybierz pacjenta, dla którego zakładasz konto opiekuna.',
+            'invalid': 'Wybierz pacjenta z listy swoich pacjentów.',
+        },
+    )
+    parent_email = serializers.EmailField(
+        max_length=255,
+        error_messages={
+            'blank': 'Podaj adres e-mail rodzica lub opiekuna.',
+            'required': 'Podaj adres e-mail rodzica lub opiekuna.',
+            'invalid': 'Podaj poprawny adres e-mail.',
+        },
+    )
+
+    NOT_MY_PATIENT = 'Wybierz pacjenta z listy swoich pacjentów.'
+    NOT_A_MINOR = (
+        'Konto opiekuna zakłada się dla pacjenta małoletniego. Ten pacjent '
+        'jest osobą pełnoletnią.'
+    )
+    EMAIL_TAKEN = (
+        'Na ten adres nie można wystawić zaproszenia — możliwe, że konto już '
+        'istnieje. Jeśli opiekun ma konto, powiązanie zaczyna dziecko w swojej '
+        'aplikacji.'
+    )
+    ALREADY_INVITED = (
+        'Zaproszenie na ten adres już czeka na wykorzystanie. Anuluj je, jeśli '
+        'chcesz wystawić nowy kod.'
+    )
+
+    @property
+    def specjalist(self):
+        return self.context['specjalist']
+
+    def validate_parent_email(self, value):
+        return value.lower()
+
+    def validate(self, attrs):
+        patient = assigned_patient(self.specjalist, attrs['patient_id'])
+        if patient is None:
+            raise serializers.ValidationError({'patient_id': self.NOT_MY_PATIENT})
+        if patient.is_child is not True:
+            raise serializers.ValidationError({'patient_id': self.NOT_A_MINOR})
+
+        email = attrs['parent_email']
+        if email == (patient.user.email or '').lower():
+            # Not the shared refusal: a guardian cannot be the child themselves
+            # (`parent_child_not_self`), and this is a typo the specialist can
+            # fix on the spot.
+            raise serializers.ValidationError(
+                {'parent_email': 'To adres pacjenta. Podaj adres opiekuna.'}
+            )
+        if User.objects.filter(email=email).exists():
+            raise serializers.ValidationError({'parent_email': self.EMAIL_TAKEN})
+        if parent_invitations.live_for(email).exists():
+            raise serializers.ValidationError({'parent_email': self.ALREADY_INVITED})
+
+        attrs['patient'] = patient
+        return attrs
+
+    def create(self, validated_data):
+        """The row and the plaintext code, which the view sends back exactly once."""
+        return parent_invitations.create_invitation(
+            self.specjalist,
+            validated_data['patient'].user,
+            validated_data['parent_email'],
+        )

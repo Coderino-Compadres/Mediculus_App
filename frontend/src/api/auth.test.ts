@@ -8,6 +8,7 @@ import {
   hasPatientProfile,
   needsConsents,
   isGuardianInvitationPending,
+  isSpecialist,
   linkGuardian,
   login,
   logout,
@@ -62,6 +63,7 @@ describe('login', () => {
       dateOfBirth: '1994-06-18',
       role: 'patient',
       isPatient: true,
+      isSpecialist: false,
       isChild: false,
       guardianStatus: null,
       consents: {
@@ -104,8 +106,117 @@ describe('register', () => {
 
   it('uses the wire values the backend switches on, not display labels', () => {
     // ACCOUNT_TYPES mirrors core/serializers.py; 'minor_patient' is what decides
-    // that a Patient row gets is_child=True.
-    expect(Object.values(ACCOUNT_TYPES)).toEqual(['patient', 'minor_patient', 'parent'])
+    // that a Patient row gets is_child=True, and 'specialist' is what creates a
+    // `specjalist` row instead of a `patient` one.
+    expect(Object.values(ACCOUNT_TYPES)).toEqual([
+      'patient', 'minor_patient', 'parent', 'specialist',
+    ])
+  })
+
+  it('leaves out the two fields that apply to one account type each', async () => {
+    // Absent rather than '' — on `specialization` that is the difference between
+    // "does not apply" and "left blank", and the backend requires it for a
+    // specialist and ignores it for everyone else.
+    mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
+
+    await register({
+      accountType: ACCOUNT_TYPES.patient,
+      firstName: 'Test',
+      lastName: 'Testowy',
+      dateOfBirth: '1994-06-18',
+      email: 'test@wp.pl',
+      password: 'Haslo123!',
+      confirmPassword: 'Haslo123!',
+      dataConsent: true,
+      servicesConsent: true,
+      specialization: '',
+      invitationCode: '',
+    })
+
+    const body = mockedRequest.mock.calls[0][1]!.body as Record<string, unknown>
+    expect(body).not.toHaveProperty('specialization')
+    expect(body).not.toHaveProperty('invitation_code')
+  })
+
+  it('sends the specialization a specialist typed', async () => {
+    mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
+
+    await register({
+      accountType: ACCOUNT_TYPES.specialist,
+      firstName: 'Anna',
+      lastName: 'Terapeutka',
+      dateOfBirth: '1985-02-01',
+      email: 'anna@wp.pl',
+      password: 'Haslo123!',
+      confirmPassword: 'Haslo123!',
+      dataConsent: true,
+      servicesConsent: true,
+      specialization: 'psychoterapia poznawczo-behawioralna',
+    })
+
+    const body = mockedRequest.mock.calls[0][1]!.body as Record<string, unknown>
+    expect(body.account_type).toBe('specialist')
+    expect(body.specialization).toBe('psychoterapia poznawczo-behawioralna')
+  })
+
+  it('sends a guardian’s invitation code, so a bad one refuses the registration', async () => {
+    // Never silently dropped: somebody typing a code was told to, and creating
+    // an unlinked guardian account instead would look like it worked while
+    // leaving the child exactly as stuck as before.
+    mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
+
+    await register({
+      accountType: ACCOUNT_TYPES.parent,
+      firstName: 'Rodzic',
+      lastName: 'Testowy',
+      dateOfBirth: '1980-02-01',
+      email: 'rodzic@wp.pl',
+      password: 'Haslo123!',
+      confirmPassword: 'Haslo123!',
+      dataConsent: true,
+      servicesConsent: true,
+      invitationCode: 'ABCD-EFGH-JKMN',
+    })
+
+    const body = mockedRequest.mock.calls[0][1]!.body as Record<string, unknown>
+    expect(body.invitation_code).toBe('ABCD-EFGH-JKMN')
+  })
+})
+
+describe('isSpecialist', () => {
+  async function userWith(payload: Record<string, unknown>) {
+    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, ...payload })
+    return (await fetchCurrentUser())!
+  }
+
+  it('is true for an account with a `specjalist` row', async () => {
+    expect(isSpecialist(await userWith({
+      role: 'specjalista', is_patient: false, is_child: null, is_specialist: true,
+    }))).toBe(true)
+  })
+
+  it('does not key on the role, which is a nullable text column', async () => {
+    // A role of 'specjalista' with no row behind it would be routed to a panel
+    // that refuses it on every request — see _require_specialist.
+    expect(isSpecialist(await userWith({
+      role: 'specjalista', is_patient: false, is_child: null, is_specialist: false,
+    }))).toBe(false)
+  })
+
+  it('is false for a patient and for a guardian', async () => {
+    expect(isSpecialist(await userWith({ is_specialist: false }))).toBe(false)
+    expect(isSpecialist(await userWith({
+      role: 'rodzic', is_patient: false, is_child: null, is_specialist: false,
+    }))).toBe(false)
+  })
+
+  it('reads a backend that does not send the field yet as "not a specialist"', async () => {
+    // No fallback worth having: such a backend has no specialist panel to route
+    // to either, so false is both the safe answer and the true one.
+    const { is_specialist: _omitted, ...withoutField } = USER_PAYLOAD as Record<string, unknown>
+    mockedRequest.mockResolvedValueOnce(withoutField)
+
+    expect(isSpecialist((await fetchCurrentUser())!)).toBe(false)
   })
 })
 
@@ -180,7 +291,8 @@ describe('toFormErrors', () => {
     // A field missing here means a Django error lands nowhere visible.
     expect(Object.keys(REGISTER_FIELDS).sort()).toEqual([
       'account_type', 'data_consent', 'date_of_birth', 'email',
-      'name', 'password', 'password_confirm', 'services_consent', 'surname',
+      'invitation_code', 'name', 'password', 'password_confirm',
+      'services_consent', 'specialization', 'surname',
     ])
     expect(Object.keys(LOGIN_FIELDS).sort()).toEqual(['email', 'password'])
   })

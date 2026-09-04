@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import TechniqueStepList from '../components/TechniqueStepList'
+import { useStoredTechniques } from '../hooks/useStoredTechniques'
 import type { TechniqueSchool } from '../types/technique'
 import {
   DBT_GROUPS,
@@ -36,12 +37,29 @@ function schoolFromState(state: unknown): TechniqueSchool | undefined {
 function TechniqueDetail() {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
-  const technique = findTechnique(id)
+  // The database half of the catalogue, so a technique a specialist wrote opens
+  // from its own URL too — not only from the row that was tapped. `loading` is
+  // what keeps a shared link from flashing "nie znaleziono" before the request
+  // lands: a built-in technique is found on the first render regardless.
+  const { techniques: stored, loading: storedLoading } = useStoredTechniques()
+  const technique = findTechnique(id, stored)
   // Arrives with the row that was tapped. Absent on a reload or a shared link,
   // in which case the technique's own first tag decides the badge.
   const from = schoolFromState(useLocation().state)
 
   if (!technique) {
+    // Still asking. "Nie znaleziono" here would be a false statement about a
+    // technique that is about to appear, on the one screen a specialist would
+    // reach by opening a link they just sent somebody.
+    if (storedLoading) {
+      return (
+        <div className="journal-detail-page">
+          <p className="journal-detail-not-found" role="status" aria-busy="true">
+            Wczytywanie techniki…
+          </p>
+        </div>
+      )
+    }
     return (
       <div className="journal-detail-page">
         <p className="journal-detail-not-found">Nie znaleziono takiej techniki.</p>

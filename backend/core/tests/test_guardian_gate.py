@@ -25,7 +25,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
-from core.models import Diary, ParentChild, Patient, User, UserRole
+from core.models import (Diary, ParentChild, Patient, Specjalist, User,
+                         UserRole)
 from core.reports import DAYS_IN_WEEK, start_of_week, week_report_id
 from core.views import GUARDIAN_GATE_REFUSAL
 
@@ -53,6 +54,11 @@ class GateTestCase(TestCase):
 
     def make_guardian(self, email='rodzic@example.com'):
         return self.make_user(email, role='rodzic')
+
+    def make_specialist(self, email='specjalista@example.com'):
+        return Specjalist.objects.create(
+            user=self.make_user(email, role='specjalista'), specjalization='DBT',
+        )
 
     def sign_in(self, user):
         session = self.client.session
@@ -235,12 +241,17 @@ class UngatedAccountTests(GateTestCase):
 
 
 class GateDoesNotTrapTheChildTests(GateTestCase):
-    """The way out of the gate stays reachable from inside it.
+    """The ways out of the gate stay reachable from inside it.
 
     Gating `/api/auth/guardian/` too would be a deadlock: the child cannot name
     a guardian without being accepted, and cannot be accepted without naming
     one. This is why `_require_patient` takes an explicit opt-out instead of the
     gate living in a permission class over every view.
+
+    The specialist invitation is the second way out, and the deadlock there is
+    the mirror image: a specialist can only issue the code a *parent* registers
+    with for a child who is already their patient, and accepting is how a child
+    becomes one — see `GUARDIAN_GATE_EXEMPT_REASON` in core/views.py.
     """
 
     def setUp(self):
@@ -276,6 +287,38 @@ class GateDoesNotTrapTheChildTests(GateTestCase):
 
     def test_the_gate_does_not_reach_logout(self):
         self.assertEqual(self.client.post(reverse('core:logout')).status_code, 204)
+
+    def test_an_unlinked_minor_can_still_answer_a_specialist(self):
+        """Otherwise the specialist can never issue the guardian code that lifts
+        the gate. What it grants is nothing: the diary stays refused, so the
+        reports the specialist may now read are built from no rows at all."""
+        specjalist = self.make_specialist()
+        self.child.specjalist_pending = specjalist
+        self.child.specjalist_accepted_at = None
+        self.child.save(update_fields=['specjalist_pending'])
+
+        waiting = self.client.get(reverse('core:specialist-invitation'))
+        self.assertEqual(waiting.status_code, 200)
+        self.assertIsNotNone(waiting.data['invitation'])
+
+        accepted = self.client.post(reverse('core:specialist-invitation-accept'))
+        self.assertEqual(accepted.status_code, 200)
+        self.child.refresh_from_db()
+        self.assertEqual(self.child.specjalist_id, specjalist.pk)
+
+        # And the gate is still shut on everything it was shut on before.
+        self.assertEqual(self.client.get(reverse('core:diary-history')).status_code, 403)
+
+    def test_an_unlinked_minor_can_still_refuse_a_specialist(self):
+        specjalist = self.make_specialist()
+        self.child.specjalist_pending = specjalist
+        self.child.save(update_fields=['specjalist_pending'])
+
+        response = self.client.post(reverse('core:specialist-invitation-reject'))
+
+        self.assertEqual(response.status_code, 200)
+        self.child.refresh_from_db()
+        self.assertIsNone(self.child.specjalist_pending_id)
 
     def test_an_unlinked_minor_can_still_change_their_password(self):
         """Not a clinical endpoint, and deliberately not gated.

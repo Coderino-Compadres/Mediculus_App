@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 
+from .technique_vocabulary import AVAILABILITY_GENERAL
 from .time_of_day import TIME_OF_DAY_CHOICES
 
 class UserRole(models.Model):
@@ -78,6 +79,21 @@ class Patient(models.Model):
         Specjalist, db_column='id_specjalist', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='patients',
     )
+    # The specialist who has *asked* to take this patient on, and the moment the
+    # patient said yes to the one above. Two columns rather than a second table,
+    # because `id_specjalist` is a single FK: this schema gives a patient one
+    # treating specialist, so an invitation is one slot too.
+    #
+    # `id_specjalist_pending` set is a request nobody has answered; accepting
+    # moves it into `id_specjalist` and stamps `specjalist_accepted_at`, and
+    # refusing clears it -- the same shape as `parent_child.accepted_at`, and for
+    # the same reason (see 0011). The state therefore lives in exactly one place
+    # per phase: pending in one column, accepted in the other two.
+    specjalist_pending = models.ForeignKey(
+        Specjalist, db_column='id_specjalist_pending', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='pending_patients',
+    )
+    specjalist_accepted_at = models.DateTimeField(null=True, blank=True)
     is_child = models.BooleanField(null=True, blank=True)
 
     class Meta:
@@ -117,6 +133,62 @@ class ParentChild(models.Model):
                 name='parent_child_not_self',
             ),
         ]
+
+
+class ParentInvitation(models.Model):
+    """A specialist's invitation for a guardian to create an account.
+
+    Why it exists: a guardian account can be registered from the public form
+    already, but nothing there can *link* it to a child -- that link is started
+    by the child (`parent_child`, see core/guardian.py). A specialist sitting
+    with a family needs the other direction: name the parent's address, name the
+    child, and hand over a code the parent finishes registration with.
+
+    Why a code and not a link in an e-mail: this deployment sends no mail at all
+    (see CLAUDE.md), so an activation link has nothing to travel on. The code is
+    given to the parent in the consulting room.
+
+    WHAT IS NOT STORED IS THE POINT. `code_hash` holds the code the way
+    `user.password_hash` holds a password -- hashed, so a database dump does not
+    hand over usable invitations, and so the plaintext exists only in the one
+    response that created it. A specialist who loses it revokes the invitation
+    and issues another; there is deliberately no way to read it back.
+
+    `email` binds the invitation to one address: the code alone is not enough,
+    the parent has to register with the address the specialist named. `used_at`
+    marks a redeemed invitation rather than deleting the row, so a specialist can
+    see that the parent did register -- and so a code cannot be redeemed twice.
+    """
+
+    id_parent_invitation = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False,
+    )
+    specjalist = models.ForeignKey(
+        Specjalist, db_column='id_specjalist', on_delete=models.CASCADE,
+        related_name='parent_invitations',
+    )
+    # The patient this guardian will be linked to. A `user` row rather than a
+    # `patient` one, because `parent_child` links two users -- and the check that
+    # the child is actually this specialist's patient belongs to the request that
+    # creates the invitation, not to the column.
+    child = models.ForeignKey(
+        User, db_column='id_child', on_delete=models.CASCADE,
+        related_name='parent_invitations',
+    )
+    email = models.CharField(max_length=255)
+    code_hash = models.CharField(max_length=255)
+    # An invitation that is never redeemed stops working rather than waiting
+    # forever: it carries the right to link itself to a named minor's account.
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'parent_invitation'
+
+    def __str__(self):
+        return f'{self.email} -> {self.child_id}'
 
 
 class Diary(models.Model):
@@ -187,10 +259,75 @@ class MoodScale(models.Model):
 
 
 class Technique(models.Model):
+    """One therapeutic technique, as the catalogue shows it.
+
+    The first four columns are the original table (and what `mock_data.sql`
+    seeds); everything below them was added by 0012 so that a technique written
+    by a specialist can be the *same kind of thing* as the ones the app ships
+    with. `frontend/src/types/technique.ts` is the shape that was matched --
+    schools as a list, an ordered list of steps, the availability flag -- and
+    `core/techniques.py` holds the vocabularies, checked against that file by
+    `test_techniques.py` the way `test_emotions.py` checks the emotion names.
+
+    THE CATALOGUE THE APP SHIPS WITH IS STILL IN THE FRONTEND
+    (`frontend/src/data/techniques.ts`), transcribed from the client's materials
+    and awaiting clinical review. This table is what the specialist panel writes
+    to, and the patient's catalogue is the two merged. Moving the hardcoded half
+    in here is the obvious next step and deliberately not part of this change:
+    that text is clinical content under review, and a copy in a database nobody
+    reviews is how the reviewed version stops being the one on screen.
+
+    `author_id_specjalist` is a **logical** reference to
+    `user_db.specjalist.id_user`, not a foreign key -- `technique` lives in
+    medical_db, and this project never crosses the two databases in a query (see
+    the note on `id_medical` in `scripts/database_setup.sql`). NULL is what the
+    app's own techniques would carry; every row written through the panel has it.
+    It is not a permission: a technique is visible to every patient regardless of
+    who wrote it (the decision behind this change), and this column says who to
+    ask about the wording and whose panel may edit it.
+    """
+
     id_technique = models.SmallAutoField(primary_key=True)
     name = models.TextField(null=True, blank=True)
     type = models.TextField(null=True, blank=True)
     description = models.TextField(null=True, blank=True)
+    # The stable identifier the URL carries (`/techniques/tipp`). Nullable
+    # because the seeded rows predate it and nothing can invent one for them;
+    # every row the panel writes has one, and it is what the merge with the
+    # hardcoded catalogue is keyed on -- so a slug that collides with a built-in
+    # technique is refused by the serializer rather than silently shadowing it.
+    slug = models.CharField(max_length=64, unique=True, null=True, blank=True)
+    subtitle = models.TextField(null=True, blank=True)
+    # Which tabs the technique appears in: a list, not one value, because a
+    # technique can genuinely belong to two schools at once (paced breathing is
+    # both a component of TIPP and a classic relaxation technique). Copying the
+    # description into two rows instead is what this avoids -- see the long note
+    # on `Technique.szkola` in frontend/src/types/technique.ts.
+    schools = models.JSONField(default=list, blank=True)
+    dbt_group = models.TextField(null=True, blank=True)
+    dbt_module = models.TextField(null=True, blank=True)
+    # 'ogolna' or 'wymagaSpecjalisty'. The second is a safety flag rather than a
+    # category: four techniques in the source material carry medical
+    # contraindications, and `techniques.published` withholds anything not
+    # 'ogolna' from the patient catalogue.
+    availability = models.TextField(default=AVAILABILITY_GENERAL)
+    intro = models.TextField(null=True, blank=True)
+    # The ordered component skills, each `{"nazwa": str|None, "opis": str,
+    # "przyklady": [str]}`. JSON rather than a `technique_step` table: a step has
+    # no identity of its own, nothing ever queries one, and the whole list is
+    # written and read as a unit by the form that edits it.
+    steps = models.JSONField(default=list, blank=True)
+    duration_min = models.IntegerField(null=True, blank=True)
+    # Whether there is a description to open. False is a technique whose name is
+    # known before its content, which the catalogue must not offer as a row --
+    # see `isPublished` in frontend/src/utils/techniques.ts. The seeded rows are
+    # False as well: they hold a name and a one-line `description` and none of
+    # the structure the detail screen renders.
+    description_ready = models.BooleanField(default=False)
+    # Logical reference to user_db.specjalist.id_user -- see the class docstring.
+    author_id_specjalist = models.UUIDField(null=True, blank=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
 
     class Meta:
         db_table = 'technique'

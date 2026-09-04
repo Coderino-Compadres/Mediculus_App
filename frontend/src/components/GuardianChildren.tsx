@@ -66,12 +66,23 @@ function ChildCard({ child }: { child: LinkedChild }) {
       </header>
 
       {activity === null ? (
-        /* No patient row behind the link — see build_child_activity. Zeroes here
-           would be a claim about a diary that does not exist rather than one
-           that is empty. */
-        <p className="child-card-empty">
-          To konto nie prowadzi dzienniczka, więc nie ma tu czego podsumować.
-        </p>
+        /* Two different reasons for no figures, and they must not share a
+           sentence. `consentsActive === false` is an account whose owner
+           withdrew their RODO consents: it *has* a diary and the app has stopped
+           reading it, so "to konto nie prowadzi dzienniczka" would be false —
+           and it would send a worried parent looking for the wrong problem. The
+           other reason is the original one: no patient row behind the link. */
+        !child.consentsActive ? (
+          <p className="child-card-empty">
+            To konto zostało zatrzymane — dziecko wycofało zgody na przetwarzanie
+            danych. Nic nie zostało usunięte, a podsumowanie wróci, jeśli zgody
+            zostaną przywrócone.
+          </p>
+        ) : (
+          <p className="child-card-empty">
+            To konto nie prowadzi dzienniczka, więc nie ma tu czego podsumować.
+          </p>
+        )
       ) : (
         <>
           <div className="child-figures">

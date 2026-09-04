@@ -15,6 +15,8 @@ export interface UserPayload {
   role: string | null
   /** Whether a `patient` row exists — see `hasPatientProfile`. */
   is_patient?: boolean
+  /** Whether a `specjalist` row exists — see `isSpecialist`. */
+  is_specialist?: boolean
   is_child: boolean | null
   /** null when the question does not apply: only a minor patient needs a guardian. */
   guardian_status?: GuardianStatus | null
@@ -47,6 +49,8 @@ export interface AuthUser {
   role: string | null
   /** Whether this account has a `patient` row at all — see `hasPatientProfile`. */
   isPatient: boolean
+  /** Whether this account has a `specjalist` row — see `isSpecialist`. */
+  isSpecialist: boolean
   /** null for a guardian, and for a patient row that never answered. */
   isChild: boolean | null
   /** Where the guardian link stands; null when the question does not apply. */
@@ -122,6 +126,10 @@ export function toAuthUser(payload: UserPayload): AuthUser {
     // `is_child` NULL patient, which is the narrower mistake of the two — and
     // it disappears the moment the deployed backend sends the field.
     isPatient: payload.is_patient ?? payload.is_child !== null,
+    // No fallback worth having: a backend that predates the field has no
+    // specialist panel to route to either, so false is both the safe answer and
+    // the true one there.
+    isSpecialist: payload.is_specialist ?? false,
     isChild: payload.is_child,
     guardianStatus: payload.guardian_status ?? null,
     consents: payload.consents
@@ -150,11 +158,16 @@ export type GuardianStatus = (typeof GUARDIAN_STATUS)[keyof typeof GUARDIAN_STAT
 /** Mirrors GUARDIAN_ROLE in core/serializers.py — the role that may be invited. */
 export const GUARDIAN_ROLE = 'rodzic'
 
+/** Mirrors SPECIALIST_ROLE in core/serializers.py. Printed, never authorized on
+ *  — see `isSpecialist`. */
+export const SPECIALIST_ROLE = 'specjalista'
+
 /** Mirrors ACCOUNT_TYPES in core/serializers.py — the wire values, not labels. */
 export const ACCOUNT_TYPES = {
   patient: 'patient',
   minorPatient: 'minor_patient',
   parent: 'parent',
+  specialist: 'specialist',
 } as const
 
 export type AccountType = (typeof ACCOUNT_TYPES)[keyof typeof ACCOUNT_TYPES]
@@ -178,6 +191,16 @@ export interface RegisterInput {
   confirmPassword: string
   dataConsent: boolean
   servicesConsent: boolean
+  /** Only for a specialist account; the backend requires it for that type. */
+  specialization?: string
+  /**
+   * A code from a specialist, for a guardian whose account the specialist
+   * started (core/parent_invitations.py). Optional — a guardian can register on
+   * their own and be named by the child afterwards — but never silently
+   * ignored: a code that does not match refuses the registration rather than
+   * creating an unlinked account that looks like it worked.
+   */
+  invitationCode?: string
 }
 
 /** API field name -> form field name, so a 400 can be shown under the right input. */
@@ -196,6 +219,8 @@ export const REGISTER_FIELDS: Record<string, string> = {
   password_confirm: 'confirmPassword',
   data_consent: 'dataConsent',
   services_consent: 'servicesConsent',
+  specialization: 'specialization',
+  invitation_code: 'invitationCode',
 }
 
 export const GUARDIAN_FIELDS: Record<string, string> = {
@@ -232,6 +257,13 @@ export async function register(input: RegisterInput): Promise<AuthUser> {
       account_type: input.accountType,
       data_consent: input.dataConsent,
       services_consent: input.servicesConsent,
+      // Left out entirely when empty rather than sent as '': the backend's
+      // fields are optional, and an empty string on `invitation_code` would
+      // read the same as an absent one anyway — but on a required-for-this-type
+      // field like `specialization` the distinction is what makes "not
+      // applicable" different from "left blank".
+      ...(input.specialization ? { specialization: input.specialization } : {}),
+      ...(input.invitationCode ? { invitation_code: input.invitationCode } : {}),
     },
   })
   return toAuthUser(payload)
@@ -292,6 +324,24 @@ export function needsConsents(user: AuthUser): boolean {
  */
 export function isGuardian(user: AuthUser): boolean {
   return user.role === GUARDIAN_ROLE
+}
+
+/**
+ * Whether this is a specialist's account.
+ *
+ * Keyed on the `specjalist` row rather than on the role, which is the opposite
+ * of `isGuardian` above and deliberate: what every specialist endpoint checks is
+ * the row (`_require_specialist` in core/views.py), and an account whose role
+ * says 'specjalista' with nothing behind it would be routed to a panel that
+ * refuses it on every request. A guardian has no side table to key on, so there
+ * the role is all there is.
+ *
+ * Note what this does *not* mean: a specialist account grants no access to
+ * anybody's data by itself. Which patients it can read is decided by whose
+ * invitation was accepted — see core/specialist.py.
+ */
+export function isSpecialist(user: AuthUser): boolean {
+  return user.isSpecialist
 }
 
 /**

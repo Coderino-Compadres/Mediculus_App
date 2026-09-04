@@ -37,13 +37,26 @@ INSERT INTO specjalist (id_user, specjalization) VALUES
     ('b0000000-0000-0000-0000-000000000002', 'Dietetyka')
 ON CONFLICT (id_user) DO NOTHING;
 
-INSERT INTO patient (id_user, id_medical, id_specjalist, is_child) VALUES
-    ('b0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', FALSE),
-    ('b0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002', TRUE),
-    ('b0000000-0000-0000-0000-000000000006', 'c0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000001', FALSE),
-    ('b0000000-0000-0000-0000-000000000007', 'c0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000002', FALSE),
-    ('b0000000-0000-0000-0000-000000000008', 'c0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000001', FALSE)
-ON CONFLICT (id_user) DO NOTHING;
+-- specjalist_accepted_at is set for the same reason parent_child.accepted_at is
+-- below: these are established care relationships, and the patient's agreement
+-- is what an assigned specialist means (see core/specialist.py). A NULL would
+-- read as "assigned, and nobody knows when or whether the patient agreed",
+-- which is the one state the invitation flow exists to avoid. Nothing is
+-- pending here: id_specjalist_pending stays NULL on every row, so the seeded
+-- patients show no invitation card.
+--
+-- DO UPDATE rather than DO NOTHING, unlike most of the seed: the column arrived
+-- (migration 0011) after these rows did, so a database seeded earlier already
+-- holds them with the timestamp missing.
+INSERT INTO patient (id_user, id_medical, id_specjalist, specjalist_accepted_at, is_child) VALUES
+    ('b0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', '2025-01-15 10:00:00+01', FALSE),
+    ('b0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002', '2025-01-15 10:00:00+01', TRUE),
+    ('b0000000-0000-0000-0000-000000000006', 'c0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000001', '2025-01-15 10:00:00+01', FALSE),
+    ('b0000000-0000-0000-0000-000000000007', 'c0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000002', '2025-01-15 10:00:00+01', FALSE),
+    ('b0000000-0000-0000-0000-000000000008', 'c0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000001', '2025-01-15 10:00:00+01', FALSE)
+ON CONFLICT (id_user) DO UPDATE SET
+    id_specjalist = EXCLUDED.id_specjalist,
+    specjalist_accepted_at = EXCLUDED.specjalist_accepted_at;
 
 -- accepted_at is set: this is an established family, not a pending request. A
 -- NULL here would mean the guardian has not answered yet, which would leave the
@@ -61,6 +74,14 @@ ON CONFLICT (id_parent_child) DO UPDATE SET accepted_at = EXCLUDED.accepted_at;
 
 \connect medical_db
 
+-- These four rows predate the catalogue columns (migration 0013) and are left
+-- as they are: they carry a name and a sentence, not the structured content the
+-- catalogue's detail screen renders, so description_ready stays FALSE and they
+-- do not appear in the patient's "Techniki terapeutyczne". They exist for
+-- raport.id_technique to point at -- which is what the home screen's suggestion
+-- card reads. Backfilling them with invented steps would put unreviewed
+-- clinical text in front of patients; the real catalogue is in
+-- frontend/src/data/techniques.ts, awaiting the specialists' review.
 INSERT INTO technique (id_technique, name, type, description) VALUES
     (1, 'Body scan',            'DBT', 'Skanowanie ciała w celu zwiększenia świadomości somatycznej.'),
     (2, 'Dziennik emocji',      'CBT', 'Codzienne zapisywanie emocji i wyzwalających je sytuacji.'),

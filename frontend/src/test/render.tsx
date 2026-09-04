@@ -12,6 +12,7 @@ export const TEST_USER: AuthUser = {
   dateOfBirth: '1994-06-18',
   role: 'patient',
   isPatient: true,
+  isSpecialist: false,
   isChild: false,
   guardianStatus: null,
   // Both granted, as registration writes them — the ordinary account. A screen

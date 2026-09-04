@@ -1,0 +1,103 @@
+/* The specialist's invitation, on the patient's home screen. Shaped like the
+   guardian invitation card on /parent — it is the same kind of thing: somebody
+   is waiting on an answer only this account can give. */
+
+.specialist-invitation {
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 20px;
+}
+
+.specialist-invitation h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 8px;
+}
+
+.specialist-invitation-name {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 16px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.specialist-invitation-meta {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 2px 0 0;
+  overflow-wrap: break-word;
+}
+
+.specialist-invitation-text {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite);
+  margin: 12px 0 0;
+}
+
+/* Ochre, never red: this is a consequence to understand before agreeing, not an
+   error. The entry form's risky-behaviour note uses the same tone. */
+.specialist-invitation-warning {
+  color: #8a6416;
+}
+
+.specialist-invitation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.specialist-invitation-accept {
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  color: #fff;
+  background: var(--color-graphite);
+  border: none;
+  border-radius: 12px;
+  padding: 12px 22px;
+  cursor: pointer;
+}
+
+/* Refusing sits at the same visual weight as accepting, deliberately — the same
+   rule as the consent screen's "wyloguj się". A card where only one answer is a
+   button is pressure, and consent under pressure is not consent. */
+.specialist-invitation-reject {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite);
+  background: none;
+  border: 1px solid rgba(var(--shadow-tint), 0.3);
+  border-radius: 12px;
+  padding: 12px 22px;
+  cursor: pointer;
+}
+
+.specialist-invitation-accept:disabled,
+.specialist-invitation-reject:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.specialist-invitation-error {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: #8a6416;
+  margin: 12px 0 0;
+}
+
+.specialist-invitation-answered {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite);
+  margin: 0;
+}

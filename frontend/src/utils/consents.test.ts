@@ -17,6 +17,7 @@ const USER: AuthUser = {
   dateOfBirth: '1994-06-18',
   role: 'patient',
   isPatient: true,
+  isSpecialist: false,
   isChild: false,
   guardianStatus: null,
   consents: {

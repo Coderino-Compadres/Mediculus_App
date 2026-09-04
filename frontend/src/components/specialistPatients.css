@@ -1,0 +1,263 @@
+/* "Moi pacjenci" on the specialist's panel. Borrows the card shape from the
+   guardian's child summary (components/guardianChildren.css) rather than the
+   patient screens: like that one, this is a list of other people's accounts. */
+
+.caseload-section {
+  width: 100%;
+  max-width: 720px;
+  margin-bottom: 24px;
+}
+
+.caseload-heading {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 12px;
+}
+
+.caseload-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 12px;
+}
+
+.caseload-card-header h3 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.caseload-card-email,
+.caseload-card-tag,
+.caseload-card-note {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+  overflow-wrap: break-word;
+}
+
+.caseload-card-tag {
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Three figures side by side, wrapping rather than shrinking on a narrow phone. */
+.caseload-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+/* Lavender, like the guardian's child-figure tiles: the same kind of figure on
+   the same kind of card, and the token already exists. */
+.caseload-figure {
+  flex: 1 1 90px;
+  background: var(--color-lavender);
+  border-radius: 14px;
+  padding: 12px 14px;
+  text-align: center;
+}
+
+.caseload-figure-value {
+  display: block;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 20px;
+  color: var(--color-graphite);
+}
+
+.caseload-figure-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+  margin-top: 2px;
+}
+
+.caseload-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.caseload-card-link {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-graphite);
+  background: none;
+  border: none;
+  padding: 6px 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+/* Ending someone's care is not a destructive-red action — it is an ordinary
+   clinical decision — but it must not look like the primary one either. */
+.caseload-card-drop {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  background: none;
+  border: 1px solid rgba(var(--shadow-tint), 0.25);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.caseload-card-drop:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The confirmation replaces the single button in place, so the question sits
+   where the action was rather than jumping the card's layout. */
+.caseload-card-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.caseload-card-confirm-question {
+  flex: 1 1 100%;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8a6416;
+}
+
+.caseload-pending {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px dashed rgba(var(--shadow-tint), 0.25);
+  border-radius: 18px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+
+.caseload-pending-heading {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 0 0 6px;
+}
+
+.caseload-pending-note {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 0 0 12px;
+}
+
+.caseload-pending-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite);
+  padding: 6px 0;
+}
+
+.caseload-status,
+.caseload-empty,
+.caseload-invite-note {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  margin: 0 0 12px;
+}
+
+.caseload-error {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: #8a6416;
+  margin: 8px 0 0;
+}
+
+.caseload-success {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite);
+  margin: 8px 0 0;
+}
+
+.caseload-invite {
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+  margin-top: 16px;
+}
+
+.caseload-invite-heading {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 16px;
+  color: var(--color-graphite);
+  margin: 0 0 12px;
+}
+
+.caseload-invite label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite);
+  margin-bottom: 6px;
+}
+
+.caseload-invite-row {
+  display: flex;
+  gap: 10px;
+}
+
+.caseload-invite-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-body);
+  font-size: 15px;
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--shadow-tint), 0.25);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--color-graphite);
+}
+
+.caseload-invite-row button {
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  color: #fff;
+  background: var(--color-graphite);
+  border: none;
+  border-radius: 12px;
+  padding: 12px 20px;
+  cursor: pointer;
+}
+
+.caseload-invite-row button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.caseload-invite-note {
+  margin: 12px 0 0;
+}
+
+@media (max-width: 600px) {
+  .caseload-invite-row {
+    flex-direction: column;
+  }
+}

@@ -6,6 +6,12 @@ import ModuleSelect from './pages/ModuleSelect'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import ParentHome from './pages/ParentHome'
+import SpecialistHome from './pages/SpecialistHome'
+import SpecialistPatientReports from './pages/SpecialistPatientReports'
+import SpecialistPatientReport from './pages/SpecialistPatientReport'
+import SpecialistParentAccounts from './pages/SpecialistParentAccounts'
+import SpecialistTechniques from './pages/SpecialistTechniques'
+import SpecialistTechniqueForm from './pages/SpecialistTechniqueForm'
 import Home from './pages/Home'
 import DiaryEntry from './pages/DiaryEntry'
 import Journals from './pages/Journals'
@@ -23,7 +29,7 @@ import OfflineBanner from './components/OfflineBanner'
 import RouteChange from './components/RouteChange'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/authContext'
-import { isGuardian, needsConsents, needsGuardianLink } from './api/auth'
+import { isGuardian, isSpecialist, needsConsents, needsGuardianLink } from './api/auth'
 import { PLACEHOLDER_ROUTES, ROUTES } from './routes'
 import type { AuthUser } from './api/auth'
 
@@ -31,11 +37,18 @@ import type { AuthUser } from './api/auth'
  * Where an account belongs when it arrives with no particular screen in mind —
  * after logging in, and on '/'.
  *
- * A guardian's landing screen is not the patient's module chooser: both tiles on
- * it lead into the patient app, which answers them 403. One function, because
- * three places make that redirect and a fourth would eventually disagree.
+ * Neither a guardian nor a specialist belongs on the patient's module chooser:
+ * both tiles on it lead into the patient app, which answers them 403. One
+ * function, because four places make that redirect and a fifth would eventually
+ * disagree.
+ *
+ * The two are asked in a fixed order, and the order is arbitrary only because
+ * the two are exclusive in practice — an account has a `specjalist` row or a
+ * `patient` row or neither, and a guardian is recognised by their role. If a
+ * single account ever needs to be both, this is the line that has to decide.
  */
 function homeRouteFor(user: AuthUser): string {
+  if (isSpecialist(user)) return ROUTES.specialistHome
   return isGuardian(user) ? ROUTES.parentHome : ROUTES.modules
 }
 
@@ -64,9 +77,11 @@ function AuthPending() {
 function RequireAuth({
   children,
   allowGuardian = false,
+  allowSpecialist = false,
 }: {
   children: ReactNode
   allowGuardian?: boolean
+  allowSpecialist?: boolean
 }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
@@ -86,6 +101,13 @@ function RequireAuth({
   if (!allowGuardian && isGuardian(user)) {
     return <Navigate to={ROUTES.parentHome} replace />
   }
+  // Same shape and same default as `allowGuardian`, for the same reason: a
+  // specialist has no `patient` row either, so every clinical screen answers
+  // them 403 and a patient screen added later sends them to their own panel
+  // rather than to a refusal it can only word as "coś poszło nie tak".
+  if (!allowSpecialist && isSpecialist(user)) {
+    return <Navigate to={ROUTES.specialistHome} replace />
+  }
   return <>{children}</>
 }
 
@@ -96,6 +118,22 @@ function RequireGuardian({ children }: { children: ReactNode }) {
   if (!user) return <Navigate to={ROUTES.login} replace />
   if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
   return isGuardian(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
+}
+
+/**
+ * The same, for the specialist panel.
+ *
+ * The consent gate is checked here too, and it is not decoration: the panel is
+ * behind `HasActiveConsents` on the backend like everything else, so a
+ * specialist whose own consents are withdrawn would otherwise reach a screen
+ * that 403s on every request it makes.
+ */
+function RequireSpecialist({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <AuthPending />
+  if (!user) return <Navigate to={ROUTES.login} replace />
+  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
+  return isSpecialist(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
 }
 
 /**
@@ -190,6 +228,62 @@ function App() {
             }
           />
           <Route
+            path={ROUTES.specialistHome}
+            element={
+              <RequireSpecialist>
+                <SpecialistHome />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistPatientReports}
+            element={
+              <RequireSpecialist>
+                <SpecialistPatientReports />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistPatientReport}
+            element={
+              <RequireSpecialist>
+                <SpecialistPatientReport />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistParentAccounts}
+            element={
+              <RequireSpecialist>
+                <SpecialistParentAccounts />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistTechniques}
+            element={
+              <RequireSpecialist>
+                <SpecialistTechniques />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistTechniqueNew}
+            element={
+              <RequireSpecialist>
+                <SpecialistTechniqueForm />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistTechniqueEdit}
+            element={
+              <RequireSpecialist>
+                <SpecialistTechniqueForm />
+              </RequireSpecialist>
+            }
+          />
+          <Route
             path={ROUTES.modules}
             element={
               <RequireAuth>
@@ -253,10 +347,15 @@ function App() {
               </RequireAuth>
             }
           />
+          {/* The catalogue is the one patient screen a specialist belongs on:
+              they write into it, and /api/techniques/ refuses nobody who is
+              signed in (it is a catalogue, not a record about a person). Seeing
+              what a patient sees is the point — a preview that differed from the
+              real screen would be worth less than none. */}
           <Route
             path={ROUTES.techniques}
             element={
-              <RequireAuth>
+              <RequireAuth allowSpecialist>
                 <Techniques />
               </RequireAuth>
             }
@@ -264,7 +363,7 @@ function App() {
           <Route
             path={ROUTES.techniqueDetail}
             element={
-              <RequireAuth>
+              <RequireAuth allowSpecialist>
                 <TechniqueDetail />
               </RequireAuth>
             }
@@ -272,9 +371,11 @@ function App() {
           <Route
             path={ROUTES.profile}
             element={
-              /* The one opt-out — see RequireAuth. A guardian's profile is
-                 genuinely theirs; only its clinical half is left out. */
-              <RequireAuth allowGuardian>
+              /* The one opt-out — see RequireAuth. A guardian's and a
+                 specialist's profile is genuinely theirs; only its clinical half
+                 (the counters and the care card) is left out, and the screen
+                 itself asks for that only when `hasPatientProfile`. */
+              <RequireAuth allowGuardian allowSpecialist>
                 <Profile />
               </RequireAuth>
             }

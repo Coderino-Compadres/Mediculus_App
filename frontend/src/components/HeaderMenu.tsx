@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { useSignOut } from '../hooks/useSignOut'
 import { ROUTES, routeTitle } from '../routes'
-import { isGuardian } from '../api/auth'
+import { isGuardian, isSpecialist } from '../api/auth'
 import { roleLabel } from '../utils/roles'
 import type { AuthUser } from '../api/auth'
 
@@ -43,13 +43,34 @@ const GUARDIAN_ITEMS: MenuItem[] = [
 ]
 
 /**
+ * A specialist's menu.
+ *
+ * Same reasoning as the guardian's, with one addition: the catalogue is here,
+ * because a specialist writes into it and seeing what a patient sees is the
+ * point. Everything else patient-facing is left out — no diary, no reports of
+ * their own, no analysis, no safety plan; they have no `patient` row, so all of
+ * those answer 403 and App.tsx redirects them away regardless.
+ */
+const SPECIALIST_ITEMS: MenuItem[] = [
+  { label: 'Strona główna', to: ROUTES.specialistHome },
+  { label: routeTitle(ROUTES.specialistParentAccounts), to: ROUTES.specialistParentAccounts },
+  { label: routeTitle(ROUTES.specialistTechniques), to: ROUTES.specialistTechniques },
+  { label: routeTitle(ROUTES.techniques), to: ROUTES.techniques },
+  { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
+]
+
+/**
  * What this account may navigate to.
  *
- * Keyed on the role, matching App.tsx's redirects — the two have to agree, or
- * the menu offers a link the router immediately undoes.
+ * Matches App.tsx's redirects — the two have to agree, or the menu offers a link
+ * the router immediately undoes. Asked in the same order as `homeRouteFor`
+ * there, so an account that somehow answered to both questions would at least
+ * get one consistent answer.
  */
 function menuItems(user: AuthUser | null): MenuItem[] {
-  return user && isGuardian(user) ? GUARDIAN_ITEMS : PATIENT_ITEMS
+  if (!user) return PATIENT_ITEMS
+  if (isSpecialist(user)) return SPECIALIST_ITEMS
+  return isGuardian(user) ? GUARDIAN_ITEMS : PATIENT_ITEMS
 }
 
 /** Header dropdown menu, shared by every screen with a home-style header (Home, DiaryEntry, …). */

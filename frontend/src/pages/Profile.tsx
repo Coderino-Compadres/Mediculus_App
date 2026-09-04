@@ -148,10 +148,17 @@ function ClinicalSections({ profile }: { profile: AccountProfile }) {
           /* Said in words rather than left blank. `patient.specjalist` is
              nullable and an account registered before the first appointment has
              nobody assigned — which is worth knowing, because it also means
-             there is nobody for the weekly reports to be visible to. */
+             there is nobody for the weekly reports to be visible to.
+
+             The wording used to promise that "fundacja powiąże Twoje konto",
+             which stopped being true when the specialist panel landed: the
+             specialist sends an invitation and the patient accepts it on their
+             own home screen. Telling them to wait for somebody else would have
+             them wait through the one card they have to answer themselves. */
           <p className="profile-care-empty">
-            Nie masz jeszcze przypisanego specjalisty. Pojawi się tutaj, kiedy fundacja
-            powiąże Twoje konto z terapeutą.
+            Nie masz jeszcze przypisanego specjalisty. Kiedy specjalista wyśle
+            zaproszenie, zobaczysz je na stronie głównej — po Twoim potwierdzeniu
+            pojawi się tutaj.
           </p>
         )}
 

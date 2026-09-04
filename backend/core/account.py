@@ -17,6 +17,7 @@ summarises is worse than no summary. The frontend used to hardcode `8 wpisów`
 and `6 dni z rzędu` from the mockup's example patient.
 """
 
+from .consents import has_active_consents
 from .dashboard import streak_days
 from .diary import count_entries, last_entry_date
 
@@ -127,17 +128,34 @@ def build_linked_children(links, patients_by_user):
 
     The identity half comes from the child's `user` row and the activity half
     from medical_db; like `build_account_profile` above, the two only meet here.
+
+    **A CHILD WHOSE CONSENTS ARE WITHDRAWN GETS NO FIGURES.** `HasActiveConsents`
+    gates the account making a request, and a guardian is a *second* reader of
+    somebody else's data — so without this check the app went on deriving a
+    locked account's entry count and streak from its diary and showing them to
+    another person, which is exactly the processing withdrawal stops (see the
+    header of core/consents.py). `consents_active` travels so the screen can say
+    why the figures are missing: "to konto nie prowadzi dzienniczka" would be a
+    false statement about an account that has one and has stopped it.
+
+    The same hole existed on the specialist's side and is closed the same way —
+    see `specialist.patient_locked`, which calls the same `has_active_consents`.
     """
-    return [
-        {
-            'id': str(link.pk),
-            'child_name': link.child.name,
-            'child_surname': link.child.surname,
-            'child_email': link.child.email,
-            # When this guardian accepted, which is the moment the link (and the
-            # art. 8 consent behind it) started — not when the account was made.
-            'linked_at': link.accepted_at.isoformat() if link.accepted_at else None,
-            'activity': build_child_activity(patients_by_user.get(link.child_id)),
-        }
-        for link in links
-    ]
+    return [_linked_child(link, patients_by_user) for link in links]
+
+
+def _linked_child(link, patients_by_user):
+    """One row of the list above. Its own function so the consent check is read
+    once per child rather than twice in one dict literal."""
+    active = has_active_consents(link.child)
+    return {
+        'id': str(link.pk),
+        'child_name': link.child.name,
+        'child_surname': link.child.surname,
+        'child_email': link.child.email,
+        # When this guardian accepted, which is the moment the link (and the
+        # art. 8 consent behind it) started — not when the account was made.
+        'linked_at': link.accepted_at.isoformat() if link.accepted_at else None,
+        'consents_active': active,
+        'activity': build_child_activity(patients_by_user.get(link.child_id)) if active else None,
+    }
