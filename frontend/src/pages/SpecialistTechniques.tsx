@@ -12,17 +12,17 @@ import './specialist.css'
 /**
  * "Moje techniki" — what this specialist has written into the catalogue.
  *
- * Drafts included, and that is the point of having the screen at all: a
- * technique is written over more than one sitting, and `opisGotowy`
- * (`description_ready`) is what decides whether patients can open it yet. A
- * draft is marked as one here, because the difference between "saved" and
- * "published" is the difference between notes and clinical content on eleven
- * hundred phones.
+ * SAVED MEANS PUBLISHED. There is no draft state: the form's "Gotowa do
+ * publikacji" checkbox was removed on request, so everything listed here is in
+ * every patient's catalogue right now. That is why the rows carry no status of
+ * any kind — a badge that always said the same thing would be noise, and one
+ * that sometimes said something else would be describing a state the panel
+ * cannot produce.
  *
- * PUBLISHED MEANS EVERY PATIENT, not only this specialist's, and the screen says
- * so rather than leaving it to be discovered. That was the decision behind the
- * feature; the alternative (a per-patient catalogue) would need an assignment
- * table that does not exist.
+ * EVERY PATIENT, not only this specialist's, and the screen says so rather than
+ * leaving it to be discovered. That was the decision behind the feature; the
+ * alternative (a per-patient catalogue) would need an assignment table that does
+ * not exist.
  *
  * Only the author's own techniques are listed and only they can be edited —
  * `find_for_specjalist` filters on `author_id_specjalist`, so a colleague's
@@ -96,9 +96,9 @@ function SpecialistTechniques() {
       </Link>
 
       <p className="reports-intro">
-        Technika oznaczona jako gotowa trafia do katalogu „Techniki
-        terapeutyczne” i jest widoczna dla wszystkich pacjentów aplikacji.
-        Nieoznaczona zostaje szkicem, który widzisz tylko Ty.
+        Każda dodana tu technika trafia do katalogu „Techniki terapeutyczne” i
+        jest widoczna dla wszystkich pacjentów aplikacji. Jeśli chcesz ją
+        wycofać, usuń ją.
       </p>
 
       <Link className="specialist-form-submit specialist-new-link" to={ROUTES.specialistTechniqueNew}>
@@ -135,10 +135,7 @@ function SpecialistTechniques() {
           {techniques.map((technique) => (
             <article key={technique.idTechnique} className="specialist-list-row">
               <div>
-                <p className="specialist-list-title">
-                  {technique.nazwa}
-                  {!technique.opisGotowy && <span className="specialist-draft"> szkic</span>}
-                </p>
+                <p className="specialist-list-title">{technique.nazwa}</p>
                 <p className="specialist-list-meta">
                   {technique.szkola.map((school) => SCHOOL_BADGES[school]).join(' · ')}
                   {' · '}
@@ -147,14 +144,11 @@ function SpecialistTechniques() {
                 <p className="specialist-list-meta">/{technique.id}</p>
               </div>
               <div className="specialist-list-actions">
-                {/* Only a published technique has a screen to preview: the
-                    catalogue's own gates would answer "nie znaleziono" for a
-                    draft, which is right there and confusing here. */}
-                {technique.opisGotowy && (
-                  <Link className="caseload-card-link" to={techniqueDetailPath(technique.id)}>
-                    Podgląd
-                  </Link>
-                )}
+                {/* Always available now: everything here is published, so the
+                    catalogue can always open it. */}
+                <Link className="caseload-card-link" to={techniqueDetailPath(technique.id)}>
+                  Podgląd
+                </Link>
                 <Link
                   className="caseload-card-link"
                   to={specialistTechniqueEditPath(technique.idTechnique)}

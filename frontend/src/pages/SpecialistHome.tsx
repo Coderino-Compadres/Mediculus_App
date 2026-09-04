@@ -87,8 +87,8 @@ function SpecialistHome() {
         <Link className="specialist-tool" to={ROUTES.specialistTechniques}>
           <span className="specialist-tool-title">{routeTitle(ROUTES.specialistTechniques)}</span>
           <span className="specialist-tool-text">
-            Dodaj technikę do katalogu „Techniki terapeutyczne”. Opublikowana
-            technika jest widoczna dla wszystkich pacjentów aplikacji.
+            Dodaj technikę do katalogu „Techniki terapeutyczne”. Każda dodana
+            technika jest od razu widoczna dla wszystkich pacjentów aplikacji.
           </span>
           <span className="specialist-tool-arrow" aria-hidden="true">
             →

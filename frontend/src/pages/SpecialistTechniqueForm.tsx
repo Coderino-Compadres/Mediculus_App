@@ -37,10 +37,14 @@ import './specialist.css'
  * already have opened, and freeing the old slug for something else is worse than
  * refusing to rename.
  *
- * "Gotowa do publikacji" is the one field with consequences outside this screen:
- * unchecked, the technique is a draft only this specialist sees; checked, it is
- * in the catalogue on every patient's phone. It is off by default for exactly
- * that reason.
+ * WHAT THIS FORM DELIBERATELY DOES NOT ASK. There was a "Gotowa do publikacji"
+ * checkbox (a draft state) and a "Tylko do wprowadzenia przez specjalistę" one
+ * (the source material's safety flag); both were removed on request. Saving a
+ * technique here puts it in every patient's catalogue, and the screen says so
+ * above the form rather than making it a decision. The columns behind them still
+ * exist — see `_fields` in core/techniques.py — so if the client ever asks for
+ * drafts or per-technique unlocking, this is the form to add them back to, not a
+ * schema change.
  */
 
 const LOAD_ERROR = 'Nie udało się wczytać techniki. Spróbuj ponownie.'
@@ -56,10 +60,8 @@ const EMPTY: TechniqueInput = {
   schools: [],
   dbtGroup: '',
   dbtModule: '',
-  availability: 'ogolna',
   intro: '',
   durationMin: '',
-  descriptionReady: false,
   steps: [{ ...EMPTY_STEP }],
 }
 
@@ -72,10 +74,8 @@ function toInput(technique: StoredTechnique): TechniqueInput {
     schools: technique.szkola,
     dbtGroup: technique.grupa ?? '',
     dbtModule: technique.modulDBT ?? '',
-    availability: technique.dostepnosc,
     intro: technique.wprowadzenie,
     durationMin: technique.czasTrwaniaMin ? String(technique.czasTrwaniaMin) : '',
-    descriptionReady: technique.opisGotowy,
     steps: technique.kroki.length
       ? technique.kroki.map((step) => ({
           name: step.nazwa ?? '',
@@ -221,6 +221,14 @@ function SpecialistTechniqueForm() {
       <Link className="journals-back" to={ROUTES.specialistTechniques}>
         ← Wróć do moich technik
       </Link>
+
+      {/* Stated, not asked. Saving is publishing here, so the consequence belongs
+          above the form rather than behind a checkbox somebody can miss. */}
+      <p className="reports-intro">
+        {editing
+          ? 'Zapisane zmiany widzą od razu wszyscy pacjenci aplikacji.'
+          : 'Dodana technika jest od razu widoczna dla wszystkich pacjentów w zakładce „Techniki terapeutyczne”.'}
+      </p>
 
       <form className="specialist-form" onSubmit={(event) => void submit(event)} noValidate>
         <div className="auth-field">
@@ -398,35 +406,6 @@ function SpecialistTechniqueForm() {
             Dodaj krok
           </button>
         </fieldset>
-
-        <label className="specialist-check">
-          <input
-            type="checkbox"
-            checked={form.descriptionReady}
-            onChange={(event) => set('descriptionReady', event.target.checked)}
-          />
-          Gotowa do publikacji
-        </label>
-        <span className="specialist-form-hint">
-          Zaznaczona technika trafia do katalogu wszystkich pacjentów.
-          Niezaznaczona zostaje szkicem widocznym tylko dla Ciebie.
-        </span>
-
-        <label className="specialist-check">
-          <input
-            type="checkbox"
-            checked={form.availability === 'wymagaSpecjalisty'}
-            onChange={(event) =>
-              set('availability', event.target.checked ? 'wymagaSpecjalisty' : 'ogolna')
-            }
-          />
-          Tylko do wprowadzenia przez specjalistę
-        </label>
-        <span className="specialist-form-hint">
-          Dla technik z przeciwwskazaniami medycznymi albo dotykających jedzenia.
-          Taka technika nie pojawia się w katalogu samoobsługowym, nawet
-          oznaczona jako gotowa.
-        </span>
 
         {formError && (
           <p className="caseload-error" role="alert">

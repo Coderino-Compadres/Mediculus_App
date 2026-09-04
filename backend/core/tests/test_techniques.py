@@ -145,7 +145,6 @@ class TechniqueTestCase(TestCase):
                     'examples': ['przykład'],
                 },
             ],
-            'description_ready': True,
         }
         body.update(overrides)
         return body
@@ -173,6 +172,32 @@ class WritingTests(TechniqueTestCase):
             },
         ])
         self.assertTrue(technique.description_ready)
+
+    def test_everything_the_panel_writes_is_in_the_catalogue_at_once(self):
+        """No draft state and no safety flag on this form: what a specialist
+        saves is what every patient can open."""
+        self.create()
+
+        technique = Technique.objects.get()
+        self.assertTrue(technique.description_ready)
+        self.assertEqual(technique.availability, 'ogolna')
+
+        patient = self.make_patient(email='ktokolwiek@example.com')
+        self.sign_in(patient.user)
+        self.assertEqual(
+            len(self.client.get(reverse('core:technique-catalogue')).data), 1)
+
+    def test_a_request_asking_for_a_draft_is_published_anyway(self):
+        """Neither field exists on the serializer, so a hand-made body cannot
+        hold one back — and cannot half-succeed either. Pinned rather than left
+        to DRF's habit of dropping what it does not declare, because the *shape*
+        of that habit is what cost `diary.time_of_day` a real bug."""
+        response = self.create(description_ready=False, availability='wymagaSpecjalisty')
+
+        self.assertEqual(response.status_code, 201, response.data)
+        technique = Technique.objects.get()
+        self.assertTrue(technique.description_ready)
+        self.assertEqual(technique.availability, 'ogolna')
 
     def test_the_author_is_recorded_so_the_panel_knows_whose_it_is(self):
         self.create()
@@ -214,7 +239,6 @@ class WritingTests(TechniqueTestCase):
             ('schools', ['gestalt']),
             ('dbt_group', 'cokolwiek'),
             ('dbt_module', 'cokolwiek'),
-            ('availability', 'cokolwiek'),
         ):
             with self.subTest(field=field):
                 response = self.create(**{field: value})
@@ -326,8 +350,22 @@ class EditingTests(TechniqueTestCase):
         self.assertEqual(response.status_code, 204)
         self.assertFalse(Technique.objects.filter(pk=self.technique.pk).exists())
 
-    def test_a_draft_stays_out_of_the_catalogue_but_stays_in_the_panel(self):
-        self.client.put(self.url, self.body(description_ready=False), format='json')
+    def test_an_edit_cannot_pull_a_technique_out_of_the_catalogue(self):
+        """The only way to withdraw one is to delete it — there is no draft state
+        for a specialist to park it in."""
+        self.client.put(
+            self.url, self.body(description_ready=False), format='json')
+
+        self.technique.refresh_from_db()
+        self.assertTrue(self.technique.description_ready)
+        self.assertEqual(
+            len(self.client.get(reverse('core:technique-catalogue')).data), 1)
+
+    def test_a_row_withheld_by_its_columns_is_still_visible_to_its_author(self):
+        """`for_specjalist` filters on nothing, on purpose: a row somebody set
+        `description_ready = false` on by hand (a data migration, manage.py
+        shell) must not vanish from the one screen that can fix it."""
+        Technique.objects.filter(pk=self.technique.pk).update(description_ready=False)
 
         mine = self.client.get(reverse('core:specialist-techniques'))
         self.assertEqual(len(mine.data), 1)
@@ -365,18 +403,28 @@ class CataloguePayloadTests(TechniqueTestCase):
         self.assertNotIn('author_id_specjalist', response.data[0])
         self.assertNotIn(str(self.specjalist.pk), str(response.data))
 
-    def test_a_draft_is_withheld(self):
-        self.create(description_ready=False)
+    def test_the_two_gates_still_withhold_a_row_that_carries_them(self):
+        """Neither is reachable from the panel any more — every technique a
+        specialist saves is published and 'ogolna'. The gates stay because the
+        columns do: `description_ready` False is what keeps the seeded rows out
+        (see below), and 'wymagaSpecjalisty' is the flag the source material asks
+        for on the four techniques with medical contraindications, which live in
+        the hardcoded catalogue. A safety flag that withheld nothing would be
+        worse than none, so this pins that `published()` still reads both."""
+        self.create()
 
-        self.assertEqual(self.client.get(reverse('core:technique-catalogue')).data, [])
-
-    def test_a_technique_flagged_for_a_specialist_is_withheld(self):
-        """A safety flag that does not actually withhold anything would be worse
-        than none — four techniques in the source material carry medical
-        contraindications."""
-        self.create(availability='wymagaSpecjalisty')
-
-        self.assertEqual(self.client.get(reverse('core:technique-catalogue')).data, [])
+        for field, value in (
+            ('description_ready', False),
+            ('availability', 'wymagaSpecjalisty'),
+        ):
+            with self.subTest(field=field):
+                Technique.objects.update(**{field: value})
+                self.assertEqual(
+                    self.client.get(reverse('core:technique-catalogue')).data, [])
+                # Back to the state the panel actually produces.
+                Technique.objects.update(description_ready=True, availability='ogolna')
+                self.assertEqual(
+                    len(self.client.get(reverse('core:technique-catalogue')).data), 1)
 
     def test_the_rows_mock_data_seeds_are_not_catalogue_entries(self):
         """They hold a name and a sentence, not the structure the detail screen
@@ -414,6 +462,10 @@ class CataloguePayloadTests(TechniqueTestCase):
 
         row = self.client.get(reverse('core:technique-catalogue')).data[0]
 
+        # `availability` and `description_ready` are still on the wire although
+        # the panel no longer sets them: the frontend's `isPublished` reads them
+        # for the hardcoded half of the catalogue, and a payload where one half
+        # carries a field and the other does not would be two shapes.
         self.assertEqual(set(row), {
             'slug', 'id_technique', 'name', 'subtitle', 'schools', 'dbt_group',
             'dbt_module', 'availability', 'intro', 'steps', 'duration_min',

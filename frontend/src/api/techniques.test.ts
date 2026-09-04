@@ -102,10 +102,8 @@ describe('writing one', () => {
     schools: ['dbt'],
     dbtGroup: '',
     dbtModule: '',
-    availability: 'ogolna',
     intro: '  O czym jest.  ',
     durationMin: '',
-    descriptionReady: false,
     steps: [{ name: ' Zauważ ', description: ' Opis. ', examples: 'jeden\n\n  dwa  \n' }],
   }
 
@@ -125,13 +123,24 @@ describe('writing one', () => {
         // and an empty string would be a value outside the vocabulary.
         dbt_group: null,
         dbt_module: null,
-        availability: 'ogolna',
         intro: 'O czym jest.',
         duration_min: null,
-        description_ready: false,
         steps: [{ name: 'Zauważ', description: 'Opis.', examples: ['jeden', 'dwa'] }],
       },
     })
+  })
+
+  it('sends neither a draft flag nor an availability, because they are not asked', async () => {
+    // The two checkboxes were removed on request: saving a technique publishes
+    // it to every patient. The backend sets both columns itself, so sending
+    // either from here would be a second opinion about a decided thing.
+    mockedRequest.mockResolvedValueOnce(PAYLOAD)
+
+    await createTechnique(INPUT)
+
+    const body = mockedRequest.mock.calls[0][1]?.body as Record<string, unknown>
+    expect(body).not.toHaveProperty('description_ready')
+    expect(body).not.toHaveProperty('availability')
   })
 
   it('sends a duration as a number, not as the typed text', async () => {

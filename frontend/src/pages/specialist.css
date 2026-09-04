@@ -285,18 +285,6 @@
   gap: 10px;
 }
 
-/* A draft is content patients cannot see, so the list has to say which is which
-   at a glance. */
-.specialist-draft {
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-graphite-muted);
-  margin-left: 8px;
-}
-
 @media (max-width: 600px) {
   .specialist-list-row {
     flex-direction: column;

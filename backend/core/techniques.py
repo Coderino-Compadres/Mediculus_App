@@ -31,8 +31,8 @@ endpoints' serializers, and the rules below are about the catalogue.
 from rest_framework import serializers
 
 from .models import Technique
-from .technique_vocabulary import (AVAILABILITIES, AVAILABILITY_GENERAL,
-                                   DBT_GROUPS, DBT_MODULES, SCHOOLS)
+from .technique_vocabulary import (AVAILABILITY_GENERAL, DBT_GROUPS,
+                                   DBT_MODULES, SCHOOLS)
 
 #: The slugs the hardcoded catalogue already uses.
 #:
@@ -108,9 +108,11 @@ def published():
       never becomes a row that opens an empty screen. This is also what keeps the
       four rows `mock_data.sql` seeds out of the catalogue: they carry a name and
       a sentence, not the structure the detail screen renders.
-    * `availability == 'ogolna'`. Nothing is flagged otherwise today, but the flag
-      exists for techniques carrying medical contraindications — and a safety flag
-      that does not actually withhold anything is worse than none.
+    * `availability == 'ogolna'`. Nothing written through the panel is ever
+      anything else (see `_fields`), so this gate is here for the hardcoded
+      catalogue's own flag — the four techniques in the source material that
+      carry medical contraindications — and because a safety flag that does not
+      actually withhold anything is worse than none.
 
     A slug is required as well: without one the technique has no URL to open, so
     a row missing it would be a list entry leading nowhere.
@@ -127,11 +129,13 @@ def published():
 
 
 def for_specjalist(specjalist):
-    """The techniques this specialist wrote, newest first — published or not.
+    """The techniques this specialist wrote, newest first.
 
-    Their own drafts included, which is the point of the panel: a technique is
-    written over more than one sitting, and `description_ready` is what decides
-    whether patients see it yet.
+    No filter at all, deliberately: everything the panel writes is published, so
+    this list and the patient's catalogue hold the same rows. It stays unfiltered
+    rather than repeating `published()`'s conditions so that a row somebody set
+    `description_ready = false` on by hand is still visible to its author instead
+    of disappearing from the one screen that could fix it.
     """
     return (
         Technique.objects
@@ -186,6 +190,13 @@ class TechniqueSerializer(serializers.Serializer):
     `slug` is immutable once set: it is in the URL of a technique patients may
     already have opened, and renaming it would break a bookmark and, worse,
     quietly free the old slug for something else.
+
+    **`description_ready` and `availability` are not inputs.** Everything saved
+    here reaches every patient's catalogue at once — there is no draft to keep
+    back and no per-technique safety flag to set. A request that asks for either
+    is not refused, it is simply published like any other: the field does not
+    exist on this serializer, so there is nothing to disagree with. See `_fields`
+    for why the columns themselves stay.
     """
 
     slug = serializers.RegexField(
@@ -227,10 +238,6 @@ class TechniqueSerializer(serializers.Serializer):
         choices=DBT_MODULES, required=False, allow_null=True, allow_blank=True,
         error_messages={'invalid_choice': 'Nieznany moduł DBT.'},
     )
-    availability = serializers.ChoiceField(
-        choices=AVAILABILITIES, required=False,
-        error_messages={'invalid_choice': 'Nieznany poziom dostępności.'},
-    )
     intro = serializers.CharField(
         max_length=MAX_STEP_DESCRIPTION,
         error_messages={
@@ -246,7 +253,6 @@ class TechniqueSerializer(serializers.Serializer):
             'max_value': 'Czas trwania wygląda na literówkę.',
         },
     )
-    description_ready = serializers.BooleanField(required=False)
 
     SLUG_TAKEN = 'Technika o tym identyfikatorze już istnieje.'
     SLUG_BUILTIN = (
@@ -292,11 +298,22 @@ class TechniqueSerializer(serializers.Serializer):
             'schools': list(validated_data['schools']),
             'dbt_group': validated_data.get('dbt_group') or None,
             'dbt_module': validated_data.get('dbt_module') or None,
-            'availability': validated_data.get('availability') or AVAILABILITY_GENERAL,
             'intro': validated_data['intro'],
             'steps': [_step(step) for step in validated_data['steps']],
             'duration_min': validated_data.get('duration_min'),
-            'description_ready': validated_data.get('description_ready', True),
+            # NOT INPUTS, AND THAT IS THE DECISION. Anything a specialist saves
+            # here is in every patient's catalogue immediately: there is no draft
+            # state and no "only with a specialist present" flag on this form.
+            #
+            # Both columns stay in the schema and `published()` still reads them,
+            # because they are not dead — `description_ready` False is what keeps
+            # the rows `mock_data.sql` seeds out of the catalogue (they hold a
+            # name and a sentence, not a technique), and `availability` is the
+            # flag the source material asks for on the four techniques carrying
+            # medical contraindications, which live in the hardcoded catalogue.
+            # What changed is that neither is something this form decides.
+            'availability': AVAILABILITY_GENERAL,
+            'description_ready': True,
         }
         return fields
 

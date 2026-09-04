@@ -117,7 +117,15 @@ export async function fetchMyTechniques(): Promise<StoredTechnique[]> {
   return payload.map(toTechnique)
 }
 
-/** What the specialist's form submits. Field names match the form's state. */
+/**
+ * What the specialist's form submits. Field names match the form's state.
+ *
+ * No `availability` and no `descriptionReady`: **everything a specialist saves
+ * is in every patient's catalogue immediately**. There is no draft to keep back
+ * and no per-technique "only with a specialist present" flag on this form — the
+ * backend sets both columns itself (see `_fields` in core/techniques.py, which
+ * also says why the columns still exist).
+ */
 export interface TechniqueInput {
   slug: string
   name: string
@@ -125,10 +133,8 @@ export interface TechniqueInput {
   schools: TechniqueSchool[]
   dbtGroup: TechniqueGroup | ''
   dbtModule: TechniqueDbtModule | ''
-  availability: TechniqueAvailability
   intro: string
   durationMin: string
-  descriptionReady: boolean
   steps: { name: string; description: string; examples: string }[]
 }
 
@@ -140,11 +146,9 @@ export const TECHNIQUE_FIELDS: Record<string, string> = {
   schools: 'schools',
   dbt_group: 'dbtGroup',
   dbt_module: 'dbtModule',
-  availability: 'availability',
   intro: 'intro',
   steps: 'steps',
   duration_min: 'durationMin',
-  description_ready: 'descriptionReady',
 }
 
 function toPayload(input: TechniqueInput) {
@@ -157,10 +161,8 @@ function toPayload(input: TechniqueInput) {
     // for it; sending the empty string would be a value outside the vocabulary.
     dbt_group: input.dbtGroup || null,
     dbt_module: input.dbtModule || null,
-    availability: input.availability,
     intro: input.intro.trim(),
     duration_min: input.durationMin.trim() === '' ? null : Number(input.durationMin),
-    description_ready: input.descriptionReady,
     steps: input.steps.map((step) => ({
       name: step.name.trim(),
       description: step.description.trim(),
