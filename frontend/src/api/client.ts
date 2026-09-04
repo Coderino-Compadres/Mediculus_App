@@ -62,11 +62,33 @@ async function getCsrfToken(forceRefresh: boolean): Promise<string | null> {
   return readCookie(CSRF_COOKIE) ?? cachedCsrfToken
 }
 
-/** Django puts a field's messages in a list; take the first non-empty one. */
+/**
+ * Django puts a field's messages in a list; take the first non-empty one.
+ *
+ * Objects are walked too, and that is not thoroughness for its own sake. DRF
+ * nests: a `many=True` field answers with one object per item
+ * (`{"steps": [{"description": ["Opis kroku nie może być pusty."]}]}`) and a
+ * nested serializer with an object keyed by its own fields. Without this branch
+ * every such error came back as `null` here, `toApiError` then found no field
+ * errors at all, and the screen showed "Coś poszło nie tak. Spróbuj ponownie."
+ * over a body that said exactly what was wrong — which is the worst of both: the
+ * user cannot act on it and the developer cannot see it.
+ *
+ * The position is lost (which step, which item), so a screen that can say it
+ * should check the value itself before submitting — see
+ * pages/SpecialistTechniqueForm.tsx. This is the floor, not the ideal.
+ */
 function firstMessage(value: unknown): string | null {
   if (typeof value === 'string') return value || null
   if (Array.isArray(value)) {
     for (const item of value) {
+      const message = firstMessage(item)
+      if (message) return message
+    }
+    return null
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) {
       const message = firstMessage(item)
       if (message) return message
     }

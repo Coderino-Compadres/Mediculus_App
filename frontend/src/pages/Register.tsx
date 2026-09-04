@@ -96,6 +96,20 @@ function validateSpecialization(accountType: string, value: string): string | nu
     : 'Podaj swoją specjalizację — pacjent widzi ją przy Twoim nazwisku.'
 }
 
+/** The specialization, for the one account type that has one. */
+function specialistOnly(values: { accountType: string; specialization: string }) {
+  return values.accountType === ACCOUNT_TYPES.specialist
+    ? { specialization: values.specialization }
+    : { specialization: '' }
+}
+
+/** The invitation code, for the one account type it can apply to. */
+function guardianOnly(values: { accountType: string; invitationCode: string }) {
+  return values.accountType === ACCOUNT_TYPES.parent
+    ? { invitationCode: values.invitationCode }
+    : { invitationCode: '' }
+}
+
 function Register() {
   const { setUser } = useAuth()
   const navigate = useNavigate()
@@ -154,7 +168,21 @@ function Register() {
       submit: async (currentValues) => {
         // The backend logs the new account in as part of registering it, so
         // there is no second trip through /login here.
-        const user = await register({ ...currentValues, ...consents })
+        const user = await register({
+          ...currentValues,
+          ...consents,
+          // Only the field that belongs to the chosen account type is sent, and
+          // that is a fix rather than tidiness. Both inputs are rendered
+          // conditionally, but their *values* live in one form state that
+          // survives a change of account type — so somebody who typed a code as
+          // a guardian and then switched to "konto pacjenta" was still sending
+          // it. The backend refuses a code on any other type (correctly: a code
+          // that quietly did nothing would look like it had worked), the error
+          // came back under `invitation_code`, and that input no longer existed
+          // on screen — so the form failed with **no visible message at all**.
+          ...specialistOnly(currentValues),
+          ...guardianOnly(currentValues),
+        })
         setUser(user)
         navigate('/', { replace: true })
       },

@@ -66,6 +66,7 @@ interface LinkedChildPayload {
   child_surname: string | null
   child_email: string | null
   linked_at: string | null
+  consents_active?: boolean
   activity: ChildActivityPayload | null
 }
 
@@ -83,7 +84,17 @@ export interface LinkedChild {
   childEmail: string | null
   /** When this guardian accepted, as an ISO instant. */
   linkedAt: string | null
-  /** null when the linked account has no patient row — see build_child_activity. */
+  /**
+   * Whether the child's own RODO consents are in force.
+   *
+   * False means the account is locked and the app has stopped deriving anything
+   * from its diary, which is why `activity` is null — the two travel together so
+   * the card can say which of the two reasons it is. Defaults to true for a
+   * backend that predates the field, where a null activity meant the older
+   * reason (no patient row at all).
+   */
+  consentsActive: boolean
+  /** null when the account has no patient row, or when its consents are withdrawn. */
   activity: ChildActivity | null
 }
 
@@ -94,6 +105,7 @@ function toChild(payload: LinkedChildPayload): LinkedChild {
     childSurname: payload.child_surname,
     childEmail: payload.child_email,
     linkedAt: payload.linked_at,
+    consentsActive: payload.consents_active ?? true,
     activity: payload.activity && {
       entryCount: payload.activity.entry_count,
       streakDays: payload.activity.streak_days,

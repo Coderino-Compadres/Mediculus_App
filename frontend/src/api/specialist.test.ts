@@ -28,6 +28,7 @@ const ACCEPTED = {
   email: 'ola@wp.pl',
   is_child: true,
   accepted_at: '2026-08-30T10:00:00Z',
+  consents_active: true,
   activity: { entry_count: 12, streak_days: 3, last_entry_date: '2026-09-03' },
 }
 
@@ -38,6 +39,7 @@ const PENDING = {
   email: 'jan@wp.pl',
   is_child: false,
   accepted_at: null,
+  consents_active: true,
   activity: null,
 }
 
@@ -58,6 +60,7 @@ describe('the caseload', () => {
         email: 'ola@wp.pl',
         isChild: true,
         acceptedAt: '2026-08-30T10:00:00Z',
+        consentsActive: true,
         activity: { entryCount: 12, streakDays: 3, lastEntryDate: '2026-09-03' },
       },
     ])
@@ -84,6 +87,30 @@ describe('the caseload', () => {
     const [patient] = (await fetchCaseload()).patients
 
     expect(patient.activity).toEqual({ entryCount: 0, streakDays: 0, lastEntryDate: null })
+  })
+
+  it('reports a patient whose consents are withdrawn, with no figures at all', async () => {
+    // The count comes *from* the diary, so deriving it would be the processing
+    // the withdrawal stopped — and the card has to be able to say that rather
+    // than showing a blank row a specialist reads as "stopped writing".
+    mockedRequest.mockResolvedValueOnce({
+      patients: [{ ...ACCEPTED, consents_active: false, activity: null }],
+      pending: [],
+    })
+
+    const [patient] = (await fetchCaseload()).patients
+
+    expect(patient.consentsActive).toBe(false)
+    expect(patient.activity).toBeNull()
+    // Still on the list: the care relationship did not end.
+    expect(patient.email).toBe('ola@wp.pl')
+  })
+
+  it('reads a backend that predates the field as "consents in force"', async () => {
+    const { consents_active: _omitted, ...withoutField } = ACCEPTED
+    mockedRequest.mockResolvedValueOnce({ patients: [withoutField], pending: [] })
+
+    expect((await fetchCaseload()).patients[0].consentsActive).toBe(true)
   })
 
   it('never puts id_medical on the wire — the id is the user row', async () => {

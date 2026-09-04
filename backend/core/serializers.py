@@ -855,6 +855,11 @@ class SpecialistPatientInviteSerializer(serializers.Serializer):
         'Sprawdź adres razem z pacjentem.'
     )
     OWN_ADDRESS = 'To Twój własny adres. Podaj adres konta pacjenta.'
+    #: Told apart from NOT_INVITABLE deliberately, and it is the one case that
+    #: can be: this patient is already on the list above the form, so saying so
+    #: reveals nothing the specialist cannot see — while the shared message left
+    #: them reading "nie znaleziono" about somebody they were looking at.
+    ALREADY_MINE = 'Ten pacjent jest już na Twojej liście.'
 
     @property
     def specjalist(self):
@@ -883,9 +888,14 @@ class SpecialistPatientInviteSerializer(serializers.Serializer):
 
         if patient is None:
             raise serializers.ValidationError({'patient_email': self.NOT_INVITABLE})
-        # Already treated by somebody — including by this specialist. Dropping a
-        # link is an action on the panel's own list, not something a re-invite
-        # should do quietly.
+        # Already this specialist's, which is the one refusal that can name its
+        # reason (see ALREADY_MINE). Checked before the shared one below, so the
+        # honest answer wins wherever it is available.
+        if patient.specjalist_id == specjalist.pk:
+            raise serializers.ValidationError({'patient_email': self.ALREADY_MINE})
+        # Treated by somebody else. Dropping a link is an action on the panel's
+        # own list, not something a re-invite should do quietly — and whose
+        # patient this is stays unsaid.
         if patient.specjalist_id is not None:
             raise serializers.ValidationError({'patient_email': self.NOT_INVITABLE})
         # Somebody else is already asking. One pending invitation per patient, so

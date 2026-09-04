@@ -30,6 +30,7 @@ interface SpecialistPatientPayload {
   email: string | null
   is_child: boolean | null
   accepted_at: string | null
+  consents_active?: boolean
   activity: PatientActivityPayload | null
 }
 
@@ -56,6 +57,15 @@ export interface SpecialistPatient {
   /** When the patient agreed to this specialist; null on a pending invitation. */
   acceptedAt: string | null
   /**
+   * Whether the patient's own RODO consents are in force.
+   *
+   * False means their account is locked, the app has stopped deriving anything
+   * from their diary, and their reports are refused (403) — see
+   * `specialist.patient_locked`. It travels so the card can say that rather than
+   * showing an empty row the specialist would read as "stopped writing".
+   */
+  consentsActive: boolean
+  /**
    * How much they have been writing — null on a pending invitation.
    *
    * Engagement only, never content: the content is the weekly reports, which are
@@ -80,6 +90,7 @@ function toPatient(payload: SpecialistPatientPayload): SpecialistPatient {
     email: payload.email,
     isChild: payload.is_child,
     acceptedAt: payload.accepted_at,
+    consentsActive: payload.consents_active ?? true,
     activity: payload.activity && {
       entryCount: payload.activity.entry_count,
       streakDays: payload.activity.streak_days,

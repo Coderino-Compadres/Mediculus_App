@@ -188,6 +188,23 @@ describe('apiRequest — how failures reach the UI', () => {
     expect(error.fieldErrors).toEqual({})
   })
 
+  it('digs a message out of a nested field error instead of giving up on it', async () => {
+    // DRF answers a `many=True` field with one object per item, and that used to
+    // yield no message at all here — so the screen showed the generic "coś
+    // poszło nie tak" over a body that said exactly what was wrong. The
+    // technique form's steps are the case in point.
+    const fetchMock = mockFetch()
+    fetchMock.mockResolvedValueOnce(
+      respond(400, { steps: [{ description: ['Opis kroku nie może być pusty.'] }] }),
+    )
+
+    const error = (await apiRequest('/api/specialist/techniques/').catch((e) => e)) as ApiErrorType
+
+    expect(error.fieldErrors.steps).toBe('Opis kroku nie może być pusty.')
+    // A field error, so nothing pretends it belongs above the form.
+    expect(error.formMessage).toBeNull()
+  })
+
   it('takes the first message when Django sends a list', async () => {
     const fetchMock = mockFetch()
     fetchMock.mockResolvedValueOnce(respond(400, { password: ['Za krótkie.', 'Zbyt popularne.'] }))

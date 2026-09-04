@@ -749,6 +749,15 @@ SPECIALIST_INVITATION_NOT_FOUND = (
 
 PATIENT_NOT_FOUND = 'Nie znaleziono takiego pacjenta.'
 
+#: Refused because the *patient* withdrew the consents, not because the
+#: specialist did anything wrong — so it says which, and says that nothing was
+#: deleted. A specialist told only "brak dostępu" would read it as a bug in the
+#: app and go looking for the reports somewhere else.
+PATIENT_CONSENTS_WITHDRAWN = (
+    'Ten pacjent wycofał zgody na przetwarzanie danych, więc jego raporty nie są '
+    'dostępne. Nic nie zostało usunięte — wrócą, jeśli pacjent przywróci zgody.'
+)
+
 #: The patient's side of the same feature, worded for their screen: this one is
 #: about their own account rather than about the panel.
 SPECIALIST_INVITATION_REFUSAL = (
@@ -783,17 +792,32 @@ def _require_specialist(request):
 
 
 def _assigned_patient(specjalist, patient_id):
-    """One of this specialist's accepted patients, or 404.
+    """One of this specialist's accepted patients, or a refusal.
 
     404 rather than 403 for a patient who is somebody else's, which is the
     convention every id-carrying URL here follows (/api/diary/<id>/,
     /api/guardian/invitations/<id>/…): a 403 would confirm that the account
     exists and is a patient, which is exactly what the invitation form takes
     care not to answer.
+
+    **The patient's own consents are checked here too**, and this is the one
+    funnel every report URL passes through, which is why it is here rather than
+    in three views. `HasActiveConsents` gates the account *making* the request —
+    the only reader this app used to have — and a specialist is the second one:
+    without this, a patient could withdraw both consents, see their own diary
+    answer 403, and have their full weekly report served to somebody else
+    anyway. See `specialist.patient_locked`.
+
+    403 and not 404 for that case, deliberately: the specialist is entitled to
+    know why (they would otherwise read the silence as "stopped writing"), the
+    state is reversible, and nothing about the patient's data is disclosed by
+    saying it.
     """
     patient = specialist_rules.assigned_patient(specjalist, patient_id)
     if patient is None:
         raise NotFound(PATIENT_NOT_FOUND)
+    if specialist_rules.patient_locked(patient):
+        raise PermissionDenied(PATIENT_CONSENTS_WITHDRAWN)
     return patient
 
 

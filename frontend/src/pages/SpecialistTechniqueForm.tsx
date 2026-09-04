@@ -155,8 +155,30 @@ function SpecialistTechniqueForm() {
     )
   }
 
+  /**
+   * The one thing worth checking before the request: which step is empty.
+   *
+   * The backend refuses an empty step description either way, but its answer is
+   * positional (`steps: [{description: [...]}, {}]`) and by the time it reaches
+   * `ApiError` the position is gone — so the message could only be shown above
+   * the whole list, leaving a specialist with six steps to hunt for the blank
+   * one. Named here instead. Everything else is left to the backend, which is
+   * the only thing that can answer it (a slug collision, for instance).
+   */
+  function emptyStep(): string | null {
+    const index = form.steps.findIndex((step) => step.description.trim() === '')
+    if (index === -1) return null
+    return `Krok ${index + 1} nie ma opisu. Opis kroku jest tym, co czyta pacjent.`
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault()
+    const blank = emptyStep()
+    if (blank) {
+      setErrors({ steps: blank })
+      setFormError(null)
+      return
+    }
     setSaving(true)
     setErrors({})
     setFormError(null)

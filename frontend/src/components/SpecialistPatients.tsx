@@ -53,10 +53,16 @@ function PatientCard({
   patient,
   onDrop,
   busy,
+  confirming,
+  onAskToDrop,
+  onCancelDrop,
 }: {
   patient: SpecialistPatient
   onDrop: () => void
   busy: boolean
+  confirming: boolean
+  onAskToDrop: () => void
+  onCancelDrop: () => void
 }) {
   const { activity } = patient
 
@@ -71,6 +77,18 @@ function PatientCard({
           <p className="caseload-card-tag">Pacjent małoletni</p>
         )}
       </header>
+
+      {/* Said, not left as a blank row. A specialist who saw an empty card would
+          read it as "stopped writing" and ask the patient about the wrong thing;
+          and the reports are refused (403) while this holds, so the panel has to
+          explain that too. */}
+      {!patient.consentsActive && (
+        <p className="caseload-card-note">
+          Pacjent wycofał zgody na przetwarzanie danych, więc jego dane i raporty
+          nie są dostępne. Nic nie zostało usunięte — wrócą, jeśli pacjent
+          przywróci zgody.
+        </p>
+      )}
 
       {activity && (
         <div className="caseload-figures">
@@ -92,24 +110,49 @@ function PatientCard({
         </div>
       )}
 
-      {activity?.entryCount === 0 && (
+      {patient.consentsActive && activity?.entryCount === 0 && (
         <p className="caseload-card-note">
           Ten pacjent nie zapisał jeszcze żadnego wpisu, więc nie ma jeszcze raportów.
         </p>
       )}
 
       <div className="caseload-card-actions">
-        <Link className="caseload-card-link" to={specialistPatientReportsPath(patient.id)}>
-          Raporty tygodniowe →
-        </Link>
-        <button
-          type="button"
-          className="caseload-card-drop"
-          onClick={onDrop}
-          disabled={busy}
-        >
-          Zakończ opiekę
-        </button>
+        {patient.consentsActive ? (
+          <Link className="caseload-card-link" to={specialistPatientReportsPath(patient.id)}>
+            Raporty tygodniowe →
+          </Link>
+        ) : (
+          /* Not offered rather than offered-and-refused: the link would lead
+             straight to a 403 the specialist can do nothing about. */
+          <span />
+        )}
+        {/* TWO TAPS, like deleting a technique, and for a heavier reason: the
+            patient cannot undo this and cannot restore it either — they would
+            have to be invited again and accept again. One stray tap on a phone
+            would end a care relationship and drop the reports it exists for. */}
+        {confirming ? (
+          <span className="caseload-card-confirm">
+            <span className="caseload-card-confirm-question">
+              Zakończyć opiekę nad {patientLabel(patient)}? Pacjent nie może tego
+              cofnąć sam.
+            </span>
+            <button
+              type="button"
+              className="caseload-card-drop"
+              onClick={onDrop}
+              disabled={busy}
+            >
+              Tak, zakończ
+            </button>
+            <button type="button" className="caseload-card-link" onClick={onCancelDrop}>
+              Nie kończ
+            </button>
+          </span>
+        ) : (
+          <button type="button" className="caseload-card-drop" onClick={onAskToDrop}>
+            Zakończ opiekę
+          </button>
+        )}
       </div>
     </article>
   )
@@ -124,6 +167,9 @@ function SpecialistPatients() {
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [invited, setInvited] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Which accepted patient has been asked about; a pending invitation needs no
+  // confirmation, because withdrawing one takes nothing away.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
   // Separate from `failed`: a change that did not go through is not a list that
   // did not load, and saying the latter sends the specialist to reload a screen
   // whose content is already right.
@@ -155,8 +201,11 @@ function SpecialistPatients() {
     setInvited(null)
     try {
       setCaseload(await invitePatient(email.trim()))
+      // Not "na stronie głównej": a minor waiting for a guardian is redirected
+      // away from /home, and answers on /link-guardian instead. Naming a screen
+      // the patient may never see would send the specialist looking for it.
       setInvited(
-        `Zaproszenie wysłane na ${email.trim()}. Pacjent zobaczy je na swojej stronie głównej.`,
+        `Zaproszenie wysłane na ${email.trim()}. Pacjent zobaczy je po zalogowaniu i sam decyduje.`,
       )
       setEmail('')
     } catch (cause: unknown) {
@@ -188,6 +237,7 @@ function SpecialistPatients() {
       }
     } finally {
       setBusyId(null)
+      setConfirmingId(null)
     }
   }
 
@@ -226,6 +276,9 @@ function SpecialistPatients() {
               key={patient.id}
               patient={patient}
               busy={busyId === patient.id}
+              confirming={confirmingId === patient.id}
+              onAskToDrop={() => setConfirmingId(patient.id)}
+              onCancelDrop={() => setConfirmingId(null)}
               onDrop={() => void drop(patient)}
             />
           ))}

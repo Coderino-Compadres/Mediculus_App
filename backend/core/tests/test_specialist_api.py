@@ -24,7 +24,8 @@ from rest_framework.test import APIClient
 from core.authentication import SESSION_USER_KEY
 from core.models import Diary, Patient, Specjalist, User, UserRole
 from core.reports import DAYS_IN_WEEK, start_of_week, week_report_id
-from core.serializers import ACCOUNT_TYPE_SPECIALIST
+from core.serializers import (ACCOUNT_TYPE_SPECIALIST,
+                              SpecialistPatientInviteSerializer)
 from core.specialist import PATIENT_SUMMARY_FIELDS
 
 PASSWORD = 'TajneHaslo123'
@@ -238,7 +239,10 @@ class InvitationTests(SpecialistTestCase):
         """The point of the shared message. An address nobody registered, a
         guardian's, another specialist's, a patient who already has a specialist
         and one somebody else is already asking — all the same sentence, so the
-        form cannot be used to ask who has an account here."""
+        form cannot be used to ask who has an account here.
+
+        This specialist's *own* patient is the one exception, tested below: it
+        leaks nothing, because that patient is on the list above the form."""
         guardian = self.make_user('rodzic@example.com', role='rodzic')
         colleague = self.make_specialist(email='kolega@example.com')
         taken = self.make_patient(email='zajety@example.com')
@@ -258,17 +262,38 @@ class InvitationTests(SpecialistTestCase):
 
         self.assertEqual(len(answers), 1, answers)
 
-    def test_a_patient_this_specialist_already_treats_is_refused_too(self):
+    def test_a_patient_this_specialist_already_treats_is_refused_by_name(self):
         """Re-inviting must not quietly reset an accepted link — ending care is
-        an action on the panel's own list."""
+        an action on the panel's own list. And this refusal says why: the
+        specialist is looking at that patient in the list above the form, so the
+        shared "nie znaleziono" message was telling them something they could see
+        was untrue."""
         patient = self.make_patient()
         self.assign(self.specjalist, patient)
 
         response = self.invite_by_email(patient.user.email)
 
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            str(response.data['patient_email'][0]),
+            SpecialistPatientInviteSerializer.ALREADY_MINE,
+        )
         patient.refresh_from_db()
         self.assertEqual(patient.specjalist_id, self.specjalist.pk)
+
+    def test_somebody_else_s_patient_is_still_refused_without_a_reason(self):
+        """The half that must stay vague: whose patient this is, and whether
+        they are in anybody's care at all, is not this form's to answer."""
+        colleague = self.make_specialist(email='kolega@example.com')
+        theirs = self.make_patient(email='ich@example.com')
+        self.assign(colleague, theirs)
+
+        response = self.invite_by_email(theirs.user.email)
+
+        self.assertEqual(
+            str(response.data['patient_email'][0]),
+            SpecialistPatientInviteSerializer.NOT_INVITABLE,
+        )
 
     def test_your_own_address_gets_an_answer_you_can_act_on(self):
         response = self.invite_by_email(self.specjalist.user.email)
@@ -702,3 +727,120 @@ class ThrottleScopeTests(SpecialistTestCase):
                 break
 
         self.assertTrue(seen_429, 'zaproszenia nie są w ogóle limitowane')
+
+
+class WithdrawnConsentTests(SpecialistTestCase):
+    """A patient who withdrew their consents is not readable by anybody.
+
+    `HasActiveConsents` gates the account *making* a request, which was every
+    reader this app had until the specialist panel arrived. A specialist is the
+    second one, and the gate did not follow: a patient could withdraw both
+    consents, watch their own diary answer 403, and have their full weekly report
+    — risky-behaviour note included — served to somebody else anyway. That is the
+    processing core/consents.py says withdrawal stops.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.specjalist = self.make_specialist()
+        self.patient = self.make_patient()
+        self.diary = self.entry(self.patient, risky_behavior_note='opis')
+        self.assign(self.specjalist, self.patient)
+        self.report_id = week_report_id(self.week)
+        self.sign_in(self.specjalist.user)
+
+    def withdraw(self):
+        from core.consents import withdraw
+        withdraw(self.patient.user, 'all')
+
+    def restore(self):
+        from core.consents import restore
+        restore(self.patient.user, 'all')
+
+    def report_urls(self):
+        return [
+            reverse('core:specialist-patient-reports', args=[self.patient.user_id]),
+            reverse('core:specialist-patient-report',
+                    args=[self.patient.user_id, self.report_id]),
+            reverse('core:specialist-patient-report-pdf',
+                    args=[self.patient.user_id, self.report_id]),
+        ]
+
+    def test_every_report_url_refuses(self):
+        """All three, because the check lives in the one funnel they share.
+
+        The `Accept` header is only sent to the PDF URL: the two JSON endpoints
+        declare no PDF renderer and would answer 406 before reaching the gate,
+        which would make this test pass for the wrong reason."""
+        self.withdraw()
+
+        for url in self.report_urls():
+            with self.subTest(url=url):
+                accept = 'application/pdf' if url.endswith('/pdf/') else 'application/json'
+                response = self.client.get(url, HTTP_ACCEPT=accept)
+                self.assertEqual(response.status_code, 403)
+                # The PDF URL answers its refusal as JSON, not as a file.
+                self.assertIn('application/json', response['Content-Type'])
+
+    def test_the_refusal_names_the_reason_and_says_nothing_was_deleted(self):
+        """403 rather than 404, deliberately: the specialist would otherwise read
+        the silence as "stopped writing" and ask the patient about the wrong
+        thing. Saying an account is locked discloses no health data."""
+        self.withdraw()
+
+        response = self.client.get(self.report_urls()[0])
+
+        self.assertIn('wycofał zgody', str(response.data['detail']))
+        self.assertIn('Nic nie zostało usunięte', str(response.data['detail']))
+
+    def test_not_a_single_figure_is_derived_for_the_caseload_row(self):
+        """The entry count comes from the diary, so producing it would be the
+        processing that stopped — even though it is not content."""
+        self.withdraw()
+
+        row = self.client.get(reverse('core:specialist-patients')).data['patients'][0]
+
+        self.assertFalse(row['consents_active'])
+        self.assertIsNone(row['activity'])
+        # The patient is still on the list: the care relationship did not end,
+        # and hiding them would tell the specialist nothing about why.
+        self.assertEqual(row['email'], self.patient.user.email)
+
+    def test_nothing_from_the_diary_is_anywhere_in_the_payload(self):
+        self.withdraw()
+
+        body = str(self.client.get(reverse('core:specialist-patients')).data)
+
+        for leak in ('opis', 'entry_count', 'streak_days', 'last_entry_date'):
+            with self.subTest(leak=leak):
+                self.assertNotIn(leak, body)
+
+    def test_restoring_the_consents_makes_the_reports_readable_again(self):
+        """Withdrawal locks, it does not delete — so this has to come back."""
+        self.withdraw()
+        self.restore()
+
+        response = self.client.get(self.report_urls()[0])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        row = self.client.get(reverse('core:specialist-patients')).data['patients'][0]
+        self.assertTrue(row['consents_active'])
+        self.assertEqual(row['activity']['entry_count'], 1)
+
+    def test_one_missing_consent_is_enough_to_stop_it(self):
+        from core.consents import withdraw
+        withdraw(self.patient.user, 'data')
+
+        self.assertEqual(self.client.get(self.report_urls()[0]).status_code, 403)
+
+    def test_the_gate_reads_the_one_definition_rather_than_its_own(self):
+        """`has_active_consents` is what the permission class, the serializer and
+        both consent endpoints agree on; a second comparison here is exactly how
+        the two would drift."""
+        import inspect
+
+        from core import specialist
+
+        source = inspect.getsource(specialist.patient_locked)
+        self.assertIn('has_active_consents', source)

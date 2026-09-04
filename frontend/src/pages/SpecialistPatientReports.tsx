@@ -34,7 +34,8 @@ import './specialist.css'
  */
 
 const LOAD_ERROR = 'Nie udało się wczytać raportów pacjenta. Spróbuj ponownie.'
-const NOT_MINE = 'Ten pacjent nie jest przypisany do Twojego konta.'
+const NOT_MINE =
+  'Ten pacjent nie jest przypisany do Twojego konta. Wróć do panelu i wybierz pacjenta z listy.'
 
 /** One of the four cards by key — the row previews two of them. */
 function metricByKey(report: WeeklyReport, key: ReportMetric['key']): ReportMetric | undefined {
@@ -92,6 +93,11 @@ function SpecialistPatientReports() {
   const [name, setName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // A 404 here is not a failed load, it is an answer: this is not your patient
+  // (or the id is not a patient at all). Kept apart from `loadError` because
+  // "Spróbuj ponownie" is the wrong offer for a state that cannot change by
+  // retrying — the way out is back to the caseload.
+  const [notMine, setNotMine] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const retry = () => setAttempt((value) => value + 1)
   const pages = usePagination(reports)
@@ -108,11 +114,11 @@ function SpecialistPatientReports() {
       })
       .catch((cause: unknown) => {
         if (cancelled) return
-        setLoadError(
-          cause instanceof ApiError && cause.status === 404
-            ? NOT_MINE
-            : (cause instanceof ApiError && cause.formMessage) || LOAD_ERROR,
-        )
+        if (cause instanceof ApiError && cause.status === 404) {
+          setNotMine(true)
+          return
+        }
+        setLoadError((cause instanceof ApiError && cause.formMessage) || LOAD_ERROR)
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -169,6 +175,12 @@ function SpecialistPatientReports() {
         </div>
       )}
 
+      {!loading && notMine && (
+        <p className="journals-empty" role="status">
+          {NOT_MINE}
+        </p>
+      )}
+
       {!loading && loadError && (
         <LoadError
           className="journals-status journals-status-error"
@@ -177,7 +189,7 @@ function SpecialistPatientReports() {
         />
       )}
 
-      {!loading && !loadError && (
+      {!loading && !loadError && !notMine && (
         <div className="journals-list">
           {reports.length === 0 && (
             <p className="journals-empty">
@@ -197,7 +209,7 @@ function SpecialistPatientReports() {
         </div>
       )}
 
-      {!loading && !loadError && (
+      {!loading && !loadError && !notMine && (
         <Pagination
           page={pages.page}
           pageCount={pages.pageCount}

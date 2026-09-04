@@ -42,6 +42,7 @@ no specialist id on the wire anywhere.
 from django.utils import timezone
 
 from .account import build_child_activity
+from .consents import has_active_consents
 from .models import Patient, Specjalist
 
 #: What the specialist's patient list reports about each patient, spelled out
@@ -54,10 +55,31 @@ from .models import Patient, Specjalist
 #: a list next to nine other patients' figures.
 #:
 #: `is_child` is here because it changes what the specialist can do next: a
-#: guardian account can only be invited for a minor.
+#: guardian account can only be invited for a minor. `consents_active` is here
+#: because its absence is why there is nothing else — see `patient_locked`.
 PATIENT_SUMMARY_FIELDS = (
-    'name', 'surname', 'email', 'is_child', 'accepted_at', 'activity',
+    'name', 'surname', 'email', 'is_child', 'accepted_at', 'consents_active',
+    'activity',
 )
+
+
+def patient_locked(patient):
+    """Whether this patient has withdrawn the consent the app runs on.
+
+    THE SECOND READER IS THE WHOLE REASON THIS EXISTS. `HasActiveConsents`
+    (core/permissions.py) gates the account *making* a request, which was the
+    only reader this app had: a patient reading their own data. The specialist
+    panel introduced a second one, and the gate did not follow — a patient could
+    withdraw both consents, watch their own diary answer 403, and their
+    specialist would still be served the full weekly report, risky-behaviour note
+    included. That is precisely what core/consents.py says withdrawal stops
+    ("nothing is read, nothing is written, nothing is shown"), so the gate has to
+    apply to the *subject* of the data as well as to the reader of it.
+
+    `has_active_consents` is called rather than reimplemented, for the reason
+    that function's own header gives: one comparison, in one place.
+    """
+    return not has_active_consents(patient.user)
 
 
 def specjalist_for(user):
@@ -129,6 +151,7 @@ def serialize_patient(patient, *, activity=None):
     is keyed on, and putting it on the wire would hand the browser the join the
     two-database split exists to keep apart.
     """
+    locked = patient_locked(patient)
     return {
         'id': str(patient.user_id),
         'name': patient.user.name,
@@ -139,9 +162,16 @@ def serialize_patient(patient, *, activity=None):
             patient.specjalist_accepted_at.isoformat()
             if patient.specjalist_accepted_at else None
         ),
-        # None on a pending row: nothing about a diary is reported before its
-        # owner has agreed to this specialist.
-        'activity': build_child_activity(patient) if activity else None,
+        # Reported because a specialist who simply saw no new reports would
+        # assume the patient had stopped writing. That an account is locked is a
+        # fact about the account, not about anybody's health — and it is the
+        # answer to "why is there nothing here".
+        'consents_active': not locked,
+        # None on a pending row (nothing about a diary is reported before its
+        # owner has agreed to this specialist) and None on a locked one: the
+        # entry count is derived from the diary, so producing it would be the
+        # processing the withdrawal stopped.
+        'activity': build_child_activity(patient) if activity and not locked else None,
     }
 
 

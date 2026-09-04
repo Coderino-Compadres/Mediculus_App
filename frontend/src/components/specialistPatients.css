@@ -119,6 +119,23 @@
   cursor: default;
 }
 
+/* The confirmation replaces the single button in place, so the question sits
+   where the action was rather than jumping the card's layout. */
+.caseload-card-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.caseload-card-confirm-question {
+  flex: 1 1 100%;
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #8a6416;
+}
+
 .caseload-pending {
   background: rgba(255, 255, 255, 0.6);
   border: 1px dashed rgba(var(--shadow-tint), 0.25);

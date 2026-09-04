@@ -24,6 +24,7 @@ function child(overrides: Partial<LinkedChild> = {}): LinkedChild {
     childSurname: 'Testowa',
     childEmail: 'dziecko@wp.pl',
     linkedAt: '2026-08-12T09:31:02Z',
+    consentsActive: true,
     activity: { entryCount: 12, streakDays: 4, lastEntryDate: isoDaysAgo(1) },
     ...overrides,
   }
@@ -43,6 +44,28 @@ async function render(children: LinkedChild[] = [child()]) {
 // nobody was there to catch.
 beforeEach(() => {
   mockedFetch.mockReset()
+})
+
+describe('a child whose consents are withdrawn', () => {
+  it('says the account was stopped rather than that it has no diary', async () => {
+    // The account *has* a diary and the app has stopped reading it. The older
+    // sentence ("to konto nie prowadzi dzienniczka") would be false, and it
+    // would send a worried parent looking for the wrong problem.
+    mockedFetch.mockResolvedValueOnce([child({ consentsActive: false, activity: null })])
+
+    renderWithProviders(<GuardianChildren />)
+
+    expect(await screen.findByText(/wycofało zgody na przetwarzanie danych/i)).toBeInTheDocument()
+    expect(screen.queryByText(/nie prowadzi dzienniczka/i)).toBeNull()
+  })
+
+  it('says nothing was deleted, because nothing was', async () => {
+    mockedFetch.mockResolvedValueOnce([child({ consentsActive: false, activity: null })])
+
+    renderWithProviders(<GuardianChildren />)
+
+    expect(await screen.findByText(/Nic nie zostało usunięte/i)).toBeInTheDocument()
+  })
 })
 
 describe('GuardianChildren', () => {

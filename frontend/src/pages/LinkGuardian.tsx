@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import AuthLayout from '../components/AuthLayout'
 import CrisisLines from '../components/CrisisLines'
 import FormField from '../components/FormField'
+import SpecialistInvitationCard from '../components/SpecialistInvitation'
 import { useAuthForm } from '../hooks/useAuthForm'
 import { useAuth } from '../auth/authContext'
 import {
@@ -37,6 +38,16 @@ import { validateEmail } from '../utils/validation'
  * unvouched-for minor does not WRITE clinical data (RODO art. 8); a list of
  * public national numbers is neither clinical data nor anything a guardian
  * consents to, so it is not what the gate is for.
+ *
+ * AND BOTH STATES CARRY THE SPECIALIST'S INVITATION, for a reason of exactly the
+ * same shape. `_require_patient` lets an unlinked minor answer a specialist
+ * (`GUARDIAN_GATE_EXEMPT_REASON` in core/views.py) because that answer is what
+ * lets the specialist issue the code a *parent* registers with — the way out of
+ * the gate for a child whose guardian has no account yet. But the card lived on
+ * /home only, and RequireAuth redirects an unlinked minor here from /home, so
+ * the child had no button to press: the specialist saw "oczekujące" and the
+ * child saw a screen that never mentioned it. The API exemption without this
+ * card was an exemption in name only.
  */
 function LinkGuardian() {
   const { user } = useAuth()
@@ -104,6 +115,11 @@ function InviteGuardian() {
           {submitting ? 'Wysyłanie…' : 'Wyślij prośbę'}
         </button>
       </form>
+
+      {/* Below the form, deliberately: the guardian link is what unblocks the
+          account, and a specialist's invitation is not. It draws nothing at all
+          when nobody has asked, which is the ordinary case here. */}
+      <SpecialistInvitationCard />
     </GuardianLayout>
   )
 }
@@ -200,6 +216,8 @@ function AwaitingAnswer() {
           {busy === 'cancelling' ? 'Anulowanie…' : 'Anuluj prośbę i podaj inny adres'}
         </button>
       </div>
+
+      <SpecialistInvitationCard />
     </GuardianLayout>
   )
 }
