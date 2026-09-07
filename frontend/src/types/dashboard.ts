@@ -24,11 +24,6 @@ export interface DayMood {
   intensity: number | null
 }
 
-export interface TechniqueSuggestion {
-  name: string
-  matchReason: string
-}
-
 /** Everything the home screen shows for the logged-in patient. */
 export interface HomeDashboard {
   streakDays: number
@@ -38,5 +33,4 @@ export interface HomeDashboard {
   /** 0-10 averages over those 7 days; null when nothing in the window was rated. */
   averageStress: number | null
   averageEnergy: number | null
-  technique: TechniqueSuggestion | null
 }

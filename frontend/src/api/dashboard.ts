@@ -5,13 +5,7 @@
 
 import { apiRequest } from './client'
 import { EMOTION_COLORS, type EmotionName } from '../utils/emotions'
-import type {
-  DayMood,
-  EmotionRating,
-  HomeDashboard,
-  TechniqueSuggestion,
-  TodayEntry,
-} from '../types/dashboard'
+import type { DayMood, EmotionRating, HomeDashboard, TodayEntry } from '../types/dashboard'
 
 /** As `core.dashboard.build_home_dashboard` returns it. */
 interface EmotionRatingPayload {
@@ -30,7 +24,11 @@ interface HomeDashboardPayload {
   }[]
   average_stress: number | null
   average_energy: number | null
-  technique: { name: string; match_reason: string } | null
+  /* The endpoint also sends `technique`, the report's suggestion for today. It
+     is deliberately not declared here: the card that rendered it was removed
+     from /home, so mapping it would be a field nothing reads. The backend still
+     computes it from `raport` — see core/dashboard.py — and putting the card
+     back is a matter of restoring this line and its mapping. */
 }
 
 /** Indexed by Date.getDay(), i.e. starting on Sunday. */
@@ -82,10 +80,6 @@ function toTodayEntry(payload: HomeDashboardPayload['today_entry']): TodayEntry 
   }
 }
 
-function toTechnique(payload: HomeDashboardPayload['technique']): TechniqueSuggestion | null {
-  return payload ? { name: payload.name, matchReason: payload.match_reason } : null
-}
-
 export async function fetchHomeDashboard(): Promise<HomeDashboard> {
   const payload = await apiRequest<HomeDashboardPayload>('/api/dashboard/home/')
   return {
@@ -94,6 +88,5 @@ export async function fetchHomeDashboard(): Promise<HomeDashboard> {
     week: payload.week.map(toDayMood),
     averageStress: payload.average_stress,
     averageEnergy: payload.average_energy,
-    technique: toTechnique(payload.technique),
   }
 }

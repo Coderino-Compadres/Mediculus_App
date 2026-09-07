@@ -44,7 +44,6 @@ function dashboard(overrides: Partial<HomeDashboard> = {}): HomeDashboard {
     week: week(),
     averageStress: 4,
     averageEnergy: 6,
-    technique: null,
     ...overrides,
   }
 }
@@ -371,25 +370,6 @@ describe('Home — the crisis banner (US-PT-13)', () => {
   })
 })
 
-describe('Home — the technique suggestion', () => {
-  it('shows nothing when no report has proposed one', async () => {
-    /** The judgement belongs to whatever produces the reports; the dashboard
-     *  inventing a second opinion would quietly contradict it. */
-    await renderScreen(dashboard({ technique: null }))
-
-    expect(screen.queryByText(/propozycja na dziś/i)).not.toBeInTheDocument()
-  })
-
-  it('shows the technique and why it was matched', async () => {
-    await renderScreen(dashboard({
-      technique: { name: 'Uważność', matchReason: 'Twój stres rósł w tym tygodniu.' },
-    }))
-
-    expect(screen.getByText(/propozycja na dziś: uważność/i)).toBeInTheDocument()
-    expect(screen.getByText('Twój stres rósł w tym tygodniu.')).toBeInTheDocument()
-  })
-})
-
 describe('Home — when the data does not arrive', () => {
   it('never lets a failed load look like an empty diary', async () => {
     mockedFetch.mockRejectedValue(new ApiError(0, 'Nie udało się połączyć z serwerem.'))
@@ -458,7 +438,6 @@ describe('after saving a diary entry', () => {
       week: [],
       averageStress: null,
       averageEnergy: null,
-      technique: null,
     }
   }
 

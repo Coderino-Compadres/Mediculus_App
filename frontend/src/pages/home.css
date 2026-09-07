@@ -509,41 +509,6 @@
   text-decoration: underline;
 }
 
-/* Technique suggestion */
-
-.home-technique-card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 18px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  text-decoration: none;
-  box-shadow: var(--shadow-card);
-}
-
-.home-technique-label {
-  font-family: var(--font-body);
-  font-weight: var(--font-weight-semibold);
-  font-size: 15px;
-  color: var(--color-graphite);
-  margin: 0 0 4px;
-}
-
-.home-technique-reason {
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--color-graphite-muted);
-  margin: 0;
-}
-
-.home-technique-arrow {
-  font-size: 20px;
-  color: var(--color-sage);
-  flex-shrink: 0;
-}
-
 /* Disclaimer — confirmed core feature, must stay visually prominent */
 
 .home-disclaimer {
