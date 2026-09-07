@@ -35,6 +35,21 @@
   }
 }
 
+/* Border-box dla wszystkiego. Bez tego `width: 100%` plus padding daje element
+   szerszy od rodzica, a deklaracja siedziała w 34 osobnych regułach -- czyli
+   każda nowa reguła z szerokością i paddingiem była nowym kandydatem na ten sam
+   błąd. Tak wyszły dwa przewijania w poziomie naraz: .technique-row (316px w
+   kolumnie 280px) i .consents-card (336px, wystająca po 8px z obu stron). Trzy
+   kolejne reguły z tym samym wzorcem -- .journal-row, .report-row,
+   .diary-entry-collapse-toggle -- działały tylko dlatego, że są elementami
+   <button>, którym border-box nadaje arkusz przeglądarki. Reguły poniżej nie są
+   już od tego zależne. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
 }

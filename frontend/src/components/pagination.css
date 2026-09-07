@@ -11,6 +11,11 @@
 }
 
 .pagination-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Brakowało 5px do 44. */
+  min-height: 44px;
   font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);
   font-size: 14px;

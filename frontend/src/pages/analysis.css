@@ -98,15 +98,20 @@
 /* The 0/5/10 numbers beside the grid rules. Only truthful because every series
    is normalized onto one scale — with mood on 1-5 and the chips on 0-10 sharing
    the plot, a number here would have labelled one line and lied about the other. */
+/* Stopień pisma przychodzi z komponentu jako --analysis-axis-size, bo w
+   skalowanym viewBoxie rozmiar rzeczywisty to rozmiar zadeklarowany razy skala
+   kontenera, a CSS nie umie przez tę skalę podzielić -- patrz AXIS_SCALES w
+   components/TrendChart.tsx. Wartość 9px zostaje jako zapas, gdyby zmienna nie
+   dojechała: to jest ta, którą chart miał wcześniej wszędzie. */
 .analysis-line-axis {
   font-family: var(--font-body);
-  font-size: 9px;
+  font-size: var(--analysis-axis-size, 9px);
   fill: var(--color-graphite-muted);
 }
 
 .analysis-line-tick {
   font-family: var(--font-body);
-  font-size: 9px;
+  font-size: var(--analysis-axis-size, 9px);
   fill: var(--color-graphite-muted);
 }
 
@@ -162,6 +167,8 @@
   /* 16px, like every other control in the app: anything smaller makes iOS Safari
      zoom the page when the picker is opened. */
   font-size: 16px;
+  /* Brakowało 5px do 44. */
+  min-height: 44px;
   padding: 8px 12px;
   border-radius: 10px;
   border: 1px solid rgba(var(--shadow-tint), 0.18);
@@ -270,6 +277,10 @@
   width: 68px;
 }
 
+/* Zostaje 11px, kiedy pozostałe plakietki w aplikacji poszły na 12px: tabela
+   ma table-layout: fixed i kolumnę etykiet o stałych 68px wyliczonych pod
+   „Południe" w tym stopniu pisma. Większy tekst rozpycha komórkę albo się w
+   niej łamie -- to zmiana szerokości kolumny, nie stopnia pisma. */
 .analysis-heatmap th {
   font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);
@@ -369,6 +380,16 @@
   gap: 10px;
   overflow-x: auto;
   padding-bottom: 4px;
+  /* Dziesięć emocji przy podłodze 44px na kolumnę to ok. 530px treści, więc na
+     telefonie ten wykres przewija się w poziomie -- i nie było po tym żadnego
+     śladu, bo mobilne przeglądarki pokazują pasek tylko w trakcie ruchu.
+     Cienki, stale widoczny pasek plus zatrzaskiwanie kolumn sprawiają, że
+     przewijanie da się zauważyć i wykonać celowo. Nadal nie jest to wskaźnik
+     „dalej jest więcej" -- ten wymaga albo słupków poziomych, albo szerszej
+     kolumny, patrz komentarz przy .analysis-bar-label. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-sage-light) transparent;
+  scroll-snap-type: x proximity;
 }
 
 /* "Częstotliwość wpisów": labels are "Tyg. 12" and "sie", not "Poczucie winy",
@@ -384,8 +405,16 @@
   flex-direction: column;
   align-items: center;
   gap: 6px;
+  /* Domyka .visually-hidden w kolumnie. Bez tego etykieta jest
+     `position: absolute` bez pozycjonowanego przodka, więc jej blokiem
+     zawierającym jest viewport -- nie obowiązuje jej `overflow-x: auto`
+     rodzica, ucieka z kontenera przewijania i rozciąga dokument do pełnej
+     szerokości wykresu. Cała strona przewijała się wtedy w poziomie o 227px
+     na ekranie 320px. */
+  position: relative;
   flex: 1 0 var(--bar-column-min);
   min-width: var(--bar-column-min);
+  scroll-snap-align: start;
 }
 
 .analysis-bar-value {
@@ -425,6 +454,10 @@
    out on. One that does not still gives "Bezradno / ść" via `overflow-wrap` --
    verified failing that way in headless Firefox here. Getting rid of mid-word
    breaks for good needs wider columns or horizontal bars, not this line. */
+/* Też zostaje 11px, i z tego samego powodu odwrotnie: kolumna ma 44px, a
+   „Frustracja" i „Bezradność" już przy tym stopniu łamią się w środku wyrazu
+   (hyphens: auto nie działa -- patrz wyżej). Podniesienie do 12px pogorszyłoby
+   dokładnie ten objaw, który jest tu problemem. */
 .analysis-bar-label {
   font-family: var(--font-body);
   font-size: 11px;
@@ -453,7 +486,7 @@
 .analysis-insight-label {
   font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   color: var(--color-sage-hover);
   margin: 0 0 8px;

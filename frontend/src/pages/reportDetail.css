@@ -38,7 +38,7 @@
 .report-hero-label {
   font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.1em;
   color: rgba(255, 255, 255, 0.78);
   margin: 0 0 6px;
@@ -77,7 +77,8 @@
      longest the label ever gets — without it the button would jump wider
      mid-download. */
   flex: 0 1 auto;
-  min-width: 180px;
+  /* 216 = 180 + 36 paddingu, patrz reset box-sizing w index.css. */
+  min-width: 216px;
   text-align: center;
   font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);

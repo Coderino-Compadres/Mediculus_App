@@ -98,7 +98,9 @@
   padding: 12px;
   display: flex;
   flex-direction: column;
-  min-width: 260px;
+  /* 284 = 260 + 24 paddingu: pod border-box (reset w index.css) min-width
+     wlicza padding, więc sama liczba 260 zwężyłaby menu o 24px. */
+  min-width: 284px;
 }
 
 .home-menu-account {
@@ -201,7 +203,7 @@
 .home-streak-label {
   display: block;
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-graphite-muted);
 }
 
@@ -320,11 +322,25 @@
 }
 
 .mood-chart-link {
+  position: relative;
   font-family: var(--font-body);
   font-size: 13px;
   font-weight: var(--font-weight-semibold);
   color: var(--color-sage);
   text-decoration: none;
+}
+
+/* 23px wysokości, o 1px pod progiem WCAG 2.5.8. Obszar dotyku pseudoelementem,
+   bo .mood-chart-title-row wyrównuje do linii bazowej -- nadanie linkowi
+   wysokości 44px zepsułoby to wyrównanie z nagłówkiem obok. */
+.mood-chart-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
 }
 
 .mood-chart-link:hover {

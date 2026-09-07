@@ -95,11 +95,25 @@
 }
 
 .journals-back {
+  position: relative;
   display: inline-block;
   font-size: 14px;
   color: var(--color-graphite);
   text-decoration: none;
   margin-bottom: 16px;
+}
+
+/* 23px wysokości, o 1px pod progiem WCAG 2.5.8, a to droga powrotna z każdej
+   podstrony panelu. Obszar dotyku pseudoelementem, żeby nie dokładać wysokości
+   do już ustawionego margin-bottom. */
+.journals-back::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
 }
 
 .journals-back:hover {
@@ -222,8 +236,9 @@
 /* Sized and tinted like the registration form's consent boxes, so a checkbox
    is one thing across the app rather than whatever the user agent draws. */
 .specialist-check input[type='checkbox'] {
-  width: 18px;
-  height: 18px;
+  /* 24x24, jak pola zgód w rejestracji -- patrz .auth-consent input. */
+  width: 24px;
+  height: 24px;
   accent-color: var(--color-sage);
   flex-shrink: 0;
 }

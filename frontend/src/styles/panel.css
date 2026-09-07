@@ -271,6 +271,12 @@
    ending someone's care is an ordinary clinical decision, not a destructive
    one — but not a button either. */
 .panel-button-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 44px, nie 32: „Anuluj", „Usuń" i „Zakończ opiekę" to kontrolki, a nie
+     linki, więc dostają wysokość zamiast obszaru dotyku pod spodem. */
+  min-height: 44px;
   font-size: 13px;
   line-height: 1.2;
   color: var(--color-graphite-muted);
@@ -293,6 +299,7 @@
    confirmation, because it backs out). Sage and semibold, the same treatment
    as .mood-chart-link on the home screen. */
 .panel-link {
+  position: relative;
   font-size: 14px;
   font-weight: var(--font-weight-semibold);
   color: var(--color-sage);
@@ -301,6 +308,19 @@
   padding: 6px 0;
   cursor: pointer;
   text-decoration: none;
+}
+
+/* 29-35px zależnie od miejsca -- powyżej 24x24, poniżej 44px. Obszar dotyku
+   pseudoelementem: te linki stoją w wierszach obok .panel-button-quiet, więc
+   własna wysokość 44px rozepchnęłaby wiersz akcji na karcie pacjenta. */
+.panel-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
 }
 
 .panel-link:hover {

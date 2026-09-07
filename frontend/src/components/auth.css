@@ -170,8 +170,11 @@
 
 .auth-consent input {
   margin-top: 3px;
-  width: 18px;
-  height: 18px;
+  /* 24x24 to minimum z WCAG 2.5.8 (AA); 18x18 nie spełniało go w żadnym
+     wymiarze, a to pola zgód RODO -- jedyne pola w rejestracji, których nie da
+     się nacisnąć „mniej więcej". */
+  width: 24px;
+  height: 24px;
   accent-color: var(--color-sage);
   flex-shrink: 0;
 }
@@ -266,6 +269,7 @@
 /* A footer action that reads as the link next to it, because it sits in the
    same sentence — but has to be a button: it acts instead of navigating. */
 .auth-link-button {
+  position: relative;
   font-family: inherit;
   font-size: inherit;
   font-weight: var(--font-weight-semibold);
@@ -274,6 +278,18 @@
   border: none;
   padding: 0;
   cursor: pointer;
+}
+
+/* 17px wysokości tekstu, a na /link-guardian to jedyne wyjście z konta
+   czekającego na opiekuna. Obszar dotyku do 44px, wygląd bez zmian. */
+.auth-link-button::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
 }
 
 .auth-link-button:hover {
@@ -310,6 +326,7 @@
 }
 
 .auth-info-button {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -333,6 +350,16 @@
   color: var(--color-graphite);
 }
 
+/* Kółko ma 28px w obu wymiarach -- zgodne z 24x24, ale poniżej 44px zalecanych
+   przez iOS i Androida. Pseudoelement dokłada 8px z każdej strony (28 + 16 =
+   44), więc krążek zostaje mały, a nacisnąć da się cały. */
+.auth-info-button::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: inherit;
+}
+
 .auth-info-button:focus-visible {
   outline: none;
   border-color: var(--color-sage);
@@ -344,7 +371,9 @@
   top: calc(100% + 8px);
   right: 0;
   z-index: 1;
-  min-width: 140px;
+  /* 168 = 140 + 28 paddingu: pod border-box min-width wlicza padding, więc
+     sama liczba 140 zwęziłaby kafel o 28px względem tego, co było. */
+  min-width: 168px;
   margin: 0;
   padding: 12px 14px;
   border-radius: var(--radius-control);
