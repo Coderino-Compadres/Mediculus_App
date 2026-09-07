@@ -6,6 +6,7 @@ import {
   rejectGuardianInvitation,
   type GuardianInvitation,
 } from '../api/guardian'
+import '../styles/panel.css'
 import './guardianInvitations.css'
 
 /**
@@ -109,7 +110,7 @@ function GuardianInvitations() {
       )}
 
       {invitations.map((invitation) => (
-        <div className="invitations-card" key={invitation.id}>
+        <div className="panel-card" key={invitation.id}>
           <p className="invitations-lead">
             <strong>{childLabel(invitation)}</strong> prosi o powiązanie swojego konta
             z Twoim jako konto rodzica lub opiekuna.
@@ -124,7 +125,7 @@ function GuardianInvitations() {
           <div className="invitations-actions">
             <button
               type="button"
-              className="invitations-accept"
+              className="panel-button"
               onClick={() => void answer(invitation, 'accept')}
               disabled={busyId !== null}
             >
@@ -132,7 +133,7 @@ function GuardianInvitations() {
             </button>
             <button
               type="button"
-              className="invitations-reject"
+              className="panel-button-secondary"
               onClick={() => void answer(invitation, 'reject')}
               disabled={busyId !== null}
             >

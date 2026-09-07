@@ -12,6 +12,7 @@ import type { ReportMetric, WeeklyReport } from '../types/report'
 import { ROUTES, specialistPatientReportPath } from '../routes'
 import './journals.css'
 import './reports.css'
+import '../styles/panel.css'
 import './specialist.css'
 
 /**
@@ -170,13 +171,13 @@ function SpecialistPatientReports() {
       </p>
 
       {loading && (
-        <div className="journals-status" role="status" aria-busy="true">
+        <div className="panel-loading" role="status" aria-busy="true">
           Wczytywanie raportów…
         </div>
       )}
 
       {!loading && notMine && (
-        <p className="journals-empty" role="status">
+        <p className="panel-empty" role="status">
           {NOT_MINE}
         </p>
       )}
@@ -192,7 +193,7 @@ function SpecialistPatientReports() {
       {!loading && !loadError && !notMine && (
         <div className="journals-list">
           {reports.length === 0 && (
-            <p className="journals-empty">
+            <p className="panel-empty">
               Ten pacjent nie ma jeszcze żadnego raportu. Pierwszy powstanie po
               zakończeniu tygodnia, w którym zapisze wpisy.
             </p>

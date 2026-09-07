@@ -8,6 +8,7 @@ import {
   showsStreak,
 } from '../utils/children'
 import { pluralDays } from '../utils/reports'
+import '../styles/panel.css'
 import './guardianChildren.css'
 
 /**
@@ -42,9 +43,9 @@ const LOAD_ERROR = 'Nie udało się wczytać informacji o koncie dziecka.'
 
 function Figure({ value, label, title }: { value: string; label: string; title?: string }) {
   return (
-    <div className="child-figure" title={title}>
-      <span className="child-figure-value">{value}</span>
-      <span className="child-figure-label">{label}</span>
+    <div className="panel-figure" title={title}>
+      <span className="panel-figure-value">{value}</span>
+      <span className="panel-figure-label">{label}</span>
     </div>
   )
 }
@@ -54,7 +55,7 @@ function ChildCard({ child }: { child: LinkedChild }) {
   const { activity } = child
 
   return (
-    <article className="child-card">
+    <article className="child-card panel-card">
       <header className="child-card-header">
         <h3>{childLabel(child)}</h3>
         {/* The address as well as the name: two children in a family can share a
@@ -85,7 +86,7 @@ function ChildCard({ child }: { child: LinkedChild }) {
         )
       ) : (
         <>
-          <div className="child-figures">
+          <div className="child-figures panel-figures">
             <Figure
               value={String(activity.entryCount)}
               label={activity.entryCount === 1 ? 'wpis' : 'wpisów'}
@@ -151,7 +152,7 @@ function GuardianChildren() {
 
   if (failed) {
     return (
-      <section className="child-section">
+      <section className="child-section panel-section">
         <p className="child-error" role="alert">
           {LOAD_ERROR}
         </p>
@@ -165,8 +166,8 @@ function GuardianChildren() {
   if (children.length === 0) return null
 
   return (
-    <section className="child-section" aria-labelledby="child-section-heading">
-      <h2 id="child-section-heading" className="child-section-heading">
+    <section className="child-section panel-section" aria-labelledby="child-section-heading">
+      <h2 id="child-section-heading" className="panel-section-heading">
         {children.length === 1 ? 'Konto dziecka' : 'Konta dzieci'}
       </h2>
       {children.map((child) => (

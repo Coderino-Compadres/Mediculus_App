@@ -1,24 +1,21 @@
-/* Shared by every screen of the specialist panel. The page frames come from
-   moduleSelect.css (the panel's home) and journals.css (the list screens); this
-   file is only what those two do not have. */
+/**
+ * The specialist panel. Its landing screen's frame, sections and controls come
+ * from styles/panel.css (shared with /parent); its sub-screens sit in the same
+ * list frame the patient's archive uses (journals.css). This file is what
+ * neither of those has: the tool cards, the scope note, the panel's forms, the
+ * invitation code and the panel's own list rows.
+ *
+ * THE ACTION COLOUR IS SAGE, and it was graphite until this pass. Nothing was
+ * broken by that, but a panel whose every primary button is a different colour
+ * from the rest of the app reads as a different product — and a specialist
+ * moving between /specialist and /profile crosses that line. Sage is the
+ * action colour from .auth-submit through .today-add-button; the primary
+ * controls here are .panel-button from styles/panel.css now, and the couple of
+ * shapes this file still defines follow it.
+ */
 
 /* The tool cards on the panel's home screen. Solid white with a shadow, like
-   every card holding something real — deliberately not the dashed placeholder
-   look of parentHome.css, because these lead somewhere. */
-.specialist-tools {
-  width: 100%;
-  max-width: 720px;
-  margin-bottom: 24px;
-}
-
-.specialist-tools-heading {
-  font-family: var(--font-heading);
-  font-weight: var(--font-weight-semibold);
-  font-size: 18px;
-  color: var(--color-graphite);
-  margin: 0 0 12px;
-}
-
+   every card holding something real — these lead somewhere. */
 .specialist-tool {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -27,12 +24,26 @@
     'text text';
   gap: 4px 12px;
   align-items: center;
-  background: #fff;
-  border-radius: 20px;
+  box-sizing: border-box;
+  background: var(--color-surface);
+  border: 1px solid transparent;
+  border-radius: var(--radius-card);
   padding: 20px 22px;
   box-shadow: var(--shadow-card);
-  margin-bottom: 12px;
   text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.specialist-tool:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-sage-light);
+  box-shadow: var(--shadow-raised);
+}
+
+.specialist-tool:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
 }
 
 .specialist-tool-title {
@@ -45,29 +56,22 @@
 
 .specialist-tool-text {
   grid-area: text;
-  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.6;
   color: var(--color-graphite-muted);
 }
 
+/* Sage rather than muted graphite: on a card whose whole job is to lead
+   somewhere, the arrow is the affordance. */
 .specialist-tool-arrow {
   grid-area: arrow;
   font-size: 18px;
-  color: var(--color-graphite-muted);
+  color: var(--color-sage);
 }
 
-/* What the panel does *not* show. Quiet, and not a card: it is a statement of
-   scope, not a feature. */
-.specialist-scope {
-  width: 100%;
-  max-width: 720px;
-  border: 1px solid rgba(var(--shadow-tint), 0.2);
-  border-radius: 18px;
-  padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.55);
-}
-
+/* What the panel does *not* show. A quiet panel rather than a card: it is a
+   statement of scope, not a feature. Shape and colour come from .panel-quiet;
+   this is only its type. */
 .specialist-scope h2 {
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
@@ -77,7 +81,6 @@
 }
 
 .specialist-scope p {
-  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.6;
   color: var(--color-graphite-muted);
@@ -86,28 +89,60 @@
 
 /* The list screens' subtitle (whose patient this is) and the way back. */
 .journals-subtitle {
-  font-family: var(--font-body);
   font-size: 14px;
   color: var(--color-graphite-muted);
   margin: 4px 0 0;
 }
 
 .journals-back {
+  position: relative;
   display: inline-block;
-  font-family: var(--font-body);
   font-size: 14px;
   color: var(--color-graphite);
+  text-decoration: none;
   margin-bottom: 16px;
 }
 
-/* The panel's forms. auth.css supplies .auth-field and its error text; this is
-   the frame around them and the few controls it does not have. */
+/* 23px wysokości, o 1px pod progiem WCAG 2.5.8, a to droga powrotna z każdej
+   podstrony panelu. Obszar dotyku pseudoelementem, żeby nie dokładać wysokości
+   do już ustawionego margin-bottom. */
+.journals-back::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+.journals-back:hover {
+  color: var(--color-sage-hover);
+  text-decoration: underline;
+}
+
+/* THE PANEL'S FORMS. auth.css supplies .auth-field and its error text; this is
+   the frame around them and the controls it does not have. */
+/* Spaced by `gap`, which it did not have: .auth-field supplies the label /
+   control / error stack but the *spacing between fields* lives on .auth-form,
+   and this form is not one — so every field on the technique editor sat flush
+   against the next, a label 2px under the input above it. */
 .specialist-form {
-  background: #fff;
-  border-radius: 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
   padding: 20px 22px;
   box-shadow: var(--shadow-card);
   margin-bottom: 24px;
+}
+
+/* A primary submit should not stretch to the card's full width here the way
+   .auth-submit does on the login card — this form is wide. */
+.specialist-form > .panel-button {
+  align-self: flex-start;
 }
 
 .specialist-form textarea,
@@ -115,45 +150,51 @@
 .specialist-form select {
   width: 100%;
   box-sizing: border-box;
-  font-family: var(--font-body);
   font-size: 15px;
   padding: 12px 14px;
-  border: 1px solid rgba(var(--shadow-tint), 0.25);
-  border-radius: 12px;
-  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
   color: var(--color-graphite);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+/* The focus ring the auth card had and this form went without. Not cosmetic:
+   the panel's longest form is the technique editor, which is a dozen inputs
+   and a repeating step list — without a visible ring, a keyboard user has no
+   way to tell which step they are typing into. */
+.specialist-form textarea:focus-visible,
+.specialist-form input:focus-visible,
+.specialist-form select:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+.specialist-form textarea[aria-invalid='true'],
+.specialist-form input[aria-invalid='true'],
+.specialist-form select[aria-invalid='true'] {
+  border-color: var(--color-error);
 }
 
 .specialist-form input[type='checkbox'] {
   width: auto;
 }
 
+.specialist-form textarea {
+  line-height: 1.6;
+  resize: vertical;
+}
+
+/* No bottom margin: inside .auth-field the 6px stack gap places it, and
+   inside a fieldset the fieldset's own gap does. It used to carry `0 0 12px`,
+   which was compensating for the missing form gap above. */
 .specialist-form-hint {
   display: block;
-  font-family: var(--font-body);
   font-size: 13px;
   line-height: 1.5;
   color: var(--color-graphite-muted);
-  margin: 4px 0 12px;
-}
-
-.specialist-form-submit {
-  display: inline-block;
-  font-family: var(--font-body);
-  font-size: 15px;
-  font-weight: var(--font-weight-semibold);
-  color: #fff;
-  background: var(--color-graphite);
-  border: none;
-  border-radius: 12px;
-  padding: 12px 22px;
-  cursor: pointer;
-  text-decoration: none;
-}
-
-.specialist-form-submit:disabled {
-  opacity: 0.5;
-  cursor: default;
+  margin: 0;
 }
 
 .specialist-new-link {
@@ -161,10 +202,17 @@
 }
 
 .specialist-fieldset {
-  border: 1px solid rgba(var(--shadow-tint), 0.2);
-  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tile);
   padding: 16px 18px;
-  margin: 0 0 16px;
+  /* None: the form's gap separates it from what follows. */
+  margin: 0;
+  /* A fieldset is a legacy layout box — without this, `display: flex` on it
+     still lets its min-content width push past the card on a narrow phone. */
+  min-width: 0;
 }
 
 .specialist-fieldset legend {
@@ -178,17 +226,46 @@
 .specialist-check {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-family: var(--font-body);
+  gap: 10px;
   font-size: 15px;
   color: var(--color-graphite);
-  margin-bottom: 8px;
+  margin: 0;
+  cursor: pointer;
 }
 
+/* Sized and tinted like the registration form's consent boxes, so a checkbox
+   is one thing across the app rather than whatever the user agent draws. */
+.specialist-check input[type='checkbox'] {
+  /* 24x24, jak pola zgód w rejestracji -- patrz .auth-consent input. */
+  width: 24px;
+  height: 24px;
+  accent-color: var(--color-sage);
+  flex-shrink: 0;
+}
+
+/* A repeating group inside the "Kroki" fieldset, separated from the previous
+   one by a rule. Its own stack gap, because it holds .auth-field children. */
 .specialist-step {
-  border-top: 1px solid rgba(var(--shadow-tint), 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--color-divider);
   padding-top: 12px;
-  margin-top: 12px;
+  margin: 0;
+}
+
+/* "Dodaj krok" and the like: a flex column stretches its children, which made
+   a link-shaped button span the fieldset and read as centred text. */
+.specialist-fieldset > .panel-link,
+.specialist-fieldset > .panel-button-quiet {
+  align-self: flex-start;
+}
+
+/* The first step needs no separator — it drew a rule immediately under the
+   legend, which read as an empty band at the top of the fieldset. */
+.specialist-step:first-of-type {
+  border-top: none;
+  padding-top: 0;
 }
 
 .specialist-step-header {
@@ -196,7 +273,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 8px;
 }
 
 .specialist-step-number {
@@ -206,13 +282,14 @@
   color: var(--color-graphite);
 }
 
-/* The invitation code: shown once, so it is the loudest thing on its screen.
-   Monospace and spaced out because it is read off a screen and typed by hand. */
+/* THE INVITATION CODE: shown once and never readable again (it is stored
+   hashed — see core/parent_invitations.py), so it is the loudest thing on its
+   screen. Monospace, spaced out and on lavender, because it is read off a
+   screen and typed by hand off a card. */
 .specialist-code {
-  width: 100%;
-  max-width: 720px;
-  background: #fff;
-  border-radius: 20px;
+  box-sizing: border-box;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
   padding: 20px 22px;
   box-shadow: var(--shadow-card);
   margin-bottom: 20px;
@@ -231,22 +308,35 @@
   font-size: 26px;
   letter-spacing: 0.12em;
   color: var(--color-graphite);
+  background: var(--color-lavender);
+  border-radius: var(--radius-control);
+  padding: 14px 16px;
   margin: 0 0 12px;
+  text-align: center;
   overflow-wrap: anywhere;
 }
 
 .specialist-code-note {
-  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.6;
   color: var(--color-graphite-muted);
   margin: 0 0 8px;
 }
 
-/* The panel's own lists: issued invitations, and the specialist's techniques. */
+/* THE PANEL'S OWN LISTS: issued invitations, and the specialist's techniques.
+
+   Spaced by `gap`, and that is a fix: the heading is .panel-section-heading,
+   whose margin is 0 because on the panel's home screen .panel-section supplies
+   the spacing — but this list is not a .panel-section (it lives in the
+   journals.css page frame), so "Wystawione zaproszenia" ended up flush against
+   the top edge of the first row. No max-width either: .journals-page > *
+   already gives its children 640px and auto side margins, and a second,
+   different max-width here meant the width of these sections was decided by
+   which stylesheet the bundler happened to emit last. */
 .specialist-list {
-  width: 100%;
-  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .specialist-list-row {
@@ -254,11 +344,12 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  background: #fff;
-  border-radius: 18px;
+  box-sizing: border-box;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
   padding: 16px 20px;
   box-shadow: var(--shadow-card);
-  margin-bottom: 12px;
+  margin: 0;
 }
 
 .specialist-list-title {
@@ -271,7 +362,6 @@
 }
 
 .specialist-list-meta {
-  font-family: var(--font-body);
   font-size: 13px;
   color: var(--color-graphite-muted);
   margin: 2px 0 0;
@@ -288,5 +378,9 @@
 @media (max-width: 600px) {
   .specialist-list-row {
     flex-direction: column;
+  }
+
+  .specialist-form {
+    padding: 18px;
   }
 }

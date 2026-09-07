@@ -13,7 +13,7 @@
 /* Tab chips reuse .journals-filter-chip; only the count next to the label is new. */
 .technique-tab-count {
   margin-left: 6px;
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.7;
 }
 
@@ -23,14 +23,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 46px;
+  /* 64 = 46 + 18 paddingu, patrz reset box-sizing w index.css. */
+  min-width: 64px;
   padding: 5px 9px;
   border-radius: 999px;
   background: var(--color-sage);
   color: #fff;
   font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.06em;
 }
 

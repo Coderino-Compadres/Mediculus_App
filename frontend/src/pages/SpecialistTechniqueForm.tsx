@@ -12,10 +12,12 @@ import {
   type TechniqueInput,
 } from '../api/techniques'
 import { DBT_GROUPS, DBT_MODULE_LABELS, SCHOOL_TABS } from '../utils/techniques'
+import { techniqueSlug } from '../utils/slug'
 import type { TechniqueDbtModule, TechniqueGroup, TechniqueSchool } from '../types/technique'
 import { ROUTES } from '../routes'
 import './journals.css'
 import '../components/auth.css'
+import '../styles/panel.css'
 import './specialist.css'
 
 /**
@@ -32,10 +34,21 @@ import './specialist.css'
  * and module, an introduction, and the ordered steps. Nothing here is invented
  * for the panel and nothing the built-in techniques have is missing.
  *
- * THE IDENTIFIER IS IMMUTABLE, and the form says so on an edit rather than
- * silently ignoring a change: it is in the URL of a technique patients may
- * already have opened, and freeing the old slug for something else is worse than
- * refusing to rename.
+ * THE IDENTIFIER IS NOT ASKED FOR. `slug` is the technique's URL and the key
+ * the two halves of the catalogue merge on, and it used to be its own input,
+ * with a hint telling a psychotherapist that it had to be "małe litery bez
+ * polskich znaków, cyfry i łączniki". It is derived from the name now — see
+ * `techniqueSlug` in utils/slug.ts, which is also where the `id-` prefix and
+ * its consequences are argued.
+ *
+ * ON AN EDIT THE STORED SLUG IS SENT BACK VERBATIM, and that is load-bearing
+ * rather than an optimisation. It is immutable: `update()` in
+ * core/techniques.py REFUSES a change instead of ignoring one, because the old
+ * value is in the URL of a technique patients may already have opened. So
+ * re-deriving it from the name on an edit would mean that renaming a technique
+ * — an ordinary edit — answered 400 under a field this form no longer renders,
+ * i.e. a save that fails with nothing on screen. The same failure the
+ * registration form had with `invitation_code`; see CLAUDE.md.
  *
  * WHAT THIS FORM DELIBERATELY DOES NOT ASK. There was a "Gotowa do publikacji"
  * checkbox (a draft state) and a "Tylko do wprowadzenia przez specjalistę" one
@@ -50,6 +63,9 @@ import './specialist.css'
 const LOAD_ERROR = 'Nie udało się wczytać techniki. Spróbuj ponownie.'
 const SAVE_ERROR = 'Nie udało się zapisać techniki. Spróbuj ponownie.'
 const NOT_FOUND = 'Nie znaleziono tej techniki wśród Twoich technik.'
+const NAME_TAKEN =
+  'Technika o tej nazwie już jest w katalogu — nazwy nie mogą się powtarzać, '
+  + 'bo z nazwy powstaje adres techniki. Zmień nazwę.'
 
 const EMPTY_STEP = { name: '', description: '', examples: '' }
 
@@ -183,14 +199,23 @@ function SpecialistTechniqueForm() {
     setErrors({})
     setFormError(null)
     try {
-      if (editing && idTechnique !== null) await updateTechnique(idTechnique, form)
-      else await createTechnique(form)
+      if (editing && idTechnique !== null) {
+        // form.slug came from the stored technique (`toInput`) and no input has
+        // touched it — see the note on immutability in the header.
+        await updateTechnique(idTechnique, form)
+      } else {
+        await createTechnique({ ...form, slug: techniqueSlug(form.name) })
+      }
       navigate(ROUTES.specialistTechniques)
     } catch (cause: unknown) {
       if (cause instanceof ApiError) {
         setErrors({
-          slug: cause.fieldErrors.slug ?? '',
-          name: cause.fieldErrors.name ?? '',
+          // The slug has no input any more, so its refusal has to land on the
+          // field that produced it. Only one refusal is reachable: the address
+          // is derived, `techniqueSlug` always returns a value the regex
+          // accepts, and the `id-` prefix rules out a collision with a
+          // built-in technique — so a slug error means the name is taken.
+          name: cause.fieldErrors.name || (cause.fieldErrors.slug ? NAME_TAKEN : ''),
           schools: cause.fieldErrors.schools ?? '',
           intro: cause.fieldErrors.intro ?? '',
           // The backend reports a per-step problem under `steps`; the form shows
@@ -210,7 +235,7 @@ function SpecialistTechniqueForm() {
   if (loading) {
     return (
       <div className="journals-page">
-        <p className="journals-status" role="status" aria-busy="true">
+        <p className="panel-loading" role="status" aria-busy="true">
           Wczytywanie techniki…
         </p>
       </div>
@@ -262,23 +287,6 @@ function SpecialistTechniqueForm() {
             aria-invalid={Boolean(errors.name)}
           />
           {errors.name && <span className="auth-field-error">{errors.name}</span>}
-        </div>
-
-        <div className="auth-field">
-          <label htmlFor="slug">Identyfikator w adresie</label>
-          <input
-            id="slug"
-            value={form.slug}
-            onChange={(event) => set('slug', event.target.value)}
-            readOnly={editing}
-            aria-invalid={Boolean(errors.slug)}
-          />
-          <span className="specialist-form-hint">
-            {editing
-              ? 'Identyfikatora nie można zmienić — pacjenci mogą mieć zapisany link do tej techniki.'
-              : 'Małe litery bez polskich znaków, cyfry i łączniki, np. „radykalna-akceptacja”.'}
-          </span>
-          {errors.slug && <span className="auth-field-error">{errors.slug}</span>}
         </div>
 
         <div className="auth-field">
@@ -376,7 +384,7 @@ function SpecialistTechniqueForm() {
                 {form.steps.length > 1 && (
                   <button
                     type="button"
-                    className="caseload-card-drop"
+                    className="panel-button-quiet"
                     onClick={() =>
                       set(
                         'steps',
@@ -422,7 +430,7 @@ function SpecialistTechniqueForm() {
           ))}
           <button
             type="button"
-            className="caseload-card-link"
+            className="panel-link"
             onClick={() => set('steps', [...form.steps, { ...EMPTY_STEP }])}
           >
             Dodaj krok
@@ -430,12 +438,12 @@ function SpecialistTechniqueForm() {
         </fieldset>
 
         {formError && (
-          <p className="caseload-error" role="alert">
+          <p className="panel-error" role="alert">
             {formError}
           </p>
         )}
 
-        <button type="submit" className="specialist-form-submit" disabled={saving}>
+        <button type="submit" className="panel-button" disabled={saving}>
           {saving ? 'Zapisywanie…' : editing ? 'Zapisz zmiany' : 'Dodaj technikę'}
         </button>
       </form>

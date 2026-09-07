@@ -1,53 +1,57 @@
-/* The guardian's landing screen. The page frame, the greeting and the logo come
-   from moduleSelect.css — this file is only what is different: the pinned menu
-   and the placeholder card. */
+/**
+ * What is specific to the guardian's landing screen. The frame, the greeting,
+ * the sections and the controls come from styles/panel.css, shared with
+ * /specialist — this file is only the placeholder card.
+ */
 
-.parent-page {
-  /* The anchor for .parent-menu below. */
-  position: relative;
-}
+/* NOW A REAL CARD, ON REQUEST. It used to be a dashed, shadowless outline so
+   that a card with nothing behind it could not be mistaken for a feature; it
+   is now the same white card as everything else on the screen, because a
+   dashed box on the guardian's only screen read as a rendering fault rather
+   than as an intention.
 
-.parent-menu {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-}
-
-/* Deliberately reads as unfinished. A dashed edge and no shadow, so that a card
-   with nothing behind it does not sit on the page looking like a feature — the
-   patient screens use solid white cards with a soft shadow for content that is
-   real, and this must not be mistaken for one. */
+   The intention it was carrying has moved into the wording, which is where
+   ParentHome.test.tsx pins it anyway: the badge says W BUDOWIE, the heading
+   says the panel is being built, and the body still promises nothing about
+   what a guardian will be able to see of the child. That last part is not a
+   style decision — whether a guardian may read a minor's diary is open with
+   the client, and naming it here would answer it in markup (see the header of
+   ParentHome.tsx). Adding "podgląd dzienniczka dziecka" to this card is the
+   one change to it that needs asking first. */
 .parent-placeholder {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--panel-width);
   box-sizing: border-box;
-  margin-top: 8px;
-  padding: 40px 32px;
-  border: 2px dashed rgba(var(--shadow-tint), 0.25);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 32px;
+  box-shadow: var(--shadow-card);
   text-align: center;
 }
 
+/* A pill rather than bare letterspaced caps: on a card that now looks
+   finished, this badge is the only thing carrying "not yet". */
 .parent-placeholder-badge {
-  font-family: var(--font-body);
+  display: inline-block;
   font-weight: var(--font-weight-semibold);
   font-size: 12px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--color-graphite-muted);
-  margin: 0 0 12px;
+  background: var(--color-lavender);
+  border-radius: var(--radius-pill);
+  padding: 5px 12px;
+  margin: 0 0 14px;
 }
 
 .parent-placeholder h2 {
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
-  font-size: 24px;
+  font-size: 22px;
   color: var(--color-graphite);
   margin: 0 0 12px;
 }
 
 .parent-placeholder p {
-  font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.6;
   color: var(--color-graphite-muted);
@@ -56,17 +60,14 @@
 }
 
 .parent-placeholder-note {
-  margin-top: 16px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-divider);
   font-size: 14px;
 }
 
 @media (max-width: 600px) {
   .parent-placeholder {
-    padding: 32px 20px;
-  }
-
-  .parent-menu {
-    top: 16px;
-    right: 16px;
+    padding: 24px 18px;
   }
 }

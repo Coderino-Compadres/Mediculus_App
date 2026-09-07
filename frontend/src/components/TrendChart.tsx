@@ -1,7 +1,8 @@
-import { useId, useState } from 'react'
+import { useId, useState, type CSSProperties } from 'react'
 import { EMOTION_COLORS, STRES, type EmotionName } from '../utils/emotions'
 import { MOOD_SCALE_MAX } from '../utils/analysis'
 import { LEVEL_SCALE_MAX, formatNumber } from '../utils/reports'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import type { TrendPoint } from '../types/analysis'
 
 /**
@@ -131,7 +132,13 @@ const VIEW_HEIGHT = 150
 /** Room on the left for the axis numbers, which only became truthful once every
  *  series shared one scale — with two units in the plot a number down the side
  *  would have belonged to one line and mislabelled the other. */
-const PADDING = { left: 22, right: 10, top: 10, bottom: 24 }
+/* Marginesy wokół pola wykresu, w jednostkach viewBoxa. Każdy z trzech
+   niezerowych jest podyktowany etykietą, która ma się w nim zmieścić przy
+   największym stopniu pisma osi (AXIS_NARROW): `left` mieści „10" (ok. 18 jednostek
+   przy 17px), `right` -- połowę „dd.mm" (ok. 22), bo skrajna data jest
+   wyśrodkowana na ostatnim punkcie i bez tego wychodziła za viewBox, `bottom` --
+   cały wiersz dat pod polem wykresu. */
+const PADDING = { left: 30, right: 24, top: 10, bottom: 30 }
 const PLOT_WIDTH = VIEW_WIDTH - PADDING.left - PADDING.right
 const PLOT_HEIGHT = VIEW_HEIGHT - PADDING.top - PADDING.bottom
 
@@ -141,16 +148,38 @@ const PLOT_HEIGHT = VIEW_HEIGHT - PADDING.top - PADDING.bottom
 const AXIS_TICKS = [0, LEVEL_SCALE_MAX / 2, LEVEL_SCALE_MAX]
 
 /**
- * The closest two date labels may sit, centre to centre, in viewBox units.
+ * The axis type size, per width of window — and why it cannot be plain CSS.
  *
- * A 'dd.mm' tick is five glyphs at `font-size: 9px` (analysis.css), so roughly
- * 26 units wide; this leaves a few units of air between neighbours. It is the
- * constraint that used to be expressed as "cap the chart at 14 days" — the line
- * itself is perfectly readable at thirty points, it was the labels underneath
- * that collided, so the limit belongs here rather than on how much history the
- * chart is allowed to show.
+ * The SVG has a fixed `viewBox` scaled to fill its container, so a label's
+ * *rendered* size is its declared size times `containerWidth / VIEW_WIDTH`. The
+ * container runs from about 244px on a 320px phone up to 604px once the page's
+ * content column stops growing, i.e. a scale of 0.72 up to 1.78. One declared
+ * size therefore cannot be right everywhere: at the 9px this chart used to
+ * carry throughout, the numbers rendered at a comfortable 16px on a monitor and
+ * at a **measured 6.5px on a 320px phone**. CSS cannot fix it — the correction
+ * is a division by the scale factor, and `calc()` has no way to express that —
+ * so the size is chosen per breakpoint here instead, aiming to keep the
+ * rendered result inside roughly 12-16px at every width.
+ *
+ * `spacing` is the second half of the same decision and has to move with the
+ * first: it is how close two date labels may sit, centre to centre, in viewBox
+ * units. A 'dd.mm' tick is five glyphs, so about 2.6x the type size wide, plus
+ * a few units of air. Raising the type size without raising this is how you
+ * trade an unreadable label for two overlapping ones.
+ *
+ * Declared narrowest-query-first, and read that way too: the component tests
+ * the narrow query first and falls through, so the narrowest match wins and no
+ * match at all is the unchanged desktop branch. It is also the constraint that used to be expressed
+ * as "cap the chart at 14 days" — the line itself reads fine at thirty points,
+ * it was the labels underneath that collided.
  */
-const MIN_LABEL_SPACING = 32
+const AXIS_NARROW = { query: '(max-width: 400px)', fontSize: 17, spacing: 54 } as const
+const AXIS_MEDIUM = { query: '(max-width: 520px)', fontSize: 12, spacing: 40 } as const
+
+/** Wider than both queries above — the size this chart already had, unchanged:
+ *  from about 520px up the container is big enough that 9px declared renders at
+ *  12px or more. */
+const AXIS_WIDE = { fontSize: 9, spacing: 32 } as const
 
 /**
  * Print every Nth date, chosen so the labels do not overlap.
@@ -159,10 +188,10 @@ const MIN_LABEL_SPACING = 32
  * holds at any window length: 30 days label every third or fourth day, 14 label
  * every other, and anything up to about nine labels every day.
  */
-function tickStep(count: number): number {
+function tickStep(count: number, spacing: number): number {
   if (count <= 1) return 1
   const gap = PLOT_WIDTH / (count - 1)
-  return Math.max(1, Math.ceil(MIN_LABEL_SPACING / gap))
+  return Math.max(1, Math.ceil(spacing / gap))
 }
 
 /**
@@ -174,8 +203,8 @@ function tickStep(count: number): number {
  * the count is not a multiple of the step: the last two ticks would render a
  * fraction of a label apart.
  */
-function showsTick(index: number, count: number): boolean {
-  return (count - 1 - index) % tickStep(count) === 0
+function showsTick(index: number, count: number, spacing: number): boolean {
+  return (count - 1 - index) % tickStep(count, spacing) === 0
 }
 
 /**
@@ -246,6 +275,12 @@ function TrendChart({ points, days }: { points: TrendPoint[]; days: number }) {
   const [selectedKey, setSelectedKey] = useState(DEFAULT_SERIES.key)
   const pickerId = useId()
 
+  /* One call per threshold rather than a loop, so the number of hooks is fixed.
+     Narrowest match wins; neither matching is the desktop branch. */
+  const narrow = useMediaQuery(AXIS_NARROW.query)
+  const medium = useMediaQuery(AXIS_MEDIUM.query)
+  const axis = narrow ? AXIS_NARROW : medium ? AXIS_MEDIUM : AXIS_WIDE
+
   const series = ALL_SERIES.find((option) => option.key === selectedKey) ?? DEFAULT_SERIES
   const runs = runsOf(points, series)
   const hasData = runs.length > 0
@@ -301,6 +336,7 @@ function TrendChart({ points, days }: { points: TrendPoint[]; days: number }) {
           <svg
             className="analysis-line-chart"
             viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+            style={{ '--analysis-axis-size': `${axis.fontSize}px` } as CSSProperties}
             role="img"
             aria-label={`Wykres liniowy: ${subtitle.toLowerCase()}, w skali od 0 do ${LEVEL_SCALE_MAX}.`}
           >
@@ -353,7 +389,7 @@ function TrendChart({ points, days }: { points: TrendPoint[]; days: number }) {
             </g>
 
             {points.map((point, index) =>
-              !showsTick(index, points.length) ? null : (
+              !showsTick(index, points.length, axis.spacing) ? null : (
                 <text
                   key={point.date}
                   className="analysis-line-tick"

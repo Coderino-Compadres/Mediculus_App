@@ -165,6 +165,12 @@
 }
 
 .emotion-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 33px -> 44px. To główny formularz aplikacji, wypełniany codziennie
+     na telefonie, i dziesięć sąsiadujących celów w jednym wierszu. */
+  min-height: 44px;
   font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);
   font-size: 13px;
@@ -254,7 +260,7 @@
   display: flex;
   justify-content: space-between;
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-graphite-muted);
   margin-top: 4px;
 }
@@ -266,6 +272,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* 23px -> 44px. Rozwijacz „Zmień hasło" / „Zmień adres e-mail" na /profile
+     jest szeroki na całą kartę, ale dotąd wysoki tylko na wiersz tekstu. */
+  min-height: 44px;
   background: none;
   border: none;
   padding: 0;

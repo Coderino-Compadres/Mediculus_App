@@ -46,24 +46,33 @@ describe('fetchHomeDashboard', () => {
     expect(result.streakDays).toBe(4)
     expect(result.averageStress).toBe(4.3)
     expect(result.averageEnergy).toBe(5.5)
-    expect(result.technique).toEqual({ name: 'Technika 5-4-3-2-1', matchReason: 'Dopasowane.' })
     expect(result.todayEntry).toEqual({
       moodLabel: 'Dobrze',
       emotions: [{ emotion: 'Radość', intensity: 9 }],
     })
   })
 
+  it('drops the technique suggestion the endpoint still sends', async () => {
+    // The "Propozycja na dziś" card was removed from /home, so this field has
+    // no reader. The backend goes on computing it from `raport`; mapping it
+    // here would put a value in the screen's shape that nothing draws.
+    mockedRequest.mockResolvedValueOnce(payload())
+
+    const result = await fetchHomeDashboard()
+
+    expect(result).not.toHaveProperty('technique')
+  })
+
   it('keeps null answers null instead of inventing zeroes', async () => {
     // An empty week has nothing to average; 0/10 stress would be a claim we
     // cannot make.
     mockedRequest.mockResolvedValueOnce(
-      payload({ today_entry: null, technique: null, average_stress: null, average_energy: null }),
+      payload({ today_entry: null, average_stress: null, average_energy: null }),
     )
 
     const result = await fetchHomeDashboard()
 
     expect(result.todayEntry).toBeNull()
-    expect(result.technique).toBeNull()
     expect(result.averageStress).toBeNull()
     expect(result.averageEnergy).toBeNull()
   })

@@ -7,6 +7,7 @@ import { deleteTechnique, fetchMyTechniques, type StoredTechnique } from '../api
 import { SCHOOL_BADGES } from '../utils/techniques'
 import { ROUTES, specialistTechniqueEditPath, techniqueDetailPath } from '../routes'
 import './journals.css'
+import '../styles/panel.css'
 import './specialist.css'
 
 /**
@@ -101,12 +102,12 @@ function SpecialistTechniques() {
         wycofać, usuń ją.
       </p>
 
-      <Link className="specialist-form-submit specialist-new-link" to={ROUTES.specialistTechniqueNew}>
+      <Link className="panel-button specialist-new-link" to={ROUTES.specialistTechniqueNew}>
         Dodaj technikę
       </Link>
 
       {loading && (
-        <div className="journals-status" role="status" aria-busy="true">
+        <div className="panel-loading" role="status" aria-busy="true">
           Wczytywanie technik…
         </div>
       )}
@@ -120,7 +121,7 @@ function SpecialistTechniques() {
       )}
 
       {actionError && (
-        <p className="caseload-error" role="alert">
+        <p className="panel-error" role="alert">
           {actionError}
         </p>
       )}
@@ -128,7 +129,7 @@ function SpecialistTechniques() {
       {!loading && !loadError && (
         <div className="specialist-list">
           {techniques.length === 0 && (
-            <p className="journals-empty">
+            <p className="panel-empty">
               Nie dodałeś jeszcze żadnej techniki.
             </p>
           )}
@@ -146,11 +147,11 @@ function SpecialistTechniques() {
               <div className="specialist-list-actions">
                 {/* Always available now: everything here is published, so the
                     catalogue can always open it. */}
-                <Link className="caseload-card-link" to={techniqueDetailPath(technique.id)}>
+                <Link className="panel-link" to={techniqueDetailPath(technique.id)}>
                   Podgląd
                 </Link>
                 <Link
-                  className="caseload-card-link"
+                  className="panel-link"
                   to={specialistTechniqueEditPath(technique.idTechnique)}
                 >
                   Edytuj
@@ -159,7 +160,7 @@ function SpecialistTechniques() {
                   <>
                     <button
                       type="button"
-                      className="caseload-card-drop"
+                      className="panel-button-quiet"
                       onClick={() => void remove(technique)}
                       disabled={busyId === technique.idTechnique}
                     >
@@ -167,7 +168,7 @@ function SpecialistTechniques() {
                     </button>
                     <button
                       type="button"
-                      className="caseload-card-link"
+                      className="panel-link"
                       onClick={() => setConfirmId(null)}
                     >
                       Nie usuwaj
@@ -178,7 +179,7 @@ function SpecialistTechniques() {
                      between sessions and there is no undo. */
                   <button
                     type="button"
-                    className="caseload-card-drop"
+                    className="panel-button-quiet"
                     onClick={() => setConfirmId(technique.idTechnique)}
                   >
                     Usuń

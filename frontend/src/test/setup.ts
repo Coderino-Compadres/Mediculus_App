@@ -11,3 +11,18 @@ afterEach(cleanup)
 // on every navigation. RouteChange calls it on purpose (see its docstring); the
 // stub keeps that intent testable without the noise.
 window.scrollTo = () => {}
+
+// jsdom nie implementuje matchMedia. useMediaQuery radzi sobie bez niego (patrz
+// jego docstring), ale wtedy nie da się przetestować gałęzi, którą wybiera --
+// ten kikut zwraca „nie pasuje", czyli branżę desktopową, w której testy
+// wykresu były pisane.
+window.matchMedia = (query: string): MediaQueryList => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  addListener: () => {},
+  removeListener: () => {},
+  dispatchEvent: () => false,
+})

@@ -17,6 +17,7 @@ import { patientLabel } from '../utils/specialist'
 import { ROUTES } from '../routes'
 import './journals.css'
 import '../components/auth.css'
+import '../styles/panel.css'
 import './specialist.css'
 
 /**
@@ -189,7 +190,7 @@ function SpecialistParentAccounts() {
       )}
 
       {loading && (
-        <div className="journals-status" role="status" aria-busy="true">
+        <div className="panel-loading" role="status" aria-busy="true">
           Wczytywanie…
         </div>
       )}
@@ -208,7 +209,7 @@ function SpecialistParentAccounts() {
             /* Not an error and not an empty form: without a minor patient there
                is nothing to issue an invitation *for*, and a form that could
                only fail would be worse than saying why. */
-            <p className="journals-empty">
+            <p className="panel-empty">
               Nie masz małoletnich pacjentów, którzy potwierdzili zaproszenie.
               Konto opiekuna zakłada się dla konkretnego małoletniego pacjenta.
             </p>
@@ -245,13 +246,13 @@ function SpecialistParentAccounts() {
                 )}
               </div>
               {formError && (
-                <p className="caseload-error" role="alert">
+                <p className="panel-error" role="alert">
                   {formError}
                 </p>
               )}
               <button
                 type="submit"
-                className="specialist-form-submit"
+                className="panel-button"
                 disabled={saving || patientId === '' || parentEmail.trim() === ''}
               >
                 {saving ? 'Wystawianie…' : 'Wystaw kod'}
@@ -260,16 +261,16 @@ function SpecialistParentAccounts() {
           )}
 
           <section className="specialist-list" aria-labelledby="specialist-list-heading">
-            <h2 id="specialist-list-heading" className="caseload-heading">
+            <h2 id="specialist-list-heading" className="panel-section-heading">
               Wystawione zaproszenia
             </h2>
             {actionError && (
-              <p className="caseload-error" role="alert">
+              <p className="panel-error" role="alert">
                 {actionError}
               </p>
             )}
             {invitations.length === 0 ? (
-              <p className="journals-empty">Nie wystawiłeś jeszcze żadnego zaproszenia.</p>
+              <p className="panel-empty">Nie wystawiłeś jeszcze żadnego zaproszenia.</p>
             ) : (
               invitations.map((invitation) => (
                 <article key={invitation.id} className="specialist-list-row">
@@ -290,7 +291,7 @@ function SpecialistParentAccounts() {
                   {invitation.status !== 'used' && (
                     <button
                       type="button"
-                      className="caseload-card-drop"
+                      className="panel-button-quiet"
                       onClick={() => void revoke(invitation)}
                       disabled={busyId === invitation.id}
                     >

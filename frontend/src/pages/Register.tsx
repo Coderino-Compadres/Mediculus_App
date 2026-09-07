@@ -234,26 +234,32 @@ function Register() {
             disabled={submitting}
           />
         )}
-        <FormField
-          id="firstName"
-          label="Imię"
-          type="text"
-          autoComplete="given-name"
-          value={values.firstName}
-          onChange={handleChange}
-          error={errors.firstName}
-          disabled={submitting}
-        />
-        <FormField
-          id="lastName"
-          label="Nazwisko"
-          type="text"
-          autoComplete="family-name"
-          value={values.lastName}
-          onChange={handleChange}
-          error={errors.lastName}
-          disabled={submitting}
-        />
+        {/* One row rather than two: the form already asks for nine things in a
+            column, and a name split across two full-width rows read as two
+            unrelated questions. .auth-row collapses back to one column under
+            440px, where half a card is not enough for either input. */}
+        <div className="auth-row">
+          <FormField
+            id="firstName"
+            label="Imię"
+            type="text"
+            autoComplete="given-name"
+            value={values.firstName}
+            onChange={handleChange}
+            error={errors.firstName}
+            disabled={submitting}
+          />
+          <FormField
+            id="lastName"
+            label="Nazwisko"
+            type="text"
+            autoComplete="family-name"
+            value={values.lastName}
+            onChange={handleChange}
+            error={errors.lastName}
+            disabled={submitting}
+          />
+        </div>
         <FormField
           id="dateOfBirth"
           label="Data urodzenia"
