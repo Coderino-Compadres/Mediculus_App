@@ -1,3 +1,14 @@
+/**
+ * The card every account-level screen is drawn on: logging in, creating an
+ * account, and the two screens that stand between a new account and the app
+ * (naming a guardian, granting the consents back).
+ *
+ * This file is also the app's original form vocabulary — .auth-field and its
+ * label/error/invalid states are reused by the specialist panel's forms, which
+ * is why the field rules here are written to be borrowed rather than to be
+ * about registration in particular.
+ */
+
 .auth-page {
   flex-grow: 1;
   display: flex;
@@ -13,10 +24,10 @@
   width: 100%;
   max-width: 420px;
   text-align: left;
-  background: #fff;
-  border-radius: 24px;
+  background: var(--color-surface);
+  border-radius: var(--radius-surface);
   padding: 40px 36px;
-  box-shadow: 0 20px 40px -20px rgba(var(--shadow-tint), 0.25);
+  box-shadow: var(--shadow-raised);
   box-sizing: border-box;
 }
 
@@ -25,24 +36,26 @@
   width: 96px;
   height: auto;
   margin: 0 auto 24px;
-  border-radius: 16px;
+  border-radius: var(--radius-tile);
 }
 
 .auth-card h1 {
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
   font-size: 28px;
+  letter-spacing: -0.4px;
   margin: 0 0 8px;
   text-align: center;
   color: var(--color-graphite);
 }
 
 .auth-subtitle {
-  font-family: var(--font-body);
   font-weight: var(--font-weight-regular);
+  font-size: 15px;
+  line-height: 1.5;
   color: var(--color-graphite-muted);
   text-align: center;
-  margin-bottom: 32px;
+  margin: 0 0 32px;
 }
 
 .auth-form {
@@ -58,7 +71,6 @@
 }
 
 .auth-field label {
-  font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);
   font-size: 12px;
   letter-spacing: 0.06em;
@@ -66,39 +78,76 @@
   color: var(--color-graphite);
 }
 
-.auth-field input, .auth-field select {
-  font-family: var(--font-body);
+/* Two fields that belong together on one line — imię and nazwisko. The
+   registration form asks for nine things in a column, and a name split across
+   two full-width rows made it read as two unrelated questions. Collapses back
+   to one column on a narrow phone, where 160px per field is not enough. */
+.auth-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* Both of these are load-bearing, and the row overflowed the card without
+   them. A grid item's `min-width` defaults to `auto`, which for a text input
+   is its own intrinsic width — the user agent's `size` attribute, about 20
+   characters — so `1fr 1fr` could not shrink below roughly 2×180px inside a
+   420px card. The inputs elsewhere on this form are flex-column children and
+   stretch on their own, which is why nothing else here needed to say it. */
+.auth-row > * {
+  min-width: 0;
+}
+
+.auth-row input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.auth-field input,
+.auth-field select,
+.auth-field textarea {
   font-weight: var(--font-weight-regular);
+  /* 16px, not 15: below 16 iOS Safari zooms the page on focus, and a
+     registration form is where that is most disorienting. */
   font-size: 16px;
   padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(var(--shadow-tint), 0.18);
-  background: #fff;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   color: var(--color-graphite);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.auth-field input:focus-visible, .auth-field select:focus-visible {
+.auth-field input:focus-visible,
+.auth-field select:focus-visible,
+.auth-field textarea:focus-visible {
   outline: none;
   border-color: var(--color-sage);
-  box-shadow: 0 0 0 3px rgba(79, 122, 100, 0.18);
+  box-shadow: var(--focus-ring);
 }
 
-.auth-field input[aria-invalid='true'], .auth-field select[aria-invalid='true'] {
+.auth-field input[aria-invalid='true'],
+.auth-field select[aria-invalid='true'],
+.auth-field textarea[aria-invalid='true'] {
   border-color: var(--color-error);
 }
 
 .auth-field-error {
-  font-family: var(--font-body);
   font-size: 13px;
+  line-height: 1.4;
   color: var(--color-error);
 }
 
+/* THE CONSENTS. Both are required to create an account (see the consent gate
+   in core/consents.py), so they are part of the form rather than a footnote to
+   it — but they are the only place on the form where the label is a paragraph
+   rather than a word, so they get their own block and their own rules. */
 .auth-consents {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 14px 0 4px;
-  border-top: 1px solid rgba(var(--shadow-tint), 0.12);
+  padding: 16px 0 4px;
+  border-top: 1px solid var(--color-divider);
   margin-top: 4px;
 }
 
@@ -110,7 +159,7 @@
 
 .auth-consent-item + .auth-consent-item {
   padding-top: 14px;
-  border-top: 1px solid rgba(var(--shadow-tint), 0.08);
+  border-top: 1px solid var(--color-divider);
 }
 
 .auth-consent {
@@ -127,39 +176,44 @@
   flex-shrink: 0;
 }
 
+.auth-consent input:focus-visible {
+  outline: 2px solid var(--color-sage);
+  outline-offset: 2px;
+}
+
 .auth-consent label {
-  font-family: var(--font-body);
   font-weight: var(--font-weight-regular);
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
   color: var(--color-graphite-muted);
+  cursor: pointer;
 }
 
 .auth-submit-error {
-  font-family: var(--font-body);
   font-size: 14px;
+  line-height: 1.5;
   color: var(--color-error);
   background: var(--color-error-bg);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  padding: 12px 14px;
 }
 
 .auth-success {
-  font-family: var(--font-body);
   font-size: 14px;
+  line-height: 1.5;
   color: var(--color-sage-hover);
   background: var(--color-success-bg);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  padding: 12px 14px;
 }
 
 .auth-submit {
-  font-family: var(--font-body);
   font-weight: var(--font-weight-semibold);
   font-size: 16px;
+  line-height: 1.2;
   padding: 14px 12px;
-  border-radius: 12px;
-  border: none;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
   background: var(--color-sage);
   color: #fff;
   cursor: pointer;
@@ -170,15 +224,22 @@
   background: var(--color-sage-hover);
 }
 
+.auth-submit:focus-visible {
+  outline: none;
+  border-color: var(--color-sage-hover);
+  box-shadow: var(--focus-ring);
+}
+
 .auth-submit:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .auth-switch {
-  font-family: var(--font-body);
   text-align: center;
   margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-divider);
   font-size: 14px;
   color: var(--color-graphite-muted);
 }
@@ -190,11 +251,11 @@
 }
 
 .auth-switch a:hover {
+  color: var(--color-sage-hover);
   text-decoration: underline;
 }
 
 .auth-hint {
-  font-family: var(--font-body);
   font-weight: var(--font-weight-regular);
   font-size: 13px;
   line-height: 1.5;
@@ -216,19 +277,22 @@
 }
 
 .auth-link-button:hover {
+  color: var(--color-sage-hover);
   text-decoration: underline;
 }
 
 /* The second action on a card that already has a primary one — withdrawing the
    guardian request, next to checking for its answer. */
 .auth-submit-secondary {
-  background: #fff;
+  background: var(--color-surface);
   color: var(--color-graphite);
-  border: 1px solid rgba(var(--shadow-tint), 0.2);
+  border: 1px solid var(--color-border-strong);
+  transition: background-color 0.2s, border-color 0.2s;
 }
 
 .auth-submit-secondary:hover:not(:disabled) {
-  background: rgba(var(--shadow-tint), 0.06);
+  background: rgba(var(--shadow-tint), 0.05);
+  border-color: var(--color-graphite-muted);
 }
 
 /* The "i" pinned to the card's top-right corner, and the tile it opens. The
@@ -252,26 +316,27 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  border-radius: 50%;
-  border: 1px solid rgba(var(--shadow-tint), 0.2);
-  background: #fff;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
   color: var(--color-graphite-muted);
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 .auth-info-button:hover {
-  background: rgba(var(--shadow-tint), 0.06);
+  background: rgba(var(--shadow-tint), 0.05);
   color: var(--color-graphite);
 }
 
 .auth-info-button:focus-visible {
   outline: none;
   border-color: var(--color-sage);
-  box-shadow: 0 0 0 3px rgba(79, 122, 100, 0.18);
+  box-shadow: var(--focus-ring);
 }
 
 .auth-info-tile {
@@ -282,13 +347,22 @@
   min-width: 140px;
   margin: 0;
   padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(var(--shadow-tint), 0.12);
-  background: #fff;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-divider);
+  background: var(--color-surface);
   box-shadow: var(--shadow-card);
-  font-family: var(--font-body);
   font-weight: var(--font-weight-regular);
   font-size: 14px;
   color: var(--color-graphite);
   text-align: left;
+}
+
+@media (max-width: 440px) {
+  .auth-card {
+    padding: 32px 22px;
+  }
+
+  .auth-row {
+    grid-template-columns: 1fr;
+  }
 }

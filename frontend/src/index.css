@@ -14,9 +14,14 @@
  */
 
 :root {
-  /* Inherited by anything that does not set its own; the screens use
-     --font-body / --font-heading from theme.css. */
-  font: 18px/145% system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* The document's own family is now --font-body itself, not the system face.
+     It used to be `system-ui, 'Segoe UI', Roboto, sans-serif`, which is why
+     every stylesheet in the project repeats `font-family: var(--font-body)` on
+     almost every rule it has (~60 times) — and why the rules that *forgot* it
+     rendered in the user agent's face next to the ones that did not. Karla
+     first here means a missing declaration is invisible instead of a visible
+     mismatch; the system stack stays behind it as the swap fallback. */
+  font: 18px/145% var(--font-body);
   letter-spacing: 0.18px;
   color: var(--color-graphite);
   background: #fff;
@@ -86,6 +91,18 @@ body {
 
 .skip-link:focus {
   top: 0;
+}
+
+/* Form controls do not inherit the document's font family — that is a user
+   agent default, not a cascade rule — so `font-family: inherit` here is what
+   makes an input or a button that says nothing about type still render in
+   Karla. Only the family: size, weight and padding stay with whatever styles
+   the control. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 h1,

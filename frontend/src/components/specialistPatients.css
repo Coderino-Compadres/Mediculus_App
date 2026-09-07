@@ -1,29 +1,17 @@
-/* "Moi pacjenci" on the specialist's panel. Borrows the card shape from the
-   guardian's child summary (components/guardianChildren.css) rather than the
-   patient screens: like that one, this is a list of other people's accounts. */
+/**
+ * "Moi pacjenci" on the specialist's panel.
+ *
+ * The card shape, the figure tiles and every control come from
+ * styles/panel.css, shared with the guardian's child summary — like that one,
+ * this is a list of other people's accounts, reporting engagement and never
+ * content (PATIENT_SUMMARY_FIELDS in core/specialist.py). What is left here is
+ * the type, the pending group and the confirmation that replaces a button in
+ * place.
+ */
 
-.caseload-section {
-  width: 100%;
-  max-width: 720px;
-  margin-bottom: 24px;
-}
-
-.caseload-heading {
-  font-family: var(--font-heading);
-  font-weight: var(--font-weight-semibold);
-  font-size: 18px;
-  color: var(--color-graphite);
-  margin: 0 0 12px;
-}
-
-.caseload-card {
-  background: #fff;
-  border-radius: 20px;
-  padding: 20px 22px;
-  box-shadow: var(--shadow-card);
-  margin-bottom: 12px;
-}
-
+/* .caseload-section and .caseload-card carry no rules here: the frame is
+   .panel-section and the shape is .panel-card. They stay in the markup as
+   identity hooks — a name for what a row is, and what a test can select on. */
 .caseload-card-header h3 {
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
@@ -35,7 +23,6 @@
 .caseload-card-email,
 .caseload-card-tag,
 .caseload-card-note {
-  font-family: var(--font-body);
   font-size: 13px;
   color: var(--color-graphite-muted);
   margin: 4px 0 0;
@@ -46,38 +33,8 @@
   font-weight: var(--font-weight-semibold);
 }
 
-/* Three figures side by side, wrapping rather than shrinking on a narrow phone. */
 .caseload-figures {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
   margin-top: 16px;
-}
-
-/* Lavender, like the guardian's child-figure tiles: the same kind of figure on
-   the same kind of card, and the token already exists. */
-.caseload-figure {
-  flex: 1 1 90px;
-  background: var(--color-lavender);
-  border-radius: 14px;
-  padding: 12px 14px;
-  text-align: center;
-}
-
-.caseload-figure-value {
-  display: block;
-  font-family: var(--font-heading);
-  font-weight: var(--font-weight-semibold);
-  font-size: 20px;
-  color: var(--color-graphite);
-}
-
-.caseload-figure-label {
-  display: block;
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: var(--color-graphite-muted);
-  margin-top: 2px;
 }
 
 .caseload-card-actions {
@@ -89,38 +46,11 @@
   margin-top: 16px;
 }
 
-.caseload-card-link {
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-graphite);
-  background: none;
-  border: none;
-  padding: 6px 0;
-  cursor: pointer;
-  text-decoration: none;
-}
-
-/* Ending someone's care is not a destructive-red action — it is an ordinary
-   clinical decision — but it must not look like the primary one either. */
-.caseload-card-drop {
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--color-graphite-muted);
-  background: none;
-  border: 1px solid rgba(var(--shadow-tint), 0.25);
-  border-radius: 999px;
-  padding: 6px 14px;
-  cursor: pointer;
-}
-
-.caseload-card-drop:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-/* The confirmation replaces the single button in place, so the question sits
-   where the action was rather than jumping the card's layout. */
+/* THE CONFIRMATION replaces the single button in place, so the question sits
+   where the action was rather than jumping the card's layout. Ending care is
+   asked twice because the patient cannot undo it — they would have to be
+   invited again and accept again — so a stray tap on a phone would end a care
+   relationship and drop the reports it exists for. */
 .caseload-card-confirm {
   display: flex;
   flex-wrap: wrap;
@@ -130,20 +60,17 @@
 
 .caseload-card-confirm-question {
   flex: 1 1 100%;
-  font-family: var(--font-body);
   font-size: 13px;
   line-height: 1.5;
-  color: #8a6416;
+  color: var(--color-caution);
 }
 
-.caseload-pending {
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px dashed rgba(var(--shadow-tint), 0.25);
-  border-radius: 18px;
-  padding: 16px 18px;
-  margin-bottom: 12px;
-}
-
+/* THE PENDING GROUP. Translucent and outlined rather than a white card, the
+   same distinction .panel-quiet draws everywhere: an invitation nobody has
+   answered is not yet an account this specialist can see anything about, and a
+   pending row deliberately carries no figures at all (`activity: null`). The
+   dashed edge it used to have is now solid — dashed read as a rendering fault
+   next to the cards above it, and the translucency already says "not yet". */
 .caseload-pending-heading {
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
@@ -153,8 +80,8 @@
 }
 
 .caseload-pending-note {
-  font-family: var(--font-body);
   font-size: 13px;
+  line-height: 1.5;
   color: var(--color-graphite-muted);
   margin: 0 0 12px;
 }
@@ -164,44 +91,19 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-family: var(--font-body);
   font-size: 14px;
   color: var(--color-graphite);
-  padding: 6px 0;
+  padding: 8px 0;
 }
 
-.caseload-status,
-.caseload-empty,
-.caseload-invite-note {
-  font-family: var(--font-body);
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--color-graphite-muted);
-  margin: 0 0 12px;
+.caseload-pending-row + .caseload-pending-row {
+  border-top: 1px solid var(--color-divider);
 }
 
-.caseload-error {
-  font-family: var(--font-body);
-  font-size: 14px;
-  color: #8a6416;
-  margin: 8px 0 0;
-}
-
-.caseload-success {
-  font-family: var(--font-body);
-  font-size: 14px;
-  color: var(--color-graphite);
-  margin: 8px 0 0;
-}
-
-.caseload-invite {
-  background: #fff;
-  border-radius: 20px;
-  padding: 20px 22px;
-  box-shadow: var(--shadow-card);
-  margin-top: 16px;
-}
-
+/* THE INVITE FORM. One field and one button, on its own card at the bottom of
+   the section: naming somebody by e-mail answers the same way however it fails
+   (see SpecialistPatientInviteSerializer), so it is a deliberate act rather
+   than a search box. */
 .caseload-invite-heading {
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
@@ -212,7 +114,6 @@
 
 .caseload-invite label {
   display: block;
-  font-family: var(--font-body);
   font-size: 14px;
   color: var(--color-graphite);
   margin-bottom: 6px;
@@ -226,38 +127,38 @@
 .caseload-invite-row input {
   flex: 1 1 auto;
   min-width: 0;
-  font-family: var(--font-body);
   font-size: 15px;
   padding: 12px 14px;
-  border: 1px solid rgba(var(--shadow-tint), 0.25);
-  border-radius: 12px;
-  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
   color: var(--color-graphite);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.caseload-invite-row button {
-  font-family: var(--font-body);
-  font-size: 15px;
-  font-weight: var(--font-weight-semibold);
-  color: #fff;
-  background: var(--color-graphite);
-  border: none;
-  border-radius: 12px;
-  padding: 12px 20px;
-  cursor: pointer;
+.caseload-invite-row input:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
 }
 
-.caseload-invite-row button:disabled {
-  opacity: 0.5;
-  cursor: default;
+.caseload-invite-row input[aria-invalid='true'] {
+  border-color: var(--color-error);
 }
 
 .caseload-invite-note {
-  margin: 12px 0 0;
+  margin-top: 12px;
 }
 
 @media (max-width: 600px) {
   .caseload-invite-row {
     flex-direction: column;
+  }
+
+  .caseload-card-actions {
+    /* Two actions stacked rather than squeezed: "Raporty tygodniowe" and
+       "Zakończ opiekę" must not end up adjacent and equally narrow. */
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

@@ -1,10 +1,17 @@
-/* The specialist's invitation, on the patient's home screen. Shaped like the
-   guardian invitation card on /parent — it is the same kind of thing: somebody
-   is waiting on an answer only this account can give. */
+/**
+ * The specialist's invitation, on the patient's screens.
+ *
+ * Shaped like the guardian invitation card on /parent — it is the same kind of
+ * thing: somebody is waiting on an answer only this account can give. Self
+ * contained rather than built on styles/panel.css, because it renders on
+ * /home and on /link-guardian (a gated minor's one reachable screen), neither
+ * of which is a panel screen.
+ */
 
 .specialist-invitation {
-  background: #fff;
-  border-radius: 20px;
+  box-sizing: border-box;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
   padding: 20px 22px;
   box-shadow: var(--shadow-card);
   margin-bottom: 20px;
@@ -27,7 +34,6 @@
 }
 
 .specialist-invitation-meta {
-  font-family: var(--font-body);
   font-size: 13px;
   color: var(--color-graphite-muted);
   margin: 2px 0 0;
@@ -35,17 +41,19 @@
 }
 
 .specialist-invitation-text {
-  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.6;
   color: var(--color-graphite);
   margin: 12px 0 0;
 }
 
-/* Ochre, never red: this is a consequence to understand before agreeing, not an
-   error. The entry form's risky-behaviour note uses the same tone. */
+/* Ochre, never red: this is a consequence to understand before agreeing — the
+   patient cannot end an accepted link, only the specialist can — not an error.
+   The entry form's risky-behaviour note uses the same tone. */
 .specialist-invitation-warning {
-  color: #8a6416;
+  color: var(--color-caution);
+  padding-top: 12px;
+  border-top: 1px solid var(--color-divider);
 }
 
 .specialist-invitation-actions {
@@ -55,47 +63,70 @@
   margin-top: 16px;
 }
 
+/* Sage, like every other primary action in the app — this button was graphite,
+   which on the patient's own home screen sat directly under a sage "Dodaj
+   wpis" and read as a different kind of control. */
 .specialist-invitation-accept {
-  font-family: var(--font-body);
   font-size: 15px;
   font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
   color: #fff;
-  background: var(--color-graphite);
-  border: none;
-  border-radius: 12px;
+  background: var(--color-sage);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   padding: 12px 22px;
   cursor: pointer;
+  transition: background-color 0.2s;
 }
 
-/* Refusing sits at the same visual weight as accepting, deliberately — the same
-   rule as the consent screen's "wyloguj się". A card where only one answer is a
-   button is pressure, and consent under pressure is not consent. */
+.specialist-invitation-accept:hover:not(:disabled) {
+  background: var(--color-sage-hover);
+}
+
+/* REFUSING SITS AT THE SAME VISUAL WEIGHT AS ACCEPTING, deliberately — the
+   same rule as the consent screen's "wyloguj się". A card where only one
+   answer is a button is applying pressure, and consent under pressure is not
+   consent (art. 7(4)). Same size, same padding, same weight of type; only the
+   colour is quieter. */
 .specialist-invitation-reject {
-  font-family: var(--font-body);
   font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
   color: var(--color-graphite);
-  background: none;
-  border: 1px solid rgba(var(--shadow-tint), 0.3);
-  border-radius: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
   padding: 12px 22px;
   cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.specialist-invitation-reject:hover:not(:disabled) {
+  background: rgba(var(--shadow-tint), 0.05);
+  border-color: var(--color-graphite-muted);
+}
+
+.specialist-invitation-accept:focus-visible,
+.specialist-invitation-reject:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
 }
 
 .specialist-invitation-accept:disabled,
 .specialist-invitation-reject:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: default;
 }
 
 .specialist-invitation-error {
-  font-family: var(--font-body);
   font-size: 14px;
-  color: #8a6416;
+  line-height: 1.6;
+  color: var(--color-caution);
   margin: 12px 0 0;
 }
 
 .specialist-invitation-answered {
-  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.6;
   color: var(--color-graphite);

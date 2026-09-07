@@ -1,29 +1,17 @@
-/* The guardian's summary of a linked child's account. Sits between the
-   invitation card and the placeholder on /parent, and borrows nothing from the
-   patient screens — this is the only content a guardian has. */
+/**
+ * The guardian's summary of a linked child's account, on /parent.
+ *
+ * The section frame, the card shape and the figure tiles come from
+ * styles/panel.css — the same shapes the specialist's caseload uses, because
+ * it is the same kind of thing: somebody else's account, reported as
+ * engagement and never as content (CHILD_SUMMARY_FIELDS in core/account.py).
+ * What is left here is the type and the privacy note.
+ */
 
-.child-section {
-  width: 100%;
-  max-width: 720px;
-  margin-bottom: 20px;
-}
-
-.child-section-heading {
-  font-family: var(--font-heading);
-  font-weight: var(--font-weight-semibold);
-  font-size: 18px;
-  color: var(--color-graphite);
-  margin: 0 0 12px;
-}
-
-.child-card {
-  background: #fff;
-  border-radius: 20px;
-  padding: 20px 22px;
-  box-shadow: var(--shadow-card);
-  margin-bottom: 12px;
-}
-
+/* .child-section and .child-card carry no rules here: the frame is
+   .panel-section and the shape is .panel-card. They stay in the markup as
+   identity hooks, and ParentHome.test.tsx selects on both to check that the
+   summary sits between the invitation card and the placeholder. */
 .child-card-header h3 {
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
@@ -33,7 +21,6 @@
 }
 
 .child-card-email {
-  font-family: var(--font-body);
   font-size: 13px;
   color: var(--color-graphite-muted);
   margin: 2px 0 0;
@@ -41,74 +28,41 @@
 }
 
 .child-card-linked {
-  font-family: var(--font-body);
   font-size: 13px;
   color: var(--color-graphite-muted);
   margin: 6px 0 0;
 }
 
-/* Three figures side by side, wrapping to two lines on a narrow phone rather
-   than shrinking the numbers — they are the point of the card. */
 .child-figures {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
   margin-top: 16px;
-}
-
-.child-figure {
-  flex: 1 1 90px;
-  background: var(--color-lavender);
-  border-radius: 14px;
-  padding: 12px 14px;
-  text-align: center;
-}
-
-.child-figure-value {
-  display: block;
-  font-family: var(--font-heading);
-  font-weight: var(--font-weight-semibold);
-  font-size: 20px;
-  line-height: 1.2;
-  color: var(--color-graphite);
-}
-
-.child-figure-label {
-  display: block;
-  font-family: var(--font-body);
-  font-size: 12px;
-  color: var(--color-graphite-muted);
-  margin-top: 4px;
 }
 
 .child-card-note,
 .child-card-empty {
-  font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.5;
   color: var(--color-graphite-muted);
   margin: 14px 0 0;
 }
 
-/* Not a disclaimer to be tidied away: a guardian who assumes they are reading
+/* NOT A DISCLAIMER TO BE TIDIED AWAY: a guardian who assumes they are reading
    the diary is being misled by silence. Set apart by a rule rather than by a
    warning colour — this is a fact about the screen, not a caution. */
 .child-card-privacy {
-  font-family: var(--font-body);
   font-size: 13px;
   line-height: 1.5;
   color: var(--color-graphite-muted);
   margin: 16px 0 0;
   padding-top: 14px;
-  border-top: 1px solid rgba(var(--shadow-tint), 0.1);
+  border-top: 1px solid var(--color-divider);
 }
 
 .child-error {
-  font-family: var(--font-body);
   font-size: 14px;
+  line-height: 1.5;
   color: var(--color-error);
   background: var(--color-error-bg);
-  border-radius: 14px;
+  border-radius: var(--radius-tile);
   padding: 14px 16px;
   margin: 0;
 }

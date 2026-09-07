@@ -4,13 +4,14 @@ import HeaderMenu from '../components/HeaderMenu'
 import SpecialistPatients from '../components/SpecialistPatients'
 import { useAuth } from '../auth/authContext'
 import { ROUTES, routeTitle } from '../routes'
-// moduleSelect.css is the page frame, the logo and the greeting block, reused
-// rather than redrawn — this screen is the specialist's equivalent of the
-// patient's module chooser. home.css is here for the .home-menu-* rules
-// HeaderMenu's markup needs, the same explicit import ParentHome.tsx carries.
-import './moduleSelect.css'
+// styles/panel.css is the frame, the greeting block, the sections and every
+// control, shared with /parent. It replaced four stylesheets here — the
+// patient's module chooser, the home screen and parentHome.css — which is how
+// this screen came to be laid out by classes called .parent-page and
+// .parent-menu. home.css stays for the .home-menu-* rules HeaderMenu's markup
+// needs, the same explicit import ParentHome.tsx carries.
+import '../styles/panel.css'
 import './home.css'
-import './parentHome.css'
 import './specialist.css'
 
 /**
@@ -49,16 +50,16 @@ function SpecialistHome() {
   const firstName = user?.firstName ?? ''
 
   return (
-    <div className="module-page parent-page">
-      <div className="parent-menu">
+    <div className="panel-page">
+      <div className="panel-menu">
         <HeaderMenu />
       </div>
 
-      <div className="module-header">
-        <img className="module-logo" src={mediculusLogo} alt="Fundacja Mediculus" />
-        <p className="module-greeting">{firstName ? `Cześć, ${firstName}` : 'Cześć'}</p>
+      <div className="panel-header">
+        <img className="panel-logo" src={mediculusLogo} alt="Fundacja Mediculus" />
+        <p className="panel-greeting">{firstName ? `Cześć, ${firstName}` : 'Cześć'}</p>
         <h1>Panel specjalisty</h1>
-        <p className="module-subtitle">
+        <p className="panel-subtitle">
           Konto specjalisty. Nie prowadzisz tu własnego dzienniczka.
         </p>
       </div>
@@ -68,8 +69,8 @@ function SpecialistHome() {
           seen and does not know why. */}
       <SpecialistPatients />
 
-      <section className="specialist-tools" aria-labelledby="specialist-tools-heading">
-        <h2 id="specialist-tools-heading" className="specialist-tools-heading">
+      <section className="panel-section" aria-labelledby="specialist-tools-heading">
+        <h2 id="specialist-tools-heading" className="panel-section-heading">
           Narzędzia
         </h2>
 
@@ -100,7 +101,7 @@ function SpecialistHome() {
           alternative — naming "podgląd dzienniczka" as coming soon — would answer
           a question that is still open with the client, and a client reviewing
           this screen would reasonably read it as settled. */}
-      <section className="specialist-scope" aria-labelledby="specialist-scope-heading">
+      <section className="panel-quiet specialist-scope" aria-labelledby="specialist-scope-heading">
         <h2 id="specialist-scope-heading">Zakres dostępu</h2>
         <p>
           Widzisz raporty tygodniowe pacjentów, którzy potwierdzili Twoje

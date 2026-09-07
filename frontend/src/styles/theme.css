@@ -1,4 +1,16 @@
+/**
+ * The design tokens: everything visual that more than one screen agrees on.
+ *
+ * A value repeated in two stylesheets is a value free to drift, and this file
+ * used to hold only colours and fonts — so the edges and the corners drifted.
+ * Before the tokens below, the same 1px card edge existed in five weights
+ * (rgba tint at .1 / .12 / .18 / .2 / .25) and the same content card in six
+ * radii (12 / 14 / 16 / 18 / 20 / 24), picked per file rather than per role.
+ * Nothing was wrong in isolation; the panel screens simply did not look like
+ * the patient screens. Add a value here before adding it to a screen.
+ */
 :root {
+  /* Palette */
   --color-sage: #4f7a64;
   --color-sage-hover: #416754;
   --color-sage-light: #7fa98f;
@@ -10,12 +22,65 @@
   --color-error-bg: rgba(179, 69, 63, 0.1);
   --color-success-bg: rgba(127, 169, 143, 0.16);
 
-  /* RGB triplet of --color-graphite, for shadow/border rgba() so a tint change is one edit. */
-  --shadow-tint: 44, 56, 51;
-  --shadow-card: 0 12px 30px -20px rgba(var(--shadow-tint), 0.35);
+  /* Ochre dark enough to be read as type on white, for wording that is a
+     consequence to weigh rather than an error: an invitation that cannot be
+     undone, a care relationship about to end. --color-ochre itself is a
+     background — at ~1.9:1 on white it is not readable as text, which is why
+     this second value exists at all. It was hardcoded as #8a6416 in three
+     stylesheets before it had a name. */
+  --color-caution: #8a6416;
 
-  --font-heading: 'Lora', serif;
-  --font-body: 'Karla', sans-serif;
+  /* Surfaces. Opaque white is a card that holds something real; the
+     translucent one is a panel that frames rather than holds — a statement of
+     scope, a list of invitations nobody has answered yet. The distinction is
+     load-bearing on the panel screens, so it is a token rather than a habit. */
+  --color-surface: #fff;
+  --color-surface-quiet: rgba(255, 255, 255, 0.6);
+
+  /* RGB triplets, so a tint change is one edit. */
+  --shadow-tint: 44, 56, 51; /* --color-graphite */
+  --sage-tint: 79, 122, 100; /* --color-sage */
+
+  /* Edges. Three weights and deliberately no fourth: a rule *inside* a card,
+     the edge of a control or a quiet panel, and the one weight that still has
+     to be seen on a phone in daylight (a secondary button, whose only outline
+     this is). */
+  --color-divider: rgba(var(--shadow-tint), 0.1);
+  --color-border: rgba(var(--shadow-tint), 0.18);
+  --color-border-strong: rgba(var(--shadow-tint), 0.3);
+
+  /* Radii, by role rather than by size — a control, a tile, a card and a full
+     surface. Naming them by role is what stops the next screen inventing an
+     18px card because 16 looked tight and 20 looked round. */
+  --radius-control: 12px;
+  --radius-tile: 16px;
+  --radius-card: 20px;
+  --radius-surface: 24px;
+  --radius-pill: 999px;
+
+  /* Depth. Three, matching the radii: a card at rest, something small and
+     light, and a surface that sits above the page. */
+  --shadow-card: 0 12px 30px -20px rgba(var(--shadow-tint), 0.35);
+  --shadow-soft: 0 4px 12px -6px rgba(var(--shadow-tint), 0.25);
+  --shadow-raised: 0 20px 40px -20px rgba(var(--shadow-tint), 0.3);
+
+  /* The focus ring the auth card invented and every other form went without.
+     Always paired with `border-color: var(--color-sage)`, never on its own —
+     the ring alone is invisible against the lavender page. */
+  --focus-ring: 0 0 0 3px rgba(var(--sage-tint), 0.18);
+
+  /* Type. The fallbacks are not decoration: both families load from Google
+     Fonts with `display=swap`, so the stack behind them is what a slow
+     connection actually renders. --font-body is also the document's own
+     family (see index.css), which is why a rule that forgets to name it now
+     inherits Karla instead of the user agent's face. */
+  --font-heading: 'Lora', Georgia, 'Times New Roman', serif;
+  --font-body: 'Karla', system-ui, 'Segoe UI', Roboto, sans-serif;
   --font-weight-semibold: 600;
   --font-weight-regular: 400;
+
+  /* The content column the panel screens share (/parent, /specialist). One
+     value, because a 520px invitation card above a 720px child card reads as
+     a mistake rather than as a hierarchy. */
+  --panel-width: 720px;
 }

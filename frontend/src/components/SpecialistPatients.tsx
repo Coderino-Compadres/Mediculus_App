@@ -12,6 +12,7 @@ import { entryDateLabel, lastEntryLabel, showsStreak } from '../utils/children'
 import { patientLabel } from '../utils/specialist'
 import { pluralDays } from '../utils/reports'
 import { specialistPatientReportsPath } from '../routes'
+import '../styles/panel.css'
 import './specialistPatients.css'
 
 /**
@@ -42,9 +43,9 @@ const DROP_ERROR = 'Nie udało się zapisać zmiany. Spróbuj ponownie.'
 
 function Figure({ value, label, title }: { value: string; label: string; title?: string }) {
   return (
-    <div className="caseload-figure" title={title}>
-      <span className="caseload-figure-value">{value}</span>
-      <span className="caseload-figure-label">{label}</span>
+    <div className="panel-figure" title={title}>
+      <span className="panel-figure-value">{value}</span>
+      <span className="panel-figure-label">{label}</span>
     </div>
   )
 }
@@ -67,7 +68,7 @@ function PatientCard({
   const { activity } = patient
 
   return (
-    <article className="caseload-card">
+    <article className="caseload-card panel-card">
       <header className="caseload-card-header">
         <h3>{patientLabel(patient)}</h3>
         {patient.email && <p className="caseload-card-email">{patient.email}</p>}
@@ -91,7 +92,7 @@ function PatientCard({
       )}
 
       {activity && (
-        <div className="caseload-figures">
+        <div className="caseload-figures panel-figures">
           <Figure
             value={String(activity.entryCount)}
             label={activity.entryCount === 1 ? 'wpis' : 'wpisów'}
@@ -118,7 +119,7 @@ function PatientCard({
 
       <div className="caseload-card-actions">
         {patient.consentsActive ? (
-          <Link className="caseload-card-link" to={specialistPatientReportsPath(patient.id)}>
+          <Link className="panel-link" to={specialistPatientReportsPath(patient.id)}>
             Raporty tygodniowe →
           </Link>
         ) : (
@@ -138,18 +139,18 @@ function PatientCard({
             </span>
             <button
               type="button"
-              className="caseload-card-drop"
+              className="panel-button-quiet"
               onClick={onDrop}
               disabled={busy}
             >
               Tak, zakończ
             </button>
-            <button type="button" className="caseload-card-link" onClick={onCancelDrop}>
+            <button type="button" className="panel-link" onClick={onCancelDrop}>
               Nie kończ
             </button>
           </span>
         ) : (
-          <button type="button" className="caseload-card-drop" onClick={onAskToDrop}>
+          <button type="button" className="panel-button-quiet" onClick={onAskToDrop}>
             Zakończ opiekę
           </button>
         )}
@@ -242,13 +243,13 @@ function SpecialistPatients() {
   }
 
   return (
-    <section className="caseload-section" aria-labelledby="caseload-heading">
-      <h2 id="caseload-heading" className="caseload-heading">
+    <section className="caseload-section panel-section" aria-labelledby="caseload-heading">
+      <h2 id="caseload-heading" className="panel-section-heading">
         Moi pacjenci
       </h2>
 
       {loading && (
-        <p className="caseload-status" role="status" aria-busy="true">
+        <p className="panel-note" role="status" aria-busy="true">
           Wczytywanie listy pacjentów…
         </p>
       )}
@@ -257,7 +258,7 @@ function SpecialistPatients() {
           reads "nie masz pacjentów" will go looking for the invitation form
           rather than for the reason. */}
       {!loading && failed && (
-        <p className="caseload-error" role="alert">
+        <p className="panel-error" role="alert">
           {LOAD_ERROR}
         </p>
       )}
@@ -265,7 +266,7 @@ function SpecialistPatients() {
       {!loading && !failed && (
         <>
           {caseload.patients.length === 0 && (
-            <p className="caseload-empty">
+            <p className="panel-note">
               Nie masz jeszcze pacjentów. Zaproś pacjenta poniżej — dopóki nie
               potwierdzi zaproszenia, nie widzisz żadnych jego danych.
             </p>
@@ -284,7 +285,7 @@ function SpecialistPatients() {
           ))}
 
           {caseload.pending.length > 0 && (
-            <div className="caseload-pending">
+            <div className="panel-quiet">
               <h3 className="caseload-pending-heading">Oczekujące zaproszenia</h3>
               {/* Said in words on the screen, not only enforced in the API: a
                   specialist who thinks an invitation is access will wonder why
@@ -298,7 +299,7 @@ function SpecialistPatients() {
                   <span>{patientLabel(patient)}</span>
                   <button
                     type="button"
-                    className="caseload-card-drop"
+                    className="panel-button-quiet"
                     onClick={() => void drop(patient)}
                     disabled={busyId === patient.id}
                   >
@@ -312,12 +313,12 @@ function SpecialistPatients() {
       )}
 
       {actionError && (
-        <p className="caseload-error" role="alert">
+        <p className="panel-error" role="alert">
           {actionError}
         </p>
       )}
 
-      <form className="caseload-invite" onSubmit={(event) => void invite(event)} noValidate>
+      <form className="caseload-invite panel-card" onSubmit={(event) => void invite(event)} noValidate>
         <h3 className="caseload-invite-heading">Zaproś pacjenta</h3>
         <label htmlFor="caseload-invite-email">Adres e-mail pacjenta</label>
         <div className="caseload-invite-row">
@@ -331,21 +332,25 @@ function SpecialistPatients() {
             aria-invalid={Boolean(inviteError)}
             aria-describedby={inviteError ? 'caseload-invite-error' : undefined}
           />
-          <button type="submit" disabled={inviting || email.trim() === ''}>
+          <button
+            type="submit"
+            className="panel-button"
+            disabled={inviting || email.trim() === ''}
+          >
             {inviting ? 'Wysyłanie…' : 'Zaproś'}
           </button>
         </div>
         {inviteError && (
-          <p id="caseload-invite-error" className="caseload-error" role="alert">
+          <p id="caseload-invite-error" className="panel-error" role="alert">
             {inviteError}
           </p>
         )}
         {invited && (
-          <p className="caseload-success" role="status">
+          <p className="panel-success" role="status">
             {invited}
           </p>
         )}
-        <p className="caseload-invite-note">
+        <p className="caseload-invite-note panel-note">
           Pacjent decyduje sam. Po potwierdzeniu widzisz jego raporty tygodniowe —
           nie widzisz treści dzienniczka.
         </p>

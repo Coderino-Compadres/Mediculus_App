@@ -3,12 +3,15 @@ import GuardianChildren from '../components/GuardianChildren'
 import GuardianInvitations from '../components/GuardianInvitations'
 import HeaderMenu from '../components/HeaderMenu'
 import { useAuth } from '../auth/authContext'
-// moduleSelect.css is the page frame and the greeting block, reused rather than
-// redrawn — this screen is the guardian's equivalent of that one. home.css is
-// here for the .home-menu-* rules HeaderMenu's markup needs, which otherwise
-// arrive only because App.tsx pulls Home in eagerly (the same explicit import
+// styles/panel.css is the frame, the greeting block, the sections and every
+// control, shared with /specialist — the two screens that are somebody's whole
+// view of the app without being a patient's. This used to be moduleSelect.css
+// (the *patient's* module chooser) plus parentHome.css on top; see the header of
+// panel.css for why that stopped being tenable. home.css is here for the
+// .home-menu-* rules HeaderMenu's markup needs, which otherwise arrive only
+// because App.tsx pulls Home in eagerly (the same explicit import
 // SafetyPlan.tsx carries, for the same reason).
-import './moduleSelect.css'
+import '../styles/panel.css'
 import './home.css'
 import './parentHome.css'
 
@@ -48,21 +51,21 @@ function ParentHome() {
   const firstName = user?.firstName ?? ''
 
   return (
-    <div className="module-page parent-page">
+    <div className="panel-page">
       {/* Out of the centred header block and pinned to the corner, where every
           other screen in the app keeps it. The menu is role-aware (see
           components/HeaderMenu.tsx): a guardian gets this screen, the profile
           and "Wyloguj", and none of the patient entries that would lead them
           only to a refusal. */}
-      <div className="parent-menu">
+      <div className="panel-menu">
         <HeaderMenu />
       </div>
 
-      <div className="module-header">
-        <img className="module-logo" src={mediculusLogo} alt="Fundacja Mediculus" />
-        <p className="module-greeting">{firstName ? `Cześć, ${firstName}` : 'Cześć'}</p>
+      <div className="panel-header">
+        <img className="panel-logo" src={mediculusLogo} alt="Fundacja Mediculus" />
+        <p className="panel-greeting">{firstName ? `Cześć, ${firstName}` : 'Cześć'}</p>
         <h1>Panel rodzica</h1>
-        <p className="module-subtitle">
+        <p className="panel-subtitle">
           Konto opiekuna. Nie prowadzisz tu własnego dzienniczka.
         </p>
       </div>

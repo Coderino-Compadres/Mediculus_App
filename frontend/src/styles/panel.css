@@ -1,0 +1,388 @@
+/**
+ * The frame shared by the two screens that are somebody's whole view of the
+ * app without being a patient's: /parent (pages/ParentHome.tsx) and
+ * /specialist (pages/SpecialistHome.tsx).
+ *
+ * WHY IT IS ITS OWN FILE. Both screens used to be dressed in moduleSelect.css
+ * — the patient's module chooser — plus parentHome.css on top, which meant the
+ * specialist panel was laid out by classes called `.parent-page` and
+ * `.parent-menu` and pulled in four stylesheets to draw a heading. Nothing
+ * rendered wrong, but there was no answer to "where does a panel screen's
+ * frame live", so the next section added to either one had to guess, and the
+ * two drifted (one section spaced by `margin-bottom: 24px`, the next by 20,
+ * the invitation card 200px narrower than the card under it).
+ *
+ * The chooser keeps moduleSelect.css to itself: it is a screen made of two
+ * large coloured tiles and nothing else, and sharing a frame with it is what
+ * put patient module tiles a stylesheet away from a guardian's screen in the
+ * first place.
+ *
+ * WHAT IS NOT HERE: the header menu. HeaderMenu's own `.home-menu-*` rules
+ * live in pages/home.css and every screen in the app imports that file for
+ * them — moving them is a separate change, touching every screen, and this
+ * file only positions the menu (.panel-menu).
+ */
+
+.panel-page {
+  flex-grow: 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 40px 20px 56px;
+  background: var(--color-lavender);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* The one place a panel screen's section spacing is decided. Sections
+     therefore carry no margin of their own — see the note on .panel-section.
+     Larger than a section's own internal gap (12px), so the break between two
+     sections reads as heavier than the break between two cards in one. */
+  gap: 24px;
+  /* The anchor for .panel-menu, which is pinned to the page rather than to the
+     centred header block so it lands in the same corner as on every other
+     screen. */
+  position: relative;
+}
+
+.panel-menu {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+/* The greeting block: logo, "Cześć, X", the panel's name, and one line saying
+   what this account is. Centred, unlike the sections below it. */
+.panel-header {
+  width: 100%;
+  max-width: var(--panel-width);
+  text-align: center;
+  /* Larger than the section gap, deliberately: the header names the screen and
+     everything below it is content. */
+  margin: 0 0 20px;
+}
+
+.panel-logo {
+  width: 72px;
+  height: auto;
+  border-radius: var(--radius-tile);
+  margin-bottom: 16px;
+}
+
+.panel-greeting {
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite-muted);
+  margin: 0 0 4px;
+}
+
+.panel-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 32px;
+  letter-spacing: -0.5px;
+  color: var(--color-graphite);
+  margin: 0 0 8px;
+
+  @media (max-width: 600px) {
+    font-size: 26px;
+  }
+}
+
+.panel-subtitle {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+/* A titled group of cards. Spaced internally by `gap` and carrying no bottom
+   margin: the page's own gap is what separates one section from the next, so a
+   new section needs no spacing decision and cannot make a different one. */
+.panel-section {
+  width: 100%;
+  max-width: var(--panel-width);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+
+.panel-section-heading {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* A card that holds something real: an account, an invitation, a form. Opaque
+   white with the standard shadow — the same shape as every card on the patient
+   screens, which is the whole point of this file. */
+.panel-card {
+  box-sizing: border-box;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+}
+
+.panel-card-title {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 17px;
+  color: var(--color-graphite);
+  margin: 0 0 8px;
+}
+
+/* A panel that frames rather than holds — a statement of scope, a group of
+   invitations nobody has answered. Translucent and shadowless so it does not
+   read as content; see --color-surface-quiet.
+
+   The width is here because this is used both ways: nested inside a
+   .panel-section (where 100% is what is wanted and the max-width is already
+   satisfied) and as a direct child of .panel-page — the specialist panel's
+   "Zakres dostępu" note. Without it, that note ran the full width of the
+   viewport while every card above it stopped at --panel-width. */
+.panel-quiet {
+  width: 100%;
+  max-width: var(--panel-width);
+  box-sizing: border-box;
+  background: var(--color-surface-quiet);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tile);
+  padding: 16px 20px;
+}
+
+/* EMPTY AND LOADING STATES.
+   The specialist panel's sub-screens sit in the patient archive's frame
+   (journals.css), whose .journals-empty / .journals-status are bare centred
+   grey text on the lavender page. On the archive that reads fine — it sits
+   under a row of filter chips and above nothing. On "Konta opiekunów" it was
+   the only thing under a heading, on a screen otherwise made of white cards,
+   so an empty list looked like a section that had failed to render rather than
+   one with nothing in it yet.
+
+   Framed, but as .panel-quiet rather than as a card: translucent and
+   shadowless, because "nothing here yet" is not content. */
+.panel-empty,
+.panel-loading {
+  width: 100%;
+  max-width: var(--panel-width);
+  box-sizing: border-box;
+  background: var(--color-surface-quiet);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tile);
+  padding: 24px 20px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  text-align: center;
+}
+
+/* Transient, so it says less: no border, nothing that flashes a box on screen
+   for the length of one request. */
+.panel-loading {
+  background: none;
+  border-color: transparent;
+}
+
+/* Status and secondary wording, shared by both panels. */
+.panel-note,
+.panel-status {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+/* A refusal or a failure that is a consequence rather than an error — a
+   request the server would not accept, a list that did not load. Ochre, never
+   red: red is for something broken, and most of what these panels refuse is
+   working exactly as intended. */
+.panel-error {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-caution);
+  margin: 0;
+}
+
+.panel-success {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-sage-hover);
+  margin: 0;
+}
+
+/* CONTROLS.
+   One primary, one secondary, one quiet — the same three the patient screens
+   use, in the app's own sage rather than the graphite these panels had grown.
+   Graphite read as a different product: sage is the action colour everywhere
+   from .auth-submit (logging in, creating an account) to .today-add-button
+   (writing the day's entry), and now here. */
+
+.panel-button {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+  color: #fff;
+  background: var(--color-sage);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: 12px 22px;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+
+.panel-button:hover:not(:disabled) {
+  background: var(--color-sage-hover);
+}
+
+/* The second answer on a card that already has a primary one. Equal in size
+   and padding, quieter only in colour — on the invitation cards, refusing has
+   to sit at the same weight as accepting, or the card is applying pressure to
+   a consent (art. 7(4)). */
+.panel-button-secondary {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.2;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  padding: 12px 22px;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.panel-button-secondary:hover:not(:disabled) {
+  background: rgba(var(--shadow-tint), 0.05);
+  border-color: var(--color-graphite-muted);
+}
+
+/* A third action that must not read as one of the two above: withdrawing an
+   invitation, ending care. A pill outline, smaller and muted. Not red —
+   ending someone's care is an ordinary clinical decision, not a destructive
+   one — but not a button either. */
+.panel-button-quiet {
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--color-graphite-muted);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 7px 14px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.panel-button-quiet:hover:not(:disabled) {
+  background: rgba(var(--shadow-tint), 0.05);
+  border-color: var(--color-border-strong);
+  color: var(--color-graphite);
+}
+
+/* An action that reads as a link because it navigates (or, next to a
+   confirmation, because it backs out). Sage and semibold, the same treatment
+   as .mood-chart-link on the home screen. */
+.panel-link {
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-sage);
+  background: none;
+  border: none;
+  padding: 6px 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.panel-link:hover {
+  color: var(--color-sage-hover);
+  text-decoration: underline;
+}
+
+/* The way back out of a panel sub-screen. */
+.panel-back {
+  align-self: flex-start;
+  font-size: 14px;
+  color: var(--color-graphite);
+  text-decoration: none;
+}
+
+.panel-back:hover {
+  color: var(--color-sage-hover);
+  text-decoration: underline;
+}
+
+.panel-button:disabled,
+.panel-button-secondary:disabled,
+.panel-button-quiet:disabled,
+.panel-link:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.panel-button:focus-visible,
+.panel-button-secondary:focus-visible,
+.panel-button-quiet:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+/* FIGURE TILES.
+   The engagement numbers both panels report about somebody else's account —
+   entry count, streak, last entry. Lavender on white, wrapping rather than
+   shrinking on a narrow phone: the numbers are the point of the card. */
+
+.panel-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.panel-figure {
+  flex: 1 1 90px;
+  background: var(--color-lavender);
+  border-radius: var(--radius-tile);
+  padding: 12px 14px;
+  text-align: center;
+}
+
+.panel-figure-value {
+  display: block;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 20px;
+  line-height: 1.2;
+  color: var(--color-graphite);
+}
+
+.panel-figure-label {
+  display: block;
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+  margin-top: 4px;
+}
+
+@media (max-width: 600px) {
+  .panel-page {
+    padding: 32px 16px 48px;
+  }
+
+  .panel-menu {
+    top: 16px;
+    right: 16px;
+  }
+
+  .panel-card {
+    padding: 18px 18px;
+  }
+}
