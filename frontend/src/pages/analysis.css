@@ -100,9 +100,10 @@
    the plot, a number here would have labelled one line and lied about the other. */
 /* Stopień pisma przychodzi z komponentu jako --analysis-axis-size, bo w
    skalowanym viewBoxie rozmiar rzeczywisty to rozmiar zadeklarowany razy skala
-   kontenera, a CSS nie umie przez tę skalę podzielić -- patrz AXIS_SCALES w
-   components/TrendChart.tsx. Wartość 9px zostaje jako zapas, gdyby zmienna nie
-   dojechała: to jest ta, którą chart miał wcześniej wszędzie. */
+   kontenera, a CSS nie umie przez tę skalę podzielić -- patrz AXIS_NARROW /
+   AXIS_MEDIUM / AXIS_WIDE w components/TrendChart.tsx. Wartość 9px zostaje jako
+   zapas, gdyby zmienna nie dojechała: to jest ta, którą chart miał wcześniej
+   wszędzie. */
 .analysis-line-axis {
   font-family: var(--font-body);
   font-size: var(--analysis-axis-size, 9px);

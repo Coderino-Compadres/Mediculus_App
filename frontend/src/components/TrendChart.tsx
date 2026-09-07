@@ -134,7 +134,7 @@ const VIEW_HEIGHT = 150
  *  would have belonged to one line and mislabelled the other. */
 /* Marginesy wokół pola wykresu, w jednostkach viewBoxa. Każdy z trzech
    niezerowych jest podyktowany etykietą, która ma się w nim zmieścić przy
-   największym stopniu pisma z AXIS_SCALES: `left` mieści „10" (ok. 18 jednostek
+   największym stopniu pisma osi (AXIS_NARROW): `left` mieści „10" (ok. 18 jednostek
    przy 17px), `right` -- połowę „dd.mm" (ok. 22), bo skrajna data jest
    wyśrodkowana na ostatnim punkcie i bez tego wychodziła za viewBox, `bottom` --
    cały wiersz dat pod polem wykresu. */
@@ -167,8 +167,9 @@ const AXIS_TICKS = [0, LEVEL_SCALE_MAX / 2, LEVEL_SCALE_MAX]
  * a few units of air. Raising the type size without raising this is how you
  * trade an unreadable label for two overlapping ones.
  *
- * Ordered widest-query-first; the first match wins, and no match is the
- * unchanged desktop branch. It is also the constraint that used to be expressed
+ * Declared narrowest-query-first, and read that way too: the component tests
+ * the narrow query first and falls through, so the narrowest match wins and no
+ * match at all is the unchanged desktop branch. It is also the constraint that used to be expressed
  * as "cap the chart at 14 days" — the line itself reads fine at thirty points,
  * it was the labels underneath that collided.
  */
