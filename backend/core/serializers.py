@@ -146,6 +146,10 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'name', 'surname', 'date_of_birth', 'role',
             'is_patient', 'is_specialist', 'is_child', 'guardian_status',
+            # The password gate, read by the frontend's route guard exactly as
+            # `consents.active` is. A plain model field rather than a method
+            # one: it is a column on this row and answers for itself.
+            'must_change_password',
             # The consent register the profile screen reads back, and the gate
             # the router reads. One key, not five: `data_consent_at` and
             # `services_consent_at` used to ride alongside it as declared model
@@ -672,7 +676,7 @@ class PasswordChangeSerializer(serializers.Serializer):
         return attrs
 
     def save(self):
-        """Writes the new hash, and nothing else.
+        """Writes the new hash, and clears the flag that demanded it.
 
         Other sessions of this account deliberately survive. Django's usual
         answer (`update_session_auth_hash`) invalidates them because its sessions
@@ -684,7 +688,17 @@ class PasswordChangeSerializer(serializers.Serializer):
         of it silently would be worse than not claiming it.
         """
         self.user.password_hash = make_password(self.validated_data['new_password'])
-        self.user.save(update_fields=['password_hash', 'updated_at'])
+        # And the account is no longer holding a password somebody else chose
+        # for it, which is the whole condition `HasOwnPassword` gates on. Written
+        # here rather than in the view because it is part of the same fact as
+        # the hash above: the two must never be saved apart, or an account would
+        # either keep a screen it has already left or leave one it has not.
+        # Unconditional — the column is FALSE for almost every account, and a
+        # branch would only be a second place for the two to disagree.
+        self.user.must_change_password = False
+        self.user.save(
+            update_fields=['password_hash', 'must_change_password', 'updated_at'],
+        )
         return self.user
 
 

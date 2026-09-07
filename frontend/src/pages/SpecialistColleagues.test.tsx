@@ -151,6 +151,22 @@ describe('SpecialistColleagues — an account that gets created', () => {
     expect(await screen.findByText(/udziela zgód RODO/i)).toBeInTheDocument()
   })
 
+  it('says the password it just handed over is meant to stop working', async () => {
+    // A fact about the credential the specialist is writing down: they will know
+    // it, so the account replaces it before the panel opens
+    // (pages/PasswordChangeRequired.tsx). Saying so is what stops the note being
+    // treated as a lasting password.
+    mockedCreate.mockResolvedValue({ password: 'ABCD-EFGH-JKMN-PQRT', specialist: CREATED })
+    renderScreen()
+
+    await screen.findByLabelText('Imię')
+    await fillForm()
+    await userEvent.click(screen.getByRole('button', { name: /utwórz konto specjalisty/i }))
+
+    expect(await screen.findByText(/a potem ustawia własne hasło/i)).toBeInTheDocument()
+    expect(screen.getByText(/panel pozostaje zamknięty/i)).toBeInTheDocument()
+  })
+
   it('names the address the new specialist logs in with', async () => {
     mockedCreate.mockResolvedValue({ password: 'ABCD-EFGH-JKMN-PQRT', specialist: CREATED })
     renderScreen()
@@ -249,7 +265,7 @@ describe('SpecialistColleagues — the roster', () => {
     renderScreen()
 
     expect(
-      await screen.findByText(/czeka na pierwsze logowanie i zgody RODO/i),
+      await screen.findByText(/czeka na pierwsze logowanie: zgody RODO i własne hasło/i),
     ).toBeInTheDocument()
   })
 

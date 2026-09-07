@@ -33,6 +33,7 @@ RAW_SQL_MIGRATIONS = {
     'core.migrations.0011_specjalist_patient_invitation': 'default',
     'core.migrations.0012_parent_invitation': 'default',
     'core.migrations.0013_technique_catalogue': 'medical',
+    'core.migrations.0014_must_change_password': 'default',
 }
 
 
@@ -105,7 +106,8 @@ class IdempotencyTests(SimpleTestCase):
                             'core.migrations.0009_diary_time_of_day',
                             'core.migrations.0010_consent_withdrawal',
                             'core.migrations.0011_specjalist_patient_invitation',
-                            'core.migrations.0013_technique_catalogue'):
+                            'core.migrations.0013_technique_catalogue',
+                            'core.migrations.0014_must_change_password'):
             with self.subTest(migration=module_path):
                 for operation in run_sql_operations(module_path):
                     self.assertRegex(operation.sql, r'ADD COLUMN IF NOT EXISTS')
@@ -276,6 +278,22 @@ class StateAndDatabaseAgreeTests(SimpleTestCase):
 
         self.assertRegex(
             sql, r'description_ready BOOLEAN NOT NULL DEFAULT FALSE')
+
+    def test_0014_adds_the_same_column_on_both_halves(self):
+        state_ops, sql = self.state_and_sql('core.migrations.0014_must_change_password')
+        added = {op.name for op in state_ops if isinstance(op, migrations.AddField)}
+
+        self.assertEqual(added, set(re.findall(r'ADD COLUMN IF NOT EXISTS (\w+)', sql)))
+        self.assertEqual(added, {'must_change_password'})
+
+    def test_0014_needs_no_backfill_because_the_default_is_the_true_answer(self):
+        """Every account that existed before this migration chose its own
+        password at registration, so FALSE is correct for all of them rather
+        than an approximation — and NOT NULL keeps it from being a third state."""
+        _, sql = self.state_and_sql('core.migrations.0014_must_change_password')
+
+        self.assertRegex(
+            sql, r'must_change_password BOOLEAN NOT NULL DEFAULT FALSE')
 
     def test_0004_adds_the_same_consent_columns_on_both_halves(self):
         state_ops, sql = self.state_and_sql('core.migrations.0004_user_consents')

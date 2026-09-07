@@ -200,15 +200,23 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'core.authentication.SessionUserAuthentication',
     ],
-    # Two defaults, both closed. IsAuthenticated keeps a new endpoint private;
+    # Three defaults, all closed. IsAuthenticated keeps a new endpoint private;
     # HasActiveConsents keeps it away from an account whose RODO consents are not
-    # in force, which the app has no lawful basis to process anything for. The
-    # handful of views that legitimately opt out use core.permissions.
-    # CONSENT_EXEMPT rather than spelling the list out, so the exempt set stays
-    # one grep — see the note in that module.
+    # in force, which the app has no lawful basis to process anything for; and
+    # HasOwnPassword keeps it away from an account still using the password a
+    # colleague generated for it. The handful of views that legitimately opt out
+    # use core.permissions.CONSENT_EXEMPT / PASSWORD_CHANGE_EXEMPT rather than
+    # spelling the list out, so each exempt set stays one grep — see the note in
+    # that module.
+    #
+    # The order is the order the two screens are meant to be answered in, and it
+    # is load-bearing rather than cosmetic: a specialist account created by a
+    # colleague arrives holding both refusals, and POST /api/account/password/
+    # is itself behind HasActiveConsents.
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
         'core.permissions.HasActiveConsents',
+        'core.permissions.HasOwnPassword',
     ],
     'UNAUTHENTICATED_USER': None,
     # Applied to the login/register endpoints only (core.throttling.AuthThrottle);

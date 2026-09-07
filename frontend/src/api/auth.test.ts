@@ -13,6 +13,7 @@ import {
   login,
   logout,
   needsGuardianLink,
+  needsPasswordChange,
   register,
   REGISTER_FIELDS,
   toFormErrors,
@@ -66,12 +67,44 @@ describe('login', () => {
       isSpecialist: false,
       isChild: false,
       guardianStatus: null,
+      mustChangePassword: false,
       consents: {
         active: true,
         data: { grantedAt: '2026-06-18T09:31:02Z', withdrawnAt: null, active: true },
         services: { grantedAt: '2026-06-18T09:31:02Z', withdrawnAt: null, active: true },
       },
     })
+  })
+})
+
+describe('needsPasswordChange', () => {
+  it('holds an account that is still using a password somebody else generated', async () => {
+    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, must_change_password: true })
+
+    const user = await fetchCurrentUser()
+
+    expect(user!.mustChangePassword).toBe(true)
+    expect(needsPasswordChange(user!)).toBe(true)
+  })
+
+  it('lets an account that chose its own password through', async () => {
+    mockedRequest.mockResolvedValueOnce({ ...USER_PAYLOAD, must_change_password: false })
+
+    const user = await fetchCurrentUser()
+
+    expect(needsPasswordChange(user!)).toBe(false)
+  })
+
+  it('fails open on a payload that predates the field', async () => {
+    // A backend a release behind has no account the flag could be true for, and
+    // locking every client out on deploy would be the worse way to be wrong —
+    // the server refuses on its own regardless. Same choice as `needsConsents`.
+    mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
+
+    const user = await fetchCurrentUser()
+
+    expect(user!.mustChangePassword).toBe(false)
+    expect(needsPasswordChange(user!)).toBe(false)
   })
 })
 

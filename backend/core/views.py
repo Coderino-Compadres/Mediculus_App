@@ -34,7 +34,7 @@ from .consents import SCOPES, consent_state, restore, withdraw
 from .models import Patient
 from .parent_invitations import (list_invitations, revoke,
                                 serialize_invitation as serialize_parent_invitation)
-from .permissions import CONSENT_EXEMPT
+from .permissions import CONSENT_EXEMPT, PASSWORD_CHANGE_EXEMPT
 from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
 from .serializers import (ConsentScopeSerializer, GuardianLinkSerializer,
@@ -403,8 +403,15 @@ class PasswordChangeView(APIView):
     Deliberately NOT behind `_require_patient`: every account has a password,
     including the guardians and specialists who are not clinical subjects, and a
     minor still waiting for a guardian must be able to change theirs while the
-    gate is closed. `IsAuthenticated` (the project default) is the whole
-    requirement.
+    gate is closed.
+
+    And deliberately not behind the *password* gate either — this is the way out
+    of it. A specialist account created by a colleague (core/colleagues.py)
+    arrives holding a generated password and `must_change_password` set, so
+    every other endpoint refuses it until this one succeeds; `save()` is what
+    clears the flag. It stays behind `HasActiveConsents`, which is the order the
+    two screens are meant to be answered in: consents first, because they are
+    what gives the app a basis to hold the account at all.
 
     CSRF is enforced by `SessionUserAuthentication`, like every other
     authenticated write here — the hand-applied `@csrf_protect` on login and
@@ -415,6 +422,7 @@ class PasswordChangeView(APIView):
     could be logged.
     """
 
+    permission_classes = PASSWORD_CHANGE_EXEMPT
     throttle_classes = [PasswordChangeThrottle]
 
     def post(self, request):

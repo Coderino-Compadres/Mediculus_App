@@ -7,6 +7,10 @@ export const ROUTES = {
   /** Where an account whose RODO consents are not in force is held — the only
    *  screen it may reach. See pages/ConsentsRequired.tsx. */
   consents: '/consents',
+  /** Where an account still holding a password somebody else generated for it
+   *  is held — the only screen it may reach once its consents are in force.
+   *  See pages/PasswordChangeRequired.tsx. */
+  passwordChange: '/password-change',
   /** The guardian's own landing screen — see pages/ParentHome.tsx. */
   parentHome: '/parent',
   /** The specialist's landing screen — see pages/SpecialistHome.tsx. */
@@ -98,6 +102,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.register]: 'Rejestracja',
   [ROUTES.linkGuardian]: 'Powiązanie z opiekunem',
   [ROUTES.consents]: 'Wymagane zgody',
+  [ROUTES.passwordChange]: 'Ustaw własne hasło',
   [ROUTES.modules]: 'Wybór modułu',
   [ROUTES.parentHome]: 'Panel rodzica',
   [ROUTES.specialistHome]: 'Panel specjalisty',

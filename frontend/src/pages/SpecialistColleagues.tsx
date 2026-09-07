@@ -47,6 +47,12 @@ import './specialist.css'
  * still waiting on that, because otherwise "nie mogę się zalogować" has no
  * visible answer.
  *
+ * AND IT HAS TO REPLACE THE PASSWORD ABOVE, which is the second thing the new
+ * account does before the panel opens (pages/PasswordChangeRequired.tsx). The
+ * screen says so where it hands the password over, because it is a fact about
+ * the credential the specialist is writing down: they will know it, and it is
+ * meant to stop working. `must_change_password` is what enforces it.
+ *
  * WHAT THE ROSTER DOES NOT SHOW is any colleague's patients. Those patients
  * agreed to *them*, not to every specialist in the list — see
  * COLLEAGUE_SUMMARY_FIELDS in core/colleagues.py, which is the payload's own
@@ -163,7 +169,8 @@ function SpecialistColleagues() {
       <p className="reports-intro">
         Konto specjalisty zakłada inny specjalista — nie da się go utworzyć
         w formularzu rejestracji. Hasło zobaczysz raz i przekazujesz je
-        osobiście: aplikacja nie wysyła wiadomości.
+        osobiście: aplikacja nie wysyła wiadomości. Osoba, dla której zakładasz
+        konto, ustawia własne hasło przy pierwszym logowaniu.
       </p>
 
       {created && (
@@ -181,8 +188,9 @@ function SpecialistColleagues() {
           </p>
           <p className="specialist-code-note">
             Specjalista loguje się adresem <strong>{created.specialist.email}</strong>{' '}
-            i tym hasłem, a przy pierwszym logowaniu udziela zgód RODO — nikt nie
-            może zrobić tego za niego. Hasło zmienia sam w „Profilu”.
+            i tym hasłem. Przy pierwszym logowaniu udziela zgód RODO — nikt nie może
+            zrobić tego za niego — a potem ustawia własne hasło. Do tego czasu panel
+            pozostaje zamknięty: to hasło znasz również Ty.
           </p>
         </section>
       )}
@@ -297,7 +305,7 @@ function SpecialistColleagues() {
                               ? ` · utworzone ${linkedSinceLabel(colleague.createdAt)}`
                               : ''
                           }`
-                        : 'Czeka na pierwsze logowanie i zgody RODO'}
+                        : 'Czeka na pierwsze logowanie: zgody RODO i własne hasło'}
                     </p>
                   </div>
                 </article>

@@ -15,6 +15,7 @@ export const TEST_USER: AuthUser = {
   isSpecialist: false,
   isChild: false,
   guardianStatus: null,
+  mustChangePassword: false,
   // Both granted, as registration writes them — the ordinary account. A screen
   // testing the "Nieudzielona" state overrides one with null.
   // Both consents in force — the ordinary account. A test about the locked

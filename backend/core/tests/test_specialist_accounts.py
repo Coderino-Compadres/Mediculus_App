@@ -14,6 +14,13 @@ colleague cannot perform it for them. So a brand-new specialist account is
 locked by `HasActiveConsents` until its owner logs in and grants the consents
 themselves — which also means it cannot read anything before agreeing to
 anything.
+
+The second gate is the password. The one that came back from this endpoint was
+generated, spoken aloud and typed off a note, so its holder did not choose it and
+whoever created the account knows it — `must_change_password` holds the account
+on the password form until it has its own. The order the two gates are answered
+in is pinned here as well (consents, then the password), because it is not free:
+`POST /api/account/password/` is itself behind `HasActiveConsents`.
 """
 
 import datetime
@@ -33,6 +40,7 @@ from core.colleagues import (COLLEAGUE_SUMMARY_FIELDS, PASSWORD_ALPHABET,
                              SPECIALIST_ROLE, generate_password)
 from core.consents import has_active_consents
 from core.models import Patient, Specjalist, User, UserRole
+from core.permissions import PASSWORD_GATE_REFUSAL
 from core.throttling import SpecialistAccountThrottle
 from core.views import SPECIALIST_REFUSAL
 
@@ -174,13 +182,33 @@ class CreationTests(ColleagueTestCase):
 class NewAccountTests(ColleagueTestCase):
     """What the created account can do with itself."""
 
+    NEW_PASSWORD = 'WlasneHaslo!2026'
+
     def sign_in_as_new(self):
-        password = self.create().data['password']
+        self.given_password = self.create().data['password']
         self.client = APIClient()
         response = self.client.post(reverse('core:login'), {
-            'email': 'nowa.terapeutka@example.com', 'password': password,
+            'email': 'nowa.terapeutka@example.com', 'password': self.given_password,
         }, format='json')
         return response
+
+    def grant_consents(self):
+        return self.client.post(
+            reverse('core:account-consents-restore'), {'scope': 'all'}, format='json',
+        )
+
+    def set_own_password(self, new_password=None):
+        new_password = new_password or self.NEW_PASSWORD
+        return self.client.post(reverse('core:account-password'), {
+            'current_password': self.given_password,
+            'new_password': new_password,
+            'new_password_confirm': new_password,
+        }, format='json')
+
+    def unlock(self):
+        """Both gates, in the order the account actually meets them."""
+        self.grant_consents()
+        return self.set_own_password()
 
     def test_it_can_log_in_with_the_password_that_came_back(self):
         response = self.sign_in_as_new()
@@ -203,7 +231,73 @@ class NewAccountTests(ColleagueTestCase):
         self.assertFalse(me.data['consents']['data']['active'])
         self.assertFalse(me.data['consents']['services']['active'])
 
-    def test_granting_the_consents_opens_the_panel_to_an_empty_caseload(self):
+    def test_the_new_account_is_flagged_to_change_its_password(self):
+        """Set here and nowhere else: this password was generated, read off a
+        note and typed by hand, so its holder did not choose it and at least one
+        other person knows it."""
+        self.create()
+
+        user = User.objects.get(email='nowa.terapeutka@example.com')
+        self.assertTrue(user.must_change_password)
+
+    def test_registration_does_not_flag_the_account_it_creates(self):
+        """The gate is about a password somebody else chose. Somebody who typed
+        their own into the registration form has already done what it asks."""
+        self.client = APIClient()
+        response = self.client.post(reverse('core:register'), {
+            'email': 'pacjentka@example.com', 'password': 'TajneHaslo123',
+            'password_confirm': 'TajneHaslo123', 'name': 'Ala', 'surname': 'Nowak',
+            'date_of_birth': '1990-05-05', 'account_type': 'patient',
+            'data_consent': True, 'services_consent': True,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIs(response.data['must_change_password'], False)
+        self.assertFalse(
+            User.objects.get(email='pacjentka@example.com').must_change_password)
+
+    def test_the_flag_travels_on_me_so_the_router_can_read_it(self):
+        """The frontend learns *which* screen it is being held on from this
+        payload, exactly as it does for the consents."""
+        self.sign_in_as_new()
+
+        me = self.client.get(reverse('core:me'))
+
+        self.assertEqual(me.status_code, 200)
+        self.assertIs(me.data['must_change_password'], True)
+
+    def test_the_consents_come_first_and_the_password_form_is_shut_until_they_do(self):
+        """The order is forced rather than chosen: the password endpoint is
+        itself behind HasActiveConsents, so asking for the password first would
+        leave the account with no reachable screen at all."""
+        self.sign_in_as_new()
+
+        refused = self.set_own_password()
+
+        self.assertEqual(refused.status_code, 403)
+        self.assertTrue(
+            check_password(
+                self.given_password,
+                User.objects.get(email='nowa.terapeutka@example.com').password_hash,
+            ),
+        )
+
+    def test_the_panel_stays_shut_on_the_generated_password_after_consenting(self):
+        """Consents granted is half of it. The account still holds a credential
+        somebody handed it, and what the panel opens onto is patients' records."""
+        self.sign_in_as_new()
+        granted = self.grant_consents()
+
+        panel = self.client.get(reverse('core:specialist-patients'))
+        me = self.client.get(reverse('core:me'))
+
+        self.assertEqual(granted.status_code, 200, granted.data)
+        self.assertEqual(panel.status_code, 403)
+        self.assertEqual(str(panel.data['detail']), PASSWORD_GATE_REFUSAL)
+        self.assertIs(me.data['consents']['active'], True)
+        self.assertIs(me.data['must_change_password'], True)
+
+    def test_setting_its_own_password_clears_the_flag_and_opens_the_panel(self):
         """And the caseload is empty, which is the point of the whole design:
         creating an account grants its holder nothing about anybody."""
         patient = Patient.objects.create(
@@ -212,21 +306,59 @@ class NewAccountTests(ColleagueTestCase):
         self.assertIsNone(patient.specjalist_id)
         self.sign_in_as_new()
 
-        granted = self.client.post(
-            reverse('core:account-consents-restore'), {'scope': 'all'}, format='json',
-        )
+        changed = self.unlock()
         panel = self.client.get(reverse('core:specialist-patients'))
 
-        self.assertEqual(granted.status_code, 200, granted.data)
+        self.assertEqual(changed.status_code, 204, getattr(changed, 'data', None))
+        self.assertFalse(
+            User.objects.get(email='nowa.terapeutka@example.com').must_change_password)
         self.assertEqual(panel.status_code, 200)
         self.assertEqual(panel.data, {'patients': [], 'pending': []})
 
-    def test_it_can_create_a_further_account_once_it_has_consented(self):
+    def test_the_session_survives_the_change_so_nobody_is_bounced_to_login(self):
+        """The gate is a screen inside the app, not a sign-out. Our sessions
+        carry `core_user_id` and no password hash, so nothing goes stale."""
+        self.sign_in_as_new()
+        self.unlock()
+
+        me = self.client.get(reverse('core:me'))
+
+        self.assertEqual(me.status_code, 200)
+        self.assertIs(me.data['must_change_password'], False)
+
+    def test_the_generated_password_stops_working_afterwards(self):
+        self.sign_in_as_new()
+        self.unlock()
+
+        client = APIClient()
+        old = client.post(reverse('core:login'), {
+            'email': 'nowa.terapeutka@example.com', 'password': self.given_password,
+        }, format='json')
+        new = client.post(reverse('core:login'), {
+            'email': 'nowa.terapeutka@example.com', 'password': self.NEW_PASSWORD,
+        }, format='json')
+
+        self.assertEqual(old.status_code, 400)
+        self.assertEqual(new.status_code, 200, new.data)
+
+    def test_a_refused_new_password_leaves_the_account_where_it_was(self):
+        """A validator saying no must not half-open the account, the same
+        property `_redeem` gives a guardian invitation code."""
+        self.sign_in_as_new()
+        self.grant_consents()
+
+        refused = self.set_own_password('haslo')
+
+        self.assertEqual(refused.status_code, 400)
+        user = User.objects.get(email='nowa.terapeutka@example.com')
+        self.assertTrue(user.must_change_password)
+        self.assertTrue(check_password(self.given_password, user.password_hash))
+
+    def test_it_can_create_a_further_account_once_it_is_through_both_gates(self):
         """A specialist account is a specialist account however it was made —
         there is no second class of them, and no bootstrap flag anywhere."""
         self.sign_in_as_new()
-        self.client.post(
-            reverse('core:account-consents-restore'), {'scope': 'all'}, format='json')
+        self.unlock()
 
         response = self.client.post(reverse('core:specialist-colleagues'), {
             **NEW_COLLEAGUE, 'email': 'trzecia@example.com',

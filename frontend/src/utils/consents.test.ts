@@ -20,6 +20,7 @@ const USER: AuthUser = {
   isSpecialist: false,
   isChild: false,
   guardianStatus: null,
+  mustChangePassword: false,
   consents: {
     active: true,
     data: { grantedAt: '2026-03-09T21:15:00Z', withdrawnAt: null, active: true },

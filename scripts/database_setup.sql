@@ -52,6 +52,12 @@ CREATE TABLE IF NOT EXISTS "user" (
     -- one place that comparison is written.
     data_consent_withdrawn_at TIMESTAMPTZ,
     services_consent_withdrawn_at TIMESTAMPTZ,
+    -- TRUE while the account is still using a password somebody else chose for
+    -- it: a specialist account created by another specialist gets a generated
+    -- one, handed over in the room. Such an account reaches nothing but the
+    -- form that changes it -- backend/core/permissions.py. FALSE everywhere
+    -- else, which is why the column is NOT NULL with that default.
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
@@ -165,6 +171,13 @@ ALTER TABLE "user"
 ALTER TABLE "user"
     ADD COLUMN IF NOT EXISTS data_consent_withdrawn_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS services_consent_withdrawn_at TIMESTAMPTZ;
+
+-- The flag that holds a specialist account on the password form until its owner
+-- has replaced the password the colleague who created it generated. Mirrors
+-- core/migrations/0014_must_change_password.py. NOT NULL DEFAULT FALSE, so a
+-- database full of accounts that chose their own password needs no backfill.
+ALTER TABLE "user"
+    ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Same reasoning for the guardian invitation's answer: NULL means the child has
 -- named this guardian and the guardian has not decided yet. Mirrors

@@ -28,6 +28,22 @@ read it back — a specialist who loses it has no way to recover it, and the new
 account has no password reset either. That is the one rough edge of this flow
 and it is deliberate: the alternative is storing a readable credential.
 
+AND IT HAS TO BE REPLACED AT FIRST LOGIN. `must_change_password` is set here and
+nowhere else, `core.permissions.HasOwnPassword` refuses the account everything
+else while it is set, and `PasswordChangeSerializer.save` is what clears it. The
+reason is what the paragraph above describes: this password was *generated*, not
+chosen — it was spoken aloud, written on a note and typed by hand, so the person
+who created the account knows it and so does anybody who saw the note. Until it
+is replaced, "signed in as this specialist" is not evidence of who is at the
+keyboard, and what the account opens onto is other people's clinical records.
+
+The new account therefore meets two screens before the panel, in this order:
+the consents, then the password. That order is forced rather than chosen — `POST
+/api/account/password/` is itself behind `HasActiveConsents`, so an account asked
+for a password before its consents would have nowhere to go at all — and it
+reads correctly anyway: the consent is what gives the app a basis to hold the
+account in the first place.
+
 THE CONSENTS ARE NOT PRE-GRANTED, and this is the load-bearing half. Registration
 writes `data_consent_at`/`services_consent_at` because the person ticking the
 boxes *is* the person consenting; here they are not. RODO art. 7 makes consent an
@@ -92,8 +108,9 @@ def generate_password():
     """A fresh temporary password, in the form 'ABCD-EFGH-JKMN-PQRT'.
 
     `secrets`, not `random`: this is a credential. Long enough that the readable
-    alphabet costs nothing, and it is typed exactly once — the account changes it
-    from "Profil" afterwards.
+    alphabet costs nothing, and it is typed exactly once: `must_change_password`
+    holds the account on the password form until this value has been replaced,
+    so it is a way in rather than the account's password.
     """
     groups = [
         ''.join(secrets.choice(PASSWORD_ALPHABET) for _ in range(PASSWORD_GROUP_LENGTH))
@@ -106,7 +123,10 @@ def create_account(*, email, name, surname, date_of_birth, specialization):
     """Create a specialist account. Returns (specjalist row, plaintext password).
 
     The plaintext exists in this return value and nowhere else — the caller hands
-    it to the specialist in the response and then forgets it.
+    it to the specialist in the response and then forgets it. The new account is
+    held on the password form until it replaces that password
+    (`must_change_password` below), because a generated credential handed over
+    in a room is one its owner did not choose and somebody else knows.
 
     **No consent timestamps are written**: see the module header. The new account
     is locked by `HasActiveConsents` until its owner grants them, which is the
@@ -128,6 +148,10 @@ def create_account(*, email, name, surname, date_of_birth, specialization):
             name=name,
             surname=surname,
             date_of_birth=date_of_birth,
+            # The one place this is ever set. See the module header: the
+            # password is generated rather than chosen, so the account reaches
+            # nothing but the form that replaces it.
+            must_change_password=True,
         )
         specjalist = Specjalist.objects.create(
             user=user, specjalization=specialization,

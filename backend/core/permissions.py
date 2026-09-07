@@ -1,4 +1,8 @@
-"""The consent gate, as a permission rather than a helper each view remembers.
+"""The two gates that hold an account on one screen, as default permissions.
+
+The consent gate is the first of them; the password gate below it is the second.
+Both follow the same shape and for the same reason — see WHY A DEFAULT
+PERMISSION.
 
 An account whose consents are not in force may reach exactly one thing: the
 screen offering them back. Not the diary, not the reports, not the profile, not
@@ -51,11 +55,65 @@ class HasActiveConsents(BasePermission):
         return has_active_consents(user)
 
 
-#: What a view sets to opt out of the gate above.
+#: What a view sets to opt out of **both** gates.
 #:
-#: Only four things belong here and each is the gate's own escape hatch: reading
-#: the account (`/api/auth/me/`, which is how the frontend learns *why* it was
-#: refused), signing out, and the two consent endpoints — gating those would be
-#: a deadlock, exactly like gating `/api/auth/guardian/` would be for a minor.
-#: Anything else that appears in this list is a bug.
+#: Only four things belong here and each is an escape hatch one of the gates
+#: needs: reading the account (`/api/auth/me/`, which is how the frontend learns
+#: *why* it was refused), signing out, and the two consent endpoints — gating
+#: those would be a deadlock, exactly like gating `/api/auth/guardian/` would be
+#: for a minor. Anything else that appears in this list is a bug.
+#:
+#: The consent endpoints are exempt from the password gate as well, and that is
+#: the ordering decision written down: a specialist account created by a
+#: colleague arrives holding *both* refusals, and the consents come first. It
+#: cannot be the other way round — `POST /api/account/password/` is behind
+#: `HasActiveConsents` (below), so an account asked for its password before its
+#: consents would have no reachable screen at all.
 CONSENT_EXEMPT = [IsAuthenticated]
+
+
+#: Shown instead of the generic "not allowed", for the same reason as the consent
+#: refusal above: the account is not forbidden the app, it is one form away from
+#: it, and the frontend reads `must_change_password` on /api/auth/me/ to know
+#: which form.
+PASSWORD_GATE_REFUSAL = (
+    'To konto korzysta jeszcze z hasła nadanego przy jego utworzeniu. '
+    'Ustaw własne hasło, aby korzystać z aplikacji.'
+)
+
+
+class HasOwnPassword(BasePermission):
+    """The account's password is one its owner chose, or nothing but the form.
+
+    `user.must_change_password` is set in exactly one place: core/colleagues.py,
+    where a specialist creates another specialist's account. That password is
+    *generated* rather than chosen — it comes back once in the creating
+    response, is read off a note and typed by hand — so until it is replaced,
+    the credential belongs as much to whoever created the account as to whoever
+    holds it. Everything the account could otherwise reach is a patient's
+    clinical data.
+
+    A permission rather than a check inside `_require_specialist`, although
+    today only a specialist account can carry the flag: the column is on
+    `"user"`, so anything that ever hands out a password would set it, and a
+    gate that only covered the specialist panel would then be a gate over one
+    corner of the app. Same argument as the consent gate above.
+    """
+
+    message = PASSWORD_GATE_REFUSAL
+
+    def has_permission(self, request, view):
+        user = request.user
+        if user is None or not getattr(user, 'is_authenticated', False):
+            return False
+        return not user.must_change_password
+
+
+#: What a view sets to opt out of the password gate while staying behind the
+#: consent one.
+#:
+#: Exactly one view: `POST /api/account/password/`, which is the way out. Note
+#: what it still is behind — `IsAuthenticated` and `HasActiveConsents` — so an
+#: account whose consents are withdrawn is sent to the consent screen first,
+#: which is the order the two gates are meant to be answered in.
+PASSWORD_CHANGE_EXEMPT = [IsAuthenticated, HasActiveConsents]
