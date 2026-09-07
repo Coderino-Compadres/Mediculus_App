@@ -232,6 +232,11 @@ REST_FRAMEWORK = {
         # 'auth': changing what bounds login guessing must not quietly change
         # what bounds this.
         'password_change': '10/hour',
+        # POST /api/specialist/colleagues/ creates a specialist account. Its own
+        # scope rather than 'specialist_invite': creating an account is a
+        # different act from asking about an address, and the two limits should
+        # not move together. Generous for a clinic, small for a script.
+        'specialist_account': '20/hour',
         # The two forms where a specialist names a person by e-mail. Both give
         # one deliberately uninformative refusal, and this is what keeps that
         # refusal from being asked often enough to map the user table anyway —

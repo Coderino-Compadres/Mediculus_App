@@ -158,16 +158,23 @@ export type GuardianStatus = (typeof GUARDIAN_STATUS)[keyof typeof GUARDIAN_STAT
 /** Mirrors GUARDIAN_ROLE in core/serializers.py — the role that may be invited. */
 export const GUARDIAN_ROLE = 'rodzic'
 
-/** Mirrors SPECIALIST_ROLE in core/serializers.py. Printed, never authorized on
+/** Mirrors SPECIALIST_ROLE in core/colleagues.py. Printed, never authorized on
  *  — see `isSpecialist`. */
 export const SPECIALIST_ROLE = 'specjalista'
 
-/** Mirrors ACCOUNT_TYPES in core/serializers.py — the wire values, not labels. */
+/**
+ * Mirrors ACCOUNT_TYPES in core/serializers.py — the wire values, not labels.
+ *
+ * There is no 'specialist' here any more, and its absence is the feature. A
+ * professional account is a claim the app cannot check, so it is created by
+ * somebody who can: an existing specialist, in their own panel (see
+ * `createColleague` in api/specialist.ts). The backend maps no such account
+ * type either, so a hand-made body asking for one is a 400.
+ */
 export const ACCOUNT_TYPES = {
   patient: 'patient',
   minorPatient: 'minor_patient',
   parent: 'parent',
-  specialist: 'specialist',
 } as const
 
 export type AccountType = (typeof ACCOUNT_TYPES)[keyof typeof ACCOUNT_TYPES]
@@ -191,8 +198,6 @@ export interface RegisterInput {
   confirmPassword: string
   dataConsent: boolean
   servicesConsent: boolean
-  /** Only for a specialist account; the backend requires it for that type. */
-  specialization?: string
   /**
    * A code from a specialist, for a guardian whose account the specialist
    * started (core/parent_invitations.py). Optional — a guardian can register on
@@ -219,7 +224,6 @@ export const REGISTER_FIELDS: Record<string, string> = {
   password_confirm: 'confirmPassword',
   data_consent: 'dataConsent',
   services_consent: 'servicesConsent',
-  specialization: 'specialization',
   invitation_code: 'invitationCode',
 }
 
@@ -257,12 +261,9 @@ export async function register(input: RegisterInput): Promise<AuthUser> {
       account_type: input.accountType,
       data_consent: input.dataConsent,
       services_consent: input.servicesConsent,
-      // Left out entirely when empty rather than sent as '': the backend's
-      // fields are optional, and an empty string on `invitation_code` would
-      // read the same as an absent one anyway — but on a required-for-this-type
-      // field like `specialization` the distinction is what makes "not
-      // applicable" different from "left blank".
-      ...(input.specialization ? { specialization: input.specialization } : {}),
+      // Left out entirely when empty rather than sent as '': the field is
+      // optional on the backend, and a guardian registering without a code has
+      // no code rather than an empty one.
       ...(input.invitationCode ? { invitation_code: input.invitationCode } : {}),
     },
   })

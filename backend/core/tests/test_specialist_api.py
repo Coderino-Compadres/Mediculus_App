@@ -1,10 +1,11 @@
 """The specialist's panel: /api/specialist/, and the patient's half of it.
 
 The property worth testing here is not that the endpoints work — it is *who they
-refuse*. Registration is self-service (a specialist signs up like anybody else),
-so being a specialist authorizes nothing at all: the only thing that puts a
-patient's weekly reports in front of somebody is that patient accepting an
-invitation. Every test below is really about that one sentence.
+refuse*. Being a specialist authorizes nothing at all: the only thing that puts
+a patient's weekly reports in front of somebody is that patient accepting an
+invitation. Every test below is really about that one sentence. (Where the
+account itself comes from is test_specialist_accounts.py — a colleague creates
+it; the public form cannot.)
 
 The other recurring theme is the invitation form's silence: an unknown address,
 a guardian's address and a patient who already has a specialist all answer
@@ -24,8 +25,7 @@ from rest_framework.test import APIClient
 from core.authentication import SESSION_USER_KEY
 from core.models import Diary, Patient, Specjalist, User, UserRole
 from core.reports import DAYS_IN_WEEK, start_of_week, week_report_id
-from core.serializers import (ACCOUNT_TYPE_SPECIALIST,
-                              SpecialistPatientInviteSerializer)
+from core.serializers import SpecialistPatientInviteSerializer
 from core.specialist import PATIENT_SUMMARY_FIELDS
 
 PASSWORD = 'TajneHaslo123'
@@ -87,50 +87,38 @@ class SpecialistTestCase(TestCase):
 
 
 class RegistrationTests(SpecialistTestCase):
-    """A specialist account comes from the public form, like every other."""
+    """A specialist account does not come from the public form any more.
 
-    def setUp(self):
-        super().setUp()
-        # Roles are seeded by scripts/mock_data.sql rather than by a migration,
-        # so the test database has none until something makes them. Registration
-        # survives a missing row (role comes back null); these tests are about
-        # what it writes when the row is there.
-        UserRole.objects.get_or_create(name='specjalista')
+    What replaced it — POST /api/specialist/colleagues/ — has its own suite in
+    test_specialist_accounts.py. What is left here is the one property this file
+    cares about: that the *panel* still grants nothing by itself, whichever way
+    the account behind it was made.
+    """
 
-    def register(self, **overrides):
-        body = {
+    def test_the_public_form_cannot_create_a_specialist(self):
+        """`ACCOUNT_TYPES` maps no specialist, so the choice is invalid rather
+        than a specialist without a `specjalist` row."""
+        response = self.client.post(reverse('core:register'), {
             'email': 'anna@example.com',
             'password': 'BardzoTajne987',
             'password_confirm': 'BardzoTajne987',
             'name': 'Anna',
             'surname': 'Terapeutka',
             'date_of_birth': '1985-02-01',
-            'account_type': ACCOUNT_TYPE_SPECIALIST,
+            'account_type': 'specialist',
             'specialization': 'psychoterapia poznawczo-behawioralna',
             'data_consent': True,
             'services_consent': True,
-        }
-        body.update(overrides)
-        return self.client.post(reverse('core:register'), body, format='json')
+        }, format='json')
 
-    def test_it_creates_a_specjalist_row_and_no_patient_row(self):
-        """The whole shape of the account: a specialist is not a clinical
-        subject, so there is no id_medical and nothing in medical_db can ever
-        refer to them."""
-        response = self.register()
-
-        self.assertEqual(response.status_code, 201, response.data)
-        user = User.objects.get(email='anna@example.com')
-        self.assertEqual(user.user_role.name, 'specjalista')
-        self.assertTrue(Specjalist.objects.filter(user=user).exists())
-        self.assertFalse(Patient.objects.filter(user=user).exists())
-        self.assertEqual(
-            Specjalist.objects.get(user=user).specjalization,
-            'psychoterapia poznawczo-behawioralna',
-        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('account_type', response.data)
+        self.assertFalse(User.objects.filter(email='anna@example.com').exists())
+        self.assertFalse(Specjalist.objects.exists())
 
     def test_me_reports_is_specialist_so_the_frontend_can_route(self):
-        self.register()
+        specjalist = self.make_specialist()
+        self.sign_in(specjalist.user)
 
         response = self.client.get(reverse('core:me'))
 
@@ -141,35 +129,13 @@ class RegistrationTests(SpecialistTestCase):
         self.assertIsNone(response.data['is_child'])
         self.assertIsNone(response.data['guardian_status'])
 
-    def test_the_specialization_is_required_for_this_type_only(self):
-        """The patient reads it when deciding whether to accept them."""
-        response = self.register(specialization='')
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('specialization', response.data)
-        self.assertFalse(User.objects.filter(email='anna@example.com').exists())
-
-    def test_a_patient_does_not_have_to_answer_it(self):
-        response = self.register(
-            account_type='patient', specialization='', email='pacjent2@example.com',
-        )
-
-        self.assertEqual(response.status_code, 201, response.data)
-
-    def test_a_minor_cannot_hold_a_specialist_account(self):
-        minor = (timezone.localdate() - datetime.timedelta(days=365 * 15)).isoformat()
-
-        response = self.register(date_of_birth=minor)
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('date_of_birth', response.data)
-
     def test_a_new_specialist_sees_an_empty_panel_and_nobody_else_s_data(self):
-        """The property the self-service registration rests on: the role grants
-        nothing. `patient.id_specjalist` is not self-assignable."""
+        """The property the whole panel rests on: the role grants nothing.
+        `patient.id_specjalist` is not self-assignable, and being created by a
+        colleague does not assign one either."""
         other = self.make_patient()
         self.entry(other)
-        self.register()
+        self.sign_in(self.make_specialist(email='nowa@example.com').user)
 
         response = self.client.get(reverse('core:specialist-patients'))
 

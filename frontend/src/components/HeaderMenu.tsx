@@ -54,6 +54,7 @@ const GUARDIAN_ITEMS: MenuItem[] = [
 const SPECIALIST_ITEMS: MenuItem[] = [
   { label: 'Strona główna', to: ROUTES.specialistHome },
   { label: routeTitle(ROUTES.specialistParentAccounts), to: ROUTES.specialistParentAccounts },
+  { label: routeTitle(ROUTES.specialistColleagues), to: ROUTES.specialistColleagues },
   { label: routeTitle(ROUTES.specialistTechniques), to: ROUTES.specialistTechniques },
   { label: routeTitle(ROUTES.techniques), to: ROUTES.techniques },
   { label: routeTitle(ROUTES.profile), to: ROUTES.profile },

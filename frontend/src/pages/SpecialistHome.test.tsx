@@ -40,7 +40,7 @@ describe('SpecialistHome', () => {
     ).toBeInTheDocument()
   })
 
-  it('offers the three things the panel is for', async () => {
+  it('offers the four things the panel is for', async () => {
     renderScreen()
 
     expect(
@@ -48,6 +48,9 @@ describe('SpecialistHome', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Konta opiekunów/ })).toHaveAttribute(
       'href', ROUTES.specialistParentAccounts,
+    )
+    expect(screen.getByRole('link', { name: /Konta specjalistów/ })).toHaveAttribute(
+      'href', ROUTES.specialistColleagues,
     )
     expect(screen.getByRole('link', { name: /Moje techniki/ })).toHaveAttribute(
       'href', ROUTES.specialistTechniques,

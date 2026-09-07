@@ -167,11 +167,30 @@ class SpecialistInviteThrottle(UserRateThrottle):
     Its own scope rather than the shared 'auth' one, for the reason on
     PasswordChangeThrottle: one name covering two policies means changing the
     login limit silently changes this. Keyed on the account, which is the right
-    key here — registration is self-service, so a new IP is free and a new
-    specialist account is not (it needs an address nobody has used).
+    key here: a new IP is free, and a new specialist account is not — it has to
+    be created by an existing specialist (core/colleagues.py) on an address
+    nobody has used.
     """
 
     scope = 'specialist_invite'
+
+
+class SpecialistAccountThrottle(UserRateThrottle):
+    """Per-account cap on POST /api/specialist/colleagues/.
+
+    A different kind of request from the invitation forms above, hence a
+    different scope: this one *creates an account* — a row in `user`, a role and
+    a credential — so what it bounds is not an enumeration oracle but a session
+    used to mint professional accounts. A clinic adding colleagues does so a
+    handful of times, so the cap is generous and still nowhere near a script's
+    idea of many.
+
+    Its own scope, so that changing what bounds the invitation forms does not
+    quietly change what bounds account creation (the reason on
+    PasswordChangeThrottle, again).
+    """
+
+    scope = 'specialist_account'
 
 
 class PasswordChangeThrottle(UserRateThrottle):

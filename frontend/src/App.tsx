@@ -10,6 +10,7 @@ import SpecialistHome from './pages/SpecialistHome'
 import SpecialistPatientReports from './pages/SpecialistPatientReports'
 import SpecialistPatientReport from './pages/SpecialistPatientReport'
 import SpecialistParentAccounts from './pages/SpecialistParentAccounts'
+import SpecialistColleagues from './pages/SpecialistColleagues'
 import SpecialistTechniques from './pages/SpecialistTechniques'
 import SpecialistTechniqueForm from './pages/SpecialistTechniqueForm'
 import Home from './pages/Home'
@@ -256,6 +257,14 @@ function App() {
             element={
               <RequireSpecialist>
                 <SpecialistParentAccounts />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistColleagues}
+            element={
+              <RequireSpecialist>
+                <SpecialistColleagues />
               </RequireSpecialist>
             }
           />

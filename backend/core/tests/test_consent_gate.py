@@ -75,6 +75,8 @@ def all_urls(diary_id, report_id, invitation_id, patient_id=None):
         ('get', reverse('core:specialist-parent-invitations')),
         ('post', reverse('core:specialist-parent-invitations')),
         ('delete', reverse('core:specialist-parent-invitation', args=[invitation_id])),
+        ('get', reverse('core:specialist-colleagues')),
+        ('post', reverse('core:specialist-colleagues')),
         ('get', reverse('core:specialist-techniques')),
         ('post', reverse('core:specialist-techniques')),
         ('put', reverse('core:specialist-technique', args=[1])),

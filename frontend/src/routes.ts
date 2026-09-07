@@ -16,6 +16,9 @@ export const ROUTES = {
   specialistPatientReport: '/specialist/patients/:patientId/reports/:reportId',
   /** Where a specialist issues a code for a guardian's account. */
   specialistParentAccounts: '/specialist/parent-accounts',
+  /** Where a specialist creates another specialist's account — the only place
+   *  one can be created at all (see pages/SpecialistColleagues.tsx). */
+  specialistColleagues: '/specialist/colleagues',
   /** The specialist's own techniques, and the form that writes one. */
   specialistTechniques: '/specialist/techniques',
   specialistTechniqueNew: '/specialist/techniques/new',
@@ -101,6 +104,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistPatientReports]: 'Raporty pacjenta',
   [ROUTES.specialistPatientReport]: 'Raport tygodniowy pacjenta',
   [ROUTES.specialistParentAccounts]: 'Konta opiekunów',
+  [ROUTES.specialistColleagues]: 'Konta specjalistów',
   [ROUTES.specialistTechniques]: 'Moje techniki',
   [ROUTES.specialistTechniqueNew]: 'Nowa technika',
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',

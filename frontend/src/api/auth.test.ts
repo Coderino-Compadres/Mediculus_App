@@ -106,17 +106,18 @@ describe('register', () => {
 
   it('uses the wire values the backend switches on, not display labels', () => {
     // ACCOUNT_TYPES mirrors core/serializers.py; 'minor_patient' is what decides
-    // that a Patient row gets is_child=True, and 'specialist' is what creates a
-    // `specjalist` row instead of a `patient` one.
+    // that a Patient row gets is_child=True. There is deliberately no
+    // 'specialist' — that account is created by another specialist
+    // (api/specialist.ts), and the backend maps no such type any more.
     expect(Object.values(ACCOUNT_TYPES)).toEqual([
-      'patient', 'minor_patient', 'parent', 'specialist',
+      'patient', 'minor_patient', 'parent',
     ])
+    expect(Object.values(ACCOUNT_TYPES)).not.toContain('specialist')
   })
 
-  it('leaves out the two fields that apply to one account type each', async () => {
-    // Absent rather than '' — on `specialization` that is the difference between
-    // "does not apply" and "left blank", and the backend requires it for a
-    // specialist and ignores it for everyone else.
+  it('leaves out the invitation code when there is none', async () => {
+    // Absent rather than '': a guardian registering without a code has no code,
+    // and every other account type has nowhere to type one.
     mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
 
     await register({
@@ -129,34 +130,12 @@ describe('register', () => {
       confirmPassword: 'Haslo123!',
       dataConsent: true,
       servicesConsent: true,
-      specialization: '',
       invitationCode: '',
     })
 
     const body = mockedRequest.mock.calls[0][1]!.body as Record<string, unknown>
     expect(body).not.toHaveProperty('specialization')
     expect(body).not.toHaveProperty('invitation_code')
-  })
-
-  it('sends the specialization a specialist typed', async () => {
-    mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
-
-    await register({
-      accountType: ACCOUNT_TYPES.specialist,
-      firstName: 'Anna',
-      lastName: 'Terapeutka',
-      dateOfBirth: '1985-02-01',
-      email: 'anna@wp.pl',
-      password: 'Haslo123!',
-      confirmPassword: 'Haslo123!',
-      dataConsent: true,
-      servicesConsent: true,
-      specialization: 'psychoterapia poznawczo-behawioralna',
-    })
-
-    const body = mockedRequest.mock.calls[0][1]!.body as Record<string, unknown>
-    expect(body.account_type).toBe('specialist')
-    expect(body.specialization).toBe('psychoterapia poznawczo-behawioralna')
   })
 
   it('sends a guardian’s invitation code, so a bad one refuses the registration', async () => {
@@ -292,7 +271,7 @@ describe('toFormErrors', () => {
     expect(Object.keys(REGISTER_FIELDS).sort()).toEqual([
       'account_type', 'data_consent', 'date_of_birth', 'email',
       'invitation_code', 'name', 'password', 'password_confirm',
-      'services_consent', 'specialization', 'surname',
+      'services_consent', 'surname',
     ])
     expect(Object.keys(LOGIN_FIELDS).sort()).toEqual(['email', 'password'])
   })
