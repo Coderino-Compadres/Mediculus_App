@@ -28,9 +28,8 @@ const INITIAL_VALUES = {
   email: '',
   password: '',
   confirmPassword: '',
-  // Both only apply to one account type, and both are sent only when filled —
-  // see `register` in api/auth.ts.
-  specialization: '',
+  // Applies to one account type only, and is sent only when filled — see
+  // `register` in api/auth.ts.
   invitationCode: '',
 }
 
@@ -40,16 +39,18 @@ const INITIAL_VALUES = {
 // check and the backend both still verify it.
 const TODAY = new Date().toISOString().slice(0, 10)
 
+// THERE IS NO "konto specjalisty" HERE, and that is the feature rather than an
+// oversight. A specialist used to register from this form, which was safe as far
+// as access goes (the role grants nothing on its own) but wrong about the claim
+// it makes: the app cannot check anybody's qualifications. A professional
+// account is now created by somebody who can — an existing specialist, on
+// "Konta specjalistów" in their panel (pages/SpecialistColleagues.tsx). The
+// backend maps no such account type either, so adding the option back here
+// would produce a 400 rather than a specialist.
 const ACCOUNT_TYPE_OPTIONS: SelectOption[] = [
   { value: ACCOUNT_TYPES.patient, label: 'Konto pacjenta' },
   { value: ACCOUNT_TYPES.minorPatient, label: 'Konto pacjenta małoletniego' },
   { value: ACCOUNT_TYPES.parent, label: 'Konto rodzica lub opiekuna' },
-  // A specialist registers here like everybody else, and that is safe because of
-  // what the role does *not* grant: every patient-facing endpoint refuses them,
-  // and the reports they may read are the reports of patients who accepted their
-  // invitation. `patient.id_specjalist` is not self-assignable — see the note on
-  // ACCOUNT_TYPES in core/serializers.py.
-  { value: ACCOUNT_TYPES.specialist, label: 'Konto specjalisty' },
 ]
 
 // Keyed by ConsentId, so the boxes and the wording below cannot drift apart:
@@ -80,34 +81,21 @@ function accountTypeConflict(accountType: string, dateOfBirth: string): string |
 }
 
 /**
- * The specialist's own required field, checked here so the answer does not need
- * a round-trip. Mirrors `_check_specialist_fields` in core/serializers.py, which
- * is what actually decides.
+ * The invitation code, for the one account type it can apply to.
  *
- * Why it is required at all: the patient reads it next to the specialist's name
- * when deciding whether to accept them, and on the care card afterwards. An
- * account without it asks somebody to agree to be treated by a person with no
- * stated role.
+ * Left out entirely for every other type rather than sent as '': the input is
+ * rendered conditionally but its *value* lives in a form state that survives a
+ * change of account type, so somebody who typed a code as a guardian and then
+ * switched to "konto pacjenta" was still sending it. The backend refuses a code
+ * on any other type (correctly — a code that quietly did nothing would look
+ * like it had worked), the error came back under `invitation_code`, and that
+ * input was no longer on screen: the form failed with **no visible message at
+ * all**.
  */
-function validateSpecialization(accountType: string, value: string): string | null {
-  if (accountType !== ACCOUNT_TYPES.specialist) return null
-  return value.trim()
-    ? null
-    : 'Podaj swoją specjalizację — pacjent widzi ją przy Twoim nazwisku.'
-}
-
-/** The specialization, for the one account type that has one. */
-function specialistOnly(values: { accountType: string; specialization: string }) {
-  return values.accountType === ACCOUNT_TYPES.specialist
-    ? { specialization: values.specialization }
-    : { specialization: '' }
-}
-
-/** The invitation code, for the one account type it can apply to. */
 function guardianOnly(values: { accountType: string; invitationCode: string }) {
   return values.accountType === ACCOUNT_TYPES.parent
     ? { invitationCode: values.invitationCode }
-    : { invitationCode: '' }
+    : {}
 }
 
 function Register() {
@@ -144,9 +132,6 @@ function Register() {
           lastName: validateName(currentValues.lastName, 'nazwisko'),
           dateOfBirth,
           email: validateEmail(currentValues.email),
-          specialization: validateSpecialization(
-            currentValues.accountType, currentValues.specialization,
-          ),
           password: validatePassword(currentValues.password),
           confirmPassword: validateConfirmPassword(currentValues.confirmPassword, currentValues.password),
           dataConsent: validateConsent(
@@ -168,19 +153,19 @@ function Register() {
       submit: async (currentValues) => {
         // The backend logs the new account in as part of registering it, so
         // there is no second trip through /login here.
+        // Spelled out field by field rather than spread from the form state:
+        // `invitationCode` is the only conditional one left, and see
+        // `guardianOnly` for why sending it as '' was a real failure rather
+        // than an untidiness.
         const user = await register({
-          ...currentValues,
+          accountType: currentValues.accountType,
+          firstName: currentValues.firstName,
+          lastName: currentValues.lastName,
+          dateOfBirth: currentValues.dateOfBirth,
+          email: currentValues.email,
+          password: currentValues.password,
+          confirmPassword: currentValues.confirmPassword,
           ...consents,
-          // Only the field that belongs to the chosen account type is sent, and
-          // that is a fix rather than tidiness. Both inputs are rendered
-          // conditionally, but their *values* live in one form state that
-          // survives a change of account type — so somebody who typed a code as
-          // a guardian and then switched to "konto pacjenta" was still sending
-          // it. The backend refuses a code on any other type (correctly: a code
-          // that quietly did nothing would look like it had worked), the error
-          // came back under `invitation_code`, and that input no longer existed
-          // on screen — so the form failed with **no visible message at all**.
-          ...specialistOnly(currentValues),
           ...guardianOnly(currentValues),
         })
         setUser(user)
@@ -217,24 +202,7 @@ function Register() {
           error={errors.accountType}
           disabled={submitting}
         />
-        {/* Only for the account type that needs it. Rendered conditionally rather
-            than always: an empty "specjalizacja" on a patient's registration form
-            is a question they cannot answer, and a stray value would be silently
-            ignored by the backend. */}
-        {values.accountType === ACCOUNT_TYPES.specialist && (
-          <FormField
-            id="specialization"
-            label="Specjalizacja"
-            type="text"
-            autoComplete="off"
-            placeholder="np. psychoterapia poznawczo-behawioralna"
-            value={values.specialization}
-            onChange={handleChange}
-            error={errors.specialization}
-            disabled={submitting}
-          />
-        )}
-        {/* One row rather than two: the form already asks for nine things in a
+        {/* One row rather than two: the form already asks for eight things in a
             column, and a name split across two full-width rows read as two
             unrelated questions. .auth-row collapses back to one column under
             440px, where half a card is not enough for either input. */}

@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  COLLEAGUE_FIELDS,
   acceptSpecialistInvitation,
+  createColleague,
   createParentInvitation,
+  fetchColleagues,
   dropPatient,
   fetchCaseload,
   fetchParentInvitations,
@@ -271,5 +274,100 @@ describe('the patient’s side of an invitation', () => {
     expect(mockedRequest).toHaveBeenCalledWith(
       '/api/account/specialist-invitation/reject/', { method: 'POST' },
     )
+  })
+})
+
+describe('specialist accounts', () => {
+  const COLLEAGUE_PAYLOAD = {
+    id: 'aaaa-1111',
+    name: 'Anna',
+    surname: 'Terapeutka',
+    email: 'anna@wp.pl',
+    specialization: 'psychoterapia poznawczo-behawioralna',
+    created_at: '2026-09-01T09:00:00+02:00',
+    consents_active: false,
+  }
+
+  it('maps the roster and never invents a password', async () => {
+    mockedRequest.mockResolvedValueOnce([COLLEAGUE_PAYLOAD])
+
+    const rows = await fetchColleagues()
+
+    expect(mockedRequest).toHaveBeenCalledWith('/api/specialist/colleagues/')
+    expect(rows).toEqual([{
+      id: 'aaaa-1111',
+      name: 'Anna',
+      surname: 'Terapeutka',
+      email: 'anna@wp.pl',
+      specialization: 'psychoterapia poznawczo-behawioralna',
+      createdAt: '2026-09-01T09:00:00+02:00',
+      consentsActive: false,
+    }])
+    expect(rows[0]).not.toHaveProperty('password')
+  })
+
+  it('carries "waiting for its owner" through as a real state, not a default', async () => {
+    // An account nobody has logged into yet has granted no consents — creating
+    // it cannot grant them (core/colleagues.py) — so `false` here is the answer
+    // to "why can they not log in" and must not be smoothed into `true`.
+    mockedRequest.mockResolvedValueOnce([
+      COLLEAGUE_PAYLOAD,
+      { ...COLLEAGUE_PAYLOAD, id: 'bbbb-2222', consents_active: true },
+    ])
+
+    const rows = await fetchColleagues()
+
+    expect(rows.map((row) => row.consentsActive)).toEqual([false, true])
+  })
+
+  it('sends the account’s details under the backend’s own field names', async () => {
+    mockedRequest.mockResolvedValueOnce({
+      password: 'ABCD-EFGH-JKMN-PQRT', specialist: COLLEAGUE_PAYLOAD,
+    })
+
+    await createColleague({
+      email: 'anna@wp.pl',
+      firstName: 'Anna',
+      lastName: 'Terapeutka',
+      dateOfBirth: '1985-02-01',
+      specialization: 'psychoterapia poznawczo-behawioralna',
+    })
+
+    expect(mockedRequest).toHaveBeenCalledWith('/api/specialist/colleagues/', {
+      method: 'POST',
+      body: {
+        email: 'anna@wp.pl',
+        name: 'Anna',
+        surname: 'Terapeutka',
+        date_of_birth: '1985-02-01',
+        specialization: 'psychoterapia poznawczo-behawioralna',
+      },
+    })
+  })
+
+  it('hands the plaintext password back from the call that created it', async () => {
+    // The only call that ever has it: the row holds a hash, so no other
+    // endpoint can answer with one.
+    mockedRequest.mockResolvedValueOnce({
+      password: 'ABCD-EFGH-JKMN-PQRT', specialist: COLLEAGUE_PAYLOAD,
+    })
+
+    const created = await createColleague({
+      email: 'anna@wp.pl',
+      firstName: 'Anna',
+      lastName: 'Terapeutka',
+      dateOfBirth: '1985-02-01',
+      specialization: 'psychoterapia poznawczo-behawioralna',
+    })
+
+    expect(created.password).toBe('ABCD-EFGH-JKMN-PQRT')
+    expect(created.specialist.email).toBe('anna@wp.pl')
+  })
+
+  it('maps every field the form can be refused on', async () => {
+    // A field missing here means a Django error lands nowhere visible.
+    expect(Object.keys(COLLEAGUE_FIELDS).sort()).toEqual([
+      'date_of_birth', 'email', 'name', 'specialization', 'surname',
+    ])
   })
 })

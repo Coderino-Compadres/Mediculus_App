@@ -25,3 +25,20 @@ export function patientLabel(patient: {
   const name = [patient.name?.trim(), patient.surname?.trim()].filter(Boolean).join(' ')
   return name || patient.email?.trim() || 'Konto pacjenta'
 }
+
+/**
+ * How a specialist is named in the roster of professional accounts.
+ *
+ * The same shape as `patientLabel` and for the same reason — every name column
+ * in this schema is nullable, so a row with neither a name nor an address is
+ * possible and still has to be readable. The fallback differs only in what kind
+ * of account it is describing.
+ */
+export function colleagueLabel(colleague: {
+  name: string | null
+  surname: string | null
+  email: string | null
+}): string {
+  const name = [colleague.name?.trim(), colleague.surname?.trim()].filter(Boolean).join(' ')
+  return name || colleague.email?.trim() || 'Konto specjalisty'
+}

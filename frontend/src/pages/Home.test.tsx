@@ -19,6 +19,21 @@ vi.mock('../api/dashboard', () => ({ fetchHomeDashboard: vi.fn() }))
 const { fetchHomeDashboard } = await import('../api/dashboard')
 const mockedFetch = vi.mocked(fetchHomeDashboard)
 
+/**
+ * The specialist-invitation card sits on this screen too and asks the API for
+ * itself. Stubbed as "nobody has invited this patient" — the ordinary case, and
+ * the one that leaves the dashboard's own messages the only ones on screen. Left
+ * unmocked, its failed request drew a second `role="alert"` and every assertion
+ * about *the* alert here failed on an ambiguity that had nothing to do with the
+ * dashboard. The card's own behaviour is covered in
+ * components/SpecialistInvitation.test.tsx.
+ */
+vi.mock('../api/specialist', () => ({
+  fetchSpecialistInvitation: vi.fn().mockResolvedValue(null),
+  acceptSpecialistInvitation: vi.fn(),
+  rejectSpecialistInvitation: vi.fn(),
+}))
+
 function day(overrides: Partial<DayMood> = {}): DayMood {
   return {
     date: '2026-08-20',

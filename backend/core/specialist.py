@@ -4,9 +4,11 @@
 whose weekly reports a specialist may open — and until this module existed it
 was written by `scripts/mock_data.sql` and by nothing else. Letting a specialist
 write it directly was the obvious next step and is exactly what is *not* done
-here: registration is self-service (`ACCOUNT_TYPE_SPECIALIST` in
-core/serializers.py), so a form that assigned patients on submit would let any
-account calling itself a specialist read anybody's reports.
+here: a form that assigned patients on submit would let any account holding a
+`specjalist` row read anybody's reports. Who holds one is now decided by another
+specialist (`core/colleagues.py`) rather than by whoever fills in the
+registration form, which raises the bar on getting into the panel at all — but
+it is not what protects the reports, and nothing here leans on it.
 
 So it is an invitation, in the same shape as the guardian one and for the same
 reason: naming somebody is a request, and the person whose health data is at

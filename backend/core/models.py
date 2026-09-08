@@ -39,6 +39,21 @@ class User(models.Model):
     # which is the one place that comparison is written.
     data_consent_withdrawn_at = models.DateTimeField(null=True, blank=True)
     services_consent_withdrawn_at = models.DateTimeField(null=True, blank=True)
+    # TRUE while the account is still holding a password somebody else chose for
+    # it. Exactly one thing sets it: core/colleagues.py, where a specialist
+    # creates another specialist's account and the first password is generated,
+    # read off a note and typed by hand -- a credential its owner did not pick
+    # and at least one other person knows. `core.permissions.HasOwnPassword`
+    # answers everything but the form that changes it until this is cleared,
+    # which `PasswordChangeSerializer.save` does.
+    #
+    # A boolean rather than a moment, unlike the consent columns above: nothing
+    # has to be *proved* about it afterwards. `updated_at` already records when
+    # the password last changed; this only decides which screen the account may
+    # reach. FALSE for every account that chose its own password at
+    # registration, which is why the column is NOT NULL with that default --
+    # existing rows are correct without a backfill.
+    must_change_password = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

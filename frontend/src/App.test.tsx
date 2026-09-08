@@ -365,6 +365,119 @@ describe('an account whose consents are not in force', () => {
   })
 })
 
+describe('an account still using a password somebody else generated', () => {
+  /**
+   * A specialist account created by a colleague. The password came back once on
+   * the creating screen and was handed over in the room, so its holder did not
+   * choose it and at least one other person knows it — and what the panel opens
+   * onto is other people's clinical records. `core/permissions.HasOwnPassword`
+   * enforces the same thing on the server; this is only about which screen gets
+   * drawn.
+   */
+  const HELD: AuthUser = {
+    ...TEST_USER,
+    role: 'specjalista',
+    isPatient: false,
+    isSpecialist: true,
+    isChild: null,
+    mustChangePassword: true,
+  }
+
+  const HEADING = /Ustaw własne hasło/
+
+  it('is sent to the password screen from every other route', async () => {
+    mockedFetchUser.mockResolvedValue(HELD)
+
+    for (const route of [
+      ROUTES.specialistHome, ROUTES.specialistColleagues, ROUTES.specialistTechniques,
+      ROUTES.techniques, ROUTES.profile, ROUTES.modules, '/',
+    ]) {
+      const { unmount } = renderAt(route)
+      expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('is sent there instead of to the login page it is already past', async () => {
+    mockedFetchUser.mockResolvedValueOnce(HELD)
+
+    renderAt(ROUTES.login)
+
+    expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
+  })
+
+  it('reaches the password screen directly', async () => {
+    mockedFetchUser.mockResolvedValueOnce(HELD)
+
+    renderAt(ROUTES.passwordChange)
+
+    expect(await screen.findByRole('heading', { name: HEADING })).toBeInTheDocument()
+  })
+
+  it('answers the consents first when it is behind both gates', async () => {
+    /** Not a preference: POST /api/account/password/ is itself behind
+     *  HasActiveConsents, so the other order would put the account in front of a
+     *  form the backend refuses. A newly created specialist account is behind
+     *  both — it has granted nothing and chosen nothing. */
+    mockedFetchUser.mockResolvedValueOnce({
+      ...HELD,
+      consents: {
+        active: false,
+        data: { grantedAt: null, withdrawnAt: null, active: false },
+        services: { grantedAt: null, withdrawnAt: null, active: false },
+      },
+    })
+
+    renderAt(ROUTES.passwordChange)
+
+    expect(
+      await screen.findByRole('heading', { name: /Bez zgód nie możemy prowadzić Twojego konta/ }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: HEADING })).toBeNull()
+  })
+
+  it('waits for the session before deciding, rather than flashing the screen', async () => {
+    mockedFetchUser.mockReturnValueOnce(new Promise(() => {}))
+
+    const { container } = renderAt(ROUTES.passwordChange)
+
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: HEADING })).toBeNull()
+  })
+})
+
+describe('the password screen is only for accounts that need it', () => {
+  it('pushes a specialist who chose their own password off it', async () => {
+    mockedFetchUser.mockResolvedValueOnce({
+      ...TEST_USER, role: 'specjalista', isPatient: false, isSpecialist: true, isChild: null,
+    })
+
+    renderAt(ROUTES.passwordChange)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Panel specjalisty' }),
+    ).toBeInTheDocument()
+  })
+
+  it('pushes an ordinary patient off it', async () => {
+    mockedFetchUser.mockResolvedValueOnce(TEST_USER)
+
+    renderAt(ROUTES.passwordChange)
+
+    expect(
+      await screen.findByRole('heading', { name: /Gdzie dzisiaj zaczynamy/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('sends a visitor to login rather than to the password screen', async () => {
+    mockedFetchUser.mockResolvedValueOnce(null)
+
+    renderAt(ROUTES.passwordChange)
+
+    expect(await screen.findByLabelText(/hasło/i)).toBeInTheDocument()
+  })
+})
+
 describe('the consent screen is only for accounts that need it', () => {
   it('pushes a consenting patient off it', async () => {
     mockedFetchUser.mockResolvedValueOnce(TEST_USER)

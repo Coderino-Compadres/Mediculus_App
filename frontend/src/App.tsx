@@ -5,11 +5,13 @@ import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
+import PasswordChangeRequired from './pages/PasswordChangeRequired'
 import ParentHome from './pages/ParentHome'
 import SpecialistHome from './pages/SpecialistHome'
 import SpecialistPatientReports from './pages/SpecialistPatientReports'
 import SpecialistPatientReport from './pages/SpecialistPatientReport'
 import SpecialistParentAccounts from './pages/SpecialistParentAccounts'
+import SpecialistColleagues from './pages/SpecialistColleagues'
 import SpecialistTechniques from './pages/SpecialistTechniques'
 import SpecialistTechniqueForm from './pages/SpecialistTechniqueForm'
 import Home from './pages/Home'
@@ -29,7 +31,13 @@ import OfflineBanner from './components/OfflineBanner'
 import RouteChange from './components/RouteChange'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/authContext'
-import { isGuardian, isSpecialist, needsConsents, needsGuardianLink } from './api/auth'
+import {
+  isGuardian,
+  isSpecialist,
+  needsConsents,
+  needsGuardianLink,
+  needsPasswordChange,
+} from './api/auth'
 import { PLACEHOLDER_ROUTES, ROUTES } from './routes'
 import type { AuthUser } from './api/auth'
 
@@ -50,6 +58,22 @@ import type { AuthUser } from './api/auth'
 function homeRouteFor(user: AuthUser): string {
   if (isSpecialist(user)) return ROUTES.specialistHome
   return isGuardian(user) ? ROUTES.parentHome : ROUTES.modules
+}
+
+/**
+ * The screen an account is *held* on, if it is being held on one — otherwise null.
+ *
+ * Two gates, and the order is written down once here rather than in each of the
+ * six guards below, because it is not a free choice. The consents come first:
+ * `POST /api/account/password/` is itself behind `HasActiveConsents` on the
+ * backend, so an account sent to the password screen while its consents are
+ * missing would find the only form it may use answering 403. Both are enforced
+ * server-side (`core/permissions.py`); this only decides which screen to draw.
+ */
+function gateRouteFor(user: AuthUser): string | null {
+  if (needsConsents(user)) return ROUTES.consents
+  if (needsPasswordChange(user)) return ROUTES.passwordChange
+  return null
 }
 
 /** Both guards have to wait for the first /api/auth/me/, or a reload would
@@ -86,11 +110,14 @@ function RequireAuth({
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
   if (!user) return <Navigate to={ROUTES.login} replace />
-  // Checked before everything else, because it is the outer question: without
-  // the consents there is no lawful basis to process anything, whoever has or
-  // has not vouched for the account — and unlike the guardian gate, this is one
-  // the account's own owner can clear by themselves.
-  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
+  // Checked before everything else, because they are the outer questions:
+  // without the consents there is no lawful basis to process anything, whoever
+  // has or has not vouched for the account, and an account still holding a
+  // password a colleague generated has not yet shown that its holder is who the
+  // session says. Unlike the guardian gate, both are ones the account's own
+  // owner can clear by themselves.
+  const gate = gateRouteFor(user)
+  if (gate) return <Navigate to={gate} replace />
   // A minor's account is unusable until a guardian's account vouches for it, so
   // every other screen leads back to the one form that can fix that.
   if (needsGuardianLink(user)) return <Navigate to={ROUTES.linkGuardian} replace />
@@ -116,23 +143,27 @@ function RequireGuardian({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
   if (!user) return <Navigate to={ROUTES.login} replace />
-  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
+  const gate = gateRouteFor(user)
+  if (gate) return <Navigate to={gate} replace />
   return isGuardian(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
 }
 
 /**
  * The same, for the specialist panel.
  *
- * The consent gate is checked here too, and it is not decoration: the panel is
- * behind `HasActiveConsents` on the backend like everything else, so a
- * specialist whose own consents are withdrawn would otherwise reach a screen
- * that 403s on every request it makes.
+ * Both gates are checked here too, and neither is decoration: the panel is
+ * behind `HasActiveConsents` and `HasOwnPassword` on the backend like everything
+ * else, so a specialist whose own consents are withdrawn — or one who has just
+ * been handed an account and its generated password — would otherwise reach a
+ * screen that 403s on every request it makes. This is the panel the password
+ * gate exists for: what it opens onto is other people's clinical records.
  */
 function RequireSpecialist({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
   if (!user) return <Navigate to={ROUTES.login} replace />
-  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
+  const gate = gateRouteFor(user)
+  if (gate) return <Navigate to={gate} replace />
   return isSpecialist(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
 }
 
@@ -150,19 +181,37 @@ function RequireConsents({ children }: { children: ReactNode }) {
   return needsConsents(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
 }
 
+/**
+ * The password screen, and only for an account that is actually held on it.
+ *
+ * The mirror of the redirect above, and it asks `needsConsents` first for the
+ * same reason `gateRouteFor` does: an account missing both belongs on the
+ * consent screen, and letting it sit here would put it in front of a form the
+ * backend refuses.
+ */
+function RequirePasswordChange({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <AuthPending />
+  if (!user) return <Navigate to={ROUTES.login} replace />
+  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
+  return needsPasswordChange(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
+}
+
 /** The same, for the one screen only an unlinked minor belongs on. */
 function RequireGuardianLink({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
   if (!user) return <Navigate to={ROUTES.login} replace />
-  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
+  const gate = gateRouteFor(user)
+  if (gate) return <Navigate to={gate} replace />
   return needsGuardianLink(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
 }
 
 function GuestOnly({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
-  if (user && needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
+  const gate = user && gateRouteFor(user)
+  if (gate) return <Navigate to={gate} replace />
   return user ? <Navigate to={homeRouteFor(user)} replace /> : <>{children}</>
 }
 
@@ -171,7 +220,8 @@ function LandingRedirect() {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
   if (!user) return <Navigate to={ROUTES.login} replace />
-  if (needsConsents(user)) return <Navigate to={ROUTES.consents} replace />
+  const gate = gateRouteFor(user)
+  if (gate) return <Navigate to={gate} replace />
   return <Navigate to={homeRouteFor(user)} replace />
 }
 
@@ -209,6 +259,14 @@ function App() {
               <RequireConsents>
                 <ConsentsRequired />
               </RequireConsents>
+            }
+          />
+          <Route
+            path={ROUTES.passwordChange}
+            element={
+              <RequirePasswordChange>
+                <PasswordChangeRequired />
+              </RequirePasswordChange>
             }
           />
           <Route
@@ -256,6 +314,14 @@ function App() {
             element={
               <RequireSpecialist>
                 <SpecialistParentAccounts />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistColleagues}
+            element={
+              <RequireSpecialist>
+                <SpecialistColleagues />
               </RequireSpecialist>
             }
           />

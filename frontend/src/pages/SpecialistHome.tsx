@@ -15,16 +15,16 @@ import './home.css'
 import './specialist.css'
 
 /**
- * "Panel specjalisty" — the three things a specialist does here.
+ * "Panel specjalisty" — the four things a specialist does here.
  *
  * A specialist is not a clinical subject: they get a `specjalist` row and no
- * `patient` row (ACCOUNT_TYPES in core/serializers.py), so they have no diary,
+ * `patient` row (core/colleagues.py), so they have no diary,
  * no dashboard and no reports of their own, and every endpoint behind
  * `_require_patient` answers them 403. They land here, exactly as guardians land
  * on /parent, rather than on the patient's module chooser whose tiles lead into
  * refusals.
  *
- * WHAT IS ON THE SCREEN, and why it is these three:
+ * WHAT IS ON THE SCREEN, and why it is these four:
  *
  *   1. the caseload, with a link into each patient's weekly reports. This is the
  *      one the client's visibility rule is about — reports are for the
@@ -34,7 +34,11 @@ import './specialist.css'
  *      guardian link is normally started by the child; this is the other
  *      direction, and it exists because a specialist is the one person who can
  *      vouch that these two people are a family.
- *   3. writing a technique into the catalogue, which every patient then sees.
+ *   3. creating another specialist's account. This is the only place one can be
+ *      created: the public form used to offer "konto specjalisty" and no longer
+ *      does, because a professional account is a claim the app cannot check and
+ *      an existing specialist can (see pages/SpecialistColleagues.tsx).
+ *   4. writing a technique into the catalogue, which every patient then sees.
  *
  * WHAT IS DELIBERATELY NOT HERE. No view of a patient's diary and no analysis
  * screens: the specialist's access is the weekly reports and nothing else for
@@ -79,6 +83,19 @@ function SpecialistHome() {
           <span className="specialist-tool-text">
             Wystaw kod, którym rodzic lub opiekun zakłada konto powiązane z Twoim
             małoletnim pacjentem. Kod przekazujesz mu osobiście.
+          </span>
+          <span className="specialist-tool-arrow" aria-hidden="true">
+            →
+          </span>
+        </Link>
+
+        {/* The only place a specialist account can be created — registration
+            cannot make one any more, so this link is not a convenience. */}
+        <Link className="specialist-tool" to={ROUTES.specialistColleagues}>
+          <span className="specialist-tool-title">{routeTitle(ROUTES.specialistColleagues)}</span>
+          <span className="specialist-tool-text">
+            Utwórz konto innego specjalisty. Hasło tymczasowe zobaczysz raz
+            i przekazujesz je osobiście; zgody RODO nowe konto udziela samo.
           </span>
           <span className="specialist-tool-arrow" aria-hidden="true">
             →

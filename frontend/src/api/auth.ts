@@ -20,6 +20,9 @@ export interface UserPayload {
   is_child: boolean | null
   /** null when the question does not apply: only a minor patient needs a guardian. */
   guardian_status?: GuardianStatus | null
+  /** True while the account still holds a password somebody else generated for
+   *  it — see `needsPasswordChange`. */
+  must_change_password?: boolean
   /** ISO instants, or null for a consent that was never granted. */
   data_consent_at: string | null
   services_consent_at: string | null
@@ -55,6 +58,16 @@ export interface AuthUser {
   isChild: boolean | null
   /** Where the guardian link stands; null when the question does not apply. */
   guardianStatus: GuardianStatus | null
+  /**
+   * Whether this account is still using a password it did not choose.
+   *
+   * True for exactly one kind of account: a specialist's, created by another
+   * specialist, whose first password was generated and handed over in the room
+   * (see `createColleague` in api/specialist.ts). Read, never inferred — it is a
+   * column on the same row, and `core.permissions.HasOwnPassword` is what
+   * actually enforces it.
+   */
+  mustChangePassword: boolean
   /**
    * When each consent was granted, as a full ISO instant; null means never.
    *
@@ -132,6 +145,12 @@ export function toAuthUser(payload: UserPayload): AuthUser {
     isSpecialist: payload.is_specialist ?? false,
     isChild: payload.is_child,
     guardianStatus: payload.guardian_status ?? null,
+    // Absent on a backend a release behind, and false is the right reading
+    // there: no deployment without the column has an account the flag would be
+    // true for. Fail-open like `consents`, and for the same reason — the server
+    // refuses on its own regardless, so the worst a stale client does is draw a
+    // screen and collect a 403.
+    mustChangePassword: payload.must_change_password ?? false,
     consents: payload.consents
       ? {
           active: payload.consents.active,
@@ -158,16 +177,23 @@ export type GuardianStatus = (typeof GUARDIAN_STATUS)[keyof typeof GUARDIAN_STAT
 /** Mirrors GUARDIAN_ROLE in core/serializers.py — the role that may be invited. */
 export const GUARDIAN_ROLE = 'rodzic'
 
-/** Mirrors SPECIALIST_ROLE in core/serializers.py. Printed, never authorized on
+/** Mirrors SPECIALIST_ROLE in core/colleagues.py. Printed, never authorized on
  *  — see `isSpecialist`. */
 export const SPECIALIST_ROLE = 'specjalista'
 
-/** Mirrors ACCOUNT_TYPES in core/serializers.py — the wire values, not labels. */
+/**
+ * Mirrors ACCOUNT_TYPES in core/serializers.py — the wire values, not labels.
+ *
+ * There is no 'specialist' here any more, and its absence is the feature. A
+ * professional account is a claim the app cannot check, so it is created by
+ * somebody who can: an existing specialist, in their own panel (see
+ * `createColleague` in api/specialist.ts). The backend maps no such account
+ * type either, so a hand-made body asking for one is a 400.
+ */
 export const ACCOUNT_TYPES = {
   patient: 'patient',
   minorPatient: 'minor_patient',
   parent: 'parent',
-  specialist: 'specialist',
 } as const
 
 export type AccountType = (typeof ACCOUNT_TYPES)[keyof typeof ACCOUNT_TYPES]
@@ -191,8 +217,6 @@ export interface RegisterInput {
   confirmPassword: string
   dataConsent: boolean
   servicesConsent: boolean
-  /** Only for a specialist account; the backend requires it for that type. */
-  specialization?: string
   /**
    * A code from a specialist, for a guardian whose account the specialist
    * started (core/parent_invitations.py). Optional — a guardian can register on
@@ -219,7 +243,6 @@ export const REGISTER_FIELDS: Record<string, string> = {
   password_confirm: 'confirmPassword',
   data_consent: 'dataConsent',
   services_consent: 'servicesConsent',
-  specialization: 'specialization',
   invitation_code: 'invitationCode',
 }
 
@@ -257,12 +280,9 @@ export async function register(input: RegisterInput): Promise<AuthUser> {
       account_type: input.accountType,
       data_consent: input.dataConsent,
       services_consent: input.servicesConsent,
-      // Left out entirely when empty rather than sent as '': the backend's
-      // fields are optional, and an empty string on `invitation_code` would
-      // read the same as an absent one anyway — but on a required-for-this-type
-      // field like `specialization` the distinction is what makes "not
-      // applicable" different from "left blank".
-      ...(input.specialization ? { specialization: input.specialization } : {}),
+      // Left out entirely when empty rather than sent as '': the field is
+      // optional on the backend, and a guardian registering without a code has
+      // no code rather than an empty one.
       ...(input.invitationCode ? { invitation_code: input.invitationCode } : {}),
     },
   })
@@ -311,6 +331,23 @@ export function needsGuardianLink(user: AuthUser): boolean {
  */
 export function needsConsents(user: AuthUser): boolean {
   return !user.consents.active
+}
+
+/**
+ * Whether the app has to stop and ask for a password of the account's own.
+ *
+ * Mirrors `HasOwnPassword` in core/permissions.py, which is what actually
+ * enforces it — this only decides which screen to draw. True for a specialist
+ * account a colleague created: its first password was generated, spoken aloud
+ * and typed off a note, so its holder did not choose it and somebody else knows
+ * it. Everything the account could otherwise open is somebody's clinical record.
+ *
+ * Asked **after** `needsConsents` everywhere, and the order is not free:
+ * `POST /api/account/password/` is itself behind the consent gate on the
+ * backend, so an account sent here first would find the form refusing it.
+ */
+export function needsPasswordChange(user: AuthUser): boolean {
+  return user.mustChangePassword
 }
 
 /**

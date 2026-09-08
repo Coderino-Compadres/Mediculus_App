@@ -7,6 +7,10 @@ export const ROUTES = {
   /** Where an account whose RODO consents are not in force is held — the only
    *  screen it may reach. See pages/ConsentsRequired.tsx. */
   consents: '/consents',
+  /** Where an account still holding a password somebody else generated for it
+   *  is held — the only screen it may reach once its consents are in force.
+   *  See pages/PasswordChangeRequired.tsx. */
+  passwordChange: '/password-change',
   /** The guardian's own landing screen — see pages/ParentHome.tsx. */
   parentHome: '/parent',
   /** The specialist's landing screen — see pages/SpecialistHome.tsx. */
@@ -16,6 +20,9 @@ export const ROUTES = {
   specialistPatientReport: '/specialist/patients/:patientId/reports/:reportId',
   /** Where a specialist issues a code for a guardian's account. */
   specialistParentAccounts: '/specialist/parent-accounts',
+  /** Where a specialist creates another specialist's account — the only place
+   *  one can be created at all (see pages/SpecialistColleagues.tsx). */
+  specialistColleagues: '/specialist/colleagues',
   /** The specialist's own techniques, and the form that writes one. */
   specialistTechniques: '/specialist/techniques',
   specialistTechniqueNew: '/specialist/techniques/new',
@@ -95,12 +102,14 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.register]: 'Rejestracja',
   [ROUTES.linkGuardian]: 'Powiązanie z opiekunem',
   [ROUTES.consents]: 'Wymagane zgody',
+  [ROUTES.passwordChange]: 'Ustaw własne hasło',
   [ROUTES.modules]: 'Wybór modułu',
   [ROUTES.parentHome]: 'Panel rodzica',
   [ROUTES.specialistHome]: 'Panel specjalisty',
   [ROUTES.specialistPatientReports]: 'Raporty pacjenta',
   [ROUTES.specialistPatientReport]: 'Raport tygodniowy pacjenta',
   [ROUTES.specialistParentAccounts]: 'Konta opiekunów',
+  [ROUTES.specialistColleagues]: 'Konta specjalistów',
   [ROUTES.specialistTechniques]: 'Moje techniki',
   [ROUTES.specialistTechniqueNew]: 'Nowa technika',
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',

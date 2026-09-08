@@ -22,6 +22,7 @@ from django.utils import timezone
 
 from .account import build_account_profile, build_linked_children
 from .authentication import end_session, start_session
+from .colleagues import list_colleagues, serialize_colleague
 from .dashboard import build_home_dashboard
 from .frequency import build_year_frequency, years_with_entries
 from .diary import (DiaryEntrySerializer, load_entry, load_history,
@@ -33,19 +34,20 @@ from .consents import SCOPES, consent_state, restore, withdraw
 from .models import Patient
 from .parent_invitations import (list_invitations, revoke,
                                 serialize_invitation as serialize_parent_invitation)
-from .permissions import CONSENT_EXEMPT
+from .permissions import CONSENT_EXEMPT, PASSWORD_CHANGE_EXEMPT
 from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
 from .serializers import (ConsentScopeSerializer, GuardianLinkSerializer,
                           LoginSerializer, ParentInvitationCreateSerializer,
                           PasswordChangeSerializer, RegisterSerializer,
+                          SpecialistColleagueCreateSerializer,
                           SpecialistPatientInviteSerializer, UserSerializer)
 from . import specialist as specialist_rules
 from . import techniques as technique_rules
 from .throttling import (AuthThrottle, GuardianLinkThrottle,
                          LoginAccountThrottle, PasswordChangeThrottle,
-                         ReportPdfThrottle, SpecialistInviteThrottle,
-                         attempts_warning)
+                         ReportPdfThrottle, SpecialistAccountThrottle,
+                         SpecialistInviteThrottle, attempts_warning)
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
@@ -401,8 +403,15 @@ class PasswordChangeView(APIView):
     Deliberately NOT behind `_require_patient`: every account has a password,
     including the guardians and specialists who are not clinical subjects, and a
     minor still waiting for a guardian must be able to change theirs while the
-    gate is closed. `IsAuthenticated` (the project default) is the whole
-    requirement.
+    gate is closed.
+
+    And deliberately not behind the *password* gate either — this is the way out
+    of it. A specialist account created by a colleague (core/colleagues.py)
+    arrives holding a generated password and `must_change_password` set, so
+    every other endpoint refuses it until this one succeeds; `save()` is what
+    clears the flag. It stays behind `HasActiveConsents`, which is the order the
+    two screens are meant to be answered in: consents first, because they are
+    what gives the app a basis to hold the account at all.
 
     CSRF is enforced by `SessionUserAuthentication`, like every other
     authenticated write here — the hand-applied `@csrf_protect` on login and
@@ -413,6 +422,7 @@ class PasswordChangeView(APIView):
     could be logged.
     """
 
+    permission_classes = PASSWORD_CHANGE_EXEMPT
     throttle_classes = [PasswordChangeThrottle]
 
     def post(self, request):
@@ -782,8 +792,10 @@ def _require_specialist(request):
 
     Note what this does **not** grant. Being a specialist opens the panel and
     nothing else: which patients' reports are readable is decided per request by
-    `assigned_patient`, i.e. by whose invitation was accepted. Registration is
-    self-service, so this refusal is a routing decision, not the access control.
+    `assigned_patient`, i.e. by whose invitation was accepted. So this refusal is
+    a routing decision rather than the access control — that a colleague had to
+    create the account (core/colleagues.py) does not change which reports it can
+    read, which is still only the reports of patients who accepted it.
     """
     specjalist = specialist_rules.specjalist_for(request.user)
     if specjalist is None:
@@ -894,8 +906,7 @@ class SpecialistPatientReportListView(APIView):
 
     Two gates, in this order: a `specjalist` row (or the panel is not yours), and
     `assigned_patient` (or this is not your patient). The second is the real one
-    — registration is self-service, so being a specialist means nothing until
-    somebody accepts you.
+    — being a specialist means nothing at all until a patient accepts you.
     """
 
     def get(self, request, patient_id):
@@ -994,6 +1005,57 @@ class SpecialistParentInvitationView(APIView):
         if not revoke(specjalist, invitation_id):
             raise NotFound(PARENT_INVITATION_NOT_FOUND)
         return Response(list_invitations(specjalist))
+
+
+class SpecialistColleaguesView(APIView):
+    """GET/POST /api/specialist/colleagues/ — the specialist accounts, and adding one.
+
+    THIS IS WHERE A SPECIALIST ACCOUNT COMES FROM NOW. The public registration
+    form has no "konto specjalisty" choice and `ACCOUNT_TYPES` maps none, so a
+    professional account is created here, by somebody who already holds one —
+    the app cannot check anybody's qualifications, and an existing specialist
+    can. See core/colleagues.py for the whole argument, including where the
+    first such account comes from (SQL, and deliberately so).
+
+    POST answers with the plaintext password **once**, the same shape as a
+    guardian invitation code and for the same reason: this deployment sends no
+    mail, so a credential travels as something handed over in the room, and the
+    row holds a hash that nothing can read back. The new account's RODO consents
+    are **not** granted by this request — consent is the data subject's act, so
+    the account is locked by `HasActiveConsents` until its owner grants them at
+    first login (pages/ConsentsRequired.tsx).
+
+    GET lists every specialist account, professional identity only: no caseload,
+    no patient counters, nothing clinical — see COLLEAGUE_SUMMARY_FIELDS. It is
+    the roster, and what it is for is not seeing colleagues but not creating a
+    second account for somebody who already has one.
+
+    The cap is on POST only, for the reason given on `SpecialistPatientsView`:
+    reading the roster is not the act worth bounding, and the panel reads it
+    whenever this screen opens.
+    """
+
+    def get_throttles(self):
+        return [SpecialistAccountThrottle()] if self.request.method == 'POST' else []
+
+    def get(self, request):
+        _require_specialist(request)
+        return Response(list_colleagues())
+
+    def post(self, request):
+        _require_specialist(request)
+        serializer = SpecialistColleagueCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        specjalist, password = serializer.save()
+        return Response(
+            {
+                # Once. The `specialist` half is what the roster shows from now
+                # on; `password` exists in this response and nowhere else.
+                'password': password,
+                'specialist': serialize_colleague(specjalist),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class SpecialistTechniquesView(APIView):

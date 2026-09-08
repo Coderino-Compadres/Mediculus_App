@@ -14,6 +14,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from . import colleagues
 from . import guardian
 from .consents import SCOPES, consent_state, has_active_consents
 from . import parent_invitations
@@ -23,29 +24,26 @@ from .models import ParentChild, Patient, Specjalist, User, UserRole
 # What the registration form's "account type" choice means in the schema. Role
 # names match the rows seeded by scripts/mock_data.sql.
 #
-# `profile` is which side table the account gets, and the three answers are the
-# whole shape of this app's accounts:
+# `profile` is which side table the account gets, and the two answers are the
+# whole shape of the accounts this form can create:
 #
 #   'patient'    a clinical subject: a `patient` row, an id_medical, and rows in
 #                medical_db that refer to it.
-#   'specjalist' a `specjalist` row. Not a clinical subject either — everything
-#                behind `_require_patient` refuses them — but they read the
-#                weekly reports of the patients who accepted them (see
-#                core/specialist.py).
 #   None         a guardian. No side table at all: they have no id_medical and
 #                nothing in medical_db can refer to them.
 #
-# A SPECIALIST REGISTERS THROUGH THIS FORM, and that is safe only because of what
-# the role does *not* grant. Being a specialist gives access to nothing by
-# itself: every patient-facing endpoint refuses them, and the reports they may
-# read are the reports of patients who accepted their invitation. An account
-# that calls itself a specialist and has nobody's agreement sees an empty panel.
-# `patient.id_specjalist` is not self-assignable, and that is the property this
-# rests on — do not add a form that writes it directly.
+# A SPECIALIST IS NOT ON THIS LIST ANY MORE, and its absence is the enforcement.
+# A professional account used to be self-service, which was safe as far as
+# access goes (being a specialist grants nothing on its own — see
+# core/specialist.py) but wrong about the claim it makes: the app cannot check
+# anybody's qualifications. So a specialist account is now created by an existing
+# specialist, in the panel (`core.colleagues`, POST /api/specialist/colleagues/),
+# and there is no `account_type` that produces one — 'specialist' in a hand-made
+# body is an `invalid_choice` 400 rather than a specialist. `patient.id_specjalist`
+# is still not self-assignable, and that property has not moved.
 ACCOUNT_TYPE_PATIENT = 'patient'
 ACCOUNT_TYPE_MINOR_PATIENT = 'minor_patient'
 ACCOUNT_TYPE_PARENT = 'parent'
-ACCOUNT_TYPE_SPECIALIST = 'specialist'
 
 ACCOUNT_TYPES = {
     ACCOUNT_TYPE_PATIENT: {
@@ -57,9 +55,6 @@ ACCOUNT_TYPES = {
     ACCOUNT_TYPE_PARENT: {
         'role': 'rodzic', 'is_child': None, 'profile': None,
     },
-    ACCOUNT_TYPE_SPECIALIST: {
-        'role': 'specjalista', 'is_child': None, 'profile': 'specjalist',
-    },
 }
 
 # The one role a `parent_child.id_parent` may point at. Read from ACCOUNT_TYPES
@@ -67,14 +62,16 @@ ACCOUNT_TYPES = {
 # never disagree about what a guardian account is.
 GUARDIAN_ROLE = ACCOUNT_TYPES[ACCOUNT_TYPE_PARENT]['role']
 
-#: The role name a specialist account carries. Read from ACCOUNT_TYPES for the
-#: same reason as the line above — so the registration form and anything that
-#: names the role cannot disagree.
-#:
-#: Note that nothing *authorizes* on this string: a specialist is recognised by
-#: their `specjalist` row (`core.specialist.specjalist_for`), the way a patient is
-#: recognised by their `patient` row. The role is what the UI prints.
-SPECIALIST_ROLE = ACCOUNT_TYPES[ACCOUNT_TYPE_SPECIALIST]['role']
+#: The two rules that outlived the registration form's specialist branch. They
+#: were never rules about that form — they are rules about a specialist account
+#: — so they moved with the feature into
+#: `SpecialistColleagueCreateSerializer` rather than being deleted with it.
+SPECIALIZATION_REQUIRED = (
+    'Podaj specjalizację — pacjent widzi ją przy nazwisku specjalisty.'
+)
+SPECIALIST_MUST_BE_ADULT = (
+    'Konto specjalisty może mieć wyłącznie osoba pełnoletnia.'
+)
 
 # Rejects typos and swapped digits ('0202-05-14').
 EARLIEST_DATE_OF_BIRTH = datetime.date(1900, 1, 1)
@@ -95,6 +92,44 @@ def age_on(date_of_birth, today):
     return today.year - date_of_birth.year - (0 if had_birthday_this_year else 1)
 
 
+#: One message for an address that is taken, wherever the account is being
+#: created from. Both forms have to say it: an account cannot be created on an
+#: address that already has one, so silence would be a form that fails with no
+#: reason. It is the one thing about who has an account here that the app cannot
+#: avoid answering — which is why nothing *else* answers it (see the shared
+#: refusals on the invitation forms).
+EMAIL_TAKEN = 'Konto z tym adresem e-mail już istnieje.'
+
+
+def free_email(value):
+    """The address, lowercased, if nobody has an account on it.
+
+    Stored lowercased (see `RegisterSerializer.create`), which is what makes the
+    plain unique index on "user".email behave case-insensitively.
+
+    Shared by the registration form and by the form a specialist creates a
+    colleague's account with: two copies of this check are two copies free to
+    disagree about what "already exists" means.
+    """
+    value = (value or '').lower()
+    if User.objects.filter(email=value).exists():
+        raise serializers.ValidationError(EMAIL_TAKEN)
+    return value
+
+
+def checked_date_of_birth(value):
+    """A date of birth that is not in the future and not a typo.
+
+    `localdate()`, not `utcnow()`: "today" has to mean today where the person
+    filling the form is, or someone born today is rejected for a few hours.
+    """
+    if value > timezone.localdate():
+        raise serializers.ValidationError('Data urodzenia nie może być z przyszłości.')
+    if value < EARLIEST_DATE_OF_BIRTH:
+        raise serializers.ValidationError('Sprawdź datę urodzenia — wygląda na literówkę.')
+    return value
+
+
 class UserSerializer(serializers.ModelSerializer):
     """The shape of the logged-in user as the frontend sees it."""
 
@@ -111,6 +146,10 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'name', 'surname', 'date_of_birth', 'role',
             'is_patient', 'is_specialist', 'is_child', 'guardian_status',
+            # The password gate, read by the frontend's route guard exactly as
+            # `consents.active` is. A plain model field rather than a method
+            # one: it is a column on this row and answers for itself.
+            'must_change_password',
             # The consent register the profile screen reads back, and the gate
             # the router reads. One key, not five: `data_consent_at` and
             # `services_consent_at` used to ride alongside it as declared model
@@ -285,14 +324,6 @@ class RegisterSerializer(serializers.Serializer):
             'invalid_choice': 'Wybierz jedną z dostępnych opcji rodzaju konta.',
         },
     )
-    # The specialist's own field, and required only for that account type — see
-    # `_check_specialist_fields`. Spelled correctly on the wire although the
-    # column is `specjalist.specjalization`: /api/account/profile/ already sends
-    # it to the care card as `approach`, so the wire has never mirrored that
-    # spelling and adding a second misspelling would only spread it.
-    specialization = serializers.CharField(
-        max_length=200, required=False, allow_blank=True, write_only=True,
-    )
     # A code from a specialist, for a guardian finishing the registration the
     # specialist started (core/parent_invitations.py). Optional: a guardian can
     # still register on their own, and then the child names them afterwards.
@@ -309,21 +340,10 @@ class RegisterSerializer(serializers.Serializer):
     )
 
     def validate_email(self, value):
-        # Stored lowercased (see create()), which is what makes the plain unique
-        # index on "user".email behave case-insensitively.
-        value = value.lower()
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError('Konto z tym adresem e-mail już istnieje.')
-        return value
+        return free_email(value)
 
     def validate_date_of_birth(self, value):
-        # localdate(), not utcnow(): "today" has to mean today where the person
-        # filling the form is, or someone born today is rejected for a few hours.
-        if value > timezone.localdate():
-            raise serializers.ValidationError('Data urodzenia nie może być z przyszłości.')
-        if value < EARLIEST_DATE_OF_BIRTH:
-            raise serializers.ValidationError('Sprawdź datę urodzenia — wygląda na literówkę.')
-        return value
+        return checked_date_of_birth(value)
 
     def validate_data_consent(self, value):
         if not value:
@@ -347,7 +367,6 @@ class RegisterSerializer(serializers.Serializer):
 
         self._check_password_strength(attrs)
         self._check_age_matches_account_type(attrs)
-        self._check_specialist_fields(attrs)
         self._check_invitation(attrs)
         return attrs
 
@@ -408,12 +427,6 @@ class RegisterSerializer(serializers.Serializer):
                 '„konto pacjenta” albo popraw datę urodzenia.'
             )
 
-    SPECIALIZATION_REQUIRED = (
-        'Podaj swoją specjalizację — pacjent widzi ją przy Twoim nazwisku.'
-    )
-    SPECIALIST_MUST_BE_ADULT = (
-        'Konto specjalisty może założyć wyłącznie osoba pełnoletnia.'
-    )
     INVITATION_NOT_FOR_THIS_TYPE = (
         'Kod zaproszenia dotyczy konta rodzica lub opiekuna. Wybierz ten '
         'rodzaj konta albo usuń kod.'
@@ -422,29 +435,6 @@ class RegisterSerializer(serializers.Serializer):
         'Kod jest nieprawidłowy, wygasł albo został już wykorzystany. '
         'Sprawdź, czy rejestrujesz się na adres podany przez specjalistę.'
     )
-
-    def _check_specialist_fields(self, attrs):
-        """A specialist's extra requirements: a specialization, and being an adult.
-
-        The specialization is what the patient reads next to their name on the
-        care card and in the safety plan, so an account without one shows a
-        person with no described role at the moment somebody is deciding whether
-        to accept them. The adulthood check is not the age-vs-type contradiction
-        `_check_age_matches_account_type` guards (a specialist has no `is_child`
-        to disagree with) — it is a plain statement about who may hold a
-        professional account here.
-        """
-        if attrs.get('account_type') != ACCOUNT_TYPE_SPECIALIST:
-            return
-        if not (attrs.get('specialization') or '').strip():
-            raise serializers.ValidationError(
-                {'specialization': self.SPECIALIZATION_REQUIRED}
-            )
-        date_of_birth = attrs.get('date_of_birth')
-        if date_of_birth and age_on(date_of_birth, timezone.localdate()) < ADULT_AGE:
-            raise serializers.ValidationError(
-                {'date_of_birth': self.SPECIALIST_MUST_BE_ADULT}
-            )
 
     def _check_invitation(self, attrs):
         """Resolves a specialist's invitation code, or refuses the registration.
@@ -501,11 +491,6 @@ class RegisterSerializer(serializers.Serializer):
                 )
                 if account['profile'] == 'patient':
                     Patient.objects.create(user=user, is_child=account['is_child'])
-                elif account['profile'] == 'specjalist':
-                    Specjalist.objects.create(
-                        user=user,
-                        specjalization=validated_data['specialization'].strip(),
-                    )
 
                 invitation = validated_data.get('invitation')
                 if invitation is not None:
@@ -691,7 +676,7 @@ class PasswordChangeSerializer(serializers.Serializer):
         return attrs
 
     def save(self):
-        """Writes the new hash, and nothing else.
+        """Writes the new hash, and clears the flag that demanded it.
 
         Other sessions of this account deliberately survive. Django's usual
         answer (`update_session_auth_hash`) invalidates them because its sessions
@@ -703,7 +688,17 @@ class PasswordChangeSerializer(serializers.Serializer):
         of it silently would be worse than not claiming it.
         """
         self.user.password_hash = make_password(self.validated_data['new_password'])
-        self.user.save(update_fields=['password_hash', 'updated_at'])
+        # And the account is no longer holding a password somebody else chose
+        # for it, which is the whole condition `HasOwnPassword` gates on. Written
+        # here rather than in the view because it is part of the same fact as
+        # the hash above: the two must never be saved apart, or an account would
+        # either keep a screen it has already left or leave one it has not.
+        # Unconditional — the column is FALSE for almost every account, and a
+        # branch would only be a second place for the two to disagree.
+        self.user.must_change_password = False
+        self.user.save(
+            update_fields=['password_hash', 'must_change_password', 'updated_at'],
+        )
         return self.user
 
 
@@ -830,9 +825,9 @@ class SpecialistPatientInviteSerializer(serializers.Serializer):
     ONE SHARED REFUSAL, like `GuardianLinkSerializer`, and the reasoning
     transfers with one addition. An address nobody registered, an address
     belonging to a guardian or another specialist, and an address belonging to a
-    patient who already has a specialist all answer identically — because
-    registration here is self-service, so any account can use this form to ask
-    "who has an account here, and what kind", and because the last of the three
+    patient who already has a specialist all answer identically — because any
+    account holding a `specjalist` row can use this form to ask "who has an
+    account here, and what kind", and because the last of the three
     is a clinical fact about a person who has agreed to nothing. The specialist's
     way out of a mistyped address is the patient in front of them, not a more
     talkative form.
@@ -1001,3 +996,90 @@ class ParentInvitationCreateSerializer(serializers.Serializer):
             validated_data['patient'].user,
             validated_data['parent_email'],
         )
+
+
+class SpecialistColleagueCreateSerializer(serializers.Serializer):
+    """A specialist creates another specialist's account.
+
+    THE FORM THAT REPLACED "konto specjalisty" IN REGISTRATION. A professional
+    account is a claim the app cannot verify, so it is made by somebody who can:
+    an existing specialist. See the header of core/colleagues.py for what that
+    buys, where the first such account comes from, and why the password comes
+    back exactly once.
+
+    What this form does **not** ask for is the password: it is generated
+    (`colleagues.generate_password`), so it is never one the creating specialist
+    chose — and it is never a password reused from somewhere else either, which
+    a typed one would be free to be. The new account changes it from "Profil".
+
+    Two rules ride along from the old registration branch, because they were
+    rules about specialist accounts rather than about that form:
+
+    * a specialization is required. The patient reads it next to the name when
+      deciding whether to accept the invitation, and on the care card
+      afterwards, so an account without one asks somebody to agree to be treated
+      by a person with no stated role;
+    * the person has to be an adult.
+
+    The address is the one thing this form cannot keep quiet about (`EMAIL_TAKEN`
+    — an account cannot be created on an address that has one), and it is worth
+    being explicit that this is not the enumeration oracle the invitation forms
+    take care not to be: the caller is a specialist, the answer is about a
+    professional account they can already see in the roster, and
+    `SpecialistAccountThrottle` bounds the asking regardless.
+    """
+
+    email = serializers.EmailField(
+        max_length=255,
+        error_messages={
+            'blank': 'Podaj adres e-mail specjalisty.',
+            'required': 'Podaj adres e-mail specjalisty.',
+            'invalid': 'Podaj poprawny adres e-mail.',
+        },
+    )
+    name = serializers.CharField(
+        max_length=150,
+        error_messages={'blank': 'Podaj imię.', 'required': 'Podaj imię.'},
+    )
+    surname = serializers.CharField(
+        max_length=150,
+        error_messages={'blank': 'Podaj nazwisko.', 'required': 'Podaj nazwisko.'},
+    )
+    date_of_birth = serializers.DateField(
+        error_messages={
+            'required': 'Podaj datę urodzenia.',
+            'null': 'Podaj datę urodzenia.',
+            'invalid': 'Podaj poprawną datę urodzenia.',
+        },
+    )
+    specialization = serializers.CharField(
+        max_length=200,
+        error_messages={
+            'blank': SPECIALIZATION_REQUIRED,
+            'required': SPECIALIZATION_REQUIRED,
+        },
+    )
+
+    def validate_email(self, value):
+        return free_email(value)
+
+    def validate_date_of_birth(self, value):
+        value = checked_date_of_birth(value)
+        if age_on(value, timezone.localdate()) < ADULT_AGE:
+            raise serializers.ValidationError(SPECIALIST_MUST_BE_ADULT)
+        return value
+
+    def create(self, validated_data):
+        """The row and the plaintext password, which the view sends back once."""
+        try:
+            return colleagues.create_account(
+                email=validated_data['email'],
+                name=validated_data['name'].strip(),
+                surname=validated_data['surname'].strip(),
+                date_of_birth=validated_data['date_of_birth'],
+                specialization=validated_data['specialization'].strip(),
+            )
+        except IntegrityError as exc:
+            # validate_email lost a race with a concurrent create for the same
+            # address; the unique index is the actual arbiter.
+            raise serializers.ValidationError({'email': [EMAIL_TAKEN]}) from exc

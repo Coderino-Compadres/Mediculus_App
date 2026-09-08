@@ -104,6 +104,12 @@ urlpatterns = [
         views.SpecialistParentInvitationView.as_view(),
         name='specialist-parent-invitation',
     ),
+    # Where a specialist account comes from, now that registration cannot make
+    # one — see core/colleagues.py.
+    path(
+        'specialist/colleagues/',
+        views.SpecialistColleaguesView.as_view(), name='specialist-colleagues',
+    ),
     path(
         'specialist/techniques/',
         views.SpecialistTechniquesView.as_view(), name='specialist-techniques',

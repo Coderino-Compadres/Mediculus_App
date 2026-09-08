@@ -32,6 +32,31 @@ INSERT INTO "user" (id_user, id_user_role, email, password_hash, name, surname, 
     ('b0000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000001', 'test@wp.pl', 'pbkdf2_sha256$1500000$kCb20CO2XUI5mL8XtPpCE6$0j30lRad1AqdqXNSx/mTlMGQj55wsfUyjH8dTX0WttE=', 'Test', 'Testowy', '1994-06-18', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 ON CONFLICT (id_user) DO NOTHING;
 
+-- Demo specialist, meant to actually be logged into:
+--   anna.kowalska@example.com / Haslo123!
+--
+-- THIS ROW IS THE BOOTSTRAP, not a convenience. A specialist account can only
+-- be created by another specialist (POST /api/specialist/colleagues/, see
+-- backend/core/colleagues.py) -- the registration form has no such account type
+-- any more, because the app cannot check anybody's qualifications and a
+-- colleague can. Which means a fresh database has no way into the specialist
+-- panel at all unless one specialist exists already, and this is that one. On a
+-- real deployment it is the same act: one row by hand, then every further
+-- account is created inside the app.
+--
+-- An UPDATE rather than a value in the INSERT above, so this stays idempotent
+-- next to that statement's ON CONFLICT DO NOTHING. The hash is the demo
+-- account's, i.e. the same password -- it is a mock file, and one password to
+-- remember is the point of it. The consents are set for the same reason the
+-- demo patient's are: this account is used through the UI, and without them it
+-- lands on the consent screen instead of the panel (which is correct behaviour
+-- and a poor first impression of a seeded database).
+UPDATE "user" SET
+    password_hash = 'pbkdf2_sha256$1500000$kCb20CO2XUI5mL8XtPpCE6$0j30lRad1AqdqXNSx/mTlMGQj55wsfUyjH8dTX0WttE=',
+    data_consent_at = CURRENT_TIMESTAMP,
+    services_consent_at = CURRENT_TIMESTAMP
+WHERE id_user = 'b0000000-0000-0000-0000-000000000001';
+
 INSERT INTO specjalist (id_user, specjalization) VALUES
     ('b0000000-0000-0000-0000-000000000001', 'Psychoterapia'),
     ('b0000000-0000-0000-0000-000000000002', 'Dietetyka')

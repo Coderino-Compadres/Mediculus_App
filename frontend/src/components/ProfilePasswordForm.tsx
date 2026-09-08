@@ -35,8 +35,43 @@ function validateCurrentPassword(value: string): string | null {
  * and `PASSWORD_FIELDS` is the name mapping that gets them there.
  *
  * The session survives on purpose — see `PasswordChangeSerializer.save`.
+ *
+ * ONE FORM, TWO SCREENS. "Profil" renders it as an ordinary setting; the screen
+ * an account created by a colleague is held on (pages/PasswordChangeRequired.tsx)
+ * renders the same component, because a second copy would be a second set of
+ * rules about what a password may be. The props below are the whole difference
+ * between the two, and each exists because the held screen has to do something
+ * this one does not: hand the updated account to the session so the route guard
+ * moves the app, and word the button for somebody who is not "changing" a
+ * password so much as receiving one.
  */
-function ProfilePasswordForm() {
+interface ProfilePasswordFormProps {
+  /**
+   * Run after the password has actually been changed, before the form reports
+   * success.
+   *
+   * Awaited on purpose: on the held screen this re-reads /api/auth/me/ and hands
+   * the result to the session, and if it were fired and forgotten the form would
+   * flash "zapisano" on a screen the guard is about to unmount. A failure inside
+   * it surfaces as a form error — which is honest, because from the user's side
+   * "the password changed but the app did not let me in" is a failure even
+   * though the write succeeded.
+   */
+  onChanged?: () => Promise<void>
+  submitLabel?: string
+  successMessage?: string
+  /** What the first input is called. On the held screen the "current" password
+   *  is one the account was given rather than one it set, and calling it
+   *  "obecne" there would describe it as a choice somebody made. */
+  currentPasswordLabel?: string
+}
+
+function ProfilePasswordForm({
+  onChanged,
+  submitLabel = 'Zapisz nowe hasło',
+  successMessage = 'Hasło zostało zmienione. Następnym razem zaloguj się nowym hasłem.',
+  currentPasswordLabel = 'Obecne hasło',
+}: ProfilePasswordFormProps = {}) {
   const { values, errors, formError, status, submitting, handleChange, handleSubmit } = useAuthForm({
     currentPassword: '',
     newPassword: '',
@@ -63,7 +98,10 @@ function ProfilePasswordForm() {
               : null,
         }
       },
-      submit: (currentValues) => changePassword(currentValues),
+      submit: async (currentValues) => {
+        await changePassword(currentValues)
+        await onChanged?.()
+      },
       fields: PASSWORD_FIELDS,
     })
   }
@@ -78,13 +116,13 @@ function ProfilePasswordForm() {
 
       {status === 'success' && (
         <p className="auth-success" role="status">
-          Hasło zostało zmienione. Następnym razem zaloguj się nowym hasłem.
+          {successMessage}
         </p>
       )}
 
       <FormField
         id="currentPassword"
-        label="Obecne hasło"
+        label={currentPasswordLabel}
         type="password"
         autoComplete="current-password"
         value={values.currentPassword}
@@ -115,7 +153,7 @@ function ProfilePasswordForm() {
       />
 
       <button type="submit" className="auth-submit" disabled={submitting}>
-        Zapisz nowe hasło
+        {submitLabel}
       </button>
     </form>
   )

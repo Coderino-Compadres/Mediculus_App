@@ -316,3 +316,114 @@ export function acceptSpecialistInvitation(): Promise<SpecialistInvitation | nul
 export function rejectSpecialistInvitation(): Promise<SpecialistInvitation | null> {
   return invitationRequest('/api/account/specialist-invitation/reject/', 'POST')
 }
+
+/** As `core.colleagues.serialize_colleague` returns it — never a password. */
+interface ColleaguePayload {
+  id: string
+  name: string | null
+  surname: string | null
+  email: string | null
+  specialization: string | null
+  created_at: string | null
+  consents_active: boolean
+}
+
+export interface Colleague {
+  /** The specialist's `user` id. */
+  id: string
+  name: string | null
+  surname: string | null
+  email: string | null
+  /** `specjalist.specjalization` — what the patient reads next to their name. */
+  specialization: string | null
+  createdAt: string | null
+  /**
+   * Whether this account's own RODO consents are in force.
+   *
+   * False on an account nobody has logged into yet: creating it grants no
+   * consent, because consent is the act of the person it belongs to (see
+   * core/colleagues.py). It travels so the roster can say "waiting for its
+   * owner to finish" rather than showing a row that looks broken.
+   */
+  consentsActive: boolean
+}
+
+function toColleague(payload: ColleaguePayload): Colleague {
+  return {
+    id: payload.id,
+    name: payload.name,
+    surname: payload.surname,
+    email: payload.email,
+    specialization: payload.specialization,
+    createdAt: payload.created_at,
+    consentsActive: payload.consents_active,
+  }
+}
+
+/**
+ * Every specialist account.
+ *
+ * Professional identity and nothing else — no caseload and no counters: a
+ * colleague's patients agreed to *them*. See COLLEAGUE_SUMMARY_FIELDS in
+ * core/colleagues.py.
+ */
+export async function fetchColleagues(): Promise<Colleague[]> {
+  const payload = await apiRequest<ColleaguePayload[]>('/api/specialist/colleagues/')
+  return payload.map(toColleague)
+}
+
+export interface NewColleague {
+  email: string
+  firstName: string
+  lastName: string
+  dateOfBirth: string
+  specialization: string
+}
+
+export interface CreatedColleague {
+  /**
+   * The temporary password, in plaintext, **for this response only**.
+   *
+   * Stored as a hash like every other, so nothing can read it back — not this
+   * API, not the roster, not the database. The screen has to show it while it
+   * has it and say so; there is no password reset in this deployment, so an
+   * account whose password is lost has to be created again under another
+   * address.
+   */
+  password: string
+  specialist: Colleague
+}
+
+/**
+ * Creates another specialist's account. This is where a specialist account
+ * comes from — the registration form cannot make one.
+ *
+ * The new account has granted no consents, so its owner meets the consent
+ * screen at first login and grants them there. That is not a step to work
+ * around: consent is theirs to give.
+ */
+export async function createColleague(input: NewColleague): Promise<CreatedColleague> {
+  const payload = await apiRequest<{ password: string; specialist: ColleaguePayload }>(
+    '/api/specialist/colleagues/',
+    {
+      method: 'POST',
+      body: {
+        email: input.email,
+        name: input.firstName,
+        surname: input.lastName,
+        date_of_birth: input.dateOfBirth,
+        specialization: input.specialization,
+      },
+    },
+  )
+  return { password: payload.password, specialist: toColleague(payload.specialist) }
+}
+
+/** API field name -> form field name, so a 400 lands under the right input. */
+export const COLLEAGUE_FIELDS: Record<string, string> = {
+  email: 'email',
+  name: 'firstName',
+  surname: 'lastName',
+  date_of_birth: 'dateOfBirth',
+  specialization: 'specialization',
+}
