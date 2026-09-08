@@ -210,7 +210,7 @@ describe('a guardian account has its own view', () => {
   it('is pushed off the patient app rather than shown a refusal', async () => {
     mockedFetchUser.mockResolvedValue(GUARDIAN)
 
-    for (const route of [ROUTES.modules, ROUTES.home, ROUTES.journals, ROUTES.reports]) {
+    for (const route of [ROUTES.modules, ROUTES.home, ROUTES.diet, ROUTES.journals, ROUTES.reports]) {
       const { unmount } = renderAt(route)
       expect(
         await screen.findByRole('heading', { level: 1, name: 'Panel rodzica' }),
@@ -295,6 +295,7 @@ describe('an account whose consents are not in force', () => {
     for (const route of [
       ROUTES.home, ROUTES.modules, ROUTES.diaryEntry, ROUTES.journals,
       ROUTES.reports, ROUTES.analysis, ROUTES.techniques, ROUTES.safetyPlan,
+      ROUTES.diet,
       '/',
     ]) {
       const { unmount } = renderAt(route)

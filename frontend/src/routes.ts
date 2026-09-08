@@ -38,7 +38,13 @@ export const ROUTES = {
   techniqueDetail: '/techniques/:id',
   profile: '/profile',
   safetyPlan: '/safety-plan',
-  diet: '/diet-placeholder',
+  /** The diet module's own home screen — pages/DietHome.tsx. Until it was
+   *  built this key pointed at a PlaceholderPage, which is why the module tile
+   *  and the patient menu both already lead here. */
+  diet: '/diet',
+  /** "Dodawanie posiłku" (§04 of the mockups) — not built; the home screen's one
+   *  action has to land somewhere real. */
+  dietMeal: '/diet/meal',
 } as const
 
 /** Fills in ROUTES.journalDetail's `:id` param — use instead of building the path by hand. */
@@ -82,10 +88,10 @@ export interface PlaceholderRouteDef {
 /** Screens the mockup references that aren't built yet — every link needs a destination. */
 export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
   {
-    path: ROUTES.diet,
-    title: 'Dietetyka i psychodietetyka',
-    backTo: ROUTES.modules,
-    backLabel: '← Wróć do wyboru modułu',
+    path: ROUTES.dietMeal,
+    title: 'Dodawanie posiłku',
+    backTo: ROUTES.diet,
+    backLabel: '← Wróć do strony głównej dietetyki',
   },
 ]
 
@@ -113,6 +119,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistTechniques]: 'Moje techniki',
   [ROUTES.specialistTechniqueNew]: 'Nowa technika',
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',
+  [ROUTES.diet]: 'Dietetyka i psychodietetyka',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',

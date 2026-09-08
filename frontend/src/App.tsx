@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
+import DietHome from './pages/DietHome'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
@@ -362,6 +363,17 @@ function App() {
             element={
               <RequireAuth>
                 <Home />
+              </RequireAuth>
+            }
+          />
+          {/* The diet module's home. A patient screen like /home: RequireAuth's
+              defaults keep a guardian and a specialist out, both of whom have no
+              `patient` row and nothing to write a meal against. */}
+          <Route
+            path={ROUTES.diet}
+            element={
+              <RequireAuth>
+                <DietHome />
               </RequireAuth>
             }
           />
