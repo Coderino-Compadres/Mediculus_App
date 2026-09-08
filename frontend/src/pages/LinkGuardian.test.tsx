@@ -22,6 +22,21 @@ vi.mock('../api/auth', async (importOriginal) => ({
   cancelGuardianInvitation: vi.fn(),
   fetchCurrentUser: vi.fn(),
 }))
+/**
+ * The specialist-invitation card is on this screen as well, and deliberately so:
+ * a gated minor is redirected away from /home, so this is the one screen where
+ * they can answer their specialist's invitation. It asks the API for itself, so
+ * it is stubbed as "nobody has invited them" — the ordinary case here. Left
+ * unmocked, its failed request drew a second `role="alert"` and the assertions
+ * below about *the* message failed on an ambiguity that is not this screen's.
+ * Its own behaviour is covered in components/SpecialistInvitation.test.tsx.
+ */
+vi.mock('../api/specialist', () => ({
+  fetchSpecialistInvitation: vi.fn().mockResolvedValue(null),
+  acceptSpecialistInvitation: vi.fn(),
+  rejectSpecialistInvitation: vi.fn(),
+}))
+
 const { linkGuardian, cancelGuardianInvitation, fetchCurrentUser } = await import('../api/auth')
 const mockedLink = vi.mocked(linkGuardian)
 const mockedCancel = vi.mocked(cancelGuardianInvitation)

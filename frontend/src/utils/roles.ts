@@ -16,6 +16,12 @@ const ROLE_LABELS: Record<string, string> = {
   specjalista: 'Specjalista',
 }
 
+/**
+ * `Object.hasOwn`, not a bare lookup: the map is a plain object, so a role named
+ * 'toString' answered with `Object.prototype.toString` — a *function* where the
+ * header expects a word, which React renders as nothing at all. The same trap is
+ * guarded the same way in `isTimeOfDay` (utils/timeOfDay.ts).
+ */
 export function roleLabel(role: string): string {
-  return ROLE_LABELS[role] ?? role
+  return Object.hasOwn(ROLE_LABELS, role) ? ROLE_LABELS[role] : role
 }

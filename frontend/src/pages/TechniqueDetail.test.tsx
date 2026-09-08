@@ -168,10 +168,16 @@ describe('navigation', () => {
     expect(screen.getByText(/Moduł DBT: Tolerancja dyskomfortu psychicznego/)).toBeInTheDocument()
   })
 
-  it('says a wrong id was not found, without implying the technique exists', () => {
+  it('says a wrong id was not found, without implying the technique exists', async () => {
+    // Awaited, and that is the behaviour rather than test plumbing: the screen
+    // waits for the specialists' half of the catalogue before saying "not
+    // found", because a technique somebody just published opens from a link
+    // they sent — and "nie znaleziono" flashed at it would be a false statement
+    // about a technique that is about to appear. See useStoredTechniques.
     renderTechnique('nie-ma-takiej')
 
-    expect(screen.getByText('Nie znaleziono takiej techniki.')).toBeInTheDocument()
+    expect(screen.getByText('Wczytywanie techniki…')).toBeInTheDocument()
+    expect(await screen.findByText('Nie znaleziono takiej techniki.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Wróć do listy technik/ })).toBeInTheDocument()
   })
 })
