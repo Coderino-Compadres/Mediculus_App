@@ -43,3 +43,45 @@ export interface DietDay {
   mealCount: number
   hydration: DietHydration
 }
+
+/**
+ * One meal, as the history lists it.
+ *
+ * A meal's *content* is a photo and a description and nothing else — the
+ * mockups' §04 states that scope outright, which is why there is no weight, no
+ * portion and no product here to render. The photo is not in this type yet: no
+ * part of this deployment stores a file, and that is the module's largest open
+ * question (storage, retention, the consent it falls under). It joins this shape
+ * when it has somewhere to live.
+ */
+export interface DietMeal {
+  id: string
+  /**
+   * 'Śniadanie', 'Przekąska' — how the mockups label a meal ("Przekąska ·
+   * 16:20"). Nullable because §05's rule is that no field blocks a save, so a
+   * meal can be written without saying which one it was.
+   */
+  kind: string | null
+  /** 'HH:MM' in the patient's own clock, as the mockups write it. Nullable for
+   *  the same reason as `kind`. */
+  time: string | null
+  /** What the patient typed. '' when they saved a meal without describing it,
+   *  which the mockups explicitly allow ("niepełny wpis też jest wpisem"). */
+  description: string
+}
+
+/**
+ * One day of the food diary.
+ *
+ * A *dzienniczek* is a day, and a day holds meals — the module's own vocabulary,
+ * from the home screen's "DZISIEJSZY DZIENNICZEK" down to §07's title in the
+ * plural ("Historia dzienniczków żywieniowych"). Which is also why the history
+ * is a list of days rather than a flat list of meals: a patient looks back on
+ * "wtorek", not on "the 41st meal".
+ */
+export interface DietJournalDay {
+  /** 'YYYY-MM-DD' — the calendar day, in the reader's own zone. */
+  date: string
+  /** Newest first within the day, as the API will send them. */
+  meals: DietMeal[]
+}

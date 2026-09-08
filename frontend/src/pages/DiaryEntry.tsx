@@ -34,8 +34,18 @@ function emptyDraft(isoDate: string): DiaryEntryDraft {
     date: isoDate,
     mood: null,
     emotions: [],
-    energyLevel: 0,
-    tensionLevel: 0,
+    // NULL, not 0. Every question on this form is optional, and the two are
+    // different answers: `core/diary.py` says so in as many words ("NULL — which
+    // is not the same as a slider deliberately left at 0, and the dashboard
+    // treats them differently") and the column accepts null. Starting at 0 meant
+    // a patient who answered the mood tile and one emotion — the whole form,
+    // as far as they were concerned — was recorded as having *no* energy and
+    // *no* tension at all: "Średnia energia" on /home dropped from 5,0 to 2,5
+    // after one such entry, and the same zeros feed the weekly report a
+    // therapist reads. The sliders still *render* at 0 (`draft.energyLevel ?? 0`
+    // below); what changed is that not touching one no longer answers it.
+    energyLevel: null,
+    tensionLevel: null,
     situationReaction: {
       trigger: null,
       triggerOther: '',
@@ -160,6 +170,14 @@ function DiaryEntry() {
       const exists = current.emotions.some((entry) => entry.emotion === emotion)
       const emotions: EmotionEntry[] = exists
         ? current.emotions.filter((entry) => entry.emotion !== emotion)
+        // 0 rather than null, and deliberately unlike the two sliders above.
+        // A `mood_scale` column set to NULL already means "this chip was never
+        // picked" (`_read_ratings` skips NULLs), so storing a picked-but-unrated
+        // chip as null would drop it from the entry the next time the form is
+        // opened. The 0 is not free — it reads as "wcale" and pulls that
+        // emotion's weekly average down — but losing the patient's selection is
+        // worse. Fixing it properly is a schema question; see
+        // EmotionRatingSerializer in core/diary.py.
         : [...current.emotions, { emotion, intensity: 0 }]
       return { ...current, emotions }
     })

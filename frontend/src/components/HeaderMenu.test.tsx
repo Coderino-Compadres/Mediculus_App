@@ -220,6 +220,22 @@ describe('inside the diet module', () => {
     ).toHaveAttribute('href', ROUTES.home)
   })
 
+  it('offers the module\'s own diary history', async () => {
+    await openAt(ROUTES.diet)
+
+    expect(screen.getByRole('link', { name: 'Dzienniczki żywieniowe' })).toHaveAttribute(
+      'href', ROUTES.dietJournals,
+    )
+  })
+
+  it('does not offer the psychotherapy archive under that name', async () => {
+    /** Two screens called "Dzienniczki" in one menu is how a patient ends up
+     *  looking for their meals in the emotion diary. */
+    await openAt(ROUTES.diet)
+
+    expect(screen.queryByRole('link', { name: 'Dzienniczki' })).toBeNull()
+  })
+
   it('keeps the profile, because one account has one profile', async () => {
     await openAt(ROUTES.diet)
 

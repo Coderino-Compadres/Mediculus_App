@@ -58,6 +58,7 @@ const PATIENT_ITEMS: MenuItem[] = [
  */
 const DIET_ITEMS: MenuItem[] = [
   { label: 'Strona główna', to: ROUTES.diet },
+  { label: routeTitle(ROUTES.dietJournals), to: ROUTES.dietJournals },
   { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
   { label: 'Przejdź do części psychoterapeutycznej', to: ROUTES.home },
 ]

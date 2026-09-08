@@ -57,6 +57,25 @@ RATING_ORDER = tuple(emotion for _, emotion in MOOD_SCALE_EMOTIONS) + (STRES,)
 
 
 class EmotionRatingSerializer(serializers.Serializer):
+    """One chip the patient picked, and the number they put on it.
+
+    `intensity` is required and non-null, which is the one place this form makes
+    an answer compulsory — and it is a schema constraint rather than a product
+    decision. `mood_scale` keeps one nullable column per emotion and NULL there
+    already means *the chip was never picked*: `_read_ratings` skips NULLs, which
+    is what redraws the chips as the patient left them instead of as ten zeroes.
+    So a picked-but-unrated chip has nowhere to live — stored as NULL it would
+    disappear the next time the entry is opened, which is the patient's answer
+    silently thrown away.
+
+    0 is therefore what the form sends for a chip nobody rated, and the cost is
+    real: it reads as "wcale" and drags that emotion's weekly average towards
+    zero, which is what put 'Smutek' at 0,8/10 over five days in the report that
+    settled how the ranking is drawn. Recording "picked, unrated" honestly needs
+    somewhere to put the picked-set — a schema change, and a question for the
+    client before the diet module's four 0-10 sliders repeat it (§05 there).
+    """
+
     emotion = serializers.ChoiceField(choices=EMOTIONS)
     intensity = serializers.IntegerField(min_value=MIN_LEVEL, max_value=MAX_LEVEL)
 
@@ -134,6 +153,7 @@ def strongest_emotion(ratings):
     all", which is different from never picking it. `max` is stable, so equal
     ratings fall back to RATING_ORDER rather than to whichever key the dict
     happened to yield first.
+
     """
     rated = [(emotion, ratings[emotion]) for emotion in RATING_ORDER if emotion in ratings]
     if not rated:

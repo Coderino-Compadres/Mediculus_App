@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
 import DietHome from './pages/DietHome'
+import DietJournals from './pages/DietJournals'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
@@ -374,6 +375,14 @@ function App() {
             element={
               <RequireAuth>
                 <DietHome />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.dietJournals}
+            element={
+              <RequireAuth>
+                <DietJournals />
               </RequireAuth>
             }
           />

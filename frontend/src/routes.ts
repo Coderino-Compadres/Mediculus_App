@@ -45,6 +45,8 @@ export const ROUTES = {
   /** "Dodawanie posiłku" (§04 of the mockups) — not built; the home screen's one
    *  action has to land somewhere real. */
   dietMeal: '/diet/meal',
+  /** "Historia dzienniczków żywieniowych" (§07) — pages/DietJournals.tsx. */
+  dietJournals: '/diet/journals',
 } as const
 
 /** Fills in ROUTES.journalDetail's `:id` param — use instead of building the path by hand. */
@@ -120,6 +122,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistTechniqueNew]: 'Nowa technika',
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',
   [ROUTES.diet]: 'Dietetyka i psychodietetyka',
+  [ROUTES.dietJournals]: 'Dzienniczki żywieniowe',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',

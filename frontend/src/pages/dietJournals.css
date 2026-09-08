@@ -1,0 +1,207 @@
+/* "Dzienniczki żywieniowe" — the food diary's history.
+ *
+ * Its own stylesheet on the same terms as dietHome.css: the diet module dresses
+ * itself from styles/theme.css rather than wearing another screen's class
+ * names. And, like that one, no `text-transform: capitalize` on the date — the
+ * four stylesheets that carry it render "8 września" as "8 Września". */
+
+.diet-journals-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-journals-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-journals-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+
+.diet-journals-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-journals-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* A link in a line of text, so it gets its touch target from a pseudo-element
+   rather than real height — the same technique .journals-back uses, and for the
+   same reason: real height would push the intro paragraph around.
+ *
+ * It keeps the column's width and centring from `.diet-journals-page > *`
+ * rather than shrink-wrapping: `align-self: flex-start` here put the link
+ * against the *page's* left edge instead of the column's, which on a wide
+ * screen is 450px away from everything else on the screen. */
+.diet-journals-back {
+  position: relative;
+  display: inline-block;
+  font-size: 14px;
+  color: var(--color-sage-hover);
+  text-decoration: none;
+}
+
+.diet-journals-back::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  min-height: 44px;
+  transform: translateY(-50%);
+}
+
+.diet-journals-back:hover {
+  text-decoration: underline;
+}
+
+/* `margin: 0 auto`, not `margin: 0`. The centring lives on
+   `.diet-journals-page > *`, which has the same specificity as this rule and
+   loses to it by source order — so a bare `margin: 0` here silently un-centred
+   the paragraph while every card around it stayed in the column. The same trap
+   CLAUDE.md records between `.panel-empty` and `.journals-page > *`. */
+.diet-journals-intro {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+/* The list */
+
+.diet-journals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diet-journal-day {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.diet-journal-day-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diet-journal-day-header h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 17px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.diet-journal-day-count {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  white-space: nowrap;
+}
+
+.diet-journal-meals {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* One meal. The rule on the left is the only decoration — a card inside a card
+   reads as two levels of importance where there is one. */
+.diet-journal-meal {
+  border-left: 2px solid var(--color-divider);
+  padding-left: 14px;
+}
+
+.diet-journal-meal-heading {
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-sage-hover);
+  margin: 0 0 2px;
+}
+
+.diet-journal-meal-text {
+  font-size: 14px;
+  color: var(--color-graphite);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* A meal saved without a description: the same size, quieter colour and italic,
+   so it reads as the app speaking rather than as the patient's own words. */
+.diet-journal-meal-text-empty {
+  font-size: 14px;
+  font-style: italic;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Empty history */
+
+.diet-journals-empty {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.diet-journals-empty h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 8px;
+}
+
+.diet-journals-empty p {
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0 0 20px;
+}
+
+.diet-journals-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 12px 24px;
+  border-radius: var(--radius-control);
+  background: var(--color-sage);
+  color: #fff;
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.diet-journals-add:hover {
+  background: var(--color-sage-hover);
+}

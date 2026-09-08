@@ -26,7 +26,7 @@
  */
 
 import { toIsoDate } from '../utils/days'
-import type { DietDay } from '../types/diet'
+import type { DietDay, DietJournalDay } from '../types/diet'
 
 /**
  * Glasses of water the module suggests per day.
@@ -54,4 +54,19 @@ export function emptyDietDay(today: Date = new Date()): DietDay {
     mealCount: 0,
     hydration: { glasses: 0, target: DIET_HYDRATION_TARGET },
   }
+}
+
+/**
+ * The food diary's history — every day that holds a meal, newest first.
+ *
+ * Empty for the same reason `emptyDietDay` is all-zeros: nothing writes a meal
+ * yet, so "no days" is the true answer rather than a placeholder for one. When
+ * `GET /api/diet/journals/` exists this becomes the mapping layer and the screen
+ * gains the loading and failure states every other list in the app has —
+ * neither is written today, because a load that cannot fail has no failure to
+ * report and a screen that says "nie udało się wczytać" about a module nothing
+ * has written to would be a lie.
+ */
+export function emptyDietHistory(): DietJournalDay[] {
+  return []
 }
