@@ -1,8 +1,12 @@
+import { useEffect, useState } from 'react'
 import HeaderMenu from '../components/HeaderMenu'
+import LoadError from '../components/LoadError'
 import Pagination from '../components/Pagination'
 import { Link } from 'react-router-dom'
-import { emptyDietHistory } from '../api/diet'
+import { ApiError } from '../api/client'
+import { fetchDietHistory } from '../api/diet'
 import { fromIsoDate } from '../utils/days'
+import { pluralMeals } from '../utils/meals'
 import { usePagination } from '../hooks/usePagination'
 import type { DietJournalDay, DietMeal } from '../types/diet'
 import { ROUTES } from '../routes'
@@ -36,20 +40,25 @@ import './dietJournals.css'
  * entry. Those are this app's conventions (`hooks/usePagination.ts`) rather than
  * a guess, and a patient crossing between modules should meet the same list.
  *
+ * IT READS `GET /api/diet/meals/`, which is real: the days and their meals come
+ * from `diet_meal`, grouped by the server because `entry_date` is where the
+ * answer to "which day is this" already lives. It used to render
+ * `emptyDietHistory()` unconditionally, when nothing could write a meal — so
+ * unlike then, this screen now has a loading state and a failure state, and a
+ * failed load is never drawn as an empty diary (the mistake `Journals.tsx` is
+ * careful about: "nie masz jeszcze wpisów" about a diary full of them).
+ *
+ * WHAT STILL WRITES A MEAL IS NOTHING IN THE APP. §04's form is not built — the
+ * photo in it would be the first file this deployment ever stored — so the rows
+ * here come from `manage.py seed_demo_diary` and `scripts/mock_data.sql`. The
+ * empty state therefore still offers "Dodaj posiłek", which leads to the
+ * placeholder that screen will replace.
+ *
  * NOTHING OPENS FROM A ROW, deliberately. A detail screen for one day is not
  * built and its URL is not invented here; instead the day's meals are on the row
  * itself, so the screen is useful without navigating. If §07 has a detail, that
  * is where the route comes from.
  */
-
-/** Polish counts: 1 posiłek, 2-4 posiłki, 5+ posiłków (and the teens, which are all -ów). */
-function pluralMeals(count: number): string {
-  const last = count % 10
-  const teens = count % 100
-  if (count === 1) return '1 posiłek'
-  if (last >= 2 && last <= 4 && (teens < 12 || teens > 14)) return `${count} posiłki`
-  return `${count} posiłków`
-}
 
 /** "wtorek, 8 września" — the weekday included, and the month lowercase, as
  *  Polish spells it. Deliberately not `text-transform: capitalize`; see
@@ -106,9 +115,49 @@ function DayCard({ day }: { day: DietJournalDay }) {
   )
 }
 
+const LOAD_ERROR = 'Nie udało się wczytać dzienniczków żywieniowych.'
+
 function DietJournals() {
-  const days = emptyDietHistory()
+  const [days, setDays] = useState<DietJournalDay[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  /** Bumped by "Spróbuj ponownie", which is how the effect below is re-run —
+   *  the same shape Journals.tsx and the other list screens use. */
+  const [attempt, setAttempt] = useState(0)
   const pages = usePagination(days)
+
+  // The house pattern: a promise chain with a `cancelled` flag rather than an
+  // `async` effect body.
+  useEffect(() => {
+    let cancelled = false
+
+    fetchDietHistory()
+      .then((loaded) => {
+        if (cancelled) return
+        setDays(loaded)
+        setLoadError(null)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setLoadError(
+            (cause instanceof ApiError && cause.formMessage) || LOAD_ERROR,
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [attempt])
+
+  function retry() {
+    setLoading(true)
+    setLoadError(null)
+    setAttempt((n) => n + 1)
+  }
 
   return (
     <div className="diet-journals-page">
@@ -129,36 +178,57 @@ function DietJournals() {
         to zapis tego, co jadłaś lub jadłeś i co się wokół tego działo.
       </p>
 
-      {days.length === 0 ? (
-        /* An empty history is an ordinary state, not a failure, and the way out
-           of it is one tap — the same offer the home screen's empty day makes. */
-        <section className="diet-journals-empty">
-          <h2>Jeszcze nic tu nie ma</h2>
-          <p>
-            Pierwszy zapisany posiłek pojawi się na tej liście. Możesz zapisywać je
-            pojedynczo — nie musisz opisywać całego dnia naraz.
-          </p>
-          <Link className="diet-journals-add" to={ROUTES.dietMeal}>
-            Dodaj posiłek
-          </Link>
-        </section>
-      ) : (
-        <div className="diet-journals-list">
-          {pages.items.map((day) => (
-            <DayCard key={day.date} day={day} />
-          ))}
-        </div>
+      {loading && (
+        <p className="diet-journals-status" role="status" aria-busy="true">
+          Wczytywanie dzienniczków…
+        </p>
       )}
 
-      <Pagination
-        page={pages.page}
-        pageCount={pages.pageCount}
-        from={pages.from}
-        to={pages.to}
-        total={pages.total}
-        onChange={pages.goTo}
-        unit="dni"
-      />
+      {/* A failure is said as one. Rendering the empty state here would tell a
+          patient their food diary is empty when it is only unreachable. */}
+      {!loading && loadError && (
+        <LoadError
+          className="diet-journals-status diet-journals-status-error"
+          message={loadError}
+          onRetry={retry}
+        />
+      )}
+
+      {!loading && !loadError && (
+        days.length === 0 ? (
+          /* An empty history is an ordinary state, not a failure, and the way
+             out of it is one tap — the same offer the home screen's empty day
+             makes. */
+          <section className="diet-journals-empty">
+            <h2>Jeszcze nic tu nie ma</h2>
+            <p>
+              Pierwszy zapisany posiłek pojawi się na tej liście. Możesz zapisywać je
+              pojedynczo — nie musisz opisywać całego dnia naraz.
+            </p>
+            <Link className="diet-journals-add" to={ROUTES.dietMeal}>
+              Dodaj posiłek
+            </Link>
+          </section>
+        ) : (
+          <div className="diet-journals-list">
+            {pages.items.map((day) => (
+              <DayCard key={day.date} day={day} />
+            ))}
+          </div>
+        )
+      )}
+
+      {!loading && !loadError && (
+        <Pagination
+          page={pages.page}
+          pageCount={pages.pageCount}
+          from={pages.from}
+          to={pages.to}
+          total={pages.total}
+          onChange={pages.goTo}
+          unit="dni"
+        />
+      )}
     </div>
   )
 }

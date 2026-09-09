@@ -20,6 +20,38 @@
   margin: 0;
 }
 
+/* The attention marker, next to the child's name.
+   Ochre — `--color-caution`, the same token the entry form's risky-behaviour
+   note and the reports' unfavourable deltas use — and never the error red: the
+   last report wanting a look is not the app having gone wrong. A bright yellow
+   was asked for and is not usable here: on white it fails contrast at this size,
+   and this is the one glyph on the screen that must not be missed.
+   `flex: none` so a long name wrapping does not squash the circle, and the
+   heading is a flex row for the same reason. */
+.child-card-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.child-attention {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-caution);
+  color: #fff;
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  /* The glyph is decorative next to its own aria-label, and an exclamation mark
+     centres badly in a circle without this. */
+  line-height: 1;
+  padding-bottom: 1px;
+}
+
 .child-card-email {
   font-size: 13px;
   color: var(--color-graphite-muted);

@@ -177,14 +177,44 @@ class AccountTypeTests(AuthTestCase):
         self.assertIs(response.data['is_child'], True)
         self.assertIs(Patient.objects.get(user__email=REGISTRATION['email']).is_child, True)
 
-    def test_guardian_gets_the_rodzic_role_and_no_patient_row(self):
-        """A guardian is not a clinical subject, so they get no id_medical."""
+    def test_a_guardian_cannot_be_registered_without_a_specialists_code(self):
+        """A guardian account is not self-service.
+
+        The form still posts `account_type: 'parent'` — redeeming a code *is* a
+        registration — but without the code there is nothing to create: the
+        account asserts that this person is a child's legal guardian, which the
+        app cannot check and the treating specialist can (see
+        `RegisterSerializer._check_invitation`).
+
+        What a valid code then produces is covered where issuing one is cheap:
+        test_parent_invitation_api.RedemptionTests.
+        """
         response = self._register('parent')
 
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('invitation_code', response.data)
+        # Refused, not half-created: no user, and nothing in either side table.
+        self.assertFalse(User.objects.exists())
+        self.assertFalse(Patient.objects.exists())
+
+    def test_a_blank_code_is_refused_the_same_way_as_a_missing_one(self):
+        """The field allows blank, so '' must not slip past as "no code given"."""
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'account_type': 'parent', 'invitation_code': '   '},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('invitation_code', response.data)
+        self.assertFalse(User.objects.exists())
+
+    def test_a_patient_is_not_asked_for_a_code(self):
+        """The requirement belongs to the pair, not to the field: demanding a
+        code at field level would demand one from every account type."""
+        response = self._register('patient')
+
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data['role'], 'rodzic')
-        self.assertIsNone(response.data['is_child'])
-        self.assertFalse(Patient.objects.filter(user__email=REGISTRATION['email']).exists())
 
     def test_an_unknown_account_type_is_rejected(self):
         response = self._register('specjalista')
@@ -268,10 +298,18 @@ class AgeAgainstAccountTypeTests(AuthTestCase):
         self.assertIs(Patient.objects.get(user__email=REGISTRATION['email']).is_child, True)
 
     def test_a_guardian_is_not_age_checked(self):
-        """Deliberately unenforced — see the note in the summary."""
+        """Deliberately unenforced — see the note in the summary.
+
+        Asserted through the refusal a *guardian* now gets: the age check runs
+        before the invitation is looked at, so a minor's date of birth on a
+        guardian registration must still come back as the missing code rather
+        than as an age conflict. The 201 half of this property is in
+        test_parent_invitation_api.RedemptionTests, where a code can be issued.
+        """
         response = self._register('parent', self._birthday_years_ago(15))
 
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(list(response.data), ['invitation_code'])
 
 
 class DateOfBirthTests(AuthTestCase):

@@ -313,3 +313,80 @@ describe('apiDownload', () => {
     })
   })
 })
+
+describe('the /api prefix is the caller\'s job', () => {
+  /**
+   * `apiRequest` prepends nothing — `BASE_URL` is the *origin* and is empty for
+   * same-origin — so every path handed to it has to start with `/api/`. That is
+   * a convention rather than a mechanism, and a convention is exactly what one
+   * module can get wrong quietly: `api/diet.ts` passed `'/diet/hydration/'`,
+   * which reached the Vite dev server as a *page* address, came back as a 404
+   * carrying HTML, and surfaced as the generic "Coś poszło nie tak" — on the
+   * diet home screen not even that, because that card swallows its own failure
+   * by design. Nothing failed loudly and no unit test noticed, because a test
+   * that mocks `apiRequest` asserts the path its own caller passed.
+   *
+   * So this reads the source of every module in `src/api/` and refuses a
+   * literal path without the prefix. Same kind of guard `test_emotions.py` puts
+   * on the emotion names: what is being checked is an agreement between files,
+   * which no type can express.
+   *
+   * The sources come from `import.meta.glob(..., '?raw')` rather than from
+   * `node:fs`, because this project has no `@types/node` and a test that needed
+   * one would be a dependency added for a guard.
+   */
+
+  const SOURCES = import.meta.glob('./*.ts', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  }) as Record<string, string>
+
+  /** Every string literal handed to `apiRequest` as its first argument, plus
+   *  the `const … URL … = '…'` bases that get interpolated into one. */
+  function pathsIn(source: string): string[] {
+    const found: string[] = []
+    for (const match of source.matchAll(/apiRequest(?:<[^>]*>)?\(\s*'([^']+)'/g)) {
+      found.push(match[1])
+    }
+    for (const match of source.matchAll(/const\s+\w*URL\w*\s*=\s*'(\/[^']*)'/g)) {
+      found.push(match[1])
+    }
+    return found
+  }
+
+  function modules(): [string, string][] {
+    return Object.entries(SOURCES).filter(
+      ([name]) => !name.endsWith('.test.ts') && !name.endsWith('/client.ts'),
+    )
+  }
+
+  it('every path in every api module starts with /api/', () => {
+    // A glob that matched nothing would make this test pass silently.
+    expect(modules().length).toBeGreaterThan(5)
+
+    const wrong: string[] = []
+    for (const [name, source] of modules()) {
+      for (const path of pathsIn(source)) {
+        if (!path.startsWith('/api/')) wrong.push(`${name}: ${path}`)
+      }
+    }
+
+    expect(wrong).toEqual([])
+  })
+
+  it('and it is actually reading paths, not matching nothing', () => {
+    /** A guard whose regex stopped matching would go quiet rather than fail, so
+     *  the parser is checked on a sample and the modules on a count. */
+    expect(
+      pathsIn(
+        "const SUPPLEMENTS_URL = '/api/diet/supplements/'\n" +
+          "apiRequest<Thing>('/api/auth/me/')\n" +
+          "await apiRequest<void>('/api/auth/logout/', { method: 'POST' })",
+      ),
+    ).toEqual(['/api/auth/me/', '/api/auth/logout/', '/api/diet/supplements/'])
+
+    expect(modules().flatMap(([, source]) => pathsIn(source)).length)
+      .toBeGreaterThan(20)
+  })
+})

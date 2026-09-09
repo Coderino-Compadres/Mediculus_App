@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 
+from .drinks import DRINKS, WATER
 from .technique_vocabulary import AVAILABILITY_GENERAL
 from .time_of_day import TIME_OF_DAY_CHOICES
 
@@ -368,3 +369,231 @@ class Raport(models.Model):
 
     class Meta:
         db_table = 'raport'
+
+
+class Hydration(models.Model):
+    """One thing the patient drank, in the diet module's hydration screen.
+
+    A row per serving rather than a running total per day, and that is the
+    decision the rest of the feature rests on. A counter column would make "+1
+    szklanka" a read-modify-write over a shared number -- two taps in the same
+    second lose one of each other -- and it would leave nothing to undo: a
+    mis-tap on a phone would be uncorrectable, because there would be no
+    individual act to withdraw. Rows also make the "Ostatnie 7 dni" chart a
+    GROUP BY rather than a second table.
+
+    `entry_date` is stored rather than derived from `created_at`, unlike
+    `diary`. The two are the same question -- which calendar day, in
+    `settings.TIME_ZONE`, this belongs to -- but the diary answers it once per
+    row in Python, while this table is grouped by day seven days at a time. A
+    date column keeps that a single indexed query instead of a timezone
+    conversion Postgres would have to run over every row. `core/days.py` is
+    still the only place the boundary itself is decided; nothing here computes
+    it.
+
+    `drink` holds one of `core.drinks.DRINKS`, the Polish name as written. Only
+    'Woda' counts towards the daily goal -- everything else is recorded and
+    deliberately not converted, which is the client's rule and not a rounding
+    we have not got round to (see core/drinks.py).
+
+    `amount_ml` is NULL for every drink but water. The mockup's "Inne napoje"
+    card offers a chip and no quantity, so a serving of tea is recorded as
+    having happened and nothing more; inventing 250 ml for it would put a number
+    in a clinical record that nobody entered.
+
+    `id_medical` is the same logical, application-level reference `diary` uses:
+    this table is in medical_db and `patient` is in user_db, so Postgres
+    enforces nothing across it.
+    """
+
+    id_hydration = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id_medical = models.UUIDField(db_index=True)
+    # The calendar day this serving belongs to, in settings.TIME_ZONE. Indexed
+    # together with id_medical, because every query here is "this patient, these
+    # seven days".
+    entry_date = models.DateField()
+    drink = models.TextField(choices=[(name, name) for name in DRINKS], default=WATER)
+    amount_ml = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'hydration'
+        indexes = [
+            models.Index(fields=['id_medical', 'entry_date'], name='idx_hydration_patient_day'),
+        ]
+
+
+class DietMeal(models.Model):
+    """One meal, in the diet module's food diary (mockups §04-§07).
+
+    A row per meal, and a day is the group of them — the module's own vocabulary
+    ("DZISIEJSZY DZIENNICZEK", "Historia dzienniczków żywieniowych"). There is
+    no `diet_day` table above it: a day has nothing of its own to store that is
+    not derivable from its meals, and one would only be a second answer to "how
+    many meals did Tuesday hold".
+
+    WHAT A MEAL MAY HOLD is decided by §04, which states the scope outright: no
+    product search and no numeric field, a photo and a description being the
+    only two sources of its content. So there is no weight column here, no
+    portion size, no calorie count and no product reference — not missing, but
+    excluded, and this is the table somebody would add them to.
+
+    THE PHOTO IS NOT HERE YET, and that is the module's largest open question
+    rather than an oversight: it would be the first file this deployment ever
+    stored, and where it lives, how long it is kept and which consent covers it
+    are all unanswered (see CLAUDE.md). It joins this table when it has somewhere
+    to live; nothing else about the shape changes when it does.
+
+    NOTHING IS REQUIRED, which is §05's rule ("Żadne pole nie blokuje zapisu")
+    expressed in the schema rather than only in a form: `kind` and `eaten_at`
+    are nullable and `description` may be empty. A meal that answers nothing is
+    an ordinary row, and the history screen renders it as one.
+
+    `entry_date` is stored rather than derived from `created_at`, for the same
+    reason `hydration` stores it: this table is grouped by day, seven or thirty
+    days at a time, and a date column plus `(id_medical, entry_date)` keeps that
+    one indexed query instead of a timezone conversion over every row.
+    `core/days.py` is still the only place the boundary itself is decided.
+
+    `id_medical` is the same logical, application-level reference `diary` uses:
+    this table is in medical_db and `patient` in user_db, so Postgres enforces
+    nothing across it.
+    """
+
+    id_meal = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id_medical = models.UUIDField(db_index=True)
+    # The calendar day this meal belongs to, in settings.TIME_ZONE.
+    entry_date = models.DateField()
+    # One of core.meals.MEAL_KINDS, the Polish name as written -- or NULL, which
+    # is a meal saved without saying which one it was. TextField like every
+    # other text column on these tables; the serializer is what constrains the
+    # value, so a length limit would only be a second thing to keep in step with
+    # database_setup.sql (see core.0002 for how that goes).
+    kind = models.TextField(null=True, blank=True)
+    # 'Przekąska · 16:20' -- the hour as the mockups label a meal. A time rather
+    # than a moment, and nullable: an hour left blank is an answer not given,
+    # not a midnight.
+    eaten_at = models.TimeField(null=True, blank=True)
+    # What the patient typed. '' rather than NULL for "saved without a
+    # description", because unlike `kind` there is no third state to tell apart
+    # -- the field was on screen and left empty.
+    description = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'diet_meal'
+        indexes = [
+            models.Index(fields=['id_medical', 'entry_date'], name='idx_diet_meal_patient_day'),
+        ]
+
+    def __str__(self):
+        return f'{self.entry_date} {self.kind or "posiłek"}'
+
+
+class Supplement(models.Model):
+    """One preparation the patient takes — "Suplementy i leki", mockups §08.
+
+    "Lista z dawką, częstotliwością, godziną oraz datami rozpoczęcia i
+    zakończenia" is the section's own description of it, and those are the
+    columns. Nothing here is computed and nothing is scored: this module counts
+    no missed doses and holds no adherence figure, which is a deliberate absence
+    on a screen a patient opens every morning (see core/supplements.py).
+
+    ONLY `name` IS REQUIRED. Somebody who knows they take magnesium and not the
+    dose should be able to write it down, so every other column is nullable and
+    the serializer normalises a blank answer to NULL — one representation of "not
+    answered" rather than two.
+
+    `end_date` NULL means **bezterminowo**, the artboard's own wording, rather
+    than an unanswered question. There is no third column for the mockup's "wg
+    zaleceń lekarza" variant: `frequency` is free text and that is where it goes.
+
+    `reminder_enabled` is stored although **nothing sends a reminder**: this
+    deployment has no push and no mail. It is the patient's answer to a question
+    the screen asks, kept so that the day a scheduler exists it reads a column
+    rather than asking everybody again — and the screen says out loud that
+    nothing is sent yet, because a switch that silently promises a notification
+    is the mistake the home screen's technique card was.
+
+    Medicines are health data of the most ordinary kind, so this table is in
+    medical_db behind the same `id_medical` as everything else. The open question
+    §08 states — whether this is the same list as the health profile's
+    "przyjmowane leki" — cannot be answered until §13 exists; today this is the
+    only place a medicine lives.
+    """
+
+    id_supplement = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id_medical = models.UUIDField(db_index=True)
+    name = models.TextField()
+    # '2000 IU', '200 mg' -- free text, deliberately: a unit picker would be a
+    # dictionary to maintain for a line nothing computes from.
+    dose = models.TextField(null=True, blank=True)
+    # 'raz dziennie', 'wg zaleceń lekarza'.
+    frequency = models.TextField(null=True, blank=True)
+    # The hour it is meant to be taken at, which is also what a reminder would
+    # fire on. NULL for a preparation taken with no fixed hour.
+    hour = models.TimeField(null=True, blank=True)
+    start_date = models.DateField(null=True, blank=True)
+    # NULL is 'bezterminowo' -- see the class docstring.
+    end_date = models.DateField(null=True, blank=True)
+    reminder_enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'supplement'
+        indexes = [
+            models.Index(fields=['id_medical'], name='idx_supplement_patient'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class SupplementIntake(models.Model):
+    """"Odhacz, kiedy weźmiesz" — one tick, for one preparation, on one day.
+
+    A row per (supplement, day) rather than a boolean on `supplement`, which is
+    the same argument `hydration` makes for a row per serving: a column would be
+    a running value two taps can race, it could not be undone in a way that
+    leaves the earlier days intact, and it could not answer "did I take it on
+    Tuesday" at all. The unique constraint is what makes a double-tapped
+    checkbox one row instead of two.
+
+    AN ABSENT ROW IS NOT A RECORD OF A MISSED DOSE. There is no third state
+    here: unticking deletes, and nothing in this app stores that somebody did
+    not take a medicine. Recording that would be a judgement the app is not
+    entitled to make, and it is the column an adherence score would be built
+    from.
+
+    A REAL FOREIGN KEY, unlike `id_medical` everywhere else in medical_db: both
+    tables are in the same database, so Postgres can and does enforce it, and
+    CASCADE is right — a tick belongs to the preparation it ticks off, and
+    deleting the preparation is the patient saying it is no longer part of their
+    regimen. Whose row it is comes from `supplement.id_medical`, deliberately
+    not copied here: two places recording that are two places free to disagree.
+    """
+
+    id_intake = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    supplement = models.ForeignKey(
+        Supplement, db_column='id_supplement', on_delete=models.CASCADE,
+        related_name='intakes',
+    )
+    # The calendar day it was taken on, in settings.TIME_ZONE. Only today is
+    # tickable; the view is what passes today in.
+    entry_date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'supplement_intake'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['supplement', 'entry_date'],
+                name='uq_supplement_intake_day',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.supplement_id} {self.entry_date}'

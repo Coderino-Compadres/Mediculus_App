@@ -161,7 +161,7 @@
 .diet-hydration-count {
   font-weight: var(--font-weight-semibold);
   font-size: 14px;
-  color: var(--color-sage);
+  color: var(--color-water);
   margin: 0;
   white-space: nowrap;
 }
@@ -177,7 +177,35 @@
 .diet-hydration-fill {
   height: 100%;
   border-radius: var(--radius-pill);
-  background: var(--color-sage-light);
+  background: var(--color-water-soft);
+  transition: width 200ms ease-out;
+}
+
+/* Into /diet/hydration, which is where a glass is actually recorded. A link in
+   a line of text, so its 44px touch target comes from a pseudo-element rather
+   than real height — real height would grow the card around it. */
+.diet-hydration-link {
+  position: relative;
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-sage);
+  text-decoration: none;
+}
+
+.diet-hydration-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  min-height: 44px;
+  transform: translateY(-50%);
+}
+
+.diet-hydration-link:hover {
+  text-decoration: underline;
 }
 
 /* "Jak się dziś jadło?" */

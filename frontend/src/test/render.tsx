@@ -15,6 +15,8 @@ export const TEST_USER: AuthUser = {
   isSpecialist: false,
   isChild: false,
   guardianStatus: null,
+  // null, not 0: the question applies to a guardian and this is a patient.
+  pendingGuardianInvitations: null,
   mustChangePassword: false,
   // Both granted, as registration writes them — the ordinary account. A screen
   // testing the "Nieudzielona" state overrides one with null.

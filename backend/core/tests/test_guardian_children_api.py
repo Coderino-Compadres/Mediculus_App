@@ -19,7 +19,8 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from core.account import CHILD_SUMMARY_FIELDS
+from core.account import (CHILD_ATTENTION_FIELD, CHILD_SUMMARY_FIELDS,
+                          RISKY_DAYS_FOR_ATTENTION)
 from core.authentication import SESSION_USER_KEY
 from core.models import Diary, ParentChild, Patient, User, UserRole
 
@@ -239,6 +240,11 @@ class NothingClinicalTests(ChildrenTestCase):
             {
                 'id', 'child_name', 'child_surname', 'child_email', 'linked_at',
                 'consents_active', 'activity',
+                # The one field here derived from what the diary *says* rather
+                # than from how much of it there is — the client's decision, and
+                # a boolean precisely so that it stays one field. See
+                # CHILD_ATTENTION_FIELD and AttentionTests below.
+                CHILD_ATTENTION_FIELD,
             },
         )
 
@@ -264,6 +270,145 @@ class NothingClinicalTests(ChildrenTestCase):
                      'core:report-list', 'core:account-profile'):
             with self.subTest(name=name):
                 self.assertEqual(self.client.get(reverse(name)).status_code, 403)
+
+
+class AttentionTests(ChildrenTestCase):
+    """The marker next to the child's name — the one exception to "never content".
+
+    Decided by the client: a guardian should see that something happened, so the
+    card carries a flag when the child's **most recent** weekly report flagged
+    `RISKY_DAYS_FOR_ATTENTION` days or more with a risky behaviour.
+
+    What it must not become is a report. The wire carries a boolean: no count, no
+    dates, no note text, no word naming the reason — so the panel cannot start
+    quoting the diary without a backend change and a decision to go with it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.child = self.make_child()
+        self.link(self.child)
+        monday = self.today - datetime.timedelta(days=self.today.weekday())
+        self.last_week_monday = monday - datetime.timedelta(days=7)
+
+    def entry_on(self, day, *, risky):
+        """One entry dated `day`, flagged or not.
+
+        Its own helper rather than `entry(days_ago=...)`: which week a day falls
+        into is what every test here turns on, and counting backwards from today
+        would make each case depend on which weekday the suite runs.
+        """
+        diary = Diary.objects.create(
+            id_medical=self.child.id_medical, current_mood='very_bad', stress_level=10,
+            risky_behavior_note='Nie spałam całą noc.' if risky else None,
+        )
+        noon = timezone.make_aware(datetime.datetime.combine(day, datetime.time(12, 0)))
+        Diary.objects.filter(pk=diary.pk).update(created_at=noon)
+        return diary
+
+    def flag_days(self, count, *, week_monday=None, risky=True):
+        monday = week_monday or self.last_week_monday
+        for offset in range(count):
+            self.entry_on(monday + datetime.timedelta(days=offset), risky=risky)
+
+    def attention(self):
+        return self.children()[0][CHILD_ATTENTION_FIELD]
+
+    def test_the_threshold_number_of_flagged_days_raises_it(self):
+        self.flag_days(RISKY_DAYS_FOR_ATTENTION)
+
+        self.assertIs(self.attention(), True)
+
+    def test_one_below_the_threshold_does_not(self):
+        self.flag_days(RISKY_DAYS_FOR_ATTENTION - 1)
+
+        self.assertIs(self.attention(), False)
+
+    def test_more_than_the_threshold_still_raises_it(self):
+        """A threshold, not an exact count: a worse week must not be quieter."""
+        self.flag_days(RISKY_DAYS_FOR_ATTENTION + 2)
+
+        self.assertIs(self.attention(), True)
+
+    def test_days_without_a_note_do_not_count(self):
+        """Entries on their own are not flagged days, however bad the mood is —
+        `harder_days` is a different figure and deliberately not this one."""
+        self.flag_days(6, risky=False)
+
+        self.assertIs(self.attention(), False)
+
+    def test_only_the_most_recent_report_decides(self):
+        """A bad week a month ago is not what the marker is about; the guardian
+        is being pointed at the newest report, and the older ones are not theirs
+        to read anyway."""
+        older_monday = self.last_week_monday - datetime.timedelta(days=7)
+        self.flag_days(RISKY_DAYS_FOR_ATTENTION + 1, week_monday=older_monday)
+        self.flag_days(1)
+
+        self.assertIs(self.attention(), False)
+
+    def test_the_week_in_progress_is_not_a_report_yet(self):
+        """Same rule as the Raporty screens: a report covers a week that has
+        ended. Otherwise the marker would appear and disappear mid-week."""
+        this_monday = self.today - datetime.timedelta(days=self.today.weekday())
+        for offset in range(RISKY_DAYS_FOR_ATTENTION):
+            day = this_monday + datetime.timedelta(days=offset)
+            if day <= self.today:
+                self.entry_on(day, risky=True)
+
+        self.assertIs(self.attention(), False)
+
+    def test_a_diary_with_nothing_in_it_raises_nothing(self):
+        self.assertIs(self.attention(), False)
+
+    def test_a_link_to_an_account_with_no_patient_row_raises_nothing(self):
+        plain = self.make_user('bez-pacjenta@example.com')
+        ParentChild.objects.create(
+            parent=self.guardian, child=plain, accepted_at=timezone.now(),
+        )
+
+        rows = {row['child_email']: row for row in self.children()}
+        self.assertIs(rows[plain.email][CHILD_ATTENTION_FIELD], False)
+
+    def test_a_locked_account_raises_nothing_either(self):
+        """Withdrawal stops the processing, and deriving this from the diary is
+        processing — the same rule as the figures, for a stronger reason."""
+        from core.consents import withdraw
+        self.flag_days(RISKY_DAYS_FOR_ATTENTION)
+        withdraw(self.child.user, 'all')
+
+        row = self.children()[0]
+        self.assertFalse(row['consents_active'])
+        self.assertIs(row[CHILD_ATTENTION_FIELD], False)
+
+    def test_it_travels_as_a_flag_and_nothing_else(self):
+        """The sweep that keeps this one exception one exception: the payload may
+        say "look at the report" and must not say what is in it."""
+        self.flag_days(RISKY_DAYS_FOR_ATTENTION + 1)
+
+        row = self.children()[0]
+        body = str(row)
+
+        # A bool, not a number of flagged days: the value itself is the whole of
+        # what this field may say. (Asserting "no digits in the payload" is not
+        # available — `entry_count` is a legitimate count and this row has one.)
+        self.assertIsInstance(row[CHILD_ATTENTION_FIELD], bool)
+        self.assertIs(row[CHILD_ATTENTION_FIELD], True)
+        # The activity half is unchanged: the marker did not smuggle a figure in.
+        self.assertEqual(set(row['activity']), set(CHILD_SUMMARY_FIELDS))
+        # No reason, no dates from the week, no note text — nothing that says
+        # *what* wants the guardian's attention.
+        for leaked in ('risky', 'ryzyk', 'uwag', 'Nie spałam', str(self.last_week_monday)):
+            with self.subTest(leaked=leaked):
+                self.assertNotIn(leaked, body)
+
+    def test_the_guardian_still_cannot_open_the_report_itself(self):
+        """The marker points at a document they have no access to, which is the
+        shape of the decision: they are told to act, not shown the week."""
+        self.flag_days(RISKY_DAYS_FOR_ATTENTION)
+        self.sign_in(self.guardian)
+
+        self.assertEqual(self.client.get(reverse('core:report-list')).status_code, 403)
 
 
 class WithdrawnConsentTests(ChildrenTestCase):

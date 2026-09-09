@@ -27,6 +27,11 @@ from .dashboard import build_home_dashboard
 from .frequency import build_year_frequency, years_with_entries
 from .diary import (DiaryEntrySerializer, load_entry, load_history,
                     load_today_entry, save_today_entry)
+from .hydration import (HydrationEntrySerializer, add_entry as add_hydration,
+                        build_hydration_day, remove_entry as remove_hydration,
+                        serialize_entry as serialize_hydration_entry)
+from .meals import build_diet_day, load_history as load_meal_history
+from . import supplements as supplement_rules
 from .guardian import (STATUS_ACCEPTED, accept_invitation, accepted_children,
                        cancel_invitation, guardian_status, pending_invitations,
                        reject_invitation)
@@ -740,6 +745,265 @@ class FrequencyView(APIView):
             'years_with_entries': years_with_entries(patient.id_medical, today),
             'buckets': build_year_frequency(patient.id_medical, year, today),
         })
+
+
+HYDRATION_REFUSAL = (
+    'Nawodnienie jest dostępne tylko dla konta pacjenta.'
+)
+
+
+class HydrationView(APIView):
+    """GET/POST /api/diet/hydration/ — today's water, and one more serving.
+
+    The diet module's first endpoint of any kind. Everything about its shape is
+    borrowed rather than invented: the session is the only identity input (no
+    patient id in the URL, so one account cannot ask for another's numbers),
+    `_require_patient` turns away a guardian and a specialist rather than
+    answering them zero glasses, and the aggregation lives in `core/hydration.py`
+    so it can be tested without a request.
+
+    POST answers with the whole day rather than with the row it wrote. Three
+    numbers on the screen move when one glass is recorded — the count, the bar
+    and today's column in the seven-day chart — and rebuilding them in the
+    browser from a single row is how two surfaces start disagreeing about one
+    diary. The cost is one extra query per tap, on a screen that fires one
+    request per deliberate act.
+
+    Not throttled, deliberately, unlike `/api/reports/<id>/pdf/`. That cap is
+    about CPU on a synchronous worker; this is an INSERT of six small columns,
+    and what bounds it is `MAX_ENTRIES_PER_DAY` — a limit on the *data*, which is
+    the thing actually worth protecting. A per-account rate cap here would also
+    be reachable by somebody genuinely tapping "+ Szklanka" a few times in a row.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, HYDRATION_REFUSAL)
+        return Response(build_hydration_day(patient.id_medical, timezone.localdate()))
+
+    def post(self, request):
+        patient = _require_patient(request, HYDRATION_REFUSAL)
+        serializer = HydrationEntrySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        today = timezone.localdate()
+        entry = add_hydration(patient.id_medical, serializer.validated_data, today)
+        return Response(
+            {
+                'entry': serialize_hydration_entry(entry),
+                'day': build_hydration_day(patient.id_medical, today),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class HydrationEntryView(APIView):
+    """DELETE /api/diet/hydration/<id>/ — undo one of today's servings.
+
+    The only hydration URL carrying an id, so the only one where a caller can
+    name a row that is not theirs: `remove_entry` filters on the session's
+    `id_medical` alongside the id, which makes somebody else's serving answer
+    exactly like a nonexistent one — 404, the same convention as
+    `/api/diary/<id>/`.
+
+    It filters on today as well, which is the diary's rule applied to a second
+    kind of row: a serving from Tuesday is as immutable as Tuesday's entry, or
+    the seven-day chart would stop describing the seven days that happened. A
+    past row therefore also answers 404 — there is no screen that offers to
+    delete one, and a refusal worded as "too old" would be a second thing to
+    keep in step with what the screen shows.
+
+    Answers 204 with no body rather than the rebuilt day: unlike POST this is
+    reached from the list the screen is already holding, and the screen re-reads
+    on its own.
+    """
+
+    def delete(self, request, id_hydration):
+        patient = _require_patient(request, HYDRATION_REFUSAL)
+        if not remove_hydration(patient.id_medical, id_hydration, timezone.localdate()):
+            raise NotFound('Nie znaleziono tego wpisu.')
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+DIET_REFUSAL = (
+    'Dzienniczek żywieniowy jest dostępny tylko dla konta pacjenta.'
+)
+
+SUPPLEMENT_REFUSAL = (
+    'Suplementy i leki są dostępne tylko dla konta pacjenta.'
+)
+
+SUPPLEMENT_NOT_FOUND = 'Nie znaleziono tej pozycji na liście.'
+
+
+class DietDayView(APIView):
+    """GET /api/diet/today/ — the diet home screen's day.
+
+    Read-only, and structurally so: there is no write verb on this URL. What
+    writes a meal is §04's "Dodawanie posiłku" form, which is not built — the
+    photo in it would be the first file this deployment ever stored, and where
+    it lives, how long it is kept and which consent covers it are all
+    unanswered. Until then the rows come from `manage.py seed_demo_diary` and
+    `scripts/mock_data.sql`, and this endpoint reports what the table actually
+    holds instead of the zeros `api/diet.ts` used to invent.
+
+    THE PAYLOAD CANNOT BECOME A VERDICT. It is a date, a streak and a count of
+    today's meals, and that is the whole of it: no target, no comparison with
+    yesterday, no flag. §02's rule is that "pusty dzień nie jest brakiem: jest
+    zaproszeniem bez presji", and among these patients are people with eating
+    disorders — a score on the screen they open every morning is exactly what
+    this module is built not to have.
+
+    The streak is the diet module's own (`meals.streak_days`), not the
+    psychotherapy one. Whether the two are one number is an open question for
+    the client; keeping them apart means answering it later changes one function.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, DIET_REFUSAL)
+        return Response(build_diet_day(patient.id_medical, timezone.localdate()))
+
+
+class DietMealHistoryView(APIView):
+    """GET /api/diet/meals/ — "Historia dzienniczków żywieniowych" (§07).
+
+    Every day that holds a meal, newest first, with the meals inside the day —
+    grouped on the server because `entry_date` is where the answer to "which day
+    is this" already lives, and two ends grouping it separately is how one meal
+    ends up on two Tuesdays.
+
+    Answers with everything (bounded by `meals.MAX_HISTORY_MEALS`), like
+    `/api/diary/` and for the same reason: the screen filters and pages in the
+    browser, so paginating here would hand out pages of a different list.
+
+    Read-only structurally, like the archive it mirrors: no write verb exists on
+    this URL, and §07's rule that a past day is read-only is therefore not a
+    permission anybody can forget to check.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, DIET_REFUSAL)
+        return Response(load_meal_history(patient.id_medical))
+
+
+class SupplementsView(APIView):
+    """GET/POST /api/diet/supplements/ — the list, and one more entry.
+
+    The other half of §08. Clinical data like everything else under
+    `_require_patient`: a guardian and a specialist are refused rather than
+    handed an empty list, and an unlinked minor is refused too — a medicine
+    logged against a named account is health data of the most ordinary kind.
+
+    POST answers with the **whole list** rather than the row it wrote, the same
+    choice `/api/diet/hydration/` makes: the list is ordered by hour, so a new
+    entry does not land at the end, and rebuilding that order in the browser is
+    how one list ends up with two versions of itself.
+
+    Not throttled, deliberately, and for the same reason the hydration endpoint
+    is not: what is worth protecting is the table, and `MAX_SUPPLEMENTS` bounds
+    that. A rate cap here would be reachable by somebody entering a real
+    regimen of five preparations in one sitting.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, SUPPLEMENT_REFUSAL)
+        return Response(supplement_rules.list_supplements(
+            patient.id_medical, timezone.localdate(),
+        ))
+
+    def post(self, request):
+        patient = _require_patient(request, SUPPLEMENT_REFUSAL)
+        serializer = supplement_rules.SupplementSerializer(
+            data=request.data, context={'id_medical': patient.id_medical},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            supplement_rules.list_supplements(
+                patient.id_medical, timezone.localdate()),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SupplementView(APIView):
+    """PUT/DELETE /api/diet/supplements/<id>/ — correct one, or drop it.
+
+    The only supplement URL carrying an id, so the only one where a caller can
+    name a row that is not theirs: `supplements.find` filters on the session's
+    `id_medical` alongside the id, which makes somebody else's preparation
+    answer exactly like a nonexistent one — 404, the same convention as
+    `/api/diary/<id>/`, so nothing leaks about whether it exists.
+
+    PUT replaces rather than merges, the same rule as `/api/diary/today/`: the
+    form submits its whole state, so a cleared dose is an answer taken back
+    rather than one left unchanged.
+
+    DELETE takes the ticks with it (`supplement_intake` is CASCADE), which is
+    the honest outcome — a preparation the patient removed from their regimen
+    has no history to keep separately, and there is no screen that could show
+    one. The confirmation for that lives on the screen, which asks twice.
+    """
+
+    def put(self, request, id_supplement):
+        patient = _require_patient(request, SUPPLEMENT_REFUSAL)
+        supplement = supplement_rules.find(patient.id_medical, id_supplement)
+        if supplement is None:
+            raise NotFound(SUPPLEMENT_NOT_FOUND)
+        serializer = supplement_rules.SupplementSerializer(
+            supplement, data=request.data,
+            context={'id_medical': patient.id_medical},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(supplement_rules.list_supplements(
+            patient.id_medical, timezone.localdate(),
+        ))
+
+    def delete(self, request, id_supplement):
+        patient = _require_patient(request, SUPPLEMENT_REFUSAL)
+        supplement = supplement_rules.find(patient.id_medical, id_supplement)
+        if supplement is None:
+            raise NotFound(SUPPLEMENT_NOT_FOUND)
+        supplement.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SupplementIntakeView(APIView):
+    """POST/DELETE /api/diet/supplements/<id>/intake/ — "odhacz, kiedy weźmiesz".
+
+    One tick for today, and taking it back. Both answer with the rebuilt list,
+    so the checkbox on screen is the state the server holds rather than one the
+    browser flipped optimistically.
+
+    ONLY TODAY IS TICKABLE, which is the diary's rule applied to a third kind of
+    row: whether a medicine was taken on Tuesday is a fact about Tuesday, and
+    answering it on Friday would make the record no better than the memory. The
+    day comes from the server's clock (`timezone.localdate()`), not from the
+    request — a date in the body would be a way to write into a past day.
+
+    POST TWICE IS NOT AN ERROR (`get_or_create` against the unique constraint),
+    because a double-tapped checkbox is one act; DELETE on an unticked
+    supplement is not either, for the same reason. Neither is a state worth a
+    refusal, and both leave the same list behind.
+    """
+
+    def post(self, request, id_supplement):
+        return self._answer(request, id_supplement, taken=True)
+
+    def delete(self, request, id_supplement):
+        return self._answer(request, id_supplement, taken=False)
+
+    def _answer(self, request, id_supplement, *, taken):
+        patient = _require_patient(request, SUPPLEMENT_REFUSAL)
+        supplement = supplement_rules.find(patient.id_medical, id_supplement)
+        if supplement is None:
+            raise NotFound(SUPPLEMENT_NOT_FOUND)
+        today = timezone.localdate()
+        if taken:
+            supplement_rules.mark_taken(supplement, today)
+        else:
+            supplement_rules.unmark_taken(supplement, today)
+        return Response(supplement_rules.list_supplements(
+            patient.id_medical, today,
+        ))
 
 
 #: Refusal for an account with no `specjalist` row, worded for the whole panel.

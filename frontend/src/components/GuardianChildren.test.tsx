@@ -25,6 +25,8 @@ function child(overrides: Partial<LinkedChild> = {}): LinkedChild {
     childEmail: 'dziecko@wp.pl',
     linkedAt: '2026-08-12T09:31:02Z',
     consentsActive: true,
+    // The ordinary card: no marker. A test about the marker sets it.
+    needsAttention: false,
     activity: { entryCount: 12, streakDays: 4, lastEntryDate: isoDaysAgo(1) },
     ...overrides,
   }
@@ -160,6 +162,25 @@ describe('GuardianChildren — what it must not show', () => {
     }
   })
 
+  it('names no reason even when the marker is there', async () => {
+    /** The marker is the client's one exception, and it is worded as "look at
+     *  the report" rather than as what is in it — the count and the reason are
+     *  not in the payload at all. 'raport' is therefore the one word from the
+     *  sweep above that a marked card may contain. */
+    const { container } = await render([child({ needsAttention: true })])
+    await screen.findByRole('heading', { name: /Ola Testowa/ })
+
+    // 'dni' is not on this list and cannot be: "4 dni z rzędu" is the streak,
+    // an engagement figure the card has always carried.
+    const text = (container.textContent ?? '').toLowerCase()
+    for (const word of ['ryzyk', 'nastrój', 'nastroj', 'stres', 'emocj', 'lęk']) {
+      expect(text).not.toContain(word)
+    }
+    // And the marker's own words name no number either.
+    expect(screen.getByRole('img').getAttribute('aria-label'))
+      .toBe('Ostatni raport wymaga uwagi')
+  })
+
   it('offers no way into the child\'s own screens', async () => {
     /** There is no such endpoint, and a link that 403s would be worse than
      *  none — it would promise access the guardian does not have. */
@@ -168,6 +189,73 @@ describe('GuardianChildren — what it must not show', () => {
 
     expect(container.querySelectorAll('a')).toHaveLength(0)
     expect(screen.queryByRole('button')).toBeNull()
+  })
+})
+
+describe('GuardianChildren — the attention marker', () => {
+  /**
+   * The client's one exception to "engagement, never content": a marker next to
+   * the child's name when their last weekly report flagged three or more risky
+   * days. The decision it carries is *that* the guardian should look, not what
+   * happened — so everything here is about the wording and about the marker
+   * appearing next to the right name, never about a figure.
+   */
+  const ATTENTION = 'Ostatni raport wymaga uwagi'
+
+  it('marks the child whose last report wants attention', async () => {
+    await render([child({ needsAttention: true })])
+
+    expect(await screen.findByRole('img', { name: ATTENTION })).toBeInTheDocument()
+  })
+
+  it('puts it next to the name, not loose on the card', async () => {
+    /** A guardian with three children asks "which one" — a marker on the card's
+     *  edge would answer "one of them". */
+    await render([child({ needsAttention: true })])
+
+    const heading = await screen.findByRole('heading', { name: /Ola Testowa/ })
+    expect(within(heading).getByRole('img', { name: ATTENTION })).toBeInTheDocument()
+  })
+
+  it('says what it means rather than relying on the colour', async () => {
+    /** An ochre glyph says nothing to a screen reader, and "yellow means bad" is
+     *  not a message. `role="img"` plus a label is what makes the exclamation
+     *  mark read as the sentence. */
+    await render([child({ needsAttention: true })])
+
+    const marker = await screen.findByRole('img', { name: ATTENTION })
+    expect(marker).toHaveAttribute('title', ATTENTION)
+  })
+
+  it('leaves an ordinary card unmarked', async () => {
+    await render([child()])
+    await screen.findByRole('heading', { name: 'Ola Testowa' })
+
+    expect(screen.queryByRole('img', { name: ATTENTION })).toBeNull()
+    expect(screen.queryByText('!')).toBeNull()
+  })
+
+  it('marks only the child it belongs to', async () => {
+    await render([
+      child({ id: 'a', childName: 'Ola', needsAttention: false }),
+      child({ id: 'b', childName: 'Jaś', needsAttention: true }),
+    ])
+
+    const ola = await screen.findByRole('heading', { name: /Ola/ })
+    const jas = screen.getByRole('heading', { name: /Jaś/ })
+    expect(within(ola).queryByRole('img')).toBeNull()
+    expect(within(jas).getByRole('img', { name: ATTENTION })).toBeInTheDocument()
+  })
+
+  it('does not mark a locked account', async () => {
+    /** Withdrawal stops the processing the marker would be derived from, so the
+     *  backend sends false — and the card has its own sentence for that state,
+     *  which a marker on top of would contradict. */
+    await render([child({ consentsActive: false, activity: null, needsAttention: false })])
+    await screen.findByRole('heading', { name: 'Ola Testowa' })
+
+    expect(screen.queryByRole('img', { name: ATTENTION })).toBeNull()
+    expect(screen.getByText(/zostało zatrzymane/i)).toBeInTheDocument()
   })
 })
 

@@ -17,9 +17,12 @@ summarises is worse than no summary. The frontend used to hardcode `8 wpisów`
 and `6 dni z rzędu` from the mockup's example patient.
 """
 
+from django.utils import timezone
+
 from .consents import has_active_consents
 from .dashboard import streak_days
 from .diary import count_entries, last_entry_date
+from .reports import build_weekly_reports
 
 
 def _care(patient):
@@ -100,6 +103,43 @@ def build_account_profile(patient):
 #: made this is the list to change.
 CHILD_SUMMARY_FIELDS = ('entry_count', 'streak_days', 'last_entry_date')
 
+#: How many flagged days in one weekly report put an attention marker on the
+#: child's card. Client's number.
+#:
+#: A threshold rather than an exact count: a week with five flagged days must
+#: not be quieter than a week with three, which would be the worst way for this
+#: feature to be wrong.
+RISKY_DAYS_FOR_ATTENTION = 3
+
+#: THE ONE THING THE GUARDIAN'S CARD SAYS ABOUT CONTENT, and the exception to
+#: everything written above CHILD_SUMMARY_FIELDS. Decided by the client:
+#: a marker next to the child's name when their **most recent weekly report**
+#: flagged `RISKY_DAYS_FOR_ATTENTION` days or more with a risky behaviour.
+#:
+#: WHY IT IS A BOOLEAN ON THE WIRE. The count is deliberately not sent, and
+#: neither is the reason: the payload carries "this report wants your attention"
+#: and nothing that says what happened, how often, or on which days. So the
+#: panel *cannot* start rendering "3 dni z zachowaniem ryzykownym" without a
+#: backend change and a decision to go with it — which is the point, because
+#: every step past this line is a decision about how much of a minor's diary a
+#: parent reads, and the client has taken exactly one of them.
+#:
+#: WHY IT IS RISKY DAYS AND NOT "HARDER DAYS". A flagged day is one the patient
+#: described as a risky behaviour in their own words; harder days are the two
+#: lowest moods of the week, computed. Three hard days out of seven is an
+#: ordinary bad week, and a marker that fired on one would stop meaning
+#: anything — which is the failure mode of every alert.
+#:
+#: WHAT IT COSTS. `build_weekly_reports` derives every report to hand back the
+#: newest one, per child. That is deliberate: "the last report" has to mean the
+#: same week here, on the patient's own Raporty screen and on the specialist's
+#: copy, and the only way to guarantee that is to ask the same function. A
+#: guardian has a handful of children and the history is capped
+#: (MAX_HISTORY_ENTRIES), so the cost is bounded; if this ever needs to be
+#: cheaper, the fix is a narrower function in core/reports.py that both callers
+#: use, never a second definition of which week is last.
+CHILD_ATTENTION_FIELD = 'needs_attention'
+
 
 def build_child_activity(patient):
     """How much a child has been writing — never what.
@@ -117,6 +157,23 @@ def build_child_activity(patient):
         'streak_days': streak_days(patient.id_medical),
         'last_entry_date': None if last is None else last.isoformat(),
     }
+
+
+def last_report_needs_attention(patient, today=None):
+    """Whether this child's newest weekly report flagged enough days to say so.
+
+    False for a child with no `patient` row, and False when no week has ended
+    with entries in it — there is no report, so there is nothing to be quiet or
+    loud about. See CHILD_ATTENTION_FIELD for why this answers with a boolean
+    and nothing else.
+    """
+    if patient is None:
+        return False
+    reports = build_weekly_reports(patient.id_medical, today or timezone.localdate())
+    if not reports:
+        return False
+    # [0] is the newest: build_weekly_reports returns them newest first.
+    return len(reports[0]['risky_days']) >= RISKY_DAYS_FOR_ATTENTION
 
 
 def build_linked_children(links, patients_by_user):
@@ -148,6 +205,7 @@ def _linked_child(link, patients_by_user):
     """One row of the list above. Its own function so the consent check is read
     once per child rather than twice in one dict literal."""
     active = has_active_consents(link.child)
+    patient = patients_by_user.get(link.child_id)
     return {
         'id': str(link.pk),
         'child_name': link.child.name,
@@ -157,5 +215,9 @@ def _linked_child(link, patients_by_user):
         # art. 8 consent behind it) started — not when the account was made.
         'linked_at': link.accepted_at.isoformat() if link.accepted_at else None,
         'consents_active': active,
-        'activity': build_child_activity(patients_by_user.get(link.child_id)) if active else None,
+        'activity': build_child_activity(patient) if active else None,
+        # Withdrawn consents mean the app has stopped reading this diary at all,
+        # so there is nothing to raise a marker from either — the same rule as
+        # the figures above, and for a stronger reason: this one is about content.
+        CHILD_ATTENTION_FIELD: last_report_needs_attention(patient) if active else False,
     }

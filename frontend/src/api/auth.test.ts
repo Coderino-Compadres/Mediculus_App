@@ -15,6 +15,8 @@ import {
   needsGuardianLink,
   needsPasswordChange,
   register,
+  toAuthUser,
+  waitingChildren,
   REGISTER_FIELDS,
   toFormErrors,
   LOGIN_FIELDS,
@@ -46,6 +48,37 @@ const USER_PAYLOAD = {
 
 beforeEach(() => mockedRequest.mockReset())
 
+describe('toAuthUser — children waiting on a guardian', () => {
+  /**
+   * The count the header's badge is drawn from. null and 0 are different
+   * answers and must stay different: "the question does not apply to this
+   * account" versus "nobody is waiting".
+   */
+  it('carries the count through', () => {
+    const user = toAuthUser({ ...USER_PAYLOAD, pending_guardian_invitations: 3 })
+
+    expect(user.pendingGuardianInvitations).toBe(3)
+    expect(waitingChildren(user)).toBe(3)
+  })
+
+  it('keeps a zero as a zero rather than losing it to a fallback', () => {
+    const user = toAuthUser({ ...USER_PAYLOAD, pending_guardian_invitations: 0 })
+
+    expect(user.pendingGuardianInvitations).toBe(0)
+    expect(waitingChildren(user)).toBe(0)
+  })
+
+  it('reads a missing field as null, not as nobody waiting', () => {
+    /** A backend a release behind does not know the answer, and a badge must
+     *  not claim it does. `waitingChildren` is what turns that into "draw
+     *  nothing", in one place rather than in every screen. */
+    const user = toAuthUser(USER_PAYLOAD)
+
+    expect(user.pendingGuardianInvitations).toBeNull()
+    expect(waitingChildren(user)).toBe(0)
+  })
+})
+
 describe('login', () => {
   it('posts only the credentials and maps the answer to camelCase', async () => {
     mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
@@ -67,6 +100,9 @@ describe('login', () => {
       isSpecialist: false,
       isChild: false,
       guardianStatus: null,
+      // null rather than 0: this payload is a patient's, and no child can name
+      // them as a guardian.
+      pendingGuardianInvitations: null,
       mustChangePassword: false,
       consents: {
         active: true,

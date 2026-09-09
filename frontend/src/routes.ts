@@ -47,6 +47,13 @@ export const ROUTES = {
   dietMeal: '/diet/meal',
   /** "Historia dzienniczków żywieniowych" (§07) — pages/DietJournals.tsx. */
   dietJournals: '/diet/journals',
+  /** "Nawodnienie" — the first half of §08 of the mockups.
+   *  pages/DietHydration.tsx, and the first screen in this module that had a
+   *  backend behind it. */
+  dietHydration: '/diet/hydration',
+  /** "Suplementy i leki" — §08's second half, a screen of its own because the
+   *  mockups make it one. pages/DietSupplements.tsx. */
+  dietSupplements: '/diet/supplements',
 } as const
 
 /** Fills in ROUTES.journalDetail's `:id` param — use instead of building the path by hand. */
@@ -123,6 +130,8 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',
   [ROUTES.diet]: 'Dietetyka i psychodietetyka',
   [ROUTES.dietJournals]: 'Dzienniczki żywieniowe',
+  [ROUTES.dietHydration]: 'Nawodnienie',
+  [ROUTES.dietSupplements]: 'Suplementy i leki',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',
