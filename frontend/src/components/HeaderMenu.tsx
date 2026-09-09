@@ -52,13 +52,16 @@ const PATIENT_ITEMS: MenuItem[] = [
  * historia dzienniczków żywieniowych, nawodnienie i suplementy, aktywność
  * fizyczna i sen, raporty, analiza, techniki psychodietetyczne, profil zdrowotny,
  * materiały edukacyjne — join this list as they are built, in the order §03
- * gives them. One open question for that artboard: whether "przełączanie
+ * gives them. "Nawodnienie" is the first to have done so; §08 pairs it with
+ * "Suplementy i leki", which is a screen of its own and is not built, so the
+ * entry is worded as the half that exists. One open question for that artboard: whether "przełączanie
  * modułów" means a direct jump to the other module (as below) or a link to the
  * chooser on /modules.
  */
 const DIET_ITEMS: MenuItem[] = [
   { label: 'Strona główna', to: ROUTES.diet },
   { label: routeTitle(ROUTES.dietJournals), to: ROUTES.dietJournals },
+  { label: routeTitle(ROUTES.dietHydration), to: ROUTES.dietHydration },
   { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
   { label: 'Przejdź do części psychoterapeutycznej', to: ROUTES.home },
 ]

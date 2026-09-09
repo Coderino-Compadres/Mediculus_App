@@ -34,6 +34,7 @@ RAW_SQL_MIGRATIONS = {
     'core.migrations.0012_parent_invitation': 'default',
     'core.migrations.0013_technique_catalogue': 'medical',
     'core.migrations.0014_must_change_password': 'default',
+    'core.migrations.0015_hydration': 'medical',
 }
 
 

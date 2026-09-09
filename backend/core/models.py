@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 
+from .drinks import DRINKS, WATER
 from .technique_vocabulary import AVAILABILITY_GENERAL
 from .time_of_day import TIME_OF_DAY_CHOICES
 
@@ -368,3 +369,56 @@ class Raport(models.Model):
 
     class Meta:
         db_table = 'raport'
+
+
+class Hydration(models.Model):
+    """One thing the patient drank, in the diet module's hydration screen.
+
+    A row per serving rather than a running total per day, and that is the
+    decision the rest of the feature rests on. A counter column would make "+1
+    szklanka" a read-modify-write over a shared number -- two taps in the same
+    second lose one of each other -- and it would leave nothing to undo: a
+    mis-tap on a phone would be uncorrectable, because there would be no
+    individual act to withdraw. Rows also make the "Ostatnie 7 dni" chart a
+    GROUP BY rather than a second table.
+
+    `entry_date` is stored rather than derived from `created_at`, unlike
+    `diary`. The two are the same question -- which calendar day, in
+    `settings.TIME_ZONE`, this belongs to -- but the diary answers it once per
+    row in Python, while this table is grouped by day seven days at a time. A
+    date column keeps that a single indexed query instead of a timezone
+    conversion Postgres would have to run over every row. `core/days.py` is
+    still the only place the boundary itself is decided; nothing here computes
+    it.
+
+    `drink` holds one of `core.drinks.DRINKS`, the Polish name as written. Only
+    'Woda' counts towards the daily goal -- everything else is recorded and
+    deliberately not converted, which is the client's rule and not a rounding
+    we have not got round to (see core/drinks.py).
+
+    `amount_ml` is NULL for every drink but water. The mockup's "Inne napoje"
+    card offers a chip and no quantity, so a serving of tea is recorded as
+    having happened and nothing more; inventing 250 ml for it would put a number
+    in a clinical record that nobody entered.
+
+    `id_medical` is the same logical, application-level reference `diary` uses:
+    this table is in medical_db and `patient` is in user_db, so Postgres
+    enforces nothing across it.
+    """
+
+    id_hydration = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id_medical = models.UUIDField(db_index=True)
+    # The calendar day this serving belongs to, in settings.TIME_ZONE. Indexed
+    # together with id_medical, because every query here is "this patient, these
+    # seven days".
+    entry_date = models.DateField()
+    drink = models.TextField(choices=[(name, name) for name in DRINKS], default=WATER)
+    amount_ml = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'hydration'
+        indexes = [
+            models.Index(fields=['id_medical', 'entry_date'], name='idx_hydration_patient_day'),
+        ]

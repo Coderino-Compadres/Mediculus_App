@@ -351,6 +351,44 @@ CREATE TABLE IF NOT EXISTS technique (
 );
 
 -- ----------------------------
+-- HYDRATION
+-- The diet module's water counter (mockups §08, "Nawodnienie i suplementy").
+-- A row per serving rather than a running total per day: a counter column makes
+-- "+1 szklanka" a read-modify-write two taps can lose, and leaves nothing to
+-- undo after a mis-tap. Mirrors core/migrations/0015_hydration.py.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS hydration (
+    id_hydration UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Logical relation:
+    -- hydration.id_medical -> user_db.patient.id_medical
+    id_medical UUID NOT NULL,
+
+    -- The calendar day this serving belongs to, in settings.TIME_ZONE
+    -- (Europe/Warsaw) -- not the UTC date of created_at. core/days.py is where
+    -- that boundary is decided.
+    entry_date DATE NOT NULL,
+
+    -- One of core.drinks.DRINKS, the Polish name as written. Only 'Woda' counts
+    -- towards the daily goal; tea, coffee and infusions are recorded and
+    -- deliberately never converted into water -- the client's rule, so that the
+    -- judgement stays with the specialist.
+    --
+    -- Unconstrained on purpose, with the same caveat as diary.time_of_day:
+    -- there is no CHECK here and Django's `choices` is not one either, so the
+    -- only thing refusing a sixth value is the API serializer.
+    drink TEXT NOT NULL DEFAULT 'Woda',
+
+    -- NULL for every drink but water. The "Inne napoje" card offers a chip and
+    -- no quantity, and inventing one would put a number nobody entered into a
+    -- clinical record.
+    amount_ml INT,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ----------------------------
 -- RAPORT
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS raport (
@@ -432,3 +470,7 @@ CREATE INDEX IF NOT EXISTS idx_raport_id_technique
 
 CREATE INDEX IF NOT EXISTS idx_technique_author_id_specjalist
     ON technique (author_id_specjalist);
+
+-- Every hydration query is "this patient, these seven days".
+CREATE INDEX IF NOT EXISTS idx_hydration_patient_day
+    ON hydration (id_medical, entry_date);

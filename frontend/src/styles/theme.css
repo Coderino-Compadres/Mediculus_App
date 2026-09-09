@@ -22,6 +22,17 @@
   --color-error-bg: rgba(179, 69, 63, 0.1);
   --color-success-bg: rgba(127, 169, 143, 0.16);
 
+  /* The diet module's hydration colour, from §08 of the client's mockups. Its
+     own hue rather than --color-sage because on that screen it is the one
+     thing being measured: the counter, the bar and seven columns of a chart
+     are all this colour, sitting on cards whose buttons are still sage. Three
+     weights: the figure and today's column, the bar's fill, and a past day.
+     None of them is a verdict — see core/drinks.py; a paler column is a
+     quieter day, not a worse one. */
+  --color-water: #3f8479;
+  --color-water-soft: #7fbfb4;
+  --color-water-quiet: #bfded9;
+
   /* Ochre dark enough to be read as type on white, for wording that is a
      consequence to weigh rather than an error: an invitation that cannot be
      undone, a care relationship about to end. --color-ochre itself is a

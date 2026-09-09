@@ -42,6 +42,14 @@ urlpatterns = [
     # Before the '<uuid>' route, so 'today' is never read as an id.
     path('diary/today/', views.TodayDiaryEntryView.as_view(), name='diary-today'),
     path('diary/<uuid:id_diary>/', views.DiaryEntryDetailView.as_view(), name='diary-entry'),
+    # The diet module's hydration screen (mockups §08). Its own prefix rather
+    # than /diary/: a glass of water is not a diary entry, and the two modules
+    # keep their own vocabulary.
+    path('diet/hydration/', views.HydrationView.as_view(), name='diet-hydration'),
+    path(
+        'diet/hydration/<uuid:id_hydration>/',
+        views.HydrationEntryView.as_view(), name='diet-hydration-entry',
+    ),
     path('reports/', views.ReportListView.as_view(), name='report-list'),
     # 'week-2026-08-03' — a slug, so it can never swallow the trailing segment
     # of the PDF route below.

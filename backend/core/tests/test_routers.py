@@ -9,7 +9,8 @@ from django.test import SimpleTestCase
 from core import models
 from core.routers import MEDICAL_MODELS, CoreDatabaseRouter
 
-MEDICAL = [models.Diary, models.MoodScale, models.Technique, models.Raport]
+MEDICAL = [models.Diary, models.MoodScale, models.Technique, models.Raport,
+           models.Hydration]
 USER_SIDE = [models.User, models.UserRole, models.Specjalist,
              models.Patient, models.ParentChild]
 

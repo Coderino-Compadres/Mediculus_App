@@ -1,3 +1,5 @@
+import type { DrinkName } from '../utils/drinks'
+
 /**
  * The diet module's day, as its home screen reads it.
  *
@@ -15,13 +17,76 @@
  * module counts calories, and nothing in this type could.
  */
 
-/** Glasses drunk today against the daily target the module suggests. */
-export interface DietHydration {
-  glasses: number
-  /** From `DIET_HYDRATION_TARGET`; travels so the screen never hardcodes "6". */
-  target: number
+/**
+ * One thing the patient recorded drinking today.
+ *
+ * `amountMl` is null for every drink but water: the mockups' "Inne napoje" card
+ * offers a chip and no quantity, and inventing 250 ml for a cup of tea would put
+ * a number nobody entered into a clinical record.
+ */
+export interface HydrationEntry {
+  id: string
+  drink: DrinkName
+  amountMl: number | null
+  /** ISO moment it was recorded — the list orders by it, newest first. */
+  at: string | null
 }
 
+/** One column of the "Ostatnie 7 dni" chart. Water only, by the client's rule. */
+export interface HydrationDayTotal {
+  /** 'YYYY-MM-DD'. */
+  date: string
+  waterMl: number
+  glasses: number
+}
+
+/**
+ * Everything the hydration screen draws, as `GET /api/diet/hydration/` answers.
+ *
+ * WHY THE SCALE AND THE GOAL TRAVEL rather than being constants here: they are
+ * one definition on the server (`core/drinks.py`) and a per-patient goal set by
+ * a psychodietitian is the obvious next step, at which point a screen holding
+ * its own "6" would quietly be showing the wrong one. Nothing in the frontend
+ * hardcodes either number.
+ *
+ * `glasses` is computed on the server too, to one decimal, so the figure under
+ * the bar and the figure the database holds cannot disagree — the same reason
+ * the profile's counters are not computed twice.
+ *
+ * `progress` is capped at 1 and `glasses` is not: past the goal the bar is
+ * simply full and the day still says what it was. There is deliberately no
+ * "goal met" flag anywhere in this shape — §08 is explicit that there are no
+ * congratulations, no streak and no message about falling short.
+ */
+export interface HydrationDay {
+  /** 'YYYY-MM-DD' in the reader's own calendar day. */
+  date: string
+  glassMl: number
+  bottleMl: number
+  targetGlasses: number
+  /** Bounds the "Własna ilość" input enforces before submitting. */
+  minAmountMl: number
+  maxAmountMl: number
+  waterMl: number
+  glasses: number
+  /** 0..1, for the bar's width. */
+  progress: number
+  /** Today's servings, newest first — water and other drinks alike. */
+  entries: HydrationEntry[]
+  /** Seven days, oldest first, today last. */
+  week: HydrationDayTotal[]
+}
+
+/**
+ * The diet module's day, minus the hydration it used to carry.
+ *
+ * `hydration` was a field here while the whole module was an empty shape and one
+ * `emptyDietDay()` produced all of it. It is a real endpoint now
+ * (`HydrationDay`, above), read by the home screen and by /diet/hydration alike,
+ * so keeping a second summary of it on this type would be a second answer about
+ * one day — free to disagree with the first, which is the mistake the profile's
+ * counters exist to avoid.
+ */
 export interface DietDay {
   /** 'YYYY-MM-DD' in the reader's own calendar day — see utils/days.ts. */
   date: string
@@ -41,7 +106,6 @@ export interface DietDay {
    * started. The list of meals belongs to "Historia dzienniczków żywieniowych".
    */
   mealCount: number
-  hydration: DietHydration
 }
 
 /**

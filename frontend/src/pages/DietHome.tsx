@@ -1,9 +1,11 @@
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import HeaderMenu from '../components/HeaderMenu'
-import { emptyDietDay } from '../api/diet'
+import { emptyDietDay, fetchHydration } from '../api/diet'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
-import type { DietDay } from '../types/diet'
+import { formatGlasses, pluralGlasses } from '../utils/drinks'
+import type { DietDay, HydrationDay } from '../types/diet'
 import { ROUTES } from '../routes'
 import './dietHome.css'
 
@@ -102,31 +104,50 @@ function StartedDayCard({ day }: { day: DietDay }) {
 }
 
 /**
- * Nawodnienie — a reading, not a control.
+ * Nawodnienie — a reading, and a way into the screen that writes it.
  *
- * The mockup's home shows the count and the bar and nothing to press; adding a
- * glass belongs to §08 ("Nawodnienie i suplementy"), which is a screen of its
- * own. A "+1" invented here would be the fastest way to end up with two places
- * that write the same number differently.
+ * The mockup's home shows the count and the bar and nothing to press: adding a
+ * glass belongs to §08, which is a screen of its own and now exists
+ * (`pages/DietHydration.tsx`). So this card still records nothing — a "+1"
+ * invented here would be the fastest way to end up with two places writing the
+ * same number differently — and what it gained instead is the link, because a
+ * card showing a figure with no way to reach the screen behind it makes that
+ * screen findable only through the menu.
+ *
+ * IT READS THE SAME ENDPOINT the hydration screen does, rather than a summary
+ * of its own: `GET /api/diet/hydration/`, mapped by `api/diet.ts`. Two answers
+ * about one day would be two answers free to disagree — the reason the profile's
+ * counters are not computed a second time either.
+ *
+ * A FAILED LOAD SAYS NOTHING AT ALL, which is the one place this card differs
+ * from every list screen in the app. The rest of this page needs no network (the
+ * food diary has no backend), so a failure here must not put "Nie udało się
+ * wczytać" over a screen that is otherwise fine — and unlike the technique
+ * catalogue, silence omits nothing a patient could act on: the hydration screen
+ * is one tap away in the menu and says so itself.
  *
  * The bar is `aria-hidden`: "0 z 6 szklanek" is already on screen as text, and a
  * progressbar role next to it makes a screen reader say the same thing twice.
  */
-function HydrationCard({ day }: { day: DietDay }) {
-  const { glasses, target } = day.hydration
-  const filled = target > 0 ? Math.min(100, Math.round((glasses / target) * 100)) : 0
-
+function HydrationCard({ day }: { day: HydrationDay }) {
   return (
     <section className="diet-card diet-hydration" aria-labelledby="diet-hydration-heading">
       <div className="diet-hydration-row">
         <h2 id="diet-hydration-heading">Nawodnienie</h2>
         <p className="diet-hydration-count">
-          {glasses} z {target} szklanek
+          {formatGlasses(day.glasses)} z {day.targetGlasses}{' '}
+          {pluralGlasses(day.targetGlasses)}
         </p>
       </div>
       <div className="diet-hydration-track" aria-hidden="true">
-        <div className="diet-hydration-fill" style={{ width: `${filled}%` }} />
+        <div
+          className="diet-hydration-fill"
+          style={{ width: `${Math.round(day.progress * 100)}%` }}
+        />
       </div>
+      <Link className="diet-hydration-link" to={ROUTES.dietHydration}>
+        Zapisz, co dziś pijesz
+      </Link>
     </section>
   )
 }
@@ -135,6 +156,24 @@ function DietHome() {
   const { user } = useAuth()
   const firstName = user?.firstName ?? ''
   const day = emptyDietDay()
+  // The one thing on this screen that is real. Null until it answers, and null
+  // for good if it does not — see HydrationCard on why that is silence rather
+  // than an error box.
+  const [hydration, setHydration] = useState<HydrationDay | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchHydration()
+      .then((loaded) => {
+        if (!cancelled) setHydration(loaded)
+      })
+      .catch(() => {
+        /* Deliberately nothing. */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   /**
    * "piątek, 14 sierpnia" — the weekday included, as the mockup writes it.
@@ -182,7 +221,7 @@ function DietHome() {
 
       <TodayCard day={day} />
 
-      <HydrationCard day={day} />
+      {hydration && <HydrationCard day={hydration} />}
 
       <section className="diet-card diet-summary" aria-labelledby="diet-summary-heading">
         <h2 id="diet-summary-heading">Jak się dziś jadło?</h2>

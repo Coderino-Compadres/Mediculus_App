@@ -1,4 +1,4 @@
-MEDICAL_MODELS = {'diary', 'moodscale', 'technique', 'raport'}
+MEDICAL_MODELS = {'diary', 'moodscale', 'technique', 'raport', 'hydration'}
 
 
 def _db_for_model(model):

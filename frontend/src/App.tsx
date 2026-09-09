@@ -5,6 +5,7 @@ import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
 import DietHome from './pages/DietHome'
 import DietJournals from './pages/DietJournals'
+import DietHydration from './pages/DietHydration'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
@@ -383,6 +384,17 @@ function App() {
             element={
               <RequireAuth>
                 <DietJournals />
+              </RequireAuth>
+            }
+          />
+          {/* Nawodnienie. RequireAuth's defaults again: the endpoint behind it
+              is behind `_require_patient`, so a guardian or a specialist would
+              meet a 403 the screen could only word as "coś poszło nie tak". */}
+          <Route
+            path={ROUTES.dietHydration}
+            element={
+              <RequireAuth>
+                <DietHydration />
               </RequireAuth>
             }
           />

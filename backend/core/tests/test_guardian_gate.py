@@ -86,24 +86,40 @@ class GateTestCase(TestCase):
         )
 
 
-def clinical_urls(diary_id, report_id):
+def clinical_urls(diary_id, report_id, hydration_id=None):
     """Every URL that reads or writes clinical data, with the verbs it accepts.
 
     Built as a list rather than checked endpoint by endpoint so that adding a
     URL to `core/urls.py` and forgetting the gate shows up here as a missing
     entry, not as a passing suite.
+
+    The third element is what the endpoint answers **once the gate is open**,
+    given the empty body this file sends to all of them. It is 200 nearly
+    everywhere and deliberately not always: an empty POST to
+    `/api/diet/hydration/` is a 400 from its serializer and a DELETE naming no
+    real serving is a 404 — both of which are the endpoint *running*, which is
+    the only thing `AcceptedMinorTests` is asking. Asserting 200 there would
+    have meant either weakening that assertion to "not 403" (which a 500 would
+    pass) or teaching this list about request bodies.
     """
     return [
-        ('get', reverse('core:home-dashboard')),
-        ('get', reverse('core:account-profile')),
-        ('get', reverse('core:analysis-frequency')),
-        ('get', reverse('core:diary-today')),
-        ('put', reverse('core:diary-today')),
-        ('get', reverse('core:diary-history')),
-        ('get', reverse('core:diary-entry', args=[diary_id])),
-        ('get', reverse('core:report-list')),
-        ('get', reverse('core:report-detail', args=[report_id])),
-        ('get', reverse('core:report-pdf', args=[report_id])),
+        ('get', reverse('core:home-dashboard'), 200),
+        ('get', reverse('core:account-profile'), 200),
+        ('get', reverse('core:analysis-frequency'), 200),
+        ('get', reverse('core:diary-today'), 200),
+        ('put', reverse('core:diary-today'), 200),
+        ('get', reverse('core:diary-history'), 200),
+        ('get', reverse('core:diary-entry', args=[diary_id]), 200),
+        ('get', reverse('core:report-list'), 200),
+        ('get', reverse('core:report-detail', args=[report_id]), 200),
+        ('get', reverse('core:report-pdf', args=[report_id]), 200),
+        # The diet module's own clinical endpoint. Under the same gate as the
+        # diary: a minor nobody has vouched for writes no health data, and a
+        # glass of water logged against a named account is that.
+        ('get', reverse('core:diet-hydration'), 200),
+        ('post', reverse('core:diet-hydration'), 400),
+        ('delete', reverse(
+            'core:diet-hydration-entry', args=[hydration_id or uuid.uuid4()]), 404),
     ]
 
 
@@ -122,7 +138,7 @@ class UnlinkedMinorTests(GateTestCase):
     def test_a_minor_with_no_guardian_named_is_refused_everywhere(self):
         self.sign_in(self.child.user)
 
-        for method, url in self.urls:
+        for method, url, _ in self.urls:
             with self.subTest(method=method, url=url):
                 self.assertEqual(self.request(method, url).status_code, 403)
 
@@ -131,7 +147,7 @@ class UnlinkedMinorTests(GateTestCase):
         self.invite(self.child, self.make_guardian())
         self.sign_in(self.child.user)
 
-        for method, url in self.urls:
+        for method, url, _ in self.urls:
             with self.subTest(method=method, url=url):
                 self.assertEqual(self.request(method, url).status_code, 403)
 
@@ -184,10 +200,11 @@ class AcceptedMinorTests(GateTestCase):
         self.sign_in(self.child.user)
 
     def test_every_clinical_endpoint_answers(self):
-        for method, url in clinical_urls(self.diary.pk, week_report_id(self.week)):
+        for method, url, opened in clinical_urls(
+                self.diary.pk, week_report_id(self.week)):
             with self.subTest(method=method, url=url):
                 response = getattr(self.client, method)(url, {}, format='json')
-                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.status_code, opened)
 
     def test_the_diary_still_holds_the_entry(self):
         response = self.client.get(reverse('core:diary-history'))

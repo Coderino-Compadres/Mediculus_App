@@ -1,16 +1,43 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders, TEST_USER } from '../test/render'
 import DietHome from './DietHome'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
 import { ROUTES } from '../routes'
+import type { HydrationDay } from '../types/diet'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>()
   return { ...actual, useNavigate: () => navigate }
 })
+
+/** The one thing on this screen that talks to a server. `emptyDietDay` stays
+ *  real — it is still what the rest of the page renders, and mocking it would
+ *  hide the fact that nothing writes a meal yet. */
+const fetchHydration = vi.fn<() => Promise<HydrationDay>>()
+vi.mock('../api/diet', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/diet')>()
+  return { ...actual, fetchHydration: () => fetchHydration() }
+})
+
+function hydrationDay(overrides: Partial<HydrationDay> = {}): HydrationDay {
+  return {
+    date: '2026-09-09',
+    glassMl: 250,
+    bottleMl: 500,
+    targetGlasses: 6,
+    minAmountMl: 10,
+    maxAmountMl: 2000,
+    waterMl: 0,
+    glasses: 0,
+    progress: 0,
+    entries: [],
+    week: [],
+    ...overrides,
+  }
+}
 
 /**
  * The diet module's home screen, against the mockups it was built from.
@@ -30,6 +57,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 beforeEach(() => {
   navigate.mockReset()
+  fetchHydration.mockReset()
+  fetchHydration.mockResolvedValue(hydrationDay())
 })
 
 describe('the header and the greeting', () => {
@@ -114,26 +143,66 @@ describe('the empty day', () => {
 })
 
 describe('nawodnienie', () => {
-  it('reads out of the target rather than spelling a number into the screen', () => {
+  it('shows what the server holds rather than a number spelled into the screen', async () => {
+    fetchHydration.mockResolvedValue(
+      hydrationDay({ waterMl: 1000, glasses: 4, progress: 0.667 }),
+    )
+
     renderWithProviders(<DietHome />)
 
-    expect(screen.getByRole('heading', { name: 'Nawodnienie' })).toBeInTheDocument()
-    expect(screen.getByText('0 z 6 szklanek')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Nawodnienie' })).toBeInTheDocument()
+    expect(screen.getByText('4 z 6 szklanek')).toBeInTheDocument()
   })
 
-  it('is a reading and not a control — adding a glass belongs to its own screen', () => {
+  it('reads the goal off the payload, so a per-patient one would just work', async () => {
+    fetchHydration.mockResolvedValue(hydrationDay({ targetGlasses: 8 }))
+
+    renderWithProviders(<DietHome />)
+
+    expect(await screen.findByText('0 z 8 szklanek')).toBeInTheDocument()
+  })
+
+  it('is a reading and not a control — recording a glass belongs to its own screen', async () => {
     /** §08 of the mockups is "Nawodnienie i suplementy". A "+1" invented on the
      *  home screen would be a second place writing the same number. */
     renderWithProviders(<DietHome />)
+    await screen.findByRole('heading', { name: 'Nawodnienie' })
 
-    expect(screen.queryByRole('button', { name: /szklank|\+/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /szklank|butelk|\+/i })).toBeNull()
   })
 
-  it('does not announce the bar twice', () => {
-    /** The count is already on screen as text; the bar is decoration. */
+  it('but does lead to the screen that is', async () => {
+    /** A figure with no way to reach the screen behind it leaves that screen
+     *  findable only through the menu. */
     renderWithProviders(<DietHome />)
 
+    const link = await screen.findByRole('link', { name: 'Zapisz, co dziś pijesz' })
+
+    expect(link).toHaveAttribute('href', ROUTES.dietHydration)
+  })
+
+  it('does not announce the bar twice', async () => {
+    /** The count is already on screen as text; the bar is decoration. */
+    renderWithProviders(<DietHome />)
+    await screen.findByRole('heading', { name: 'Nawodnienie' })
+
     expect(screen.queryByRole('progressbar')).toBeNull()
+  })
+
+  it('says nothing at all when the request fails', async () => {
+    /** The rest of this page needs no network, so a failed hydration load must
+     *  not put "nie udało się wczytać" over a screen that is otherwise fine —
+     *  and it omits nothing a patient could act on, since the hydration screen
+     *  is in the menu. */
+    fetchHydration.mockRejectedValue(new Error('offline'))
+
+    renderWithProviders(<DietHome />)
+
+    await waitFor(() => expect(fetchHydration).toHaveBeenCalled())
+    expect(screen.queryByRole('heading', { name: 'Nawodnienie' })).toBeNull()
+    expect(screen.queryByText(/nie udało się/i)).toBeNull()
+    // The screen it sits on is untouched.
+    expect(screen.getByRole('heading', { level: 1, name: 'Strona główna' })).toBeInTheDocument()
   })
 })
 
