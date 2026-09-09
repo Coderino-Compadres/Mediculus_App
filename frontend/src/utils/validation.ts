@@ -1,3 +1,8 @@
+// The wire values, so the one rule that depends on *which* account is being
+// created cannot drift from the type the form actually posts. api/auth.ts does
+// not import this module, so there is no cycle.
+import { ACCOUNT_TYPES } from '../api/auth'
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function validateEmail(value: string): string | null {
@@ -50,6 +55,34 @@ export function validateDateOfBirth(value: string): string | null {
 
 export function validateAccountType(value: string): string | null {
   if (!value) return 'Wybierz rodzaj konta.'
+  return null
+}
+
+/**
+ * The specialist's code, which a guardian account cannot be created without.
+ *
+ * Mirrors `RegisterSerializer.INVITATION_REQUIRED` — a guardian account asserts
+ * that this person is the legal guardian of a child, the app cannot check that,
+ * and the specialist who sat with the family can. The wording says where the
+ * code comes from rather than just demanding one: somebody who has not been
+ * given one cannot act on "podaj kod", and there is no way to send them one
+ * (this deployment sends no mail at all).
+ *
+ * Only asked of a guardian: `accountType` decides, so the caller passes it
+ * rather than this checking a value in isolation. A blank code on any other
+ * type is not sent at all — see `guardianOnly` in pages/Register.tsx.
+ */
+export function validateInvitationCode(
+  value: string,
+  accountType: string,
+): string | null {
+  if (accountType !== ACCOUNT_TYPES.parent) return null
+  if (!value.trim()) {
+    return (
+      'Konto rodzica lub opiekuna zakłada się na kod otrzymany od specjalisty ' +
+      'prowadzącego dziecko. Poproś o niego specjalistę.'
+    )
+  }
   return null
 }
 

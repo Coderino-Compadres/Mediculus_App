@@ -32,6 +32,14 @@ from .models import ParentChild, Patient, Specjalist, User, UserRole
 #   None         a guardian. No side table at all: they have no id_medical and
 #                nothing in medical_db can refer to them.
 #
+# A GUARDIAN IS ON THIS LIST BUT CANNOT BE CREATED FROM THIS FORM ALONE: the
+# 'parent' entry needs a specialist's invitation code, enforced in
+# `RegisterSerializer._check_invitation` rather than by leaving the entry out.
+# It has to stay here because redeeming a code *is* a registration — the account
+# is created by this serializer, inside the transaction that spends the code —
+# so the type is what the form posts; what it may not be is self-service. Why
+# the code is where the vouching lives is written down on that method.
+#
 # A SPECIALIST IS NOT ON THIS LIST ANY MORE, and its absence is the enforcement.
 # A professional account used to be self-service, which was safe as far as
 # access goes (being a specialist grants nothing on its own — see
@@ -325,8 +333,11 @@ class RegisterSerializer(serializers.Serializer):
         },
     )
     # A code from a specialist, for a guardian finishing the registration the
-    # specialist started (core/parent_invitations.py). Optional: a guardian can
-    # still register on their own, and then the child names them afterwards.
+    # specialist started (core/parent_invitations.py).
+    #
+    # `required=False` at the field level, and **mandatory for a guardian** in
+    # `_check_invitation` instead: the rule is about the pair (account type,
+    # code), so a field-level `required` would demand one from a patient too.
     invitation_code = serializers.CharField(
         max_length=64, required=False, allow_blank=True, write_only=True,
     )
@@ -435,9 +446,31 @@ class RegisterSerializer(serializers.Serializer):
         'Kod jest nieprawidłowy, wygasł albo został już wykorzystany. '
         'Sprawdź, czy rejestrujesz się na adres podany przez specjalistę.'
     )
+    #: A guardian account cannot be created without one. Says where the code
+    #: comes from, because somebody who has not been given one cannot act on
+    #: "podaj kod" alone — and the app has no way to send them one (this
+    #: deployment sends no mail at all).
+    INVITATION_REQUIRED = (
+        'Konto rodzica lub opiekuna zakłada się na kod otrzymany od '
+        'specjalisty prowadzącego dziecko. Poproś o niego specjalistę.'
+    )
 
     def _check_invitation(self, attrs):
         """Resolves a specialist's invitation code, or refuses the registration.
+
+        A GUARDIAN ACCOUNT EXISTS ONLY WITH ONE, and that is the rule this
+        method carries. It used to be optional — a guardian registered on their
+        own and the child named them afterwards — which was wrong about the claim
+        the account makes, for the same reason a specialist no longer registers
+        from this form (see the note on ACCOUNT_TYPES): a guardian account
+        asserts that this person is the legal guardian of a child, and the app
+        cannot check that. The specialist who sat with the family can, which is
+        what issuing the code is. So the code is where the vouching lives, and
+        without one there is no guardian account to create.
+        The knock-on effect is that a guardian account is never created
+        unattached: it is born linked to one child and already accepted
+        (`create()` redeems the invitation), and `POST /api/auth/guardian/` is
+        left for the further children of a parent who already has an account.
 
         Deliberately **not** silently ignored when it does not match: somebody
         typing a code is telling us they were told to, and creating an unlinked
@@ -448,6 +481,9 @@ class RegisterSerializer(serializers.Serializer):
         or issued for a different address. They are all "this code will not work
         here", the parent can act on none of them differently, and telling them
         apart would say whether a given address has an invitation outstanding.
+        A *missing* code is the one case answered separately: it is not a code
+        that will not work, it is a form that cannot be completed, and the
+        difference is the only thing the person can act on.
 
         The row is carried on `attrs` so `create()` can redeem it inside the same
         transaction that makes the account: an invitation must not be spent on a
@@ -455,6 +491,12 @@ class RegisterSerializer(serializers.Serializer):
         """
         code = (attrs.get('invitation_code') or '').strip()
         if not code:
+            # Absent account_type is the field's own error, and that is the one
+            # to report rather than a complaint about a code for no known type.
+            if attrs.get('account_type') == ACCOUNT_TYPE_PARENT:
+                raise serializers.ValidationError(
+                    {'invitation_code': self.INVITATION_REQUIRED}
+                )
             return
         if attrs.get('account_type') != ACCOUNT_TYPE_PARENT:
             raise serializers.ValidationError(

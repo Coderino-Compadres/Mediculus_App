@@ -1,12 +1,24 @@
 """Invitations a specialist issues for a guardian's account.
 
-WHY THIS EXISTS AND WHY IT LOOKS LIKE THIS. A guardian can already register from
-the public form, but nothing there links the new account to a child — that link
-is started by the child, who names an address and waits (`core/guardian.py`). A
-specialist sitting with a family needs the other direction: name the parent, name
-the child, and let the parent finish. And it has to work in a deployment that
-**sends no mail at all**, so there is no activation link and no "we e-mailed
-you"; the invitation is a code, given to the parent in the room.
+WHY THIS EXISTS AND WHY IT LOOKS LIKE THIS. This is **the only way a guardian
+account comes into existence**. It began as the second way: a guardian could
+register from the public form and the child would name them afterwards
+(`core/guardian.py`), and a specialist sitting with a family needed the other
+direction — name the parent, name the child, let the parent finish. The
+self-service half is gone now (`RegisterSerializer._check_invitation` refuses a
+guardian registration with no code), for the same reason a specialist no longer
+registers from that form: a guardian account asserts that this person is a
+child's legal guardian, the app cannot check that, and the clinician who sat with
+the family can. So the code is where the vouching lives, and issuing one is the
+specialist saying so.
+
+The child-initiated flow in core/guardian.py stays, and what it is *for* has
+narrowed: naming an account that already exists — the further children of a
+parent who has one.
+
+It has to work in a deployment that **sends no mail at all**, so there is no
+activation link and no "we e-mailed you"; the invitation is a code, given to the
+parent in the room.
 
 The code is the whole security boundary, so three things are true of it:
 

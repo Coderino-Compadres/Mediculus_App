@@ -255,11 +255,43 @@ class RedemptionTests(ParentInvitationTestCase):
         # And the code still works afterwards.
         self.assertEqual(self.register_parent(code).status_code, 201)
 
-    def test_a_guardian_can_still_register_with_no_code_at_all(self):
+    def test_a_guardian_cannot_register_with_no_code_at_all(self):
+        """The code is not a shortcut into an account that could also be made
+        without it — **it is the only way a guardian account exists**.
+
+        This used to assert the opposite (a guardian registered on their own and
+        the child named them afterwards). What changed is not the security of the
+        account, which grants nothing on its own, but the claim it makes: that
+        this person is a child's legal guardian. The app cannot check that; the
+        specialist who sat with the family can, and issuing the code is them
+        saying so.
+        """
         response = self.register_parent(code='', email='sam@example.com')
 
-        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('invitation_code', response.data)
+        self.assertFalse(User.objects.filter(email='sam@example.com').exists())
         self.assertFalse(ParentChild.objects.exists())
+        # And an outstanding invitation for somebody else is untouched by it.
+        self.assertFalse(ParentInvitation.objects.exists())
+
+    def test_the_refusal_says_where_to_get_a_code(self):
+        """"Podaj kod" alone is not actionable by somebody who has not been
+        given one, and nothing can send them one — this deployment has no mail."""
+        response = self.register_parent(code='', email='sam@example.com')
+
+        self.assertIn('specjalist', str(response.data['invitation_code']).lower())
+
+    def test_a_guardian_with_a_code_is_still_not_age_checked(self):
+        """The 201 half of test_auth_api's guardian age test, which can only be
+        asserted where a code can be issued. Deliberately unenforced: a
+        guardian's own date of birth is not a rule this app has taken a view on.
+        """
+        code = self.issue().data['code']
+
+        response = self.register_parent(code, date_of_birth='2011-02-01')
+
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_a_redeemed_invitation_is_reported_as_used_rather_than_deleted(self):
         code = self.issue().data['code']

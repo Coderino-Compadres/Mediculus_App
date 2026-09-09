@@ -7,9 +7,11 @@ import {
   validateConsent,
   validateDateOfBirth,
   validateEmail,
+  validateInvitationCode,
   validateName,
   validatePassword,
 } from './validation'
+import { ACCOUNT_TYPES } from '../api/auth'
 
 /** 'YYYY-MM-DD' for a date `years` years and `days` days before today. */
 function birthday(years: number, days = 0): string {
@@ -78,6 +80,35 @@ describe('validateAccountType', () => {
   it('only requires that something was chosen', () => {
     expect(validateAccountType('')).toBe('Wybierz rodzaj konta.')
     expect(validateAccountType('patient')).toBeNull()
+  })
+})
+
+describe('validateInvitationCode', () => {
+  /**
+   * A guardian account exists only with a specialist's code: it asserts that
+   * this person is a child's legal guardian, which the app cannot check and the
+   * treating specialist can. Mirrors INVITATION_REQUIRED on the backend.
+   */
+  it('requires one of a guardian, and says where to get it', () => {
+    const message = validateInvitationCode('', ACCOUNT_TYPES.parent)
+
+    expect(message).toContain('specjalisty')
+  })
+
+  it('does not accept whitespace as an answer', () => {
+    expect(validateInvitationCode('   ', ACCOUNT_TYPES.parent)).not.toBeNull()
+  })
+
+  it('accepts a filled code', () => {
+    expect(validateInvitationCode('ABCD-EFGH-JKMN', ACCOUNT_TYPES.parent)).toBeNull()
+  })
+
+  it('asks no other account type for one', () => {
+    // The input is not even rendered for these, so a demand here would be an
+    // error under a field nobody can see — the failure `guardianOnly` exists for.
+    expect(validateInvitationCode('', ACCOUNT_TYPES.patient)).toBeNull()
+    expect(validateInvitationCode('', ACCOUNT_TYPES.minorPatient)).toBeNull()
+    expect(validateInvitationCode('', '')).toBeNull()
   })
 })
 

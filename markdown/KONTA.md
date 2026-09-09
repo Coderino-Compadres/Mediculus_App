@@ -60,12 +60,18 @@ specjalisty rejestracja tworzy wyłącznie konto pacjenta (dorosłego albo
 małoletniego). `ACCOUNT_TYPES` w `core/serializers.py` jest listą typów, jakie
 ten formularz zna.
 
-> **Uwaga: to jest reguła docelowa, a kod jeszcze jej nie wymusza.**
-> `ACCOUNT_TYPES` nadal zawiera `parent` bez warunku posiadania kodu, więc
-> `account_type: 'parent'` bez `invitation_code` **dziś przechodzi**. Domknięcie
-> tego to wymóg `invitation_code` przy tym typie w `RegisterSerializer.validate()`
-> plus test w `test_parent_invitation_api.py`. Do tego czasu jedyne, co dzieli
-> dokument od kodu, to ten akapit.
+`ACCOUNT_TYPES` zawiera `parent` — i to jest celowe, bo realizacja kodu **jest**
+rejestracją: konto powstaje w tym samym serializerze, w transakcji, która kod
+zużywa. Czym ten typ być nie może, to samoobsługą, i pilnuje tego
+`RegisterSerializer._check_invitation` (`INVITATION_REQUIRED`), a nie brak wpisu
+na liście. Formularz na froncie odmawia tego samego, zanim wyśle żądanie
+(`validateInvitationCode` w `utils/validation.ts`) — po to, żeby powiedzieć to
+przed podróżą do serwera, nie zamiast serwera.
+
+Jedyne konto rodzica, którego aplikacja **nie** umiałaby dziś stworzyć, to
+`rodzic@example.com` z `scripts/mock_data.sql`: SQL nie przechodzi przez
+serializer, więc demo-rodzic istnieje bez żadnego zaproszenia. Seed jest ważny
+dalej — po prostu przestał być przykładem czegoś, co da się powtórzyć przez API.
 
 ### Czego formularz rejestracji NIE umie / nie ma umieć
 

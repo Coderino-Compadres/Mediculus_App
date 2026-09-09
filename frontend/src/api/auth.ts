@@ -281,8 +281,11 @@ export async function register(input: RegisterInput): Promise<AuthUser> {
       data_consent: input.dataConsent,
       services_consent: input.servicesConsent,
       // Left out entirely when empty rather than sent as '': the field is
-      // optional on the backend, and a guardian registering without a code has
-      // no code rather than an empty one.
+      // optional at field level on the backend, where a *guardian* without one
+      // is refused by `_check_invitation` rather than by the field. Which is
+      // why sending '' would change nothing anyway — but an absent key is the
+      // honest encoding of "no code", and the form does not reach here without
+      // one (`validateInvitationCode`).
       ...(input.invitationCode ? { invitation_code: input.invitationCode } : {}),
     },
   })
