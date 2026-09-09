@@ -74,6 +74,8 @@ def all_urls(
             'core:diet-supplement-intake', args=[supplement_id or uuid.uuid4()])),
         ('delete', reverse(
             'core:diet-supplement-intake', args=[supplement_id or uuid.uuid4()])),
+        ('get', reverse('core:diet-reports')),
+        ('get', reverse('core:diet-report', args=['week-2026-08-03'])),
         ('get', reverse('core:report-list')),
         ('get', reverse('core:report-detail', args=[report_id])),
         ('get', reverse('core:report-pdf', args=[report_id])),

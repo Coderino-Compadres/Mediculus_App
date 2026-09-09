@@ -56,6 +56,14 @@ urlpatterns = [
     # ordering rule the diary follows.
     path('diet/today/', views.DietDayView.as_view(), name='diet-today'),
     path('diet/meals/', views.DietMealHistoryView.as_view(), name='diet-meals'),
+    # §10's reports. A slug id ('week-2026-08-01'), like /api/reports/, and its
+    # own endpoints rather than a reuse of those: the diet week is counted from
+    # the patient's first entry rather than from Monday.
+    path('diet/reports/', views.DietReportListView.as_view(), name='diet-reports'),
+    path(
+        'diet/reports/<slug:report_id>/',
+        views.DietReportDetailView.as_view(), name='diet-report',
+    ),
     # §08's second half, "Suplementy i leki".
     path('diet/supplements/', views.SupplementsView.as_view(), name='diet-supplements'),
     path(

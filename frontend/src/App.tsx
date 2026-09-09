@@ -7,6 +7,8 @@ import DietHome from './pages/DietHome'
 import DietJournals from './pages/DietJournals'
 import DietHydration from './pages/DietHydration'
 import DietSupplements from './pages/DietSupplements'
+import DietReports from './pages/DietReports'
+import DietReportDetail from './pages/DietReportDetail'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
@@ -407,6 +409,25 @@ function App() {
             element={
               <RequireAuth>
                 <DietSupplements />
+              </RequireAuth>
+            }
+          />
+          {/* §10's reports. RequireAuth's defaults again: the endpoints behind
+              them are behind `_require_patient`, so a guardian or a specialist
+              would meet a 403 the screen could only word as a failure. */}
+          <Route
+            path={ROUTES.dietReports}
+            element={
+              <RequireAuth>
+                <DietReports />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.dietReportDetail}
+            element={
+              <RequireAuth>
+                <DietReportDetail />
               </RequireAuth>
             }
           />

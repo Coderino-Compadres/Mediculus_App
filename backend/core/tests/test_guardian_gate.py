@@ -136,6 +136,10 @@ def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None):
         ('delete', reverse(
             'core:diet-supplement-intake',
             args=[supplement_id or uuid.uuid4()]), 404),
+        # §10's reports. A week nobody has entries for is a 404 -- which is the
+        # endpoint running, the only thing this sweep asks of it.
+        ('get', reverse('core:diet-reports'), 200),
+        ('get', reverse('core:diet-report', args=['week-2026-08-03']), 404),
     ]
 
 

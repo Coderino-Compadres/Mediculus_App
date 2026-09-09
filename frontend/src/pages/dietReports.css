@@ -1,0 +1,287 @@
+/* "Raporty" — §10 of the diet mockups, the report history.
+ *
+ * Its own stylesheet on the same terms as dietHome.css, dietJournals.css,
+ * dietHydration.css and dietSupplements.css: the diet module dresses itself from
+ * styles/theme.css rather than wearing another screen's class names. The page
+ * frame, header and back link are the shapes those four use, because a patient
+ * moving between the module's screens should not feel they changed product.
+ * And, like all of them, no `text-transform: capitalize` on a date — Polish
+ * month names are lowercase, and the four stylesheets that carry it render
+ * "8 września" as "8 Września".
+ *
+ * TWO TOKENS THIS FILE USES AND DOES NOT DEFINE: **--color-report and
+ * --color-report-bg are added to styles/theme.css by the orchestrator**, not
+ * here. They are §10's violet — the artboard's #9B7FC7, with #7A5FA8 for type
+ * on the pale violet pill — and the same arrangement as --color-supplement*:
+ * --color-report is the value that has to be *readable as type* on
+ * --color-report-bg, so it is the darker of the two hues. Every rule below that
+ * puts violet on white (the eyebrow, the border, the dot) uses the same token
+ * deliberately: one accent per screen, and a second violet would be a value
+ * free to drift.
+ *
+ * The violet is the thing being organised here — a document, a week — the way
+ * the water colour is on the hydration screen. Every action stays sage, as every
+ * action in the app is.
+ *
+ * NOTHING ON THIS SCREEN IS DRAWN AS A SCORE, and that is a styling rule as much
+ * as a markup one: no bar, no ring, no percentage, and no colour that means a
+ * week fell short. §10 asks for "etykieta i wartość, wiersz po wierszu", and
+ * §08's "nie ma gratulacji, serii ani komunikatu o niedoborze" is the module's
+ * rule generally. */
+
+.diet-reports-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-reports-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-reports-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+
+.diet-reports-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-reports-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* A link in a line of text, so its 44px touch target comes from a
+   pseudo-element rather than from real height — the technique every in-text link
+   in this app uses (.hydration-back, .supplement-back), because real height
+   would push the lead line below it around. */
+.diet-reports-back {
+  position: relative;
+  display: inline-block;
+  width: fit-content;
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-sage);
+  text-decoration: none;
+}
+
+.diet-reports-back::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  min-height: 44px;
+  transform: translateY(-50%);
+}
+
+.diet-reports-back:hover {
+  text-decoration: underline;
+}
+
+/* The lead line: what a week is here. `margin: 0 auto`, not `margin: 0` — the
+   centring lives on `.diet-reports-page > *` at the same specificity and loses
+   to this rule by source order, which is the trap dietJournals.css records
+   between .diet-journals-intro and its own column rule. */
+.diet-reports-lead {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+/* Status. The error box is the app's error colour rather than the module's
+   violet: a failed request is a fault, not a document. */
+
+.diet-reports-status {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0 auto;
+}
+
+.diet-reports-status-error {
+  background: var(--color-error-bg);
+  border-radius: var(--radius-tile);
+  padding: 14px 16px;
+  color: var(--color-error);
+}
+
+.diet-reports-status-error p {
+  margin: 0 0 8px;
+}
+
+/* The week in progress.
+ *
+ * White with a 2px violet edge, as the artboard draws it — the border is what
+ * separates it from the finished rows below, which have the app's ordinary
+ * hairline. The shadow is tinted with the accent instead of the usual graphite,
+ * hence the token in a box-shadow: there is no violet shadow token, and adding
+ * one to theme.css belongs to whoever next needs it on a second screen. The
+ * -22px spread is what keeps a fully opaque colour reading as a tint. */
+.diet-report-progress {
+  background: var(--color-surface);
+  border: 2px solid var(--color-report);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  box-shadow: 0 10px 28px -22px var(--color-report);
+}
+
+.diet-report-eyebrow {
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--color-report);
+  margin: 0 0 6px;
+}
+
+.diet-report-progress-range {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.diet-report-progress-closing {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 6px 0 0;
+}
+
+/* The two counts. Deliberately the same weight and colour as the line above:
+   they are facts about the week, not a score for it. */
+.diet-report-progress-counts {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}
+
+/* "GOTOWE RAPORTY" */
+
+.diet-reports-heading {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-graphite-muted);
+  margin: 4px auto 0;
+}
+
+/* The finished weeks */
+
+.diet-reports-list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.diet-report-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-tile);
+  box-shadow: var(--shadow-soft);
+  text-decoration: none;
+}
+
+.diet-report-row:hover {
+  border-color: var(--color-report);
+}
+
+.diet-report-row:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+/* The artboard's 11px dot. `aria-hidden` in the markup: it marks a row as a
+   report and says nothing a reader needs said twice. */
+.diet-report-dot {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: var(--radius-pill);
+  background: var(--color-report);
+}
+
+.diet-report-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diet-report-row-range {
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-graphite);
+}
+
+.diet-report-row-meta {
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+}
+
+/* "otwórz". A pill rather than an arrow, as the artboard draws it — and the
+   whole row is the link, so this needs no touch target of its own. */
+.diet-report-open {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-report-bg);
+  color: var(--color-report);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* No finished report yet — an ordinary state, so an ordinary card. */
+
+.diet-reports-empty {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.diet-reports-empty h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 8px;
+}
+
+.diet-reports-empty p {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  line-height: 1.6;
+  margin: 0;
+}

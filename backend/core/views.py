@@ -31,6 +31,7 @@ from .hydration import (HydrationEntrySerializer, add_entry as add_hydration,
                         build_hydration_day, remove_entry as remove_hydration,
                         serialize_entry as serialize_hydration_entry)
 from .meals import build_diet_day, load_history as load_meal_history
+from . import diet_reports as diet_report_rules
 from . import supplements as supplement_rules
 from .guardian import (STATUS_ACCEPTED, accept_invitation, accepted_children,
                        cancel_invitation, guardian_status, pending_invitations,
@@ -882,6 +883,63 @@ class DietMealHistoryView(APIView):
     def get(self, request):
         patient = _require_patient(request, DIET_REFUSAL)
         return Response(load_meal_history(patient.id_medical))
+
+
+DIET_REPORT_REFUSAL = (
+    'Raporty żywieniowe są dostępne tylko dla konta pacjenta.'
+)
+
+DIET_REPORT_NOT_FOUND = 'Nie znaleziono raportu dla tego tygodnia.'
+
+
+class DietReportListView(APIView):
+    """GET /api/diet/reports/ — §10's report history for the diet module.
+
+    Derived on every request from `diet_meal` and `hydration`, never stored, so
+    no figure on a report can disagree with the diary it came from — the same
+    property `/api/reports/` has, and the same consequence: changing
+    `core/diet_reports.py` changes what last month's report says.
+
+    TWO THINGS DIFFER FROM `/api/reports/`, and both are §10's rules rather than
+    preferences. **The week is counted from the patient's first entry** rather
+    than from Monday ("licząc od dnia pierwszego wpisu pacjentki, a nie od
+    poniedziałku"), so the payload carries the `anchor` that grid sits on. And
+    **the week in progress is answered for** ("bieżący tydzień jest widoczny
+    jako w toku"), as its own key rather than as a report with a flag — a week
+    in progress has no report, and a shape that could carry one would be one
+    branch away from serving it.
+
+    Read-only structurally: no write verb exists on this URL. Nothing generates
+    a report on a schedule, which is fine while they are derived and is the
+    prerequisite the moment they are stored.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, DIET_REPORT_REFUSAL)
+        return Response(diet_report_rules.build_report_summary(
+            patient.id_medical, timezone.localdate(),
+        ))
+
+
+class DietReportDetailView(APIView):
+    """GET /api/diet/reports/<week-id>/ — one week's report.
+
+    The only diet-report URL carrying an id, so the only one where a caller can
+    name a week that is not theirs: `find_report` resolves it against this
+    patient's own anchor grid and rows, so another patient's week answers
+    exactly like a week nobody has entries for — 404, the same convention as
+    `/api/diary/<id>/`. A malformed id is the same 404 rather than a 500, since
+    `parse_report_id` refuses junk instead of raising.
+    """
+
+    def get(self, request, report_id):
+        patient = _require_patient(request, DIET_REPORT_REFUSAL)
+        report = diet_report_rules.find_report(
+            patient.id_medical, report_id, timezone.localdate(),
+        )
+        if report is None:
+            raise NotFound(DIET_REPORT_NOT_FOUND)
+        return Response(report)
 
 
 class SupplementsView(APIView):

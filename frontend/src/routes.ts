@@ -54,6 +54,11 @@ export const ROUTES = {
   /** "Suplementy i leki" — §08's second half, a screen of its own because the
    *  mockups make it one. pages/DietSupplements.tsx. */
   dietSupplements: '/diet/supplements',
+  /** "Raporty — historia i szczegół" (§10). Its own pair of screens rather than
+   *  a reuse of /reports: the diet report counts its week from the patient's
+   *  first entry rather than from Monday, and shows the week in progress. */
+  dietReports: '/diet/reports',
+  dietReportDetail: '/diet/reports/:id',
 } as const
 
 /** Fills in ROUTES.journalDetail's `:id` param — use instead of building the path by hand. */
@@ -80,6 +85,11 @@ export function specialistPatientReportPath(patientId: string, reportId: string)
   return ROUTES.specialistPatientReport
     .replace(':patientId', patientId)
     .replace(':reportId', reportId)
+}
+
+/** The same for ROUTES.dietReportDetail, whose `:id` is a week ('week-2026-08-01'). */
+export function dietReportDetailPath(id: string): string {
+  return ROUTES.dietReportDetail.replace(':id', id)
 }
 
 export function specialistTechniqueEditPath(id: number | string): string {
@@ -132,6 +142,8 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.dietJournals]: 'Dzienniczki żywieniowe',
   [ROUTES.dietHydration]: 'Nawodnienie',
   [ROUTES.dietSupplements]: 'Suplementy i leki',
+  [ROUTES.dietReports]: 'Raporty żywieniowe',
+  [ROUTES.dietReportDetail]: 'Raport tygodniowy żywieniowy',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',

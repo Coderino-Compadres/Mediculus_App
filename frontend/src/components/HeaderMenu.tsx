@@ -73,6 +73,7 @@ const DIET_ITEMS: MenuItem[] = [
   { label: routeTitle(ROUTES.dietJournals), to: ROUTES.dietJournals },
   { label: routeTitle(ROUTES.dietHydration), to: ROUTES.dietHydration },
   { label: routeTitle(ROUTES.dietSupplements), to: ROUTES.dietSupplements },
+  { label: 'Raporty', to: ROUTES.dietReports },
   { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
   { label: 'Przejdź do części psychoterapeutycznej', to: ROUTES.home },
 ]

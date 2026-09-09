@@ -1,0 +1,250 @@
+/* One weekly diet report — §10 of the diet mockups, artboard `screen: 'report'`.
+ *
+ * Its own stylesheet on the same terms as dietHome.css, dietJournals.css,
+ * dietHydration.css and dietSupplements.css: the diet module dresses itself from
+ * styles/theme.css rather than wearing another screen's class names. The page
+ * frame, header and back link are the same shapes those four use, because a
+ * patient moving between the module's screens should not feel they changed
+ * product.
+ *
+ * EVERY CLASS HERE IS PREFIXED `diet-report-detail-`, including the ones a
+ * shorter name would fit. The list screen (§10's other half, pages/DietReports)
+ * has its own stylesheet and its own `.diet-report*` names; one prefix per
+ * screen is what stops two files in one bundle deciding a `.diet-report-card`
+ * between them by emit order — the fragility styles/panel.css documents for
+ * `.panel-empty`.
+ *
+ * TWO TOKENS THIS FILE USES AND DOES NOT DEFINE. `--color-report` and
+ * `--color-report-bg` are added to styles/theme.css by the orchestrator, not
+ * here; they are §10's violet, the module's third named hue after the water
+ * colour and the supplement hour. What they have to hold, and why:
+ *
+ *   --color-report      the row labels and the changes heading, i.e. TEXT.
+ *                       The artboard's accent is #9B7FC7, which on white reads
+ *                       at about 3.35:1 — under the 4.5:1 AA floor for the 12px
+ *                       letter-spaced labels below. So the value is the
+ *                       artboard's hue darkened until it passes: #7A5FA8, at
+ *                       about 5.2:1 on white and 4.55:1 on the pale violet.
+ *                       Exactly the correction --color-supplement already
+ *                       carries, for exactly the same reason.
+ *   --color-report-bg   the pale violet ground of the changes card (#f2eefa or
+ *                       thereabouts) — the artboard's own, unchanged.
+ *
+ * NOTHING HERE IS DRAWN AS A SCORE, and that is a styling rule as much as a
+ * markup one: no bar, no ring, no percentage, no colour that means a week went
+ * badly. §10 is "zestawienie, nie interpretacja", and the violet is the colour
+ * of a *section label* — never of a verdict. */
+
+.diet-report-detail-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-report-detail-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-report-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+
+.diet-report-detail-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-report-detail-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* A link in a line of text, so its 44px touch target comes from a
+   pseudo-element rather than from real height — the technique every in-text link
+   in this app uses, because real height would push the lead line below it
+   around. */
+.diet-report-detail-back {
+  position: relative;
+  display: inline-block;
+  width: fit-content;
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-sage);
+  text-decoration: none;
+}
+
+.diet-report-detail-back::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  min-height: 44px;
+  transform: translateY(-50%);
+}
+
+.diet-report-detail-back:hover {
+  text-decoration: underline;
+}
+
+/* The lead line: "1 – 7 sierpnia · dostępny od 8 sierpnia".
+ *
+ * Deliberately no `text-transform: capitalize` — Polish month names are
+ * lowercase, and four stylesheets in this app render "8 września" as
+ * "8 Września" because they carry it. */
+.diet-report-detail-lead {
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+/* The scope note — which sections the diary can answer today and which are
+   waiting on a form that does not exist. Quiet, one line of type: it explains
+   the card below it rather than competing with it, and it is not a warning. */
+.diet-report-detail-scope {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+/* Status */
+
+.diet-report-detail-loading {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.diet-report-detail-error {
+  background: var(--color-error-bg);
+  border-radius: var(--radius-tile);
+  padding: 14px 16px;
+  color: var(--color-error);
+  font-size: 14px;
+  margin: 0;
+}
+
+.diet-report-detail-error p {
+  margin: 0 0 8px;
+}
+
+/* Not an error box: an id naming a week with no entries is an ordinary answer,
+   and red would tell the patient something went wrong. */
+.diet-report-detail-not-found {
+  background: var(--color-surface);
+  border-radius: var(--radius-tile);
+  padding: 14px 16px;
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+/* Cards */
+
+.diet-report-detail-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.diet-report-detail-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* The label/value rows */
+
+.diet-report-detail-rows {
+  margin: 0;
+}
+
+/* "Etykieta i wartość, wiersz po wierszu", each separated by a top rule. The
+   first row goes without one: with no visible heading above it, a rule there
+   would read as a stray line across the top of the card rather than as a
+   separator between two rows. */
+.diet-report-detail-row {
+  padding: 14px 0 0;
+  margin-top: 14px;
+  border-top: 1px solid var(--color-divider);
+}
+
+.diet-report-detail-row:first-child {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: none;
+}
+
+/* Small, letter-spaced and violet, as the artboard draws it. Already uppercase
+   on the wire ("REGULARNOŚĆ WPISÓW"), so no `text-transform` here — the server
+   owns the label, and a screen that re-cased it would be a second opinion about
+   how a section is written. 12px is the app's smallest type; see the touch-target
+   note in CLAUDE.md for the two rules that keep 11px and why. */
+.diet-report-detail-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  color: var(--color-report);
+}
+
+.diet-report-detail-value {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite);
+  /* <dd> carries a UA indent that would step every value in from its label. */
+  margin: 6px 0 0;
+}
+
+/* The changes card. Pale violet rather than white, so the one comparison on the
+   screen is legible as its own section without a figure, a bar or an arrow —
+   §10 allows a direction and a value in words and nothing more. */
+.diet-report-detail-change-card {
+  background: var(--color-report-bg);
+  box-shadow: none;
+}
+
+.diet-report-detail-change-card h2 {
+  color: var(--color-report);
+}
+
+.diet-report-detail-change {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite);
+  margin: 8px 0 0;
+}
+
+/* The closing line, centred and quiet, as the artboard has it. It is the last
+   thing on the screen on purpose: what the report is, said after it has been
+   read. */
+.diet-report-detail-closing {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  margin: 8px 0 0;
+}

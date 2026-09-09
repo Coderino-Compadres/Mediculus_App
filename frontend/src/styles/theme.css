@@ -33,6 +33,28 @@
   --color-water-soft: #7fbfb4;
   --color-water-quiet: #bfded9;
 
+  /* The diet module's report colour, from §10 of the client's mockups. Its own
+     hue for the same reason the water and supplement colours have one: on those
+     screens it marks the thing the list is *of* — the "W TOKU" card's border,
+     the dot on a ready report, the label of every row in a report's body —
+     while every button stays sage.
+
+     ONE accent token rather than two, and it is the *readable* value: both
+     screens use it for type as well as for the border, the dot and the pill --
+     §10's row labels are 10.5px letter-spaced, and the artboard's own #9b7fc7
+     reads about 3.35:1 on white there, under the 4.5:1 AA floor. So this is
+     that hue darkened until it clears the floor on white (5.2:1) and on the
+     pale pill (4.55:1), and the pill background is the artboard's, unchanged.
+     Exactly the correction --color-supplement already carries. A deeper border
+     and dot is a cost worth paying for a label somebody can read; if the
+     artboard's lighter hue is ever wanted back for the *decoration*, that is a
+     second token, not a change to this one.
+
+     Neither value is a status colour — a report is a zestawienie, not a
+     verdict (§10). */
+  --color-report: #6b4e9e;
+  --color-report-bg: #f2eefa;
+
   /* The hour badge on "Suplementy i leki" (§08). Its own hue for the same
      reason the water colour has one: on that screen the hour is the thing the
      list is organised by, and the artboard draws it blue on a pale blue pill
