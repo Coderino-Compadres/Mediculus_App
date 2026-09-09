@@ -74,6 +74,39 @@
   box-shadow: 0 4px 12px -6px rgba(var(--shadow-tint), 0.35);
 }
 
+/* The dot on a closed menu — the only thing on screen that says a child is
+   waiting when the guardian is not on /parent. Positioned rather than in the
+   flex flow, so it does not shift the three bars it sits over. The button has
+   no `position` of its own; `.home-menu` is the positioned ancestor and sits
+   exactly on the button, so this anchors correctly against either. The meaning
+   is in the button's aria-label, not in the colour. */
+.home-menu-toggle {
+  position: relative;
+}
+
+.home-menu-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-caution);
+}
+
+/* The same count, spelled out, inside the open menu. Ochre like the dot and
+   like everything else in the app that asks for attention without claiming
+   something went wrong — never the error red. */
+.home-menu-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-caution);
+  color: #fff;
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+}
+
 .home-menu-toggle span {
   width: 18px;
   height: 2px;

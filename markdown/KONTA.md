@@ -1,419 +1,410 @@
-# Rodzaje kont w Mediculusie
+# Konta w Mediculusie — instrukcja
 
-**Stan na:** 9 września 2026 · **Źródło:** kod (`backend/core/`, `frontend/src/`), nie makiety
+**Dla kogo:** dla osób zakładających i obsługujących konta — pacjentów, rodziców
+i opiekunów, specjalistów oraz zespołu fundacji.
+**Stan na:** 9 września 2026.
 
-Dokument opisuje, **jakie konta istnieją, skąd się biorą, kto może utworzyć jakie
-i do czego każde z nich ma dostęp**. Wszystko poniżej jest odczytane z kodu — jeśli
-kod się zmieni, ten plik trzeba poprawić razem z nim. Miejsca, w których decyzja
-jest świadoma (a nie brakiem funkcji), są zaznaczone, bo to właśnie one bywają
-„naprawiane” przez pomyłkę.
-
----
-
-## 1. Cztery rodzaje kont — i piąte, które kontem nie jest
-
-W `user_db` istnieją **dwa niezależne pojęcia użytkownika** i nie wolno ich mieszać:
-
-| | |
-|---|---|
-| `core.User` (tabela `"user"`) | Konto domenowe, czyli to, o czym jest ten dokument. Logowanie przez `/api/auth/login/`, sesja trzyma `core_user_id`. |
-| `auth_user` (Django) | Wyłącznie login do `/admin/`. Tworzone przez `createsuperuser`, **niepowiązane** z kontem domenowym. |
-
-Konta domenowe rozpoznaje się nie po roli, a po **istnieniu wiersza w tabeli
-pobocznej** — rola (`user_role.role`) jest napisem seedowanym z SQL-a i służy do
-wyświetlania, nie do autoryzacji:
-
-| Rodzaj konta | Rola | Wiersz poboczny | `id_medical` | Rozpoznawany przez |
-|---|---|---|---|---|
-| **Pacjent dorosły** | `patient` | `patient` (`is_child = FALSE`) | tak | `_require_patient` / `is_patient` |
-| **Pacjent małoletni** | `patient` | `patient` (`is_child = TRUE`) | tak | jak wyżej + bramka opiekuna |
-| **Opiekun (rodzic)** | `rodzic` | **żaden** | **nie** | `isGuardian` (rola) |
-| **Specjalista** | `specjalista` | `specjalist` | **nie** | `_require_specialist` / `is_specialist` |
-
-Dlaczego opiekun i specjalista nie mają `id_medical`: nie są podmiotami danych
-klinicznych, więc **nic w `medical_db` nie może się do nich odwołać**. To nie
-oszczędność, tylko granica pseudonimizacji — dzienniczek, raporty i nawodnienie
-istnieją tylko dla kont pacjenckich.
-
-Rodzaj konta pacjenta (`is_child`) **bierze się z wyboru w formularzu**, a nie
-z daty urodzenia — ale `_check_age_matches_account_type` odrzuca dwie kombinacje,
-w których te dwa źródła by sobie przeczyły (dorosła data przy `minor_patient`,
-data małoletniego przy `patient`). Granica pełnoletności to `ADULT_AGE = 18`
-w `core/serializers.py` — **decyzja polityczna, nie fakt**: RODO art. 8 mówi
-o 16 latach, więc może wymagać rewizji.
+Ten dokument odpowiada na cztery pytania: **jakie są rodzaje kont**, **jak każde
+z nich założyć**, **co się w nim widzi** i **co zrobić, gdy coś nie działa**.
+Na końcu jest krótki aneks dla programistów.
 
 ---
 
-## 2. Skąd bierze się konto — macierz „kto tworzy kogo”
+## Spis treści
 
-| Konto do utworzenia | Kto je tworzy | Gdzie / czym | Można od razu? |
-|---|---|---|---|
-| Pacjent dorosły | sam zainteresowany | `POST /api/auth/register/`, `account_type: 'patient'` | **tak, od razu i bez niczyjej zgody** |
-| Pacjent małoletni | sam zainteresowany | `POST /api/auth/register/`, `account_type: 'minor_patient'` | konto powstaje od razu, ale **jest zablokowane** do akceptacji opiekuna |
-| Opiekun (rodzic) | **specjalista** wydaje kod, rodzic go realizuje | `POST /api/specialist/parent-invitations/` → rejestracja z `invitation_code` | tak, i powstaje **od razu powiązane i zaakceptowane** |
-| Specjalista | **inny specjalista** | `POST /api/specialist/colleagues/` | tak, ale konto trafia na dwa ekrany blokujące (zgody, potem hasło) |
-| Pierwszy specjalista | **nikt w aplikacji** | `scripts/mock_data.sql` / jeden `INSERT` ręcznie | nie — patrz §6 |
-
-Krótko: **formularz rejestracji jest jedyną drogą do konta pacjenta i jedyną
-drogą do konta opiekuna — ale opiekun potrzebuje do niego kodu.** Bez kodu od
-specjalisty rejestracja tworzy wyłącznie konto pacjenta (dorosłego albo
-małoletniego). `ACCOUNT_TYPES` w `core/serializers.py` jest listą typów, jakie
-ten formularz zna.
-
-`ACCOUNT_TYPES` zawiera `parent` — i to jest celowe, bo realizacja kodu **jest**
-rejestracją: konto powstaje w tym samym serializerze, w transakcji, która kod
-zużywa. Czym ten typ być nie może, to samoobsługą, i pilnuje tego
-`RegisterSerializer._check_invitation` (`INVITATION_REQUIRED`), a nie brak wpisu
-na liście. Formularz na froncie odmawia tego samego, zanim wyśle żądanie
-(`validateInvitationCode` w `utils/validation.ts`) — po to, żeby powiedzieć to
-przed podróżą do serwera, nie zamiast serwera.
-
-Jedyne konto rodzica, którego aplikacja **nie** umiałaby dziś stworzyć, to
-`rodzic@example.com` z `scripts/mock_data.sql`: SQL nie przechodzi przez
-serializer, więc demo-rodzic istnieje bez żadnego zaproszenia. Seed jest ważny
-dalej — po prostu przestał być przykładem czegoś, co da się powtórzyć przez API.
-
-### Czego formularz rejestracji NIE umie / nie ma umieć
-
-**Nie ma typu `specialist`** i to jest właśnie zabezpieczenie, a nie brak.
-Ręcznie sklejone `account_type: 'specialist'` daje 400 (`invalid_choice`), nie
-konto. Powód nie dotyczy dostępu (sama rola nic nie daje — patrz §4), tylko
-**twierdzenia, jakie takie konto stawia**: to deklaracja kwalifikacji, której
-aplikacja nie potrafi sprawdzić, a którą potrafi potwierdzić inny specjalista.
-
-**Nie ma samoobsługowego konta opiekuna.** Rodzic nie zakłada konta „z ulicy" —
-konto opiekuna powstaje wyłącznie z kodu wydanego przez specjalistę (§5), i to
-z tego samego powodu, dla którego konta specjalisty zakłada specjalista: konto
-opiekuna stawia twierdzenie, którego aplikacja nie sprawdzi — że ta osoba jest
-opiekunem prawnym tego dziecka. Potwierdzić to może ten, kto siedział z rodziną
-w gabinecie. Skutkiem ubocznym jest to, że **konto opiekuna nigdy nie istnieje
-„luzem"**: rodzi się przypisane do konkretnego dziecka i od razu zaakceptowane.
-
-**Nie da się też przypisać sobie specjalisty.** `patient.id_specjalist` nie jest
-polem formularza i nic nie może go zapisywać bezpośrednio — jedyną drogą jest
-zaproszenie (§5). Gdyby ktoś dodawał tu nową funkcję: **to jest linia, której nie
-wolno przekroczyć**.
+1. [Które konto jest dla mnie](#1-które-konto-jest-dla-mnie)
+2. [Zakładanie konta krok po kroku](#2-zakładanie-konta-krok-po-kroku)
+3. [Pierwsze logowanie — co może Cię zatrzymać](#3-pierwsze-logowanie--co-może-cię-zatrzymać)
+4. [Co widać w aplikacji](#4-co-widać-w-aplikacji)
+5. [Łączenie kont](#5-łączenie-kont)
+6. [Częste sytuacje i problemy](#6-częste-sytuacje-i-problemy)
+7. [Czego aplikacja nie robi](#7-czego-aplikacja-nie-robi)
+8. [Aneks dla zespołu](#8-aneks-dla-zespołu)
 
 ---
 
-## 3. Trzy bramki: co blokuje świeże konto
+## 1. Które konto jest dla mnie
 
-Konto może istnieć i **nie mieć jeszcze dostępu do niczego**. Bramki są trzy,
-wszystkie wymuszane po stronie serwera, i mają ustaloną kolejność.
+Są cztery rodzaje kont. Wybór robi się raz, przy zakładaniu, i **nie da się go
+później zmienić** — zmiana rodzaju konta oznacza założenie nowego.
 
-| Bramka | Kogo dotyczy | Gdzie w kodzie | Ekran | Wyjście |
-|---|---|---|---|---|
-| **Zgody RODO** | każdego konta, któremu brakuje którejś zgody | `HasActiveConsents` w `DEFAULT_PERMISSION_CLASSES` | `pages/ConsentsRequired.tsx` | udzielenie obu zgód |
-| **Hasło** | tylko konta specjalisty założonego przez kolegę (`must_change_password`) | `HasOwnPassword` | `pages/PasswordChangeRequired.tsx` | ustawienie własnego hasła |
-| **Opiekun** | tylko pacjenta małoletniego bez zaakceptowanego powiązania | `_require_patient(require_guardian_link=True)` | `pages/LinkGuardian.tsx` | akceptacja przez opiekuna |
+| Jestem… | Rodzaj konta | Kto je zakłada |
+|---|---|---|
+| osobą pełnoletnią, która chce prowadzić dzienniczek | **konto pacjenta** | Ty sam, w aplikacji |
+| osobą niepełnoletnią, która chce prowadzić dzienniczek | **konto pacjenta małoletniego** | Ty sam, ale musi je zatwierdzić opiekun |
+| rodzicem albo opiekunem prawnym pacjenta | **konto rodzica lub opiekuna** | Ty sam, **na kod od specjalisty** |
+| psychoterapeutą, psychodietetykiem | **konto specjalisty** | inny specjalista, ze swojego panelu |
 
-**Kolejność zgody → hasło jest wymuszona, nie wybrana**: `POST /api/account/password/`
-samo stoi za `HasActiveConsents`, więc konto odesłane najpierw na formularz hasła
-dostałoby 403 na jedynym formularzu, którego może użyć. Kolejność jest zapisana
-raz — w `gateRouteFor` (`App.tsx`) na froncie i w klasach uprawnień na backendzie.
+Dwie rzeczy, które warto wiedzieć od razu:
 
-**Wyjątki od bramek to nazwane stałe, nie rozpisane listy** — bo ustawienie
-`permission_classes` na widoku **zastępuje domyślne w całości**, więc łatwo
-wypaść z bramki przez nieuwagę:
-
-- `CONSENT_EXEMPT` (wyjęte z **obu** bramek): `auth/me/`, `auth/logout/` oraz dwa
-  endpointy zgód. `me/` musi być otwarte, bo z niego front dowiaduje się,
-  *dlaczego* został odrzucony.
-- `PASSWORD_CHANGE_EXEMPT`: dokładnie jeden widok — `POST /api/account/password/`,
-  czyli droga wyjścia.
-- Bramka opiekuna: `POST/DELETE /api/auth/guardian/` (bo tym dziecko o akceptację
-  prosi) i trzy endpointy `/api/account/specialist-invitation/` (bo inaczej cała
-  ścieżka z §5 zakleszcza się dla dokładnie tych dzieci, dla których istnieje).
-
-Każda bramka ma test przeciągający **wszystkie** zarejestrowane URL-e z jednego
-miejsca (`test_consent_gate.py`, `test_password_gate.py`, `test_guardian_gate.py`).
-Nowy endpoint kliniczny dopisuje się do tych list.
+- **Konto rodzica nie służy do prowadzenia dzienniczka.** Nie ma w nim wpisów,
+  raportów ani analiz — jest do zatwierdzania konta dziecka i do wglądu w to, czy
+  dziecko z aplikacji korzysta. Jeśli chcesz prowadzić własny dzienniczek, potrzebne
+  jest konto pacjenta (może być na inny adres e-mail).
+- **Konta specjalisty nie da się założyć samodzielnie.** W formularzu rejestracji
+  nie ma takiej opcji. Powód nie jest techniczny: konto specjalisty mówi
+  o kwalifikacjach zawodowych, których aplikacja nie ma jak sprawdzić — a potwierdzić
+  je może inna osoba z zawodu.
 
 ---
 
-## 4. Do czego każde konto ma dostęp
+## 2. Zakładanie konta krok po kroku
 
-### Pacjent (dorosły albo małoletni po akceptacji)
+### Konto pacjenta (osoba pełnoletnia)
 
-Jedyne konto, które ma dane kliniczne. Ekrany: `/modules` (wybór modułu),
-`/home`, `/journals`, `/reports`, `/analysis`, `/techniques`, `/safety-plan`,
-`/profile`, oraz moduł dietetyczny — `/diet`, `/diet/journals`, `/diet/hydration`.
-Menu: `PATIENT_ITEMS` albo `DIET_ITEMS` (wybierane **po adresie**, nie po roli —
-jedno konto, dwa moduły).
+1. Otwórz aplikację i wybierz **Utwórz konto**.
+2. W polu *Rodzaj konta* wybierz **Konto pacjenta**.
+3. Podaj imię, nazwisko, datę urodzenia i adres e-mail.
+4. Ustaw hasło — **minimum 8 znaków**. Hasło nie może być zbyt podobne do Twojego
+   adresu e-mail ani imienia i nazwiska, i nie może być jednym z haseł powszechnie
+   używanych. Jeśli aplikacja odmówi, powie dlaczego.
+5. Zaznacz **obie zgody** — na przetwarzanie danych i na usługi fundacji. Bez obu
+   konto nie zadziała (patrz punkt 3).
+6. Gotowe. Zostajesz od razu zalogowany, bez drugiego logowania.
 
-Endpointy: cały dzienniczek (`/api/diary/…`), pulpit, analiza, raporty wraz z PDF,
-nawodnienie, katalog technik, własny profil i hasło, zgody, odpowiedź na
-zaproszenie specjalisty.
+**Data urodzenia musi zgadzać się z rodzajem konta.** Jeśli wybierzesz konto
+pacjenta, a podasz datę osoby niepełnoletniej, aplikacja odmówi i poprosi o zmianę
+jednego z dwóch. To nie czepialstwo — te dwie informacje muszą mówić to samo,
+bo od nich zależy, czy konto wymaga zgody opiekuna.
 
-Zawsze **wyłącznie własne dane**: tożsamość bierze się z sesji, a jedyne URL-e
-z identyfikatorem w ścieżce (`/api/diary/<uuid>/`, `/api/diet/hydration/<id>/`)
-filtrują dodatkowo po `id_medical` — cudzy wiersz odpowiada **404**, tak samo jak
-nieistniejący.
+### Konto pacjenta małoletniego
 
-Czego pacjent **nie** może: zerwać powiązania ze specjalistą (to reguła klientki,
-nie przeoczenie — patrz §5), edytować wpisu z przeszłości (edytowalny jest tylko
-dzisiejszy), usunąć konta (endpoint jest zaślepką — otwarte pytanie prawne
-o retencję dokumentacji).
+Kroki są takie same, z jedną różnicą na końcu: **konto powstaje, ale jest
+zablokowane, dopóki opiekun go nie zatwierdzi.** Zamiast dzienniczka zobaczysz
+ekran, na którym:
 
-### Opiekun (rodzic)
+1. podajesz **adres e-mail opiekuna** — musi to być adres konta rodzica lub
+   opiekuna, które już istnieje w aplikacji;
+2. czekasz. Opiekun po zalogowaniu zobaczy Twoją prośbę na swoim ekranie
+   głównym i ją zatwierdzi albo odrzuci;
+3. jeśli się pomylisz w adresie, możesz prośbę **wycofać** i wysłać do kogoś
+   innego. Po zatwierdzeniu wycofanie nie jest już możliwe.
 
-Nie ma wiersza `patient`, więc **wszystko za `_require_patient` odpowiada mu 403** —
-i dlatego nie dostaje w menu wpisów, których i tak nie otworzy. Ekrany: `/parent`
-i `/profile`. Menu: `GUARDIAN_ITEMS` (dwie pozycje).
+Dlaczego tak: za osobę niepełnoletnią zgodę na korzystanie z takiej usługi daje
+opiekun (RODO art. 8), a aplikacja nie ma innego sposobu, by wiedzieć, że ktoś tę
+zgodę wyraził.
 
-Co widzi na `/parent`:
+**Jeśli opiekun jeszcze nie ma konta**, kolejność jest odwrotna, niż się wydaje:
+konto opiekuna powstaje na kod od specjalisty (poniżej), a nie z prośby dziecka.
+W praktyce oznacza to, że tę część załatwia się na wizycie.
 
-- **zaproszenia od dzieci** — `GET /api/guardian/invitations/` plus akceptacja
-  i odmowa; to pierwszy ekran po zalogowaniu, bo dziecko jest zablokowane do
-  momentu odpowiedzi;
-- **listę powiązanych dzieci** — `GET /api/guardian/children/`, i tu jest twarda
-  granica: **zaangażowanie, nigdy treść**. Liczba wpisów, seria, data ostatniego
-  wpisu. Żadnego nastroju, emocji, napięcia, flagi zachowań ryzykownych,
-  żadnych liczb z raportu, żadnego `id_medical`. Lista jest w
-  `CHILD_SUMMARY_FIELDS` (`core/account.py`) i przeciągnięta testem, bo dodanie
-  tu `avg_mood` wygląda jak ulepszenie. Powód jest kliniczny: małoletni, który
-  wie, że rodzic czyta jego dzienniczek, pisze inny dzienniczek.
-- resztę panelu zajmuje **placeholder** i celowo nie mówi, co opiekun będzie
-  widział z danych dziecka — to jest nierozstrzygnięte i nie jest pytaniem o UI.
+### Konto rodzica lub opiekuna
 
-Profil działa mu w pełni (tożsamość, rejestr zgód, zmiana hasła) — to jedyna trasa
-pacjencka z `allowGuardian`.
+Potrzebujesz **kodu od specjalisty prowadzącego dziecko**. Kod dostajesz na
+wizycie — jest podyktowany albo zapisany na kartce, wygląda tak:
+`ABCD-EFGH-JKMN`.
 
-Czego opiekun **nie** może: cofnąć raz zaakceptowanego powiązania (funkcja
-nieistniejąca), zobaczyć dzienniczka ani raportów dziecka, dowiedzieć się
-o zaproszeniu inaczej niż logując się (w tym wdrożeniu **nie ma żadnej poczty**).
+1. Wybierz **Utwórz konto**, a w *Rodzaju konta* — **Konto rodzica lub opiekuna**.
+2. Pojawi się pole **Kod od specjalisty**. Wpisz kod. Wielkość liter i myślniki
+   nie mają znaczenia.
+3. **Zarejestruj się na ten adres e-mail, który podałeś specjaliście** — kod
+   działa tylko z nim.
+4. Uzupełnij resztę: imię, nazwisko, datę urodzenia, hasło, obie zgody.
+5. Gotowe. Konto rodzica powstaje **od razu połączone z dzieckiem** i zatwierdzone
+   — dziecko nie musi już o nic prosić, a jego konto od tego momentu działa.
+
+Trzy rzeczy o kodzie:
+
+- **Ważny 14 dni** od wydania.
+- **Jednorazowy** — po zarejestrowaniu przestaje działać.
+- **Nie da się go odczytać po fakcie.** Nawet specjalista, który go wydał, nie
+  zobaczy go drugi raz — może tylko unieważnić stary i wydać nowy. Kod nie
+  zawiera znaków, które łatwo pomylić na kartce (nie ma w nim `O`, `0`, `I`,
+  `1`, `L`, `S`, `5`, `Z`, `2`).
+
+### Konto specjalisty
+
+Zakłada je **inna osoba z kontem specjalisty**, w swoim panelu, w sekcji
+**Konta specjalistów**:
+
+1. Specjalista podaje imię, nazwisko, adres e-mail, datę urodzenia
+   i specjalizację nowej osoby. Hasła nie podaje — aplikacja je generuje.
+2. **Hasło pokazuje się jeden raz**, w odpowiedzi na formularz, i ekran mówi
+   o tym wprost. Trzeba je przekazać nowej osobie (na kartce, ustnie) i zapisać
+   do momentu pierwszego logowania. **Nie da się go odzyskać ani wysłać
+   ponownie.**
+3. Nowa osoba loguje się tym hasłem i przechodzi przez dwa ekrany:
+   najpierw **udziela obu zgód** (nikt nie może tego zrobić za nią), potem
+   **ustawia własne hasło**. Dopiero wtedy otwiera się panel.
+4. Nowe konto jest puste — nie ma w nim żadnych pacjentów. Pacjenci pojawiają
+   się dopiero wtedy, gdy każdy z nich przyjmie zaproszenie.
+
+Dlaczego trzeba wymienić hasło: to hasło zostało **wygenerowane, a nie wybrane**
+— osoba, która zakładała konto, je zna, i mogła je widzieć jeszcze ktoś, kto
+zajrzał na kartkę. Panel otwiera się na dokumentację innych ludzi, więc samo
+„jest zalogowany" nie wystarcza.
+
+### Pierwsze konto specjalisty w ogóle
+
+Nie da się go założyć w aplikacji — do stworzenia konta specjalisty potrzebne
+jest konto specjalisty. Pierwsze zakłada zespół techniczny wprost w bazie danych,
+raz na wdrożenie. Każde następne powstaje już z panelu.
+
+---
+
+## 3. Pierwsze logowanie — co może Cię zatrzymać
+
+Bywa, że konto istnieje, a aplikacja pokazuje tylko jeden ekran. Są na to trzy
+powody, zawsze jeden z nich — i każdy ma wyjście.
+
+| Widzisz | Co to znaczy | Co zrobić |
+|---|---|---|
+| ekran ze zgodami | brakuje jednej albo obu zgód (nigdy nieudzielonych albo wycofanych) | zaznacz zgody na tym ekranie; aplikacja odblokuje się natychmiast |
+| ekran „ustaw własne hasło" | to konto specjalisty z hasłem wygenerowanym przy zakładaniu | ustaw swoje hasło |
+| ekran „wskaż opiekuna" | konto pacjenta małoletniego, którego opiekun jeszcze nie zatwierdził | podaj adres opiekuna i poczekaj na jego decyzję |
+
+Kolejność jest stała: **najpierw zgody, potem hasło**. Z każdego z tych ekranów
+można się też **wylogować** — przycisk jest równie widoczny jak ten, który
+prowadzi dalej. To celowe: zgoda wymuszona nie jest zgodą, a osoba, która nie ma
+przy sobie kartki z hasłem, musi móc po prostu wyjść.
+
+---
+
+## 4. Co widać w aplikacji
+
+### Pacjent
+
+Po zalogowaniu wybierasz jeden z dwóch modułów: **psychoterapeutyczny** albo
+**dietetyczny i psychodietetyczny**. Menu zmienia się razem z modułem, a przejście
+między nimi jest w menu.
+
+Moduł psychoterapeutyczny:
+
+- **Strona główna** — seria dni, dzisiejszy wpis, wykres z 7 dni, średnie.
+- **Dodaj wpis** — jeden wpis na dobę. **Wpis można poprawiać tylko w dniu,
+  w którym został napisany**; wpisy z wcześniejszych dni są do odczytu.
+  Żadne pole nie jest obowiązkowe — suwak, którego nie ruszysz, zostaje bez
+  odpowiedzi, a nie zapisany jako zero.
+- **Dzienniczki** — archiwum wpisów, z filtrami i po 7 wierszy na stronę.
+- **Raporty** — raport tygodniowy powstaje **sam**, po zakończeniu tygodnia,
+  z Twoich wpisów. Nie tworzy się go ręcznie i nie wybiera się zakresu. Tydzień
+  bez żadnego wpisu nie ma raportu. Da się pobrać PDF.
+- **Analiza**, **Techniki DBT**, **Plan bezpieczeństwa**, **Profil**.
+
+Moduł dietetyczny (w budowie):
+
+- **Strona główna** i **Historia dzienniczków żywieniowych** — ten moduł
+  **nie liczy jedzenia**: nie ma kalorii, makro ani wagi. Posiłek to zdjęcie
+  i opis.
+- **Nawodnienie** — szklanka (250 ml), butelka (500 ml) albo własna ilość, plus
+  wykres 7 dni. Napoje inne niż woda są zapisywane, ale **nie są przeliczane na
+  wodę** — o tym decyduje specjalista, nie aplikacja. Cel dzienny jest punktem
+  odniesienia, a nie oceną: po jego przekroczeniu pasek jest po prostu pełny,
+  bez gratulacji, a dnia poniżej celu nic nie nazywa nieudanym. Wpisy z dzisiaj
+  można wycofać, starsze już nie.
+
+### Rodzic lub opiekun
+
+Twój ekran to **Strona główna** i **Profil**. Na stronie głównej:
+
+- **prośby od dzieci** o zatwierdzenie konta — z imieniem i adresem, i niczym
+  więcej. Zatwierdzasz albo odrzucasz. Odrzucenie nie jest zapisywane jako „nie":
+  po prostu zwalnia dziecko, żeby mogło wskazać kogoś innego.
+  Dopóki jakaś prośba czeka, **przy przycisku menu widać kropkę, a w menu liczbę**
+  — na każdym ekranie, żeby dziecko nie czekało na kogoś, kto nie ma jak o tym
+  wiedzieć;
+- **lista dzieci**, dla których jesteś opiekunem, a przy każdym z nich: liczba
+  wpisów, seria dni i data ostatniego wpisu.
+
+**Nie widzisz treści dzienniczka dziecka** — ani nastroju, ani emocji, ani
+raportów, ani tego, co dziecko napisało. Karta na ekranie mówi to wprost. Powód
+jest kliniczny, a nie techniczny: dziecko, które wie, że rodzic czyta jego
+dzienniczek, pisze inny dzienniczek. Czy opiekun kiedykolwiek dostanie wgląd
+w treść, jest wciąż nierozstrzygnięte.
+
+Reszta panelu rodzica jest w budowie i ekran o tym mówi.
 
 ### Specjalista
 
-Też nie ma wiersza `patient`, więc również dostaje 403 na wszystkim pacjenckim.
-Ekrany: `/specialist` i jego podekrany, `/techniques` (bo do katalogu pisze
-i widzenie tego, co widzi pacjent, jest sensem sprawy) oraz `/profile`.
-Menu: `SPECIALIST_ITEMS`.
+- **Pacjenci** — dwie osobne listy: pacjenci, którzy przyjęli zaproszenie, i ci,
+  którzy jeszcze nie odpowiedzieli. Przy każdym: imię, adres, czy jest osobą
+  małoletnią, od kiedy jest pod opieką oraz liczba wpisów, seria i data ostatniego
+  wpisu. **Żadnych treści** — te są w raportach.
+- **Raporty pacjenta** — dokładnie te same dokumenty, które widzi pacjent, wraz
+  z PDF-em. Dwie osoby w gabinecie nie mogą trzymać różnych papierów.
+- **Kody na konto opiekuna** — wydawanie i unieważnianie kodów (patrz punkt 2).
+- **Konta specjalistów** — zakładanie kont kolegom i lista wszystkich kont
+  zawodowych. **Bez pacjentów i bez żadnych liczników**: pacjenci danej osoby
+  zgodzili się na *nią*, nie na cały zespół.
+- **Techniki** — pisanie własnych technik do katalogu. Wszystko, co zapiszesz,
+  jest widoczne dla **każdego pacjenta od razu** — nie ma wersji roboczej.
+  Wycofanie techniki oznacza jej usunięcie. Poprawić można tylko własną technikę;
+  cudzy tekst kliniczny to rozmowa z autorem, nie formularz.
+- **Katalog technik** oczami pacjenta i **Profil**.
 
-Cztery rzeczy w panelu:
+Czego w panelu nie ma i nie będzie bez decyzji klientki: **wglądu w dzienniczek
+pacjenta i ekranów analizy**. Ekran mówi to wprost, zamiast obiecywać na później.
 
-1. **Kartoteka** — `GET /api/specialist/patients/`. **Dwie listy, nigdy jedna**:
-   zaakceptowani i oczekujący osobnymi kluczami, żeby żaden ekran nie narysował
-   oczekującego jako leczonego przez zapomnienie pola statusu. Payload to
-   `PATIENT_SUMMARY_FIELDS`: imię, adres, `is_child`, data akceptacji i te same
-   liczniki, jakie widzi sam pacjent — **bez `id_medical`** i bez czegokolwiek
-   klinicznego. Treść jest jeden ekran dalej.
-2. **Raporty pacjenta** — `/api/specialist/patients/<id>/reports/{,<week>/,<week>/pdf/}`,
-   **te same dokumenty**, które widzi pacjent (`build_weekly_reports`,
-   `components/ReportSections.tsx`), bo dwie osoby w gabinecie nie mogą trzymać
-   różnych papierów. Różni się rama, a oznaczone dni **nie są linkami** na kopii
-   specjalisty — dostęp do dzienniczka jest kwestią otwartą i link odpowiadałby
-   na nią w markupie.
-3. **Kody na konto opiekuna** — `/api/specialist/parent-invitations/` (§5).
-4. **Konta kolegów i katalog technik** — `/api/specialist/colleagues/`,
-   `/api/specialist/techniques/`.
-
-**Bycie specjalistą samo nie autoryzuje niczego — to zdanie jest tu całym modelem
-bezpieczeństwa.** `_require_specialist` jest decyzją o routingu, nie kontrolą
-dostępu; tym, co stawia czyjeś raporty przed czyimiś oczami, jest **akceptacja
-zaproszenia przez pacjenta**, sprawdzana na nowo przy każdym żądaniu z id pacjenta
-(`assigned_patient`). Nie zmieniło się to, gdy konta specjalisty przestały być
-samoobsługowe: podniesienie progu jest warte zachodu, ale nic się na nim nie
-opiera — projekt, który by się opierał, byłby o jedno złe konto od raportów
-wszystkich pacjentów.
-
-Czego specjalista **nie** może: zajrzeć w dzienniczek ani ekrany analizy pacjenta
-(panel mówi to wprost, `.specialist-scope`), zobaczyć kartoteki kolegi
-(`COLLEAGUE_SUMMARY_FIELDS` to sama tożsamość zawodowa — pacjenci zgodzili się na
-*niego*, nie na jego kolegów), poprawić techniki napisanej przez kogoś innego
-(`author_id_specjalist` bramkuje `PUT`/`DELETE` — poprawianie czyjegoś tekstu
-klinicznego to rozmowa, nie formularz), usunąć ani edytować konta kolegi (405 na
-obu — to samo nieodpowiedziane pytanie prawne co przy usuwaniu konta pacjenta).
-
-**Jeden specjalista na pacjenta** — `patient.id_specjalist` to pojedynczy FK. To
-realne ograniczenie, nie decyzja: aplikacja ma dwa moduły, a reguła klientki mówi
-o „specjalistach leczących pacjenta” w liczbie mnogiej, więc pacjent chodzący
-i do psychoterapeuty, i do psychodietetyka jest dziś nie do wyrażenia.
+**Samo konto specjalisty nie daje dostępu do niczyich danych.** Dostęp do raportów
+pacjenta bierze się z tego, że **ten pacjent przyjął zaproszenie** — i jest
+sprawdzany za każdym razem, a nie raz przy logowaniu.
 
 ---
 
-## 5. Powiązania między kontami
+## 5. Łączenie kont
 
-Konto samo z siebie jest wyspą. Wszystkie trzy powiązania są **zaproszeniami
-z dwoma krokami** i podział na „poproś” i „zaakceptuj” jest w każdym z nich sensem
-konstrukcji.
+### Dziecko i opiekun
 
-### Dziecko → opiekun (dla konta, które już istnieje)
+- **Prośbę wysyła dziecko**, podając adres e-mail opiekuna. Adres musi należeć do
+  istniejącego konta rodzica lub opiekuna.
+- Jeśli adres jest nieznany albo należy do innego rodzaju konta, komunikat jest
+  **jeden i ten sam**. Aplikacja celowo nie mówi, czy dany adres ma tu konto
+  i jakie — w usłudze zdrowia psychicznego sama ta informacja jest wrażliwa.
+- **Jedna prośba naraz.** Ponowne wysłanie do tej samej osoby nic nie psuje.
+- **Zatwierdza opiekun**, ze swojego ekranu głównego. Dziecko nie może zatwierdzić
+  własnej prośby.
+- Po zatwierdzeniu **dziecko nie może rozwiązać powiązania**. Gdyby mogło, nadzór
+  trwałby dokładnie tyle, ile dziecko na to pozwoli.
 
-Ta ścieżka nie **tworzy** konta opiekuna — wskazuje istniejące. A skoro konto
-opiekuna powstaje wyłącznie z kodu specjalisty i od razu z jednym powiązaniem,
-zostaje jej jeden realny przypadek: **drugie i kolejne dziecko tego samego
-rodzica**, oraz dziecko, którego rodzic ma konto założone przy innym
-specjaliście.
+Jeśli opiekun ma już konto (bo prowadzi w aplikacji starsze dziecko), tą ścieżką
+dołącza się kolejne dziecko. Jeśli konta jeszcze nie ma — potrzebny jest kod od
+specjalisty.
 
-1. `POST /api/auth/guardian/` — dziecko wskazuje opiekuna adresem e-mail. Tworzy
-   `parent_child` z `accepted_at = NULL`; dziecko dalej jest zablokowane.
-   Adres **musi należeć do konta z rolą `rodzic`**; adres pacjenta, specjalisty,
-   konta bez roli i adres niezarejestrowany dostają **tę samą** odmowę —
-   rozróżnienie zamieniłoby formularz w sposób pytania, kto tu ma konto i jakie.
-   Własny adres dziecka to jedyny wyjątek (to pomyłka, na którą da się zareagować).
-   Jedno zaproszenie naraz, ponowienie tego samego jest idempotentne.
-2. `DELETE /api/auth/guardian/` — dziecko **wycofuje zaproszenie oczekujące** (żeby
-   literówka w adresie nie była ślepą uliczką). Po akceptacji odmawia: cofnięcie
-   powiązania nie jest decyzją dziecka, bo inaczej nadzór trwałby dokładnie tyle,
-   ile dziecko pozwoli.
-3. `POST /api/guardian/invitations/<uuid>/accept/` albo `.../reject/` — opiekun
-   odpowiada. Filtrowane po `parent=request.user`, więc cudze zaproszenie
-   odpowiada jak nieistniejące (404, nie 403). Akceptacja jest idempotentna,
-   a **odmowa usuwa wiersz** — dziecko wraca do wskazywania kogoś innego, zamiast
-   zostać z „nie”, na które nikt nie może zareagować.
+### Specjalista i pacjent
 
-`accepted_at` jest znacznikiem czasu, nie boolem — RODO art. 7(1) kładzie ciężar
-dowodu na nas, a „tak” bez daty nic nie dowodzi.
+- **Zaproszenie wysyła specjalista**, podając adres e-mail pacjenta.
+- **Decyduje pacjent** — kartę z zaproszeniem widzi na swojej stronie głównej
+  (a dziecko czekające na opiekuna — na ekranie, na którym czeka).
+- Odmowa nie jest nigdzie zapisywana, więc po rozmowie można zaprosić ponownie.
+- **Opiekę kończy specjalista, nie pacjent.** To decyzja klientki i ma
+  uzasadnienie kliniczne: przy zaburzeniach odżywiania rośnie skłonność do
+  ukrywania informacji, więc przełącznik po stronie pacjenta wyłączałby raporty
+  dokładnie w tych sytuacjach, w których są potrzebne. Karta zaproszenia mówi
+  o tym **przed** przyjęciem, bo zgoda bez tego zdania nie jest świadoma.
+- Zakończenie opieki aplikacja potwierdza dwa razy — pacjent tego nie odwróci,
+  musiałby dostać nowe zaproszenie i przyjąć je ponownie.
+- Jeden pacjent może mieć dziś **jednego specjalistę**. To znane ograniczenie:
+  pacjent chodzący jednocześnie do psychoterapeuty i psychodietetyka nie jest
+  jeszcze do wyrażenia.
 
-### Specjalista → konto opiekuna (kod na kartce) — **jedyna droga do konta rodzica**
+### Formularze zaproszeń mówią mało — i to celowo
 
-To tu konto opiekuna się rodzi, a nie tylko podłącza. Specjalista siedzi
-z rodziną i jest jedyną stroną, która może potwierdzić, że te dwie osoby są
-rodziną; a to wdrożenie **nie wysyła żadnej poczty** — więc zaproszenie
-podróżuje jako kod podyktowany w gabinecie. Trzy własności są istotne:
-
-- kod jest **przechowywany jako hash** (`make_password`), a jawny tekst istnieje
-  tylko w odpowiedzi, która go utworzył — zgubiony kod się unieważnia i wydaje
-  nowy, żaden endpoint go nie odczyta;
-- jest **przypisany do jednego adresu** — rodzic musi zarejestrować się tym
-  adresem, który wskazał specjalista;
-- **wygasa** po `INVITATION_TTL_DAYS = 14`.
-
-`CODE_ALPHABET` nie zawiera znaków mylonych na kartce (O/0, I/1/L, S/5, Z/2).
-**Dziecko musi już być pacjentem tego specjalisty** — i właśnie dlatego endpointy
-`/api/account/specialist-invitation/` są wyjęte z bramki opiekuna: bez tego cała
-ścieżka zakleszcza się dla dzieci, dla których istnieje. Realizacja kodu dzieje
-się **w transakcji rejestracji** (`RegisterSerializer._redeem`), więc hasło
-odrzucone przez walidatory nie spala kodu, i tworzy `parent_child` **od razu
-zaakceptowane** — to jedyne miejsce różniące się od ścieżki dziecka i nie jest
-dziurą w bramce art. 8: opiekun akceptuje *tym, że kończy rejestrację* kodem
-wręczonym mu osobiście, a specjalista dokłada jedyny fakt, którego aplikacja sama
-nie sprawdzi — że te dwie osoby są rodziną. Wykorzystane zaproszenie jest
-**oznaczane, nigdy usuwane**.
-
-### Specjalista → pacjent
-
-1. `POST /api/specialist/patients/` — specjalista wskazuje pacjenta adresem
-   i ustawia `id_specjalist_pending`. Formularz odpowiada **jedno i to samo**
-   niezależnie od przyczyny (nieznany adres, adres opiekuna, kolegi, pacjenta,
-   który już ma specjalistę, pacjenta, o którego ktoś inny już pyta) — inaczej
-   byłby sposobem pytania, kto tu ma konto i w jakiej jest opiece. Dwa wyjątki:
-   własny adres oraz pacjent, który **już jest tego specjalisty** (`ALREADY_MINE`
-   — widać go na liście wyżej, więc powiedzenie tego nic nie ujawnia).
-   `SpecialistInviteThrottle` (60/h, tylko na POST) jest tym, co czyni wspólną
-   odmowę wartą utrzymania — „odmowa” kontra „przyjęte” samo w sobie jest
-   odpowiedzią, więc pytanie musi być ograniczone.
-2. Pacjent odpowiada u siebie — `GET/POST /api/account/specialist-invitation/{,accept/,reject/}`,
-   karta na `/home` **i na `/link-guardian`** (bo zablokowanego małoletniego
-   `RequireAuth` odsyła z `/home`, więc bez tej drugiej karty zwolnienie z bramki
-   byłoby zwolnieniem tylko z nazwy). Akceptacja przenosi id do `id_specjalist`
-   i stempluje `specjalist_accepted_at`; **odmowa nie zapisuje nic** — tak samo
-   jak przy `parent_child`.
-3. `DELETE /api/specialist/patients/<id>/` — **tylko specjalista** kończy opiekę,
-   i pyta dwa razy, bo pacjent tego nie cofnie. **Pacjent nie może odciąć
-   specjalisty**: to reguła klientki, uzasadniona klinicznie (przy zaburzeniach
-   odżywiania rośnie skłonność do ukrywania informacji, więc przełącznik po
-   stronie pacjenta wyłączałby raporty dokładnie w tych przypadkach, dla których
-   istnieją). `Reports.tsx` nosi TODO mówiące to wprost — **nie zamieniać tego
-   z powrotem na opcję udostępniania.**
+Kiedy zaproszenia nie da się wysłać, komunikat prawie zawsze jest ten sam,
+niezależnie od przyczyny. To nie lakoniczność, tylko ochrona: inaczej formularz
+byłby sposobem sprawdzania, kto ma tu konto i w jakiej jest opiece. Wyjątki są
+dwa i oba są bezpieczne: **własny adres** oraz **pacjent, który już jest pod Twoją
+opieką** (i tak widzisz go na liście wyżej).
 
 ---
 
-## 6. Pierwsze konto specjalisty: nie da się go zrobić w aplikacji
+## 6. Częste sytuacje i problemy
 
-I to jest własność, nie luka. Utworzenie konta specjalisty wymaga wiersza
-`specjalist`, a jedynym sposobem na wiersz `specjalist` jest wiersz `specjalist`.
-Bootstrapem jest `scripts/mock_data.sql` — `anna.kowalska@example.com` /
-`Haslo123!`, z prawdziwym hashem i **oboma zgodami nadanymi UPDATE-em**, właśnie
-dlatego, że inaczej seed zostawiłby panel nieosiągalnym. Na prawdziwym wdrożeniu
-jest to ten sam ruch: **jeden wiersz ręcznie**, a potem każde następne konto
-z wnętrza aplikacji. Endpoint, który potrafiłby zrobić pierwsze konto zawodowe,
-potrafiłby zrobić dziesiąte.
+**Zapomniałem hasła.**
+Nie ma odzyskiwania hasła — z tego wdrożenia **nie wychodzi żadna poczta**, więc
+nie ma czym wysłać linku. Hasło zmienia się z **Profilu**, będąc zalogowanym
+(trzeba podać obecne hasło). Jeśli nie da się zalogować, konto trzeba założyć na
+nowo; w przypadku konta specjalisty — poprosić kolegę o utworzenie nowego na inny
+adres.
 
-Konto zakładane w panelu (`POST /api/specialist/colleagues/`) ma cztery istotne
-własności:
+**Nie mogę się zalogować, aplikacja mówi o wyczerpanych próbach.**
+Prób logowania na jedno konto jest **15 na godzinę**. Od dziesiątej nieudanej
+aplikacja pokazuje, ile jeszcze zostało. Udane logowanie zeruje licznik. Trzeba
+odczekać.
 
-- **hasło jest generowane, pokazane raz i przechowywane jako hash** — nic go nie
-  odczyta, nie ma też resetu hasła, więc konto z zgubionym hasłem trzeba założyć
-  ponownie na innym adresie. `PASSWORD_ALPHABET` jest importowany z
-  `CODE_ALPHABET`, nie skopiowany (16 znaków w czterech grupach, ~77 bitów);
-- **musi zostać wymienione przy pierwszym logowaniu** (`must_change_password`) —
-  właściciel tego hasła go nie wybrał, a co najmniej jedna inna osoba je zna,
-  a panel otwiera się na dokumentację innych ludzi;
-- **żadne zgody nie są nadawane, i to jest połowa nośna** — zgoda z art. 7 jest
-  aktem osoby, której dane dotyczą, a to nie jest osoba wypełniająca formularz.
-  Obie kolumny zostają NULL, `HasActiveConsents` odmawia nowemu kontu wszystkiego,
-  a właściciel udziela zgód sam przy pierwszym logowaniu — czyli konto nie może
-  niczego przeczytać, zanim jego właściciel na cokolwiek się zgodził;
-- **lista kolegów to wszystkie konta specjalisty i sama tożsamość zawodowa** —
-  nie jest filtrowana do tych, które sam utworzyłeś (nie ma kolumny, która by to
-  zapisywała), bo jej faktycznym zadaniem jest niedopuszczenie do drugiego konta
-  dla kogoś, kto już je ma. `consents_active` podróżuje, żeby ekran mógł
-  powiedzieć „czeka na właściciela”, zamiast pokazywać wiersz wyglądający na
-  zepsuty.
+**Zgubiłem kod na konto opiekuna.**
+Kodu nie da się odczytać ponownie — specjalista unieważnia stary i wydaje nowy.
 
----
+**Kod nie działa.**
+Sprawdź trzy rzeczy: czy rejestrujesz się **na ten adres**, który podałeś
+specjaliście; czy nie minęło **14 dni**; czy kod nie został już użyty. Aplikacja
+we wszystkich tych przypadkach mówi to samo, więc trzeba przejść listę po kolei.
+Wielkość liter, spacje i myślniki nie mają znaczenia.
 
-## 7. Limity zapytań per konto
+**Wybrałem zły rodzaj konta.**
+Rodzaju konta nie da się zmienić. Trzeba założyć nowe (na inny adres e-mail,
+bo jeden adres to jedno konto).
 
-Nie są dekoracją — bez nich wspólne, nieinformujące odmowy z §5 nie miałyby
-sensu, bo samo „odmowa vs przyjęte” jest odpowiedzią.
+**Chcę wycofać zgodę.**
+Można, z **Profilu**, i wymaga to podania hasła. Po wycofaniu konto jest
+zablokowane — zostaje jeden ekran, ten ze zgodami. **Nic nie jest usuwane**:
+dzienniczek stoi tam, gdzie stał, i wraca w całości, gdy zgodę przywrócisz.
+Przywrócenie nie wymaga hasła — to kierunek, który odblokowuje konto, więc
+utrudnianie go nikogo nie chroni.
 
-| Scope | Limit | Na co |
-|---|---|---|
-| `login_account` | 15/h | próby na **jedno konto**, kluczowane HMAC-em z przesłanego adresu; od 10. porażki dolicza „Pozostało N prób…”. Trafne hasło zeruje licznik. |
-| per-IP na `login/`, `register/` | 10/min | |
-| `auth` (`GuardianLinkThrottle`) | 10/min per konto | `auth/guardian/` |
-| `password_change` | 10/h per konto | `POST /api/account/password/` sprawdza **obecne** hasło, więc jest drugą wyrocznią do jego zgadywania |
-| `specialist_invite` | 60/h per konto, **tylko POST** | dwa formularze, w których specjalista wskazuje kogoś adresem |
-| `specialist_account` | 20/h per konto, **tylko POST** | sesja użyta do **bicia kont zawodowych** |
-| `report_pdf` | 30/h per konto | limit przepustowości, nie bezpieczeństwa |
+Ważne dla opiekunów i specjalistów: **konto z wycofaną zgodą przestaje pokazywać
+cokolwiek również im.** Specjalista nie zobaczy raportów, opiekun nie zobaczy
+liczb — obaj zobaczą informację, że konto jest zablokowane. Tak jest lepiej niż
+milczenie, które czytałoby się jako „przestał pisać".
 
-Liczniki idą do `DatabaseCache` w tabeli `throttle_cache` w `user_db`, a klucz
-zawiera **HMAC-SHA256 adresu, nie adres** — cache jest tabelą obok danych
-osobowych. Brak tej tabeli powoduje, że limity **przestają obowiązywać po cichu**,
-dlatego `check_databases` jej pilnuje.
+**Chcę usunąć konto.**
+Jeszcze nie ma takiej funkcji. Blokuje ją nieodpowiedziane pytanie prawne o to,
+jak długo trzeba przechowywać dokumentację kliniczną. Wycofanie zgody jest
+dostępne teraz i **nie jest** usunięciem konta.
 
----
+**Chcę zmienić adres e-mail.**
+Jeszcze nie ma. Nowy adres trzeba potwierdzić wiadomością wysłaną *na niego*,
+a poczty z tego wdrożenia nie ma.
 
-## 8. Czego nie ma dla żadnego konta
+**Chcę wyeksportować swoje dane.**
+Jeszcze nie ma, choć jest to nam należne (RODO art. 15 i 20) i jest na liście.
 
-- **Poczty wychodzącej — w ogóle.** Stąd kody i hasła wręczane w gabinecie, brak
-  resetu hasła, brak powiadomienia opiekuna o zaproszeniu, brak „PDF na maila”.
-- **Usuwania konta** — zaślepka (`src/api/account.ts` odrzuca, zamiast udawać
-  sukces), zablokowana pytaniem prawnym o retencję dokumentacji klinicznej.
-  Wycofanie zgody **nie jest** usunięciem: blokuje konto i nic nie kasuje,
-  a przywrócenie zgody oddaje dzienniczek w niezmienionym stanie.
-- **Zmiany adresu e-mail** — to dwa endpointy, nie jeden, bo nowy adres trzeba
-  potwierdzić wiadomością wysłaną *na niego*.
-- **Eksportu danych** (art. 15/20) — dług po zdjęciu z ekranu.
-- **Wylogowania pozostałych sesji** — nasze sesje noszą `core_user_id` i żadnego
-  hasha hasła, więc zmiana hasła nic nie unieważnia; do wylogowania innych
-  urządzeń potrzeba sposobu wyliczenia sesji konta, którego to wdrożenie nie ma.
-- **Wielu specjalistów na pacjenta** — patrz koniec §4.
-- **Cofnięcia zaakceptowanego powiązania opiekun–dziecko** przez opiekuna.
+**Jestem opiekunem i chcę cofnąć zatwierdzenie.**
+Jeszcze nie ma takiej funkcji.
+
+**Jestem opiekunem — skąd wiem, że dziecko czeka?**
+Po zalogowaniu **przy przycisku menu pojawia się kropka**, a w rozwiniętym menu
+liczba przy „Strona główna" — na każdym ekranie, także w Profilu, nie tylko na
+stronie głównej. Kropka znika, gdy odpowiesz na wszystkie prośby. Czytnik ekranu
+przeczyta to jako „Menu — 1 prośba oczekuje na odpowiedź".
+
+Poza aplikacją nic Cię nie zawiadomi: **nie ma maili ani powiadomień push**. Jeśli
+umawiacie się z dzieckiem albo ze specjalistą, że konto ma zostać zatwierdzone,
+trzeba się po prostu zalogować.
 
 ---
 
-## 9. Gdzie to jest w kodzie
+## 7. Czego aplikacja nie robi
+
+Zebrane w jednym miejscu, żeby nie było niespodzianek:
+
+- **nie wysyła żadnej poczty i nie ma powiadomień push** — stąd kody i hasła
+  wręczane w gabinecie, brak odzyskiwania hasła i brak „PDF na maila". O prośbie
+  dziecka opiekun dowiaduje się **w aplikacji** (kropka przy menu), a nie z maila;
+- **nie stawia diagnozy** i nie zastępuje kontaktu ze specjalistą;
+- **nie ocenia dnia** — ani w nawodnieniu, ani w raportach: zmiana jest zawsze
+  kierunkiem i wartością („+0,6 od poprzedniego tygodnia"), nigdy oceną osoby;
+- **nie liczy jedzenia** w module dietetycznym;
+- **nie pokazuje opiekunowi treści dzienniczka dziecka**;
+- **nie pozwala pacjentowi odciąć specjalisty** od raportów;
+- **nie usuwa kont** i nie zmienia adresów e-mail;
+- **nie obsługuje dwóch specjalistów** dla jednego pacjenta.
+
+---
+
+## 8. Aneks dla zespołu
+
+Reguły opisane wyżej są wymuszane **po stronie serwera**, a nie tylko przez
+ekrany — przekierowanie w przeglądarce nie jest zabezpieczeniem. Gdzie co siedzi:
 
 | Temat | Plik |
 |---|---|
-| Typy kont z rejestracji, walidacja, `ADULT_AGE` | `backend/core/serializers.py` |
+| Rodzaje kont z rejestracji, wymóg kodu dla rodzica, granica pełnoletności | `backend/core/serializers.py` |
 | Konta specjalisty zakładane w panelu | `backend/core/colleagues.py` |
 | Powiązanie dziecko–opiekun | `backend/core/guardian.py` |
 | Kody na konto opiekuna | `backend/core/parent_invitations.py` |
 | Zaproszenia specjalista–pacjent, kartoteka | `backend/core/specialist.py` |
-| Bramki (zgody, hasło) | `backend/core/permissions.py`, `backend/core/consents.py` |
-| Bramka opiekuna, `_require_patient`, `_require_specialist` | `backend/core/views.py` |
+| Bramka zgód i bramka hasła | `backend/core/permissions.py`, `backend/core/consents.py` |
+| Bramka opiekuna, „czy to pacjent", „czy to specjalista" | `backend/core/views.py` |
 | Liczniki wspólne dla panelu, profilu i opiekuna | `backend/core/account.py` |
-| Trasy, `homeRouteFor`, `gateRouteFor`, `allowGuardian`/`allowSpecialist` | `frontend/src/App.tsx` |
-| Menu per rola | `frontend/src/components/HeaderMenu.tsx` |
+| Trasy i przekierowania per rodzaj konta | `frontend/src/App.tsx` |
+| Menu per rodzaj konta | `frontend/src/components/HeaderMenu.tsx` |
 | Lustro reguł backendu na froncie | `frontend/src/api/auth.ts` |
 
-Testy, które trzeba zaktualizować razem z każdą zmianą w tym dokumencie:
+Testy, które trzeba przejrzeć przy każdej zmianie w tym dokumencie:
 `test_auth_api.py`, `test_guardian_api.py`, `test_specialist_api.py`,
 `test_specialist_accounts.py`, `test_parent_invitation_api.py`,
 `test_consent_gate.py`, `test_password_gate.py`, `test_guardian_gate.py`,
 `test_guardian_children_api.py`.
+
+Trzy szczegóły, które łatwo przeoczyć przy czytaniu tego dokumentu jako
+specyfikacji:
+
+- **Rola konta niczego nie autoryzuje.** Pacjenta rozpoznaje wiersz `patient`,
+  specjalistę wiersz `specjalist`; napis w `user_role` jest do wyświetlania.
+- **Konto rodzica seedowane przez `scripts/mock_data.sql` jest jedynym, którego
+  aplikacja już by nie stworzyła** — SQL nie przechodzi przez serializer, więc
+  demo-rodzic istnieje bez żadnego zaproszenia.
+- **Limity zapytań** (15 prób logowania na konto na godzinę, 10 zmian hasła,
+  60 zaproszeń, 20 nowych kont specjalisty, 30 PDF-ów) są liczone w tabeli
+  `throttle_cache` w `user_db`. Brak tej tabeli powoduje, że limity **przestają
+  obowiązywać po cichu** — pilnuje tego `manage.py check_databases`.

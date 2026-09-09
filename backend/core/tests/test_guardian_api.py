@@ -73,6 +73,10 @@ class GuardianTestCase(TestCase):
         self.sign_in(user)
         return self.client.get(reverse('core:me')).data['guardian_status']
 
+    def waiting_for(self, user):
+        self.sign_in(user)
+        return self.client.get(reverse('core:me')).data['pending_guardian_invitations']
+
 
 class InvitingTests(GuardianTestCase):
     def test_naming_a_guardian_creates_a_request_not_a_link(self):
@@ -547,6 +551,83 @@ class GuardianStatusTests(GuardianTestCase):
         ParentChild.objects.create(parent=other_guardian, child=self.child)
 
         self.assertEqual(self.status_of(self.child), STATUS_ACCEPTED)
+
+
+class WaitingCountTests(GuardianTestCase):
+    """The count that lets the app *show* a guardian that a child is waiting.
+
+    WHY IT EXISTS. A minor's account is blocked until their guardian accepts
+    (RODO art. 8) and nothing can notify them out of band — this deployment
+    sends no mail and has no push — so the only thing that ever said a request
+    was waiting was the card that answers it, on one screen. The count rides on
+    /api/auth/me/ so the header can say it on every screen a guardian has.
+    """
+
+    def test_a_guardian_nobody_named_is_waiting_on_nothing(self):
+        self.assertEqual(self.waiting_for(self.guardian), 0)
+
+    def test_a_named_guardian_is_told_how_many(self):
+        ParentChild.objects.create(parent=self.guardian, child=self.child)
+        second = create_minor(email='drugie@example.com')
+        ParentChild.objects.create(parent=self.guardian, child=second)
+
+        self.assertEqual(self.waiting_for(self.guardian), 2)
+
+    def test_an_accepted_link_stops_counting(self):
+        """Otherwise the badge would sit there for as long as the link does."""
+        ParentChild.objects.create(
+            parent=self.guardian, child=self.child, accepted_at=timezone.now(),
+        )
+
+        self.assertEqual(self.waiting_for(self.guardian), 0)
+
+    def test_answering_clears_it(self):
+        ParentChild.objects.create(parent=self.guardian, child=self.child)
+        invitation = ParentChild.objects.get(parent=self.guardian, child=self.child)
+
+        self.sign_in(self.guardian)
+        self.client.post(self.accept_url(invitation.pk))
+
+        self.assertEqual(self.waiting_for(self.guardian), 0)
+
+    def test_a_refusal_clears_it_too(self):
+        """A refusal deletes the row, so there is nothing left to count."""
+        ParentChild.objects.create(parent=self.guardian, child=self.child)
+        invitation = ParentChild.objects.get(parent=self.guardian, child=self.child)
+
+        self.sign_in(self.guardian)
+        self.client.post(self.reject_url(invitation.pk))
+
+        self.assertEqual(self.waiting_for(self.guardian), 0)
+
+    def test_it_counts_only_this_guardian_s_requests(self):
+        other_guardian = create_user('inny.rodzic@example.com', 'rodzic')
+        ParentChild.objects.create(parent=other_guardian, child=self.child)
+
+        self.assertEqual(self.waiting_for(self.guardian), 0)
+        self.assertEqual(self.waiting_for(other_guardian), 1)
+
+    def test_nobody_else_is_asked_the_question(self):
+        """None rather than 0, the same convention as `guardian_status`: no
+        child can name a patient or a specialist, so 0 would be an answer to a
+        question that does not apply rather than a fact about the account."""
+        adult = create_user('dorosly@example.com', 'patient')
+        Patient.objects.create(user=adult, is_child=False)
+
+        self.assertIsNone(self.waiting_for(adult))
+        self.assertIsNone(self.waiting_for(self.child))
+
+    def test_it_carries_no_names(self):
+        """The count is for a badge; who is asking belongs on the card that acts
+        on it (`/api/guardian/invitations/`)."""
+        ParentChild.objects.create(parent=self.guardian, child=self.child)
+
+        self.sign_in(self.guardian)
+        payload = self.client.get(reverse('core:me')).data
+
+        self.assertEqual(payload['pending_guardian_invitations'], 1)
+        self.assertNotIn('Ola', str(payload))
+        self.assertNotIn('dziecko@example.com', str(payload))
 
 
 class ThrottleTests(GuardianTestCase):

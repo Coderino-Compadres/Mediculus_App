@@ -148,12 +148,18 @@ class UserSerializer(serializers.ModelSerializer):
     consents = serializers.SerializerMethodField()
     is_child = serializers.SerializerMethodField()
     guardian_status = serializers.SerializerMethodField()
+    pending_guardian_invitations = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'email', 'name', 'surname', 'date_of_birth', 'role',
             'is_patient', 'is_specialist', 'is_child', 'guardian_status',
+            # How many children are waiting on this guardian's answer. Here
+            # rather than behind its own endpoint because it is what makes the
+            # waiting *visible*: the header badge is drawn on every screen a
+            # guardian has, and this is the payload every screen already holds.
+            'pending_guardian_invitations',
             # The password gate, read by the frontend's route guard exactly as
             # `consents.active` is. A plain model field rather than a method
             # one: it is a column on this row and answers for itself.
@@ -267,6 +273,35 @@ class UserSerializer(serializers.ModelSerializer):
         if self.get_is_child(user) is not True:
             return None
         return guardian.guardian_status(user)
+
+    def get_pending_guardian_invitations(self, user):
+        """For a guardian: how many children are waiting. For everybody else: None.
+
+        WHY IT IS HERE AT ALL. A minor's account is blocked until their guardian
+        answers, nothing notifies anybody out of band (this deployment sends no
+        mail at all), and the card that answers it lives on one screen — so a
+        guardian reading their profile, or one who had answered a request last
+        week and had no reason to look again, could leave a child stuck without
+        ever seeing anything. The count travels here so the app can say it in the
+        header, on every screen they have.
+
+        None rather than 0 for every other kind of account, the same convention
+        as `guardian_status`: the question does not apply to them, and 0 would
+        read as "no child is waiting" about an account no child can name.
+        Keyed on the role rather than counted for everyone, which is both the
+        cheaper answer (no query for a patient, on the endpoint the frontend
+        hits at every app start) and the one that agrees with `isGuardian` in
+        src/api/auth.ts, so the field is non-null exactly when the frontend
+        treats the account as a guardian.
+
+        A stale count is possible by construction — `me` is not re-read on every
+        navigation — so answering a request refreshes the session
+        (`components/GuardianInvitations.tsx`). It fails in the harmless
+        direction: a badge that lingers points at the card that clears it.
+        """
+        if not user.user_role_id or user.user_role.name != GUARDIAN_ROLE:
+            return None
+        return guardian.pending_invitation_count(user)
 
 
 def check_password_strength(password, user):

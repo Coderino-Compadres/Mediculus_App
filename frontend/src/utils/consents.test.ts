@@ -20,6 +20,8 @@ const USER: AuthUser = {
   isSpecialist: false,
   isChild: false,
   guardianStatus: null,
+  // null, not 0: the question applies to a guardian and this is a patient.
+  pendingGuardianInvitations: null,
   mustChangePassword: false,
   consents: {
     active: true,

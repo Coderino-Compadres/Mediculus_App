@@ -23,6 +23,9 @@ export interface UserPayload {
   /** True while the account still holds a password somebody else generated for
    *  it — see `needsPasswordChange`. */
   must_change_password?: boolean
+  /** How many children are waiting on this guardian's answer; null when the
+   *  question does not apply — see `pendingGuardianInvitations`. */
+  pending_guardian_invitations?: number | null
   /** ISO instants, or null for a consent that was never granted. */
   data_consent_at: string | null
   services_consent_at: string | null
@@ -58,6 +61,17 @@ export interface AuthUser {
   isChild: boolean | null
   /** Where the guardian link stands; null when the question does not apply. */
   guardianStatus: GuardianStatus | null
+  /**
+   * How many children are waiting on this guardian's answer.
+   *
+   * null for every account the question does not apply to (a patient, a
+   * specialist) and for a backend that does not send it. What it exists for is
+   * `waitingChildren` below: a minor's account is blocked until their guardian
+   * answers, nothing can notify them out of band (this deployment sends no
+   * mail), so the app has to be able to say it on every screen a guardian has
+   * rather than only on the card that answers it.
+   */
+  pendingGuardianInvitations: number | null
   /**
    * Whether this account is still using a password it did not choose.
    *
@@ -145,6 +159,11 @@ export function toAuthUser(payload: UserPayload): AuthUser {
     isSpecialist: payload.is_specialist ?? false,
     isChild: payload.is_child,
     guardianStatus: payload.guardian_status ?? null,
+    // Absent on a backend a release behind, and null is the honest reading
+    // there rather than 0: "we do not know" and "nobody is waiting" are
+    // different, and the badge must not claim the second when it means the
+    // first. The card on /parent is the source of truth either way.
+    pendingGuardianInvitations: payload.pending_guardian_invitations ?? null,
     // Absent on a backend a release behind, and false is the right reading
     // there: no deployment without the column has an account the flag would be
     // true for. Fail-open like `consents`, and for the same reason — the server
@@ -405,6 +424,18 @@ export function isSpecialist(user: AuthUser): boolean {
  */
 export function hasPatientProfile(user: AuthUser): boolean {
   return user.isPatient
+}
+
+/**
+ * How many children are waiting on this guardian's answer — 0 when none is, and
+ * 0 for every account the question does not apply to.
+ *
+ * The one place that turns the nullable field into a number, so no screen has to
+ * decide what a null means. Callers that need to *say* something about it should
+ * read this; callers deciding whether to draw anything can just check for 0.
+ */
+export function waitingChildren(user: AuthUser): number {
+  return user.pendingGuardianInvitations ?? 0
 }
 
 /** Whether the child is waiting on an answer rather than still choosing whom to ask. */

@@ -87,3 +87,27 @@ export function showsStreak(streakDays: number): boolean {
 export function todayIso(): string {
   return toIsoDate(new Date())
 }
+
+
+/**
+ * "1 prośba oczekuje na odpowiedź" / "2 prośby oczekują…" / "5 prośb oczekuje…".
+ *
+ * What the header says when a child is waiting on this guardian, and the only
+ * thing that says it anywhere but on the card itself — a minor's account is
+ * blocked until the request is answered and nothing can notify anybody out of
+ * band (this deployment sends no mail).
+ *
+ * Both halves decline, and the verb does not follow the noun: Polish puts
+ * "prośby oczekują" against "prośb oczekuje". Spelled out for the same reason
+ * `pluralGlasses` in utils/drinks.ts is — a digit next to a fixed noun reads as
+ * a bug to anybody who speaks the language.
+ */
+export function waitingLabel(count: number): string {
+  const last = count % 10
+  const teens = count % 100
+  if (count === 1) return '1 prośba oczekuje na odpowiedź'
+  if (last >= 2 && last <= 4 && (teens < 12 || teens > 14)) {
+    return `${count} prośby oczekują na odpowiedź`
+  }
+  return `${count} prośb oczekuje na odpowiedź`
+}

@@ -166,6 +166,69 @@ describe('HeaderMenu — a guardian account', () => {
   })
 })
 
+describe('HeaderMenu — a child waiting on a guardian', () => {
+  /**
+   * WHAT THIS IS FOR. A minor's account is blocked until their guardian accepts
+   * (RODO art. 8) and **nothing can tell the guardian out of band** — this
+   * deployment sends no mail and has no push. The card that answers a request
+   * lives on one screen, so a guardian on their profile, or one with no reason
+   * to open /parent again, could leave a child stuck without knowing. The count
+   * rides on the session, so the header can say it everywhere.
+   */
+  const WAITING = {
+    ...TEST_USER, role: 'rodzic', isPatient: false, isChild: null,
+    pendingGuardianInvitations: 2,
+  }
+  const NOBODY_WAITING = { ...WAITING, pendingGuardianInvitations: 0 }
+
+  it('says how many are waiting on the closed menu, in words', async () => {
+    /** The dot is `aria-hidden`, so the button's own label is the only place a
+     *  screen reader can learn this — and colour is not a message. */
+    renderWithProviders(<HeaderMenu />, { user: WAITING })
+
+    expect(screen.getByRole('button', { name: /2 prośby oczekują na odpowiedź/i }))
+      .toBeInTheDocument()
+  })
+
+  it('counts the request on the entry that leads to the card answering it', async () => {
+    renderWithProviders(<HeaderMenu />, { user: WAITING })
+    await userEvent.click(screen.getByRole('button', { name: /prośby/i }))
+
+    const home = screen.getByRole('link', { name: /Strona główna/ })
+    expect(home).toHaveAttribute('href', ROUTES.parentHome)
+    expect(home).toHaveTextContent('2')
+    expect(home).toHaveAccessibleName(/2 prośby oczekują na odpowiedź/i)
+  })
+
+  it('declines the count rather than pinning one noun to a digit', () => {
+    renderWithProviders(<HeaderMenu />, { user: { ...WAITING, pendingGuardianInvitations: 1 } })
+
+    expect(screen.getByRole('button', { name: /1 prośba oczekuje na odpowiedź/i }))
+      .toBeInTheDocument()
+  })
+
+  it('says nothing at all when nobody is waiting', async () => {
+    /** The ordinary state of a guardian account, and the state right after they
+     *  answer: a badge that lingers would send them looking for a request that
+     *  is not there. */
+    renderWithProviders(<HeaderMenu />, { user: NOBODY_WAITING })
+
+    expect(screen.getByRole('button', { name: 'Menu' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toBeInTheDocument()
+  })
+
+  it('says nothing on an account the question does not apply to', async () => {
+    /** A patient cannot be named as anybody's guardian, so the field is null
+     *  rather than 0 — and null must not be drawn as a count of any kind. */
+    renderWithProviders(<HeaderMenu />, { user: TEST_USER })
+
+    expect(screen.getByRole('button', { name: 'Menu' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    expect(screen.queryByText(/oczekuj/i)).toBeNull()
+  })
+})
+
 describe('inside the diet module', () => {
   /**
    * The menu is the one place on a diet screen that says what the module holds,

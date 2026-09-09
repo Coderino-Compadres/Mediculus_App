@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
+import { fetchCurrentUser } from '../api/auth'
+import { useAuth } from '../auth/authContext'
 import {
   acceptGuardianInvitation,
   fetchGuardianInvitations,
@@ -22,6 +24,7 @@ import './guardianInvitations.css'
  * to naming someone else rather than leaving them with a "no" they cannot act on.
  */
 function GuardianInvitations() {
+  const { setUser } = useAuth()
   const [invitations, setInvitations] = useState<GuardianInvitation[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
@@ -66,6 +69,9 @@ function GuardianInvitations() {
           ? `Konto ${childLabel(invitation)} zostało powiązane z Twoim.`
           : `Prośba od ${childLabel(invitation)} została odrzucona.`,
       )
+      // The header's badge is drawn from the session's own count, which this
+      // answer has just made stale — so re-read it.
+      void refreshSession()
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         // Gone between the load and the click: the child withdrew it, or it was
@@ -80,6 +86,28 @@ function GuardianInvitations() {
       }
     } finally {
       setBusyId(null)
+    }
+  }
+
+  /**
+   * Re-reads the session so the header stops saying a child is waiting.
+   *
+   * `pendingGuardianInvitations` rides on /api/auth/me/ — one payload for one
+   * row, see `UserSerializer` — so answering a request here has to refresh it or
+   * the dot would sit in the header until the next full reload.
+   *
+   * Failure is deliberately swallowed: the decision itself went through, and a
+   * badge that lingers points at this card, which is already correct. Reporting
+   * "nie udało się" about a request that succeeded is the worse of the two
+   * errors. A null answer is left alone as well — the session having ended is
+   * `AuthProvider`'s call, not this card's.
+   */
+  async function refreshSession() {
+    try {
+      const refreshed = await fetchCurrentUser()
+      if (refreshed) setUser(refreshed)
+    } catch {
+      // Nothing to say: see above.
     }
   }
 

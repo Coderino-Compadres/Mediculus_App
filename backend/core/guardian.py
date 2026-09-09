@@ -71,6 +71,23 @@ def pending_invitations(guardian):
     return [serialize_invitation(link) for link in links]
 
 
+def pending_invitation_count(guardian):
+    """How many invitations are waiting for `guardian` — a COUNT, not the list.
+
+    Rides on `/api/auth/me/` (see `UserSerializer.pending_guardian_invitations`)
+    so the app can *show* a guardian that a child is waiting on every screen they
+    have, rather than only on the card that answers it. That is a real gap rather
+    than a nicety: a minor's account is blocked until this is answered, nothing
+    can notify anybody out of band (this deployment sends no mail), and a
+    guardian sitting on their profile had no way to know.
+
+    Deliberately a count and not the payload of `pending_invitations`: the names
+    belong on the card that acts on them, and `me` is called at every app start
+    and after every 403 — a number is all a badge can render anyway.
+    """
+    return ParentChild.objects.filter(parent=guardian, accepted_at__isnull=True).count()
+
+
 def accepted_children(guardian):
     """The children this guardian has actually vouched for, with their `user` row.
 
