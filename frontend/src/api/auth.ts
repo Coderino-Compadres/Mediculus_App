@@ -26,9 +26,6 @@ export interface UserPayload {
   /** How many children are waiting on this guardian's answer; null when the
    *  question does not apply — see `pendingGuardianInvitations`. */
   pending_guardian_invitations?: number | null
-  /** ISO instants, or null for a consent that was never granted. */
-  data_consent_at: string | null
-  services_consent_at: string | null
   /** Per-consent state plus the one flag the route guard reads. */
   consents?: ConsentsPayload
 }

@@ -34,12 +34,36 @@ import './guardianChildren.css'
  * being misled by silence, and a guardian who knows they are not can say so to
  * the child, which is what makes the child's diary worth writing.
  *
+ * ONE EXCEPTION, AND THE CLIENT MADE IT: a marker next to the child's name when
+ * their last weekly report flagged three or more risky days. It is the only
+ * thing here that comes from what the diary says rather than from how much of it
+ * there is — which is why it says "wymaga uwagi" and not what happened. The
+ * count and the reason are not in the payload at all, so this card cannot drift
+ * into quoting the report without a backend change to go with the decision.
+ *
  * A FAILED LOAD SAYS SO. Silence would read as "no children linked" to somebody
  * who has one, which on this screen is the one wrong answer — it is the whole
  * reason they are here.
  */
 
 const LOAD_ERROR = 'Nie udało się wczytać informacji o koncie dziecka.'
+
+/**
+ * What the marker says, and the whole of what it says.
+ *
+ * THE WORDING IS THE DECISION, not the icon. It tells the guardian that the last
+ * report wants looking at, and it does not say what happened, how many days, or
+ * on which ones — the backend does not send those either (see
+ * CHILD_ATTENTION_FIELD in core/account.py). A parent who sees this is meant to
+ * talk to their child or to the specialist, which they can do without reading
+ * the diary; naming the reason here would make this card the first place the
+ * panel quotes clinical content, and that is a decision about the scope of a
+ * guardian's access rather than about a badge.
+ *
+ * It carries a real label rather than living in the colour: an ochre glyph says
+ * nothing at all to a screen reader, and "yellow means bad" is not a message.
+ */
+const ATTENTION_LABEL = 'Ostatni raport wymaga uwagi'
 
 function Figure({ value, label, title }: { value: string; label: string; title?: string }) {
   return (
@@ -57,7 +81,24 @@ function ChildCard({ child }: { child: LinkedChild }) {
   return (
     <article className="child-card panel-card">
       <header className="child-card-header">
-        <h3>{childLabel(child)}</h3>
+        <h3>
+          {childLabel(child)}
+          {child.needsAttention && (
+            /* Inside the heading, next to the name, because the guardian's
+               question is "which of my children" — a marker on the card's edge
+               would answer "one of them". `role="img"` with a label, so the
+               glyph is read as the sentence rather than as an exclamation mark;
+               `title` gives the same words to a mouse. */
+            <span
+              className="child-attention"
+              role="img"
+              aria-label={ATTENTION_LABEL}
+              title={ATTENTION_LABEL}
+            >
+              !
+            </span>
+          )}
+        </h3>
         {/* The address as well as the name: two children in a family can share a
             first name on a card, and this is the value the child typed. */}
         {child.childEmail && <p className="child-card-email">{child.childEmail}</p>}

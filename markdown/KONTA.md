@@ -212,6 +212,21 @@ jest kliniczny, a nie techniczny: dziecko, które wie, że rodzic czyta jego
 dzienniczek, pisze inny dzienniczek. Czy opiekun kiedykolwiek dostanie wgląd
 w treść, jest wciąż nierozstrzygnięte.
 
+**Jest jeden wyjątek: żółty wykrzyknik obok imienia dziecka.** Pojawia się, gdy
+**ostatni tygodniowy raport dziecka zawierał trzy lub więcej dni z oznaczonym
+zachowaniem ryzykownym**. Trzy rzeczy o nim:
+
+- mówi tylko „Ostatni raport wymaga uwagi" — **nie mówi, co się stało, ile razy
+  ani którego dnia**. To nie jest wyciąg z dzienniczka; to sygnał, żeby
+  porozmawiać z dzieckiem albo ze specjalistą prowadzącym;
+- **nie otwiera raportu** — opiekun nadal nie ma do niego dostępu. Raporty widzi
+  dziecko i jego specjalista;
+- **nie pojawia się przy koncie zatrzymanym** (z wycofanymi zgodami) ani przy
+  koncie bez dzienniczka — nie ma z czego go wyliczyć, a wycofanie zgody
+  zatrzymuje właśnie to wyliczanie.
+
+Znika sam, gdy kolejny raport zmieści się poniżej progu.
+
 Reszta panelu rodzica jest w budowie i ekran o tym mówi.
 
 ### Specjalista
@@ -364,7 +379,8 @@ Zebrane w jednym miejscu, żeby nie było niespodzianek:
 - **nie ocenia dnia** — ani w nawodnieniu, ani w raportach: zmiana jest zawsze
   kierunkiem i wartością („+0,6 od poprzedniego tygodnia"), nigdy oceną osoby;
 - **nie liczy jedzenia** w module dietetycznym;
-- **nie pokazuje opiekunowi treści dzienniczka dziecka**;
+- **nie pokazuje opiekunowi treści dzienniczka dziecka** — poza jednym
+  sygnałem: wykrzyknikiem „Ostatni raport wymaga uwagi" (patrz punkt 4);
 - **nie pozwala pacjentowi odciąć specjalisty** od raportów;
 - **nie usuwa kont** i nie zmienia adresów e-mail;
 - **nie obsługuje dwóch specjalistów** dla jednego pacjenta.

@@ -67,6 +67,8 @@ interface LinkedChildPayload {
   child_email: string | null
   linked_at: string | null
   consents_active?: boolean
+  /** See `needsAttention` — a boolean, never a count and never a reason. */
+  needs_attention?: boolean
   activity: ChildActivityPayload | null
 }
 
@@ -94,6 +96,22 @@ export interface LinkedChild {
    * reason (no patient row at all).
    */
   consentsActive: boolean
+  /**
+   * Whether the child's **most recent weekly report** wants the guardian's
+   * attention — the one thing on this card that comes from the content of the
+   * diary rather than from how much of it there is.
+   *
+   * Set when that report flagged three days or more with a risky behaviour
+   * (`RISKY_DAYS_FOR_ATTENTION` in core/account.py). The count and the reason
+   * deliberately do not travel: the payload says "look at this", not what
+   * happened, so this screen cannot start spelling it out without a backend
+   * change and a decision behind it.
+   *
+   * False for a backend that predates the field, which is the right reading:
+   * a marker is a claim about a report, and a client that cannot know must not
+   * make one.
+   */
+  needsAttention: boolean
   /** null when the account has no patient row, or when its consents are withdrawn. */
   activity: ChildActivity | null
 }
@@ -106,6 +124,7 @@ function toChild(payload: LinkedChildPayload): LinkedChild {
     childEmail: payload.child_email,
     linkedAt: payload.linked_at,
     consentsActive: payload.consents_active ?? true,
+    needsAttention: payload.needs_attention ?? false,
     activity: payload.activity && {
       entryCount: payload.activity.entry_count,
       streakDays: payload.activity.streak_days,
@@ -121,6 +140,11 @@ function toChild(payload: LinkedChildPayload): LinkedChild {
  * when, and nothing about what it says. That is a deliberate line rather than a
  * stage on the way to showing more: a minor who knows a parent reads their diary
  * writes a different diary. See CHILD_SUMMARY_FIELDS in core/account.py.
+ *
+ * `needs_attention` is the **one** exception, decided by the client: a marker
+ * when the child's last weekly report flagged three or more risky days. It is a
+ * boolean rather than a count precisely so that this stays one exception rather
+ * than the first of several — see CHILD_ATTENTION_FIELD in core/account.py.
  *
  * Only accepted links. A guardian who was named but has not answered gets an
  * empty list — being named is not being their guardian yet.

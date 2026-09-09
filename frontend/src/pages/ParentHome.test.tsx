@@ -22,6 +22,7 @@ const LINKED_CHILD = {
   childEmail: 'dziecko@wp.pl',
   linkedAt: '2026-08-12T09:31:02Z',
   consentsActive: true,
+  needsAttention: false,
   activity: { entryCount: 12, streakDays: 4, lastEntryDate: '2026-09-01' },
 }
 
