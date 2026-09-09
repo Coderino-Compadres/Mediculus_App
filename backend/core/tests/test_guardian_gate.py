@@ -86,7 +86,7 @@ class GateTestCase(TestCase):
         )
 
 
-def clinical_urls(diary_id, report_id, hydration_id=None):
+def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None):
     """Every URL that reads or writes clinical data, with the verbs it accepts.
 
     Built as a list rather than checked endpoint by endpoint so that adding a
@@ -120,6 +120,22 @@ def clinical_urls(diary_id, report_id, hydration_id=None):
         ('post', reverse('core:diet-hydration'), 400),
         ('delete', reverse(
             'core:diet-hydration-entry', args=[hydration_id or uuid.uuid4()]), 404),
+        # The rest of the diet module: the food diary and §08's supplement
+        # list. Same gate, same reason — a meal and a medicine logged against a
+        # named account are health data too.
+        ('get', reverse('core:diet-today'), 200),
+        ('get', reverse('core:diet-meals'), 200),
+        ('get', reverse('core:diet-supplements'), 200),
+        ('post', reverse('core:diet-supplements'), 400),
+        ('put', reverse('core:diet-supplement', args=[supplement_id or uuid.uuid4()]), 404),
+        ('delete', reverse(
+            'core:diet-supplement', args=[supplement_id or uuid.uuid4()]), 404),
+        ('post', reverse(
+            'core:diet-supplement-intake',
+            args=[supplement_id or uuid.uuid4()]), 404),
+        ('delete', reverse(
+            'core:diet-supplement-intake',
+            args=[supplement_id or uuid.uuid4()]), 404),
     ]
 
 

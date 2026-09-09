@@ -50,6 +50,22 @@ urlpatterns = [
         'diet/hydration/<uuid:id_hydration>/',
         views.HydrationEntryView.as_view(), name='diet-hydration-entry',
     ),
+    # The food diary. Read-only for now — the form that writes a meal is §04 of
+    # the mockups and is not built (the photo in it would be the first file this
+    # deployment ever stored). 'today' before any '<uuid>' route, the same
+    # ordering rule the diary follows.
+    path('diet/today/', views.DietDayView.as_view(), name='diet-today'),
+    path('diet/meals/', views.DietMealHistoryView.as_view(), name='diet-meals'),
+    # §08's second half, "Suplementy i leki".
+    path('diet/supplements/', views.SupplementsView.as_view(), name='diet-supplements'),
+    path(
+        'diet/supplements/<uuid:id_supplement>/',
+        views.SupplementView.as_view(), name='diet-supplement',
+    ),
+    path(
+        'diet/supplements/<uuid:id_supplement>/intake/',
+        views.SupplementIntakeView.as_view(), name='diet-supplement-intake',
+    ),
     path('reports/', views.ReportListView.as_view(), name='report-list'),
     # 'week-2026-08-03' — a slug, so it can never swallow the trailing segment
     # of the PDF route below.

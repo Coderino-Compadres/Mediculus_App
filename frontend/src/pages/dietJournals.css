@@ -205,3 +205,26 @@
 .diet-journals-add:hover {
   background: var(--color-sage-hover);
 }
+
+/* Load states. This screen had neither while it rendered an empty history
+   unconditionally — `GET /api/diet/meals/` is what gave it something to wait
+   for, and something that can fail. The error box is the app's error colour
+   rather than the module's ochre: a failed request is a fault, not a
+   consequence to weigh. */
+
+.diet-journals-status {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.diet-journals-status-error {
+  background: var(--color-error-bg);
+  border-radius: var(--radius-tile);
+  padding: 14px 16px;
+  color: var(--color-error);
+}
+
+.diet-journals-status-error p {
+  margin: 0 0 8px;
+}

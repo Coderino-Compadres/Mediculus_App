@@ -1,12 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { emptyDietDay, emptyDietHistory, fetchHydration, recordDrink, removeDrink } from './diet'
+import {
+  createSupplement,
+  deleteSupplement,
+  emptyDietDay,
+  fetchDietDay,
+  fetchDietHistory,
+  fetchHydration,
+  fetchSupplements,
+  recordDrink,
+  removeDrink,
+  setSupplementTaken,
+  updateSupplement,
+} from './diet'
 
 /**
  * The diet module's mapping layer.
  *
- * Two halves and the file's job is to keep them apart: the food diary has no
- * backend and returns empty shapes on purpose, while hydration is a real
- * endpoint and this is snake_case in, camelCase out and nothing else.
+ * All of it is snake_case in, camelCase out and nothing else. The two "empty"
+ * producers stay because a screen needs a shape while its first request is in
+ * flight — they are no longer standing in for a missing backend.
  *
  * The rule worth pinning hardest is that **nothing here computes anything**. The
  * glass count, the progress and the seven-day totals all arrive already
@@ -39,7 +51,7 @@ beforeEach(() => {
   apiRequest.mockReset()
 })
 
-describe('the half that has no backend', () => {
+describe('the empty shapes a screen starts from', () => {
   it('an untouched day is zeros rather than the mockup\'s sample data', () => {
     /** "6 dni z rzędu" over a diary nobody has written would be the technique
      *  card's mistake with a nicer number. */
@@ -53,10 +65,6 @@ describe('the half that has no backend', () => {
      *  one day is a second answer free to disagree with the first. */
     expect(emptyDietDay()).not.toHaveProperty('hydration')
   })
-
-  it('the history is empty rather than failing', () => {
-    expect(emptyDietHistory()).toEqual([])
-  })
 })
 
 describe('fetchHydration', () => {
@@ -65,7 +73,7 @@ describe('fetchHydration', () => {
 
     const day = await fetchHydration()
 
-    expect(apiRequest).toHaveBeenCalledWith('/diet/hydration/')
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/hydration/')
     expect(day.glassMl).toBe(250)
     expect(day.bottleMl).toBe(500)
     expect(day.targetGlasses).toBe(6)
@@ -121,7 +129,7 @@ describe('recordDrink', () => {
 
     await recordDrink(250)
 
-    expect(apiRequest).toHaveBeenCalledWith('/diet/hydration/', {
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/hydration/', {
       method: 'POST',
       body: { drink: 'Woda', amount_ml: 250 },
     })
@@ -134,7 +142,7 @@ describe('recordDrink', () => {
 
     await recordDrink(null, 'Herbata')
 
-    expect(apiRequest).toHaveBeenCalledWith('/diet/hydration/', {
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/hydration/', {
       method: 'POST',
       body: { drink: 'Herbata' },
     })
@@ -157,6 +165,189 @@ describe('removeDrink', () => {
     apiRequest.mockResolvedValue(undefined)
 
     await expect(removeDrink('a')).resolves.toBeUndefined()
-    expect(apiRequest).toHaveBeenCalledWith('/diet/hydration/a/', { method: 'DELETE' })
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/hydration/a/', { method: 'DELETE' })
+  })
+})
+
+describe('the food diary', () => {
+  it('maps the day the home screen draws', async () => {
+    apiRequest.mockResolvedValue({
+      date: '2026-09-09', streak_days: 4, meal_count: 3,
+    })
+
+    await expect(fetchDietDay()).resolves.toEqual({
+      date: '2026-09-09',
+      streakDays: 4,
+      mealCount: 3,
+    })
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/today/')
+  })
+
+  it('keeps a zero a zero rather than turning it into a placeholder', async () => {
+    apiRequest.mockResolvedValue({
+      date: '2026-09-09', streak_days: 0, meal_count: 0,
+    })
+
+    const day = await fetchDietDay()
+
+    expect(day.streakDays).toBe(0)
+    expect(day.mealCount).toBe(0)
+  })
+
+  it('maps the history as days holding meals, not as a flat list', async () => {
+    apiRequest.mockResolvedValue([
+      {
+        date: '2026-09-09',
+        meals: [
+          { id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' },
+          { id: 'm2', kind: null, time: null, description: '' },
+        ],
+      },
+    ])
+
+    await expect(fetchDietHistory()).resolves.toEqual([
+      {
+        date: '2026-09-09',
+        meals: [
+          { id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' },
+          { id: 'm2', kind: null, time: null, description: '' },
+        ],
+      },
+    ])
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/meals/')
+  })
+
+  it('carries no quantity of any kind onto a meal', async () => {
+    /** §04's scope: a photo and a description, nothing numeric. A payload that
+     *  grew a portion field would not reach the screen through this layer. */
+    apiRequest.mockResolvedValue([
+      {
+        date: '2026-09-09',
+        meals: [{
+          id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.',
+          calories: 420, portion: '300 g',
+        }],
+      },
+    ])
+
+    const [day] = await fetchDietHistory()
+
+    expect(Object.keys(day.meals[0]).sort())
+      .toEqual(['description', 'id', 'kind', 'time'])
+  })
+})
+
+describe('suplementy i leki', () => {
+  const PAYLOAD = {
+    id: 's1',
+    name: 'Witamina D3',
+    dose: '2000 IU',
+    frequency: 'raz dziennie',
+    hour: '08:00',
+    start_date: '2026-03-12',
+    end_date: null,
+    reminder_enabled: true,
+    taken_today: false,
+  }
+
+  it('maps a row into the screen\'s own names', async () => {
+    apiRequest.mockResolvedValue([PAYLOAD])
+
+    await expect(fetchSupplements()).resolves.toEqual([{
+      id: 's1',
+      name: 'Witamina D3',
+      dose: '2000 IU',
+      frequency: 'raz dziennie',
+      hour: '08:00',
+      startDate: '2026-03-12',
+      endDate: null,
+      reminderEnabled: true,
+      takenToday: false,
+    }])
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/supplements/')
+  })
+
+  it('sends a blank answer as null rather than as an empty string', async () => {
+    /** The column has one representation of "not answered"; sending '' would
+     *  put a second one on the wire. */
+    apiRequest.mockResolvedValue([PAYLOAD])
+
+    await createSupplement({
+      name: '  Magnez  ',
+      dose: '',
+      frequency: '   ',
+      hour: '',
+      startDate: '',
+      endDate: '',
+      reminderEnabled: false,
+    })
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/supplements/', {
+      method: 'POST',
+      body: {
+        name: 'Magnez',
+        dose: null,
+        frequency: null,
+        hour: null,
+        start_date: null,
+        end_date: null,
+        reminder_enabled: false,
+      },
+    })
+  })
+
+  it('answers a write with the whole rebuilt list', async () => {
+    /** The list is ordered by hour on the server, so a new row rarely belongs
+     *  at the end — appending it here would put it in the wrong place. */
+    apiRequest.mockResolvedValue([PAYLOAD, { ...PAYLOAD, id: 's2', name: 'Magnez' }])
+
+    const list = await createSupplement({
+      name: 'Magnez', dose: null, frequency: null, hour: null,
+      startDate: null, endDate: null, reminderEnabled: true,
+    })
+
+    expect(list.map((row) => row.name)).toEqual(['Witamina D3', 'Magnez'])
+  })
+
+  it('replaces on an edit rather than merging', async () => {
+    apiRequest.mockResolvedValue([PAYLOAD])
+
+    await updateSupplement('s1', {
+      name: 'Witamina D3', dose: null, frequency: null, hour: '08:00',
+      startDate: '2026-03-12', endDate: null, reminderEnabled: true,
+    })
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/supplements/s1/', {
+      method: 'PUT',
+      body: expect.objectContaining({ dose: null }),
+    })
+  })
+
+  it('deletes by id and resolves to nothing', async () => {
+    apiRequest.mockResolvedValue(undefined)
+
+    await expect(deleteSupplement('s1')).resolves.toBeUndefined()
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/supplements/s1/', { method: 'DELETE' })
+  })
+
+  it('ticks with a POST and unticks with a DELETE on the same URL', async () => {
+    apiRequest.mockResolvedValue([{ ...PAYLOAD, taken_today: true }])
+    await setSupplementTaken('s1', true)
+    expect(apiRequest).toHaveBeenCalledWith(
+      '/api/diet/supplements/s1/intake/', { method: 'POST' })
+
+    apiRequest.mockResolvedValue([PAYLOAD])
+    await setSupplementTaken('s1', false)
+    expect(apiRequest).toHaveBeenCalledWith(
+      '/api/diet/supplements/s1/intake/', { method: 'DELETE' })
+  })
+
+  it('sends no date with a tick, because only today is tickable', async () => {
+    apiRequest.mockResolvedValue([{ ...PAYLOAD, taken_today: true }])
+
+    await setSupplementTaken('s1', true)
+
+    const [, options] = apiRequest.mock.calls[0] as [string, Record<string, unknown>]
+    expect(options).not.toHaveProperty('body')
   })
 })

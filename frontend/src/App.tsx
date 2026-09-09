@@ -6,6 +6,7 @@ import ModuleSelect from './pages/ModuleSelect'
 import DietHome from './pages/DietHome'
 import DietJournals from './pages/DietJournals'
 import DietHydration from './pages/DietHydration'
+import DietSupplements from './pages/DietSupplements'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
@@ -395,6 +396,17 @@ function App() {
             element={
               <RequireAuth>
                 <DietHydration />
+              </RequireAuth>
+            }
+          />
+          {/* Suplementy i leki — §08's other half. Same guard and same reason:
+              a medicine list is a clinical record, so the endpoint behind it
+              refuses a guardian and a specialist. */}
+          <Route
+            path={ROUTES.dietSupplements}
+            element={
+              <RequireAuth>
+                <DietSupplements />
               </RequireAuth>
             }
           />

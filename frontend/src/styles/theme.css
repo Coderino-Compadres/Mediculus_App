@@ -33,6 +33,19 @@
   --color-water-soft: #7fbfb4;
   --color-water-quiet: #bfded9;
 
+  /* The hour badge on "Suplementy i leki" (§08). Its own hue for the same
+     reason the water colour has one: on that screen the hour is the thing the
+     list is organised by, and the artboard draws it blue on a pale blue pill
+     while every button stays sage.
+
+     The artboard's own blue is #6e8fc7, which on #eef2fa reads at about 3:1 --
+     under the 4.5:1 AA floor for the 12px type it is used at. So the *text*
+     value below is that hue darkened until it passes, and the background is
+     the artboard's unchanged: the badge looks like the mockup and can actually
+     be read. Nothing here is a status colour -- an hour is not a verdict. */
+  --color-supplement: #4a68a0;
+  --color-supplement-bg: #eef2fa;
+
   /* Ochre dark enough to be read as type on white, for wording that is a
      consequence to weigh rather than an error: an invitation that cannot be
      undone, a care relationship about to end. --color-ochre itself is a

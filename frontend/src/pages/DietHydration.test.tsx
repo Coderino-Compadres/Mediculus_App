@@ -104,6 +104,22 @@ describe('the frame', () => {
     expect(await screen.findByText('4')).toBeInTheDocument()
   })
 
+  it('says the server\'s own reason when it gave one', async () => {
+    /** The same argument as on the supplements screen: every refusal reachable
+     *  here is a gate rather than a fault, and each arrives with a sentence
+     *  saying what to do about it. "Nie udało się wczytać nawodnienia" would
+     *  describe a failure that did not happen. */
+    fetchHydration.mockRejectedValueOnce(
+      new ApiError(403, 'To konto czeka na akceptację opiekuna.'),
+    )
+
+    renderWithProviders(<DietHydration />)
+
+    expect(await screen.findByText('To konto czeka na akceptację opiekuna.'))
+      .toBeInTheDocument()
+    expect(screen.queryByText('Nie udało się wczytać nawodnienia.')).toBeNull()
+  })
+
   it('a failed load never looks like a day nobody drank on', async () => {
     fetchHydration.mockRejectedValueOnce(new Error('offline'))
 

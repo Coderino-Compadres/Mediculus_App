@@ -361,9 +361,15 @@ function WeekCard({ day }: { day: HydrationDay }) {
 function DietHydration() {
   const [day, setDay] = useState<HydrationDay | null>(null)
   const [loading, setLoading] = useState(true)
-  const [loadFailed, setLoadFailed] = useState(false)
+  /** Why there is nothing to draw — the server's own sentence when it gave one.
+   *  The refusals a patient can meet here are gates rather than faults (an
+   *  account waiting on a guardian, one whose consents lapsed), and each of
+   *  them arrives with a message saying what to do; replacing it with "nie
+   *  udało się wczytać nawodnienia" would describe a failure that did not
+   *  happen. Same wording rule as Journals.tsx. */
+  const [loadError, setLoadError] = useState<string | null>(null)
   /** A refusal for the act just attempted — a full day, a rejected amount, a
-   *  dropped connection. Separate from `loadFailed`, which means the screen has
+   *  dropped connection. Separate from `loadError`, which means the screen has
    *  nothing to draw at all. */
   const [actionError, setActionError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -382,10 +388,14 @@ function DietHydration() {
       .then((loaded) => {
         if (cancelled) return
         setDay(loaded)
-        setLoadFailed(false)
+        setLoadError(null)
       })
-      .catch(() => {
-        if (!cancelled) setLoadFailed(true)
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setLoadError(
+            (cause instanceof ApiError && cause.formMessage) || LOAD_ERROR,
+          )
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -398,7 +408,7 @@ function DietHydration() {
 
   function retry() {
     setLoading(true)
-    setLoadFailed(false)
+    setLoadError(null)
     setAttempt((n) => n + 1)
   }
 
@@ -452,15 +462,15 @@ function DietHydration() {
 
       {loading && <p className="hydration-loading">Wczytywanie…</p>}
 
-      {loadFailed && (
+      {loadError && (
         <LoadError
-          message={LOAD_ERROR}
+          message={loadError}
           onRetry={retry}
           className="hydration-error"
         />
       )}
 
-      {day && !loadFailed && (
+      {day && !loadError && (
         <>
           <p className="hydration-date">{dayLabel(day.date)}</p>
 

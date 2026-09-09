@@ -279,3 +279,186 @@ FROM (VALUES
 WHERE NOT EXISTS (
     SELECT 1 FROM raport r WHERE r.id_medical = v.id_medical AND r.id_technique = v.id_technique
 );
+
+-- ============================================================
+-- MODUŁ DIETETYCZNY — demo data for test@wp.pl (id_medical c0...05)
+--
+-- The psychotherapy half of this file has been seeding a month of entries for
+-- that account for a while, which is why its home screen, charts and reports
+-- have something to draw. The diet module had nothing at all: its two first
+-- screens read an empty day out of `api/diet.ts` because no table existed, and
+-- once `hydration` (0015) and then `diet_meal`/`supplement`/`supplement_intake`
+-- (0016) did, an unseeded database still meant "0 posiłków, 0 szklanek, pusta
+-- lista" on every one of them.
+--
+-- EVERYTHING BELOW IS RELATIVE TO CURRENT_DATE, not a fixed date, for the same
+-- reason the diary entries above are: the module's screens all show today and
+-- the last seven days, so hard-coded dates would fall out of the window and the
+-- seed would be empty again by next week.
+--
+-- WHAT IT IS SHAPED TO SHOW, deliberately rather than at random:
+--   * four days of meals back to back ending today  -> a streak of 4, and a
+--     "dzień rozpoczęty" home screen rather than the empty one
+--   * gaps 4, 8, 10 and 11 days back                -> days with no meal, which
+--     every real diary has, and what stops the streak at 4
+--   * one meal with no kind, one with no hour and one with no description ->
+--     §05's rule that no field blocks a save, so the history screen's
+--     "Zapisany bez opisu" branch is reachable from seeded data
+--   * water below the goal on some days and over it on others -> the bar full
+--     without a word of congratulation, which is the rule §08 states
+--   * the three preparations from §08's own artboard, with two of the three
+--     ticked off for today -- exactly the state it draws
+--
+-- NOTHING HERE COUNTS FOOD. There is no portion, no weight and no calorie
+-- column to seed: §04 states that scope outright ("nie liczy jedzenia --
+-- opisuje je"), and this file is not the place to work around it.
+-- ============================================================
+
+-- ----------------------------
+-- DIET_MEAL
+-- Descriptions are the patient's own words, so they are written the way
+-- somebody types them into a phone: short, lowercase where it happens, and with
+-- no nutritional vocabulary anywhere.
+-- ----------------------------
+INSERT INTO diet_meal (id_meal, id_medical, entry_date, kind, eaten_at, description) VALUES
+    -- Today: three meals, so the home screen shows the "started day" state.
+    ('f1000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE,                    'Śniadanie',       '08:10', 'Owsianka na mleku, do tego banan i łyżka masła orzechowego.'),
+    ('f1000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE,                    'Obiad',           '13:40', 'Zupa pomidorowa i kanapka z serem, zjedzone przy biurku.'),
+    ('f1000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE,                    'Przekąska',       '16:20', 'Garść orzechów, bardziej z nudów niż z głodu.'),
+
+    ('f1000000-0000-0000-0000-000000000011', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 1,                'Śniadanie',       '07:50', 'Jajecznica na dwóch jajkach, kromka chleba.'),
+    ('f1000000-0000-0000-0000-000000000012', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 1,                'Drugie śniadanie','10:30', 'Jogurt naturalny.'),
+    ('f1000000-0000-0000-0000-000000000013', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 1,                'Obiad',           '14:00', 'Makaron z warzywami, duża porcja.'),
+    ('f1000000-0000-0000-0000-000000000014', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 1,                'Kolacja',         '19:30', 'Kanapki, jedzone przed telewizorem.'),
+
+    ('f1000000-0000-0000-0000-000000000021', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 2,                'Śniadanie',       '09:00', 'Kawa i drożdżówka, w biegu.'),
+    ('f1000000-0000-0000-0000-000000000022', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 2,                'Obiad',           '13:15', 'Ryż z kurczakiem i surówką.'),
+    -- No kind: a meal saved without saying which one it was. §05 allows it and
+    -- the history screen leads with the description instead.
+    ('f1000000-0000-0000-0000-000000000023', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 2,                NULL,              '22:10', 'Podjadanie po kłótni — nie liczyłem, ile.'),
+
+    ('f1000000-0000-0000-0000-000000000031', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 3,                'Obiad',           '15:00', 'Pierwszy posiłek tego dnia, cały dzień w łóżku.'),
+    -- No hour: the "nulls_last" case, so this row sits after the one above it
+    -- in the day rather than opening it.
+    ('f1000000-0000-0000-0000-000000000032', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 3,                'Kolacja',         NULL,    'Zupa z torebki, nie pamiętam o której.'),
+
+    -- Gap at -4: the streak above ends here, at four days.
+    ('f1000000-0000-0000-0000-000000000051', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 5,                'Śniadanie',       '08:20', 'Kanapka z awokado.'),
+    ('f1000000-0000-0000-0000-000000000052', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 5,                'Obiad',           '13:00', 'Obiad na mieście, z Anią.'),
+    ('f1000000-0000-0000-0000-000000000053', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 5,                'Kolacja',         '20:00', 'Sałatka, bez wielkiego apetytu.'),
+
+    ('f1000000-0000-0000-0000-000000000061', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 6,                'Śniadanie',       '10:00', 'Późne śniadanie, weekend.'),
+    ('f1000000-0000-0000-0000-000000000062', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 6,                'Obiad',           '16:00', 'Urodziny u przyjaciela — tort i dużo przekąsek.'),
+
+    ('f1000000-0000-0000-0000-000000000071', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 7,                'Śniadanie',       '08:00', 'Owsianka.'),
+    -- Empty description: the field was on screen and left blank. The history
+    -- screen says "Zapisany bez opisu" rather than rendering a blank row.
+    ('f1000000-0000-0000-0000-000000000072', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 7,                'Przekąska',       '17:30', ''),
+    ('f1000000-0000-0000-0000-000000000073', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 7,                'Kolacja',         '19:00', 'Naleśniki z serem.'),
+
+    ('f1000000-0000-0000-0000-000000000091', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 9,                'Obiad',           '13:30', 'Kotlet z ziemniakami u rodziców.'),
+    ('f1000000-0000-0000-0000-000000000092', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 9,                'Kolacja',         '20:30', 'Herbata i dwa ciastka.'),
+
+    ('f1000000-0000-0000-0000-000000000121', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 12,               'Śniadanie',       '07:40', 'Kanapki do pracy, zjedzone dopiero w biurze.'),
+    ('f1000000-0000-0000-0000-000000000122', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 12,               'Podwieczorek',    '17:00', 'Jabłko.'),
+    ('f1000000-0000-0000-0000-000000000123', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 12,               'Kolacja',         '21:00', 'Późna kolacja, po prezentacji.'),
+
+    ('f1000000-0000-0000-0000-000000000131', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 13,               'Obiad',           '14:20', 'Zupa jarzynowa.'),
+    ('f1000000-0000-0000-0000-000000000141', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 14,               'Śniadanie',       '08:30', 'Kawa z mlekiem i tost.'),
+    ('f1000000-0000-0000-0000-000000000142', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 14,               'Obiad',           '13:00', 'Ryba z warzywami.'),
+    ('f1000000-0000-0000-0000-000000000151', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 15,               'Obiad',           '12:50', 'Pierogi, bardzo dużo.'),
+    ('f1000000-0000-0000-0000-000000000181', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 18,               'Śniadanie',       '09:10', 'Omlet.'),
+    ('f1000000-0000-0000-0000-000000000182', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 18,               'Kolacja',         '19:40', 'Kasza z warzywami.'),
+    ('f1000000-0000-0000-0000-000000000201', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 20,               'Obiad',           '13:20', 'Obiad w kantynie, nie pamiętam co.')
+ON CONFLICT (id_meal) DO NOTHING;
+
+-- ----------------------------
+-- HYDRATION
+-- A row per serving, so the seven-day chart is a GROUP BY over these and today
+-- is correctable serving by serving.
+--
+-- The amounts are the screen's own two buttons (250 ml "szklanka", 500 ml
+-- "butelka") plus one custom 400 ml, which is what makes the count read "1,6"
+-- rather than a whole number -- the case the rounding rule exists for.
+--
+-- Only water counts towards the goal. The tea and the coffee below are recorded
+-- and deliberately not converted, which is the client's rule ("decyzja
+-- merytoryczna zostaje po stronie specjalisty"), so they appear in today's list
+-- and move no figure at all. Their amount_ml is NULL: the "Inne napoje" card
+-- offers a chip and no quantity, and inventing one would put a number nobody
+-- entered into a clinical record.
+-- ----------------------------
+INSERT INTO hydration (id_hydration, id_medical, entry_date, drink, amount_ml) VALUES
+    -- Today: 250 + 500 + 400 = 1150 ml -> 4,6 z 6 szklanek, bar not yet full.
+    ('f2000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE,     'Woda',    250),
+    ('f2000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE,     'Woda',    500),
+    ('f2000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE,     'Woda',    400),
+    ('f2000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE,     'Herbata', NULL),
+    ('f2000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE,     'Kawa',    NULL),
+
+    -- Yesterday: 1750 ml -> 7 glasses, i.e. over the goal. The bar is simply
+    -- full and the day still says what it was; there is no message either way.
+    ('f2000000-0000-0000-0000-000000000011', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 1, 'Woda',    500),
+    ('f2000000-0000-0000-0000-000000000012', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 1, 'Woda',    500),
+    ('f2000000-0000-0000-0000-000000000013', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 1, 'Woda',    500),
+    ('f2000000-0000-0000-0000-000000000014', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 1, 'Woda',    250),
+
+    ('f2000000-0000-0000-0000-000000000021', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 2, 'Woda',    250),
+    ('f2000000-0000-0000-0000-000000000022', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 2, 'Woda',    250),
+    ('f2000000-0000-0000-0000-000000000023', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 2, 'Napar ziołowy', NULL),
+
+    ('f2000000-0000-0000-0000-000000000031', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 3, 'Woda',    500),
+    ('f2000000-0000-0000-0000-000000000032', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 3, 'Woda',    250),
+    ('f2000000-0000-0000-0000-000000000033', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 3, 'Woda',    250),
+
+    -- Nothing four days back: a day with no serving is a legitimate 0 column,
+    -- not a gap the chart has to invent a value for.
+
+    ('f2000000-0000-0000-0000-000000000051', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 5, 'Woda',    500),
+    ('f2000000-0000-0000-0000-000000000052', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 5, 'Woda',    500),
+    ('f2000000-0000-0000-0000-000000000053', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 5, 'Woda',    250),
+    ('f2000000-0000-0000-0000-000000000054', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 5, 'Woda z cytryną', NULL),
+
+    ('f2000000-0000-0000-0000-000000000061', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 6, 'Woda',    250),
+    ('f2000000-0000-0000-0000-000000000062', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 6, 'Woda',    500),
+    ('f2000000-0000-0000-0000-000000000063', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 6, 'Kompot',  NULL)
+ON CONFLICT (id_hydration) DO NOTHING;
+
+-- ----------------------------
+-- SUPPLEMENT
+-- The three rows §08's artboard draws, with its own wording for each: a vitamin
+-- with no end date ("bezterminowo"), a magnesium with both dates, and a
+-- medicine whose end is the doctor's call -- which goes in `frequency`, because
+-- there is no third column for it and `frequency` is free text.
+--
+-- Sertralina is the artboard's own example. It is a real medicine and this is a
+-- mental-health service, so the seed says the same thing the client's mockup
+-- says rather than substituting something vaguer -- a screen reviewed against
+-- the mockup should show the mockup's list.
+-- ----------------------------
+INSERT INTO supplement (id_supplement, id_medical, name, dose, frequency, hour, start_date, end_date, reminder_enabled) VALUES
+    ('f3000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000005', 'Witamina D3', '2000 IU', 'raz dziennie',                  '08:00', CURRENT_DATE - 180, NULL,                TRUE),
+    ('f3000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000005', 'Magnez',      '200 mg',  'raz dziennie',                  '21:00', CURRENT_DATE - 99,  CURRENT_DATE + 7,    TRUE),
+    ('f3000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000005', 'Sertralina',  '50 mg',   'raz dziennie, wg zaleceń lekarza', '08:00', CURRENT_DATE - 190, NULL,                FALSE)
+ON CONFLICT (id_supplement) DO NOTHING;
+
+-- ----------------------------
+-- SUPPLEMENT_INTAKE
+-- Two of the three ticked off for today, which is exactly the state the
+-- artboard draws (`supp: { d3: true, mg: false, sert: true }`). The third being
+-- unticked is the point: an absent row is a question nobody answered yet, not a
+-- record of a missed dose, and nothing in the app treats it as one.
+--
+-- A few earlier days as well, so the table is not only ever today -- nothing
+-- renders them yet (the screen shows today), and they are here so that a
+-- history view added later has something to read instead of one flat day.
+-- ----------------------------
+INSERT INTO supplement_intake (id_intake, id_supplement, entry_date) VALUES
+    ('f4000000-0000-0000-0000-000000000001', 'f3000000-0000-0000-0000-000000000001', CURRENT_DATE),
+    ('f4000000-0000-0000-0000-000000000002', 'f3000000-0000-0000-0000-000000000003', CURRENT_DATE),
+    ('f4000000-0000-0000-0000-000000000011', 'f3000000-0000-0000-0000-000000000001', CURRENT_DATE - 1),
+    ('f4000000-0000-0000-0000-000000000012', 'f3000000-0000-0000-0000-000000000002', CURRENT_DATE - 1),
+    ('f4000000-0000-0000-0000-000000000013', 'f3000000-0000-0000-0000-000000000003', CURRENT_DATE - 1),
+    ('f4000000-0000-0000-0000-000000000021', 'f3000000-0000-0000-0000-000000000001', CURRENT_DATE - 2),
+    ('f4000000-0000-0000-0000-000000000022', 'f3000000-0000-0000-0000-000000000003', CURRENT_DATE - 2)
+ON CONFLICT (id_intake) DO NOTHING;

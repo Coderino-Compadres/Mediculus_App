@@ -1,20 +1,27 @@
 import type { DrinkName } from '../utils/drinks'
 
 /**
- * The diet module's day, as its home screen reads it.
+ * The diet module's shapes, as its four screens read them.
  *
- * WHY THIS TYPE EXISTS BEFORE THE BACKEND DOES. There is no `/api/diet/…` of any
- * kind yet — no table, no endpoint, nothing in `medical_db` that records a meal.
- * The home screen still has to be built from a shape rather than from four
- * hardcoded strings, or the day the API arrives the screen gets rewritten
- * instead of rewired. So this is the contract: `api/diet.ts` is the only place
- * that produces a value of this type today, and it is the only place that has to
- * change when the endpoint exists.
+ * THESE ARE ALL REAL NOW. This file used to open by saying there was no
+ * `/api/diet/…` of any kind and that `api/diet.ts` invented every value in it;
+ * `hydration` was the first table, and `diet_meal`, `supplement` and
+ * `supplement_intake` closed the rest. Every type below is what an endpoint
+ * actually answers with, mapped in `api/diet.ts` and nowhere else.
  *
- * Everything here is a *summary of the day*, never the content of a meal. The
- * mockups' own scope note is explicit that a meal is a photo plus a description
- * and nothing else — no product search, no numeric field — so nothing in this
- * module counts calories, and nothing in this type could.
+ * ONE THING IS STILL MISSING and it is a decision rather than work: the form
+ * that *writes* a meal (§04/§05 of the mockups). The photo in it would be the
+ * first file this deployment ever stored, and where it lives, how long it is
+ * kept and which consent covers it are all unanswered — so `DietMeal` has no
+ * photo field and `/api/diet/meals/` accepts no write verb. Rows come from
+ * `manage.py seed_demo_diary` and `scripts/mock_data.sql` until it does.
+ *
+ * NOTHING HERE COUNTS FOOD, and nothing in it could. The mockups' own scope note
+ * is explicit that a meal is a photo plus a description and nothing else — no
+ * product search, no numeric field — and §02/§05 rule out a score for a day.
+ * There is no calorie, macro, weight or target field in this file, and adding
+ * one is the change that would need arguing for, not the change that "completes"
+ * it.
  */
 
 /**
@@ -78,7 +85,7 @@ export interface HydrationDay {
 }
 
 /**
- * The diet module's day, minus the hydration it used to carry.
+ * The diet module's day, as `GET /api/diet/today/` answers it.
  *
  * `hydration` was a field here while the whole module was an empty shape and one
  * `emptyDietDay()` produced all of it. It is a real endpoint now
@@ -86,6 +93,10 @@ export interface HydrationDay {
  * so keeping a second summary of it on this type would be a second answer about
  * one day — free to disagree with the first, which is the mistake the profile's
  * counters exist to avoid.
+ *
+ * There is deliberately no target, no comparison with yesterday and no flag on
+ * this shape: §02's rule is that "pusty dzień nie jest brakiem: jest
+ * zaproszeniem bez presji".
  */
 export interface DietDay {
   /** 'YYYY-MM-DD' in the reader's own calendar day — see utils/days.ts. */
@@ -97,7 +108,8 @@ export interface DietDay {
    * Whether the two modules share one streak or keep their own is an open
    * question for the client — the mockup shows a streak on both home screens and
    * says nothing about which. Keeping it a separate field means answering it
-   * later is a change to one aggregation, not to this screen.
+   * later is a change to one aggregation (`core/meals.streak_days`), not to this
+   * screen.
    */
   streakDays: number
   /**
@@ -148,4 +160,62 @@ export interface DietJournalDay {
   date: string
   /** Newest first within the day, as the API will send them. */
   meals: DietMeal[]
+}
+
+/**
+ * One preparation on "Suplementy i leki" (§08), as
+ * `GET /api/diet/supplements/` answers it.
+ *
+ * ONLY `name` IS ANSWERED FOR CERTAIN. Everything else is nullable because
+ * somebody who knows they take magnesium and not the dose has to be able to
+ * write it down — §05's "żadne pole nie blokuje zapisu", applied to this form.
+ *
+ * `endDate` null means **bezterminowo**, the artboard's own wording for the
+ * vitamin D row, rather than an unanswered question. `utils/supplements.ts` is
+ * what turns the two dates into the period line ("od 12 marca, bezterminowo");
+ * the wording lives there and not on the wire, because a Polish declension in
+ * two places is two places free to drift.
+ *
+ * `takenToday` is the checkbox, and it is the *only* thing this shape says about
+ * whether a dose was taken. There is no count, no streak and no adherence
+ * figure — nor a "not taken" for any day, because unticking deletes the row and
+ * nothing in this app stores that somebody missed a medicine. That absence is
+ * the design: a "took 3 of 5" on the screen a patient opens every morning is
+ * exactly the kind of score this module is built without.
+ *
+ * `reminderEnabled` travels although **nothing sends a reminder** — this
+ * deployment has no push and no mail. It is the patient's answer to a question
+ * the form asks, kept so the day a scheduler exists it reads a column rather
+ * than asking everybody again, and the screen says out loud that nothing is
+ * sent yet.
+ */
+export interface Supplement {
+  id: string
+  name: string
+  dose: string | null
+  /** 'raz dziennie', 'wg zaleceń lekarza' — free text, not a vocabulary. */
+  frequency: string | null
+  /** 'HH:MM', or null for a preparation taken at no fixed hour. */
+  hour: string | null
+  /** 'YYYY-MM-DD'. */
+  startDate: string | null
+  /** 'YYYY-MM-DD', or null for "bezterminowo". */
+  endDate: string | null
+  reminderEnabled: boolean
+  takenToday: boolean
+}
+
+/** What the "+ Dodaj suplement lub lek" form submits, and what an edit submits.
+ *
+ *  Same shape minus the two things the server owns: the id, and whether it was
+ *  ticked off today (which is its own endpoint, because it is an act rather than
+ *  a property of the row). */
+export interface SupplementInput {
+  name: string
+  dose: string | null
+  frequency: string | null
+  hour: string | null
+  startDate: string | null
+  endDate: string | null
+  reminderEnabled: boolean
 }

@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import HeaderMenu from '../components/HeaderMenu'
-import { emptyDietDay, fetchHydration } from '../api/diet'
+import { emptyDietDay, fetchDietDay, fetchHydration } from '../api/diet'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
 import { formatGlasses, pluralGlasses } from '../utils/drinks'
+import { pluralMeals } from '../utils/meals'
 import type { DietDay, HydrationDay } from '../types/diet'
 import { ROUTES } from '../routes'
 import './dietHome.css'
@@ -20,13 +21,14 @@ import './dietHome.css'
  * and none of those is missing by accident — §04 of the mockups says the scope
  * out loud. Do not "complete" this screen with them.
  *
- * WHAT IS BUILT HERE is the empty day: the state a patient meets before the
- * first meal of the day, which is also — until the module has a backend — the
- * only state that can be true. See `api/diet.ts` for why the screen renders that
- * rather than asking a URL which does not exist. §02 is titled "dwa stany dnia";
- * the second one is in a part of the mockups that could not be read from the
- * canvas viewer, so it is deliberately **not** guessed at here (see the note on
- * `StartedDayCard`).
+ * BOTH STATES ARE REAL NOW. §02 is titled "dwa stany dnia", and until
+ * `diet_meal` existed only the first one could be: nothing wrote a meal, so
+ * `emptyDietDay()` was the true answer rather than a placeholder. The screen
+ * reads `GET /api/diet/today/` — the meal count and the food diary's own streak
+ * — so a patient with meals written meets `StartedDayCard`. What that card
+ * *looks* like is still not from the mockups: its artboard is in the part of
+ * the document the canvas viewer would not scroll to, so it says the one thing
+ * a meal count supports and no more (see the note on it).
  *
  * IT REUSES THE PSYCHOTHERAPY MODULE WHERE THE MOCKUP DOES. The header, the
  * greeting block with its streak and the closing disclaimer are the same shapes
@@ -79,19 +81,18 @@ function TodayCard({ day }: { day: DietDay }) {
  *
  * §02 of the mockups is "Strona główna modułu — dwa stany dnia" and this is the
  * second one; its artboard is in the part of the document the canvas viewer
- * would not scroll to. Nothing today can reach this branch (`emptyDietDay` is
- * the only producer of a `DietDay`), so the choice is between leaving the
- * component blind to its own data and saying the one thing the count supports.
- * It says that. Replace it from the mockup — do not extend it from here.
+ * would not scroll to. This branch is reachable now (`/api/diet/today/` answers
+ * with a real count), which makes replacing it from §07's own artboard the next
+ * thing to do here — the mockup draws an axis of meals with hours, descriptions
+ * and an emotion dot, and none of that is guessed at below. Replace it from the
+ * mockup; do not extend it from here.
  */
 function StartedDayCard({ day }: { day: DietDay }) {
   const navigate = useNavigate()
-  const meals = day.mealCount === 1 ? '1 posiłek' : `${day.mealCount} posiłki`
-
   return (
     <section className="diet-card diet-today" aria-labelledby="diet-today-heading">
       <p className="diet-eyebrow">DZISIEJSZY DZIENNICZEK</p>
-      <h2 id="diet-today-heading">Dzisiaj zapisane: {meals}</h2>
+      <h2 id="diet-today-heading">Dzisiaj zapisane: {pluralMeals(day.mealCount)}</h2>
       <button
         type="button"
         className="diet-primary-button"
@@ -120,11 +121,12 @@ function StartedDayCard({ day }: { day: DietDay }) {
  * counters are not computed a second time either.
  *
  * A FAILED LOAD SAYS NOTHING AT ALL, which is the one place this card differs
- * from every list screen in the app. The rest of this page needs no network (the
- * food diary has no backend), so a failure here must not put "Nie udało się
- * wczytać" over a screen that is otherwise fine — and unlike the technique
- * catalogue, silence omits nothing a patient could act on: the hydration screen
- * is one tap away in the menu and says so itself.
+ * from every list screen in the app. Nothing on this screen depends on it — the
+ * meal count above comes from its own request and the disclaimer below needs no
+ * network — so a failure here must not put "Nie udało się wczytać" over a page
+ * that is otherwise fine; and unlike the technique catalogue, silence omits
+ * nothing a patient could act on: the hydration screen is one tap away in the
+ * menu and says so itself.
  *
  * The bar is `aria-hidden`: "0 z 6 szklanek" is already on screen as text, and a
  * progressbar role next to it makes a screen reader say the same thing twice.
@@ -155,14 +157,32 @@ function HydrationCard({ day }: { day: HydrationDay }) {
 function DietHome() {
   const { user } = useAuth()
   const firstName = user?.firstName ?? ''
-  const day = emptyDietDay()
-  // The one thing on this screen that is real. Null until it answers, and null
-  // for good if it does not — see HydrationCard on why that is silence rather
-  // than an error box.
+
+  /**
+   * Today's meals and the module's own streak.
+   *
+   * `emptyDietDay()` is the *starting* value rather than the answer: it gives
+   * the screen a shape to draw while the request is in flight, so nothing here
+   * branches on null. A failure leaves it in place, which is the same judgement
+   * `HydrationCard` documents below — the rest of this screen is fine, and a
+   * "nie udało się wczytać" over an inviting empty day would be worse than a
+   * count of zero that corrects itself on the next load.
+   */
+  const [day, setDay] = useState<DietDay>(() => emptyDietDay())
+  // The same again for the water figure. Null until it answers, and null for
+  // good if it does not — see HydrationCard on why that is silence rather than
+  // an error box.
   const [hydration, setHydration] = useState<HydrationDay | null>(null)
 
   useEffect(() => {
     let cancelled = false
+    fetchDietDay()
+      .then((loaded) => {
+        if (!cancelled) setDay(loaded)
+      })
+      .catch(() => {
+        /* Deliberately nothing — the empty day stays. */
+      })
     fetchHydration()
       .then((loaded) => {
         if (!cancelled) setHydration(loaded)

@@ -389,6 +389,127 @@ CREATE TABLE IF NOT EXISTS hydration (
 );
 
 -- ----------------------------
+-- DIET_MEAL
+-- The diet module's food diary (mockups §04-§07). A row per meal; a day is the
+-- group of them, and there is deliberately no diet_day table -- a day has
+-- nothing of its own to store that is not derivable from its meals.
+--
+-- §04 states the module's scope outright: no product search and no numeric
+-- field, a photo and a description being the only two sources of a meal's
+-- content. So there is no weight, no portion and no calorie column here, and
+-- that is a decision rather than a gap. The photo is not here yet either: it
+-- would be the first file this deployment ever stored, and storage, retention
+-- and the consent covering it are all unanswered.
+--
+-- Mirrors core/migrations/0016_diet_meals_supplements.py.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS diet_meal (
+    id_meal UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Logical relation:
+    -- diet_meal.id_medical -> user_db.patient.id_medical
+    id_medical UUID NOT NULL,
+
+    -- The calendar day this meal belongs to, in settings.TIME_ZONE
+    -- (Europe/Warsaw) -- not the UTC date of created_at. core/days.py is where
+    -- that boundary is decided.
+    entry_date DATE NOT NULL,
+
+    -- One of core.meals.MEAL_KINDS, the Polish name as written, or NULL for a
+    -- meal saved without saying which one it was. Unconstrained on purpose,
+    -- with the same caveat as diary.time_of_day: the only thing refusing an
+    -- unknown value is the API serializer.
+    kind TEXT,
+
+    -- The hour the mockups label a meal with ("Przekąska · 16:20"). NULL is an
+    -- hour not given, not a midnight.
+    eaten_at TIME,
+
+    -- What the patient typed. '' rather than NULL for a meal saved without a
+    -- description: the field was on screen and left empty, so there is no third
+    -- state to tell apart (§05: no field blocks a save).
+    description TEXT NOT NULL DEFAULT '',
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ----------------------------
+-- SUPPLEMENT
+-- "Suplementy i leki" (mockups §08): a list with a dose, a frequency, an hour
+-- and start/end dates. Only `name` is required -- somebody who knows they take
+-- magnesium and not the dose has to be able to write it down.
+--
+-- end_date NULL means 'bezterminowo', the artboard's own wording, rather than
+-- an unanswered question. There is no third column for its "wg zaleceń
+-- lekarza" variant: `frequency` is free text and that is where it goes.
+--
+-- reminder_enabled is stored although nothing sends a reminder -- this
+-- deployment has no push and no mail. It is the patient's answer to a question
+-- the screen asks, and the screen says out loud that nothing is sent yet.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS supplement (
+    id_supplement UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Logical relation:
+    -- supplement.id_medical -> user_db.patient.id_medical
+    id_medical UUID NOT NULL,
+
+    name TEXT NOT NULL,
+
+    -- '2000 IU', '200 mg' -- free text, deliberately: a unit picker would be a
+    -- dictionary to maintain for a line nothing computes from.
+    dose TEXT,
+
+    -- 'raz dziennie', 'wg zaleceń lekarza'.
+    frequency TEXT,
+
+    -- The hour it is meant to be taken at, which is what a reminder would fire
+    -- on. NULL for a preparation with no fixed hour.
+    hour TIME,
+
+    start_date DATE,
+    end_date DATE,
+
+    reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ----------------------------
+-- SUPPLEMENT_INTAKE
+-- "Odhacz, kiedy weźmiesz": one tick, for one preparation, on one day.
+--
+-- A row rather than a boolean on `supplement`, for the same reason hydration
+-- stores a row per serving: a column would be a running value two taps can
+-- race, it could not be undone per day, and it could not answer "did I take it
+-- on Tuesday" at all. The unique constraint makes a double-tapped checkbox one
+-- row instead of two.
+--
+-- An absent row is NOT a record of a missed dose. Unticking deletes, and
+-- nothing in this app stores that somebody did not take a medicine -- that
+-- would be the column an adherence score gets built from.
+--
+-- id_supplement is a real FOREIGN KEY, unlike every id_medical in this
+-- database: both tables live in medical_db, so Postgres can enforce it. The
+-- pseudonymized, application-only join is the one that crosses databases.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS supplement_intake (
+    id_intake UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    id_supplement UUID NOT NULL REFERENCES supplement (id_supplement) ON DELETE CASCADE,
+
+    -- The calendar day it was taken on, in settings.TIME_ZONE. Only today is
+    -- tickable; the API is what decides which day that is.
+    entry_date DATE NOT NULL,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_supplement_intake_day UNIQUE (id_supplement, entry_date)
+);
+
+-- ----------------------------
 -- RAPORT
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS raport (
@@ -474,3 +595,12 @@ CREATE INDEX IF NOT EXISTS idx_technique_author_id_specjalist
 -- Every hydration query is "this patient, these seven days".
 CREATE INDEX IF NOT EXISTS idx_hydration_patient_day
     ON hydration (id_medical, entry_date);
+
+-- The food diary is read a day at a time and grouped by day, always for one
+-- patient.
+CREATE INDEX IF NOT EXISTS idx_diet_meal_patient_day
+    ON diet_meal (id_medical, entry_date);
+
+-- The supplement list is always read whole, for one patient.
+CREATE INDEX IF NOT EXISTS idx_supplement_patient
+    ON supplement (id_medical);

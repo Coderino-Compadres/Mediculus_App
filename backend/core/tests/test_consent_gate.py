@@ -36,7 +36,10 @@ PASSWORD = 'TajneHaslo123'
 #:
 #: Built as a list rather than checked endpoint by endpoint so that adding a URL
 #: to core/urls.py and forgetting the gate shows up here as a missing entry.
-def all_urls(diary_id, report_id, invitation_id, patient_id=None, hydration_id=None):
+def all_urls(
+    diary_id, report_id, invitation_id, patient_id=None, hydration_id=None,
+    supplement_id=None,
+):
     patient_id = patient_id or invitation_id
     return [
         ('get', reverse('core:me')),
@@ -61,6 +64,16 @@ def all_urls(diary_id, report_id, invitation_id, patient_id=None, hydration_id=N
         ('post', reverse('core:diet-hydration')),
         ('delete', reverse(
             'core:diet-hydration-entry', args=[hydration_id or uuid.uuid4()])),
+        ('get', reverse('core:diet-today')),
+        ('get', reverse('core:diet-meals')),
+        ('get', reverse('core:diet-supplements')),
+        ('post', reverse('core:diet-supplements')),
+        ('put', reverse('core:diet-supplement', args=[supplement_id or uuid.uuid4()])),
+        ('delete', reverse('core:diet-supplement', args=[supplement_id or uuid.uuid4()])),
+        ('post', reverse(
+            'core:diet-supplement-intake', args=[supplement_id or uuid.uuid4()])),
+        ('delete', reverse(
+            'core:diet-supplement-intake', args=[supplement_id or uuid.uuid4()])),
         ('get', reverse('core:report-list')),
         ('get', reverse('core:report-detail', args=[report_id])),
         ('get', reverse('core:report-pdf', args=[report_id])),

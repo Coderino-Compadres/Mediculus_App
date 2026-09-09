@@ -5,7 +5,7 @@ import { renderWithProviders, TEST_USER } from '../test/render'
 import DietHome from './DietHome'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
 import { ROUTES } from '../routes'
-import type { HydrationDay } from '../types/diet'
+import type { DietDay, HydrationDay } from '../types/diet'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -13,14 +13,24 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => navigate }
 })
 
-/** The one thing on this screen that talks to a server. `emptyDietDay` stays
- *  real — it is still what the rest of the page renders, and mocking it would
- *  hide the fact that nothing writes a meal yet. */
+/** Both requests this screen makes. `emptyDietDay` stays real: it is the value
+ *  the screen starts from and falls back to, and stubbing it would hide the one
+ *  thing worth knowing about a failed load here — that the screen keeps drawing
+ *  an inviting empty day rather than an error box. */
 const fetchHydration = vi.fn<() => Promise<HydrationDay>>()
+const fetchDietDay = vi.fn<() => Promise<DietDay>>()
 vi.mock('../api/diet', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/diet')>()
-  return { ...actual, fetchHydration: () => fetchHydration() }
+  return {
+    ...actual,
+    fetchHydration: () => fetchHydration(),
+    fetchDietDay: () => fetchDietDay(),
+  }
 })
+
+function dietDay(overrides: Partial<DietDay> = {}): DietDay {
+  return { date: '2026-09-09', streakDays: 0, mealCount: 0, ...overrides }
+}
 
 function hydrationDay(overrides: Partial<HydrationDay> = {}): HydrationDay {
   return {
@@ -51,14 +61,18 @@ function hydrationDay(overrides: Partial<HydrationDay> = {}): HydrationDay {
  *
  * The second thing pinned is that nothing on the screen is invented. The mockup
  * is drawn with sample data — a streak of 6, a half-drawn hydration bar — and
- * there is no backend behind any of it. A patient sees zeros, because zeros are
- * what the app can stand behind.
+ * every figure on this screen comes from a request instead: `/api/diet/today/`
+ * for the meal count and the streak, `/api/diet/hydration/` for the water. An
+ * account with an empty diary sees zeros, because zeros are what the app can
+ * stand behind — never the mockup's own sample numbers.
  */
 
 beforeEach(() => {
   navigate.mockReset()
   fetchHydration.mockReset()
   fetchHydration.mockResolvedValue(hydrationDay())
+  fetchDietDay.mockReset()
+  fetchDietDay.mockResolvedValue(dietDay())
 })
 
 describe('the header and the greeting', () => {
@@ -139,6 +153,60 @@ describe('the empty day', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Dodaj posiłek' }))
 
     expect(navigate).toHaveBeenCalledWith(ROUTES.dietMeal)
+  })
+})
+
+describe('the day once it holds a meal', () => {
+  /** §02 is "dwa stany dnia" and this is the second one, reachable since
+   *  `/api/diet/today/` answers with a real count. What it looks like is still
+   *  not from the mockups — the artboard could not be read — so what is pinned
+   *  here is what the count supports and, more importantly, what it must not
+   *  grow into. */
+
+  it('says how many meals today holds, declined in Polish', async () => {
+    fetchDietDay.mockResolvedValue(dietDay({ mealCount: 5 }))
+
+    renderWithProviders(<DietHome />)
+
+    expect(await screen.findByRole('heading', { name: 'Dzisiaj zapisane: 5 posiłków' }))
+      .toBeInTheDocument()
+  })
+
+  it('still offers the one action, and nothing that scores the day', async () => {
+    fetchDietDay.mockResolvedValue(dietDay({ mealCount: 3 }))
+
+    renderWithProviders(<DietHome />)
+    await screen.findByRole('heading', { name: /Dzisiaj zapisane/ })
+
+    expect(screen.getByRole('button', { name: 'Dodaj posiłek' })).toBeInTheDocument()
+    for (const forbidden of [/z 3/, /cel/i, /brakuje/i, /udało się/i, /gratul/i]) {
+      expect(screen.queryByText(forbidden)).toBeNull()
+    }
+  })
+
+  it('shows the diet module\'s own streak, not the psychotherapy one', async () => {
+    /** Two counts, deliberately: whether they should be one is an open question
+     *  for the client, and this screen reads `/api/diet/today/`. */
+    fetchDietDay.mockResolvedValue(dietDay({ mealCount: 1, streakDays: 4 }))
+
+    renderWithProviders(<DietHome />)
+
+    expect(await screen.findByText('4')).toBeInTheDocument()
+    expect(screen.getByText('dni z rzędu')).toBeInTheDocument()
+  })
+
+  it('keeps the inviting empty day when the request fails', async () => {
+    /** A failed load must not put "nie udało się wczytać" over a screen whose
+     *  other half is fine — and an empty day is a state the app can stand
+     *  behind while the next load corrects it. */
+    fetchDietDay.mockRejectedValue(new Error('offline'))
+
+    renderWithProviders(<DietHome />)
+    await waitFor(() => expect(fetchDietDay).toHaveBeenCalled())
+
+    expect(screen.getByRole('heading', { name: 'Jeszcze pusty' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText(/nie udało się/i)).toBeNull()
   })
 })
 
