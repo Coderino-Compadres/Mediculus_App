@@ -5,6 +5,7 @@ import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
 import DietHome from './pages/DietHome'
 import DietJournals from './pages/DietJournals'
+import DietActivitySleep from './pages/DietActivitySleep'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
@@ -383,6 +384,17 @@ function App() {
             element={
               <RequireAuth>
                 <DietJournals />
+              </RequireAuth>
+            }
+          />
+          {/* "Aktywność i sen" (§09), both halves of it — the segmented switch
+              lives inside the screen. A patient screen like the two above, so
+              RequireAuth's defaults keep a guardian and a specialist out. */}
+          <Route
+            path={ROUTES.dietActivitySleep}
+            element={
+              <RequireAuth>
+                <DietActivitySleep />
               </RequireAuth>
             }
           />

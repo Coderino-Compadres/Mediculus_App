@@ -31,6 +31,22 @@ import './dietJournals.css'
  * - nothing here is required: a meal with no kind, no hour or no description is
  *   an ordinary row, because §05's rule is that no field blocks a save.
  *
+ * THE WAY BACK IS AN ARROW IN THE HEADER, which is what both of the client's
+ * mockup sets draw and what pages/DiaryEntry.tsx and pages/JournalDetail.tsx
+ * already do. It used to be a link below the header, which left the app with two
+ * different ways of going back depending on which module you were in — a
+ * difference a patient crossing between them would read as two products. The
+ * *structure* is now shared; the styling is still the module's own (own class
+ * prefix, own stylesheet, tokens from styles/theme.css), because dressing one
+ * screen in another's class names is the mistake styles/panel.css exists to
+ * undo.
+ *
+ * It is a `<Link>` rather than a `<button>`: the arrow's *shape* is what the two
+ * modules share, not its element. A button is for a back control that has to run
+ * something first — pages/DiaryEntry.tsx asks about unsaved changes — and this
+ * screen has nothing to run, so making it a button would drop middle-click,
+ * cmd-click and "copy link address" in exchange for nothing.
+ *
  * WHAT IT BORROWS FROM THE PSYCHOTHERAPY MODULE is the shape of a list screen —
  * seven rows a page, the page in `?page=`, an empty state that invites the first
  * entry. Those are this app's conventions (`hooks/usePagination.ts`) rather than
@@ -113,16 +129,19 @@ function DietJournals() {
   return (
     <div className="diet-journals-page">
       <header className="diet-journals-header">
-        <div>
+        <Link
+          className="diet-journals-back"
+          to={ROUTES.diet}
+          aria-label="Wróć do strony głównej modułu dietetycznego"
+        >
+          ←
+        </Link>
+        <div className="diet-journals-header-titles">
           <p className="diet-journals-module-label">DIETETYKA I PSYCHODIETETYKA</p>
           <h1>Dzienniczki żywieniowe</h1>
         </div>
         <HeaderMenu />
       </header>
-
-      <Link className="diet-journals-back" to={ROUTES.diet}>
-        ← Wróć do strony głównej
-      </Link>
 
       <p className="diet-journals-intro">
         Zapisane posiłki, dzień po dniu. Nic tu nie jest liczone ani oceniane —

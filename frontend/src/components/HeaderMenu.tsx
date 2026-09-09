@@ -59,6 +59,9 @@ const PATIENT_ITEMS: MenuItem[] = [
 const DIET_ITEMS: MenuItem[] = [
   { label: 'Strona główna', to: ROUTES.diet },
   { label: routeTitle(ROUTES.dietJournals), to: ROUTES.dietJournals },
+  // §03's order, minus what does not exist: "Nawodnienie i suplementy" (§08)
+  // sits between these two in the mockup and is not built yet.
+  { label: routeTitle(ROUTES.dietActivitySleep), to: ROUTES.dietActivitySleep },
   { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
   { label: 'Przejdź do części psychoterapeutycznej', to: ROUTES.home },
 ]

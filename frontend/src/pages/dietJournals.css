@@ -27,7 +27,7 @@
 .diet-journals-header {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  gap: 12px;
   position: relative;
 }
 
@@ -47,34 +47,54 @@
   margin: 0;
 }
 
-/* A link in a line of text, so it gets its touch target from a pseudo-element
-   rather than real height — the same technique .journals-back uses, and for the
-   same reason: real height would push the intro paragraph around.
+/* The way back: an arrow at the head of the row, the shape pages/DiaryEntry.tsx
+   and pages/JournalDetail.tsx use — one app, one way of going back. Drawn from
+   this module's own tokens rather than by importing .diary-entry-back.
  *
- * It keeps the column's width and centring from `.diet-journals-page > *`
- * rather than shrink-wrapping: `align-self: flex-start` here put the link
- * against the *page's* left edge instead of the column's, which on a wide
- * screen is 450px away from everything else on the screen. */
+   It dresses an `<a>`, not a `<button>`. The shape is what the two modules
+   share; the element follows what the control does — a button where the back
+   control has to run something first (DiaryEntry's unsaved-changes guard), a
+   link where it just goes somewhere and can therefore be middle-clicked,
+   cmd-clicked and copied. Hence `text-decoration: none` and the explicit
+   centring: an anchor brings an underline and no box of its own.
+ *
+   44px rather than the 40 the psychotherapy screens use: the rest of this module
+   holds to WCAG 2.5.8's 44px target, and copying a shortfall is not the part of
+   the pattern worth sharing. */
 .diet-journals-back {
-  position: relative;
-  display: inline-block;
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-graphite);
+  text-decoration: none;
+  background: var(--color-surface);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.diet-journals-back:hover {
   color: var(--color-sage-hover);
   text-decoration: none;
 }
 
-.diet-journals-back::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  min-height: 44px;
-  transform: translateY(-50%);
+.diet-journals-back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
-.diet-journals-back:hover {
-  text-decoration: underline;
+/* Takes the space between the arrow and the menu, so the title block stays put
+   whatever length the subtitle is. */
+.diet-journals-header-titles {
+  flex-grow: 1;
+  min-width: 0;
 }
 
 /* `margin: 0 auto`, not `margin: 0`. The centring lives on

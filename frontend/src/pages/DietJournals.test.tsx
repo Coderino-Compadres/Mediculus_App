@@ -56,11 +56,19 @@ describe('the screen itself', () => {
       .toBeInTheDocument()
   })
 
-  it('leads back to the module, not to the psychotherapy home', () => {
+  it('leads back to the module through an arrow in the header', () => {
+    /**
+     * An arrow *in the header* rather than a link below it — one app, one way of
+     * going back, and what both mockup sets draw. Still an `<a>` though: the
+     * shape is what the two modules share, the element follows what the control
+     * does, and this screen has no unsaved-changes guard to run (the reason
+     * pages/DiaryEntry.tsx uses a button).
+     */
     renderWithProviders(<DietJournals />)
 
-    expect(screen.getByRole('link', { name: /Wróć do strony głównej/ }))
-      .toHaveAttribute('href', ROUTES.diet)
+    const back = screen.getByRole('link', { name: 'Wróć do strony głównej modułu dietetycznego' })
+    expect(back).toHaveAttribute('href', ROUTES.diet)
+    expect(screen.getByRole('banner')).toContainElement(back)
   })
 
   it('says what the list is, and that it judges nothing', () => {
