@@ -296,6 +296,12 @@ describe('saveTodayEntry', () => {
   })
 
   it('sends an emotion with no intensity as 0 rather than dropping it', async () => {
+    /** Unlike the two sliders, this 0 is forced by the schema: NULL in a
+     *  `mood_scale` column already means "this chip was never picked", so a
+     *  picked-but-unrated chip stored as null would vanish from the entry when
+     *  it is reopened. The cost — it reads as "wcale" and pulls that emotion's
+     *  weekly average down — is a schema question, written up in
+     *  EmotionRatingSerializer. */
     const body = await sentBody(draft({ emotions: [{ emotion: 'Wstyd', intensity: null }] }))
 
     expect(body.emotions).toEqual([{ emotion: 'Wstyd', intensity: 0 }])

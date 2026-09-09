@@ -118,6 +118,15 @@ function toPayload(draft: DiaryEntryDraft) {
     mood: draft.mood,
     emotions: draft.emotions.map((entry) => ({
       emotion: entry.emotion,
+      // 0, not null, and unlike the two sliders above this one is forced by the
+      // schema rather than chosen. NULL in a `mood_scale` column already means
+      // *the chip was never picked* — `_read_ratings` skips NULLs, which is what
+      // redraws the chips as the patient left them — so a picked-but-unrated
+      // chip stored as null would simply vanish the next time the entry is
+      // opened. The cost of the 0 is real (it reads as "wcale" and pulls that
+      // emotion's weekly average down), and paying it beats losing the answer;
+      // recording "picked, unrated" honestly needs somewhere to keep the
+      // picked-set, i.e. a schema change. See EmotionRatingSerializer.
       intensity: entry.intensity ?? 0,
     })),
     energy_level: draft.energyLevel,

@@ -1,0 +1,216 @@
+/* "Dietetyka i psychodietetyka — Strona główna".
+ *
+ * Its own stylesheet rather than a second tenant in home.css: the two module
+ * home screens look alike because the mockup draws them alike, not because one
+ * is the other. Everything here reads styles/theme.css, which is where a value
+ * goes before it goes on a screen.
+ *
+ * Deliberately absent: `text-transform: capitalize` on the date. The four
+ * stylesheets that carry it render "8 września" as "8 Września", and Polish
+ * month names are lowercase. */
+
+.diet-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.diet-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+
+.diet-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* Greeting and streak */
+
+.diet-welcome {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.diet-greeting {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 22px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.diet-date {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}
+
+.diet-streak {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.diet-streak-count {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 24px;
+  color: var(--color-sage);
+  line-height: 1.1;
+}
+
+.diet-streak-label {
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+}
+
+/* Cards */
+
+.diet-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.diet-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.diet-eyebrow {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 8px;
+}
+
+.diet-today-lead {
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 8px 0 20px;
+}
+
+/* The one action on the screen. Sage, like every other primary action in the
+   app (.auth-submit, .today-add-button, .panel-button); full width because on
+   the mockup it fills the card. */
+.diet-primary-button {
+  width: 100%;
+  min-height: 44px;
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  padding: 12px 20px;
+  border-radius: var(--radius-control);
+  border: none;
+  background: var(--color-sage);
+  color: #fff;
+  cursor: pointer;
+}
+
+.diet-primary-button:hover {
+  background: var(--color-sage-hover);
+}
+
+/* Hydration */
+
+.diet-hydration {
+  padding: 20px 24px;
+}
+
+.diet-hydration-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diet-hydration-count {
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-sage);
+  margin: 0;
+  white-space: nowrap;
+}
+
+.diet-hydration-track {
+  height: 6px;
+  margin-top: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--color-divider);
+  overflow: hidden;
+}
+
+.diet-hydration-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-sage-light);
+}
+
+/* "Jak się dziś jadło?" */
+
+.diet-summary p {
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+/* Disclaimer — quiet, as the mockup draws it, rather than the ochre band the
+   psychotherapy home uses. Same sentence, see the component. */
+
+.diet-disclaimer {
+  background: var(--color-surface-quiet);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-tile);
+  padding: 16px 18px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.diet-disclaimer-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  color: var(--color-graphite-muted);
+}
+
+.diet-disclaimer p {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0;
+}

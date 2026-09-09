@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
 import DiaryEntry from './DiaryEntry'
@@ -148,11 +148,87 @@ describe('saving', () => {
     await waitFor(() => expect(mockedSave).toHaveBeenCalledTimes(1))
     expect(mockedSave.mock.calls[0][0]).toMatchObject({
       mood: 'good',
+      // 0, and that one is not the bug below: NULL on a `mood_scale` column
+      // means "chip never picked", so a tapped-but-unrated chip has to carry a
+      // number or it disappears when the entry is reopened. See DiaryEntry.tsx.
       emotions: [{ emotion: 'Spokój', intensity: 0 }],
     })
     // The state is what makes /home say "Zapisano dzisiejszy wpis." — a message
     // rendered here would flash for one frame before the navigation.
     expect(navigate).toHaveBeenCalledWith(ROUTES.home, { state: { savedEntry: true } })
+  })
+
+  it('does not answer a question the patient never touched', async () => {
+    /**
+     * THE BUG THIS PINS. Every question on this form is optional, and the
+     * backend distinguishes "not answered" from "answered zero" — `core/diary.py`
+     * says so in as many words and both columns accept null. The draft started
+     * at `energyLevel: 0` / `tensionLevel: 0`, so an entry that answered the
+     * mood tile and one emotion — the whole form, as far as the patient was
+     * concerned — was saved as *no* energy and *no* tension.
+     *
+     * It was not theoretical: saving one such entry dropped "Średnia energia"
+     * on /home from 5,0 to 2,5, and the same columns feed the weekly report a
+     * therapist reads. Found by clicking through the app, not by a test — which
+     * is why the payload is asserted here rather than the screen.
+     */
+    mockedFetch.mockResolvedValueOnce(null)
+    mockedSave.mockResolvedValueOnce(existingEntry())
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Dobrze' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz wpis' }))
+
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledTimes(1))
+    const draft = mockedSave.mock.calls[0][0]
+
+    expect(draft.energyLevel).toBeNull()
+    expect(draft.tensionLevel).toBeNull()
+  })
+
+  it('does answer it once the slider has been moved', async () => {
+    mockedFetch.mockResolvedValueOnce(null)
+    mockedSave.mockResolvedValueOnce(existingEntry())
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+
+    await openDetails()
+    fireEvent.change(screen.getByLabelText('Poziom energii'), { target: { value: '4' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz wpis' }))
+
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledTimes(1))
+
+    expect(mockedSave.mock.calls[0][0].energyLevel).toBe(4)
+  })
+
+  it('records a deliberate 0, which takes moving the slider away and back', async () => {
+    /**
+     * The edge this fix leaves behind, written down rather than left to be
+     * rediscovered. The slider renders at 0 whether the answer is 0 or absent
+     * (`draft.energyLevel ?? 0`), so dropping it on the 0 it already sits on
+     * fires no change and answers nothing — a patient who means "wyczerpanie"
+     * has to drag off and back, which a real drag does anyway.
+     *
+     * Giving the control a visible "not answered" state is the proper fix and a
+     * question for the client, not for this change: it is the same control the
+     * diet module's four 0-10 sliders will use (§05 of those mockups), so it is
+     * worth settling before that form is built.
+     */
+    mockedFetch.mockResolvedValueOnce(null)
+    mockedSave.mockResolvedValueOnce(existingEntry())
+    renderWithProviders(<DiaryEntry />)
+    await screen.findByRole('heading', { name: 'Nowy wpis' })
+
+    await openDetails()
+    const energy = screen.getByLabelText('Poziom energii')
+    fireEvent.change(energy, { target: { value: '3' } })
+    fireEvent.change(energy, { target: { value: '0' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz wpis' }))
+
+    await waitFor(() => expect(mockedSave).toHaveBeenCalledTimes(1))
+
+    expect(mockedSave.mock.calls[0][0].energyLevel).toBe(0)
   })
 
   it('saves an entry that answers nothing — both questions are optional', async () => {

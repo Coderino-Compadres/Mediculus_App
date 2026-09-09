@@ -165,3 +165,131 @@ describe('HeaderMenu — a guardian account', () => {
     expect(screen.getByRole('link', { name: 'Dzienniczki' })).toBeInTheDocument()
   })
 })
+
+describe('inside the diet module', () => {
+  /**
+   * The menu is the one place on a diet screen that says what the module holds,
+   * so it must not list the other module's screens. It is picked by route
+   * rather than by role, because both modules belong to one account.
+   *
+   * The list itself is provisional — §03 of the mockups ("Menu i przełączanie
+   * modułów") is what settles it — so what is pinned here is the boundary,
+   * not the final set of entries.
+   */
+  const openAt = async (route: string) => {
+    renderWithProviders(<HeaderMenu />, { user: TEST_USER, route })
+    await openMenu()
+  }
+
+  it('offers the diet home rather than the psychotherapy one', async () => {
+    await openAt(ROUTES.diet)
+
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toHaveAttribute(
+      'href', ROUTES.diet,
+    )
+  })
+
+  it('lists none of the psychotherapy screens', async () => {
+    /** The bug this replaced: a patient under a header reading DIETETYKA was
+     *  offered the emotion diary, its reports, its analysis and the DBT
+     *  catalogue. */
+    await openAt(ROUTES.diet)
+
+    for (const href of [
+      ROUTES.journals, ROUTES.reports, ROUTES.analysis,
+      ROUTES.techniques, ROUTES.safetyPlan, ROUTES.diaryEntry,
+    ]) {
+      expect(document.querySelector(`a[href="${href}"]`)).toBeNull()
+    }
+
+    // /home is the one psychotherapy address that stays, and only as the way
+    // back to that module — never as this module's "Strona główna".
+    const toPsychotherapy = document.querySelectorAll(`a[href="${ROUTES.home}"]`)
+
+    expect(toPsychotherapy).toHaveLength(1)
+    expect(toPsychotherapy[0]).toHaveTextContent('Przejdź do części psychoterapeutycznej')
+  })
+
+  it('keeps the way back to the other module', async () => {
+    /** Mirroring the entry the psychotherapy menu already carries in the
+     *  opposite direction — the module switch is what §03 is named after. */
+    await openAt(ROUTES.diet)
+
+    expect(
+      screen.getByRole('link', { name: 'Przejdź do części psychoterapeutycznej' }),
+    ).toHaveAttribute('href', ROUTES.home)
+  })
+
+  it('offers the module\'s own diary history', async () => {
+    await openAt(ROUTES.diet)
+
+    expect(screen.getByRole('link', { name: 'Dzienniczki żywieniowe' })).toHaveAttribute(
+      'href', ROUTES.dietJournals,
+    )
+  })
+
+  it('does not offer the psychotherapy archive under that name', async () => {
+    /** Two screens called "Dzienniczki" in one menu is how a patient ends up
+     *  looking for their meals in the emotion diary. */
+    await openAt(ROUTES.diet)
+
+    expect(screen.queryByRole('link', { name: 'Dzienniczki' })).toBeNull()
+  })
+
+  it('keeps the profile, because one account has one profile', async () => {
+    await openAt(ROUTES.diet)
+
+    expect(screen.getByRole('link', { name: 'Profil' })).toHaveAttribute('href', ROUTES.profile)
+  })
+
+  it('still signs out', async () => {
+    await openAt(ROUTES.diet)
+
+    expect(screen.getByRole('button', { name: 'Wyloguj' })).toBeInTheDocument()
+  })
+
+  it('covers the screens under /diet as well, not just its home', async () => {
+    await openAt(ROUTES.dietMeal)
+
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toHaveAttribute(
+      'href', ROUTES.diet,
+    )
+  })
+
+  it('marks the diet home as the current page when you are on it', async () => {
+    await openAt(ROUTES.diet)
+
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toHaveAttribute(
+      'aria-current', 'page',
+    )
+  })
+
+  it('leaves the psychotherapy menu alone', async () => {
+    /** The regression that matters in the other direction: /home keeps every
+     *  entry it had, including the one that leads into the diet module. */
+    await openAt(ROUTES.home)
+
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toHaveAttribute(
+      'href', ROUTES.home,
+    )
+    expect(screen.getByRole('link', { name: 'Dzienniczki' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Przejdź do części dietetycznej i psychodietetycznej' }),
+    ).toHaveAttribute('href', ROUTES.diet)
+  })
+
+  it('does not hand a specialist the patient menu, whatever the address says', async () => {
+    /** Role is asked first: a specialist who somehow reached /diet is
+     *  redirected by App.tsx, and until that happens the menu must not offer
+     *  them a patient's screens. */
+    renderWithProviders(<HeaderMenu />, {
+      user: { ...TEST_USER, isPatient: false, isSpecialist: true, role: 'specjalista' },
+      route: ROUTES.diet,
+    })
+    await openMenu()
+
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toHaveAttribute(
+      'href', ROUTES.specialistHome,
+    )
+  })
+})
