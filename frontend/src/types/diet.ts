@@ -1,4 +1,6 @@
+import type { FeelingAfter } from '../utils/activity'
 import type { DrinkName } from '../utils/drinks'
+import type { SleepQuality, WakeFeeling } from '../utils/sleep'
 
 /**
  * The diet module's shapes, as its four screens read them.
@@ -160,6 +162,94 @@ export interface DietJournalDay {
   date: string
   /** Newest first within the day, as the API will send them. */
   meals: DietMeal[]
+}
+
+/**
+ * One activity somebody wrote down.
+ *
+ * WHAT IS NOT IN THIS TYPE, and will not be: calories burnt, intensity, pace,
+ * heart rate, a target and a streak. The module records what a patient chose to
+ * note, not what a device measured — synchronising with a watch or a step
+ * counter is outside the project's scope, so there is nothing here that could
+ * only be filled in by one. What is left is the mockups' own three questions:
+ * what it was, how long it lasted, and how the person felt afterwards.
+ *
+ * Every field but the identity ones is nullable, because §05's rule holds
+ * across the whole module: no field blocks a save. An activity saved with
+ * nothing but an hour is an ordinary entry.
+ */
+export interface DietActivityEntry {
+  id: string
+  /**
+   * 'YYYY-MM-DD' — the calendar day the activity belongs to, in the reader's
+   * own zone (`utils/days.ts`). Editable only while it is today; see
+   * `utils/dayLock.ts`.
+   */
+  date: string
+  /** 'HH:MM', when the entry was written. Shown at the head of a row. */
+  time: string
+  /**
+   * One of `ACTIVITY_KINDS`, or `ACTIVITY_KIND_OTHER` with the free text in
+   * `kindOther`. The two collapse into one answer — read them through
+   * `activityKindLabel`, never separately, the same way the diary's place chip
+   * and its "Inne" box collapse into one column.
+   */
+  kind: string | null
+  /** What was typed under "Inne". '' whenever `kind` is not that chip. */
+  kindOther: string
+  /** Minutes. Null when the question went unanswered. */
+  durationMinutes: number | null
+  /** How the person felt *after* — not how hard it was. See utils/activity.ts. */
+  feelingAfter: FeelingAfter | null
+}
+
+/**
+ * One day of the activity diary: what was done, and the step count for the day.
+ *
+ * Steps sit here rather than on an entry because they are a property of the day
+ * — one number somebody copies off their phone once, not something attached to
+ * the walk they described. Null until they do, and null is not zero: "nobody
+ * typed a step count" and "this person took no steps" are different claims, and
+ * the module is only ever entitled to the first.
+ */
+export interface DietActivityDay {
+  /** 'YYYY-MM-DD' in the reader's own calendar day. */
+  date: string
+  /** Newest first, as the API will send them. */
+  entries: DietActivityEntry[]
+  /** Typed by hand, whenever the patient feels like it. No target, no history. */
+  steps: number | null
+}
+
+/**
+ * One night of the sleep diary.
+ *
+ * WHICH NIGHT: the one that *ended* on the morning of `date`. An entry filled in
+ * on Friday morning describes the night from Thursday to Friday and carries
+ * Friday's date. Nothing in the data itself says so — a row holding 23:40 and
+ * 06:50 reads equally well as either day, and the two answers put it in
+ * different weeks — so the rule is stated here, at the field, and argued in
+ * `utils/sleep.ts`.
+ *
+ * The length of the night is deliberately absent: it is derived from the two
+ * hours by `sleepDurationMinutes`, and storing it as well would be a second
+ * copy free to disagree with them. It is the only value this module computes.
+ */
+export interface DietSleepNight {
+  /** 'YYYY-MM-DD' — the morning the night ended on. */
+  date: string
+  /** 'HH:MM' in the patient's own clock. Null when unanswered. */
+  fellAsleepAt: string | null
+  /** 'HH:MM'. Null when unanswered. Earlier than `fellAsleepAt` is the ordinary
+   *  case, not an error — the night crosses midnight. */
+  wokeUpAt: string | null
+  /** 1-5, or null when the question went unanswered. */
+  quality: SleepQuality | null
+  /** How many times the night was interrupted. Zero is a real answer here — it
+   *  is what the control starts at and what "an unbroken night" means — so
+   *  unlike the fields above it is not nullable. */
+  awakenings: number
+  wakeFeeling: WakeFeeling | null
 }
 
 /**

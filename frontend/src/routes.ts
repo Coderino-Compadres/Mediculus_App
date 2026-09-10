@@ -54,6 +54,12 @@ export const ROUTES = {
   /** "Suplementy i leki" — §08's second half, a screen of its own because the
    *  mockups make it one. pages/DietSupplements.tsx. */
   dietSupplements: '/diet/supplements',
+  /** "Aktywność fizyczna i sen" (§09) — pages/DietActivitySleep.tsx. One route
+   *  for both of §09's artboards: §03 gives the module's menu a single entry,
+   *  and §09's own note says the two are reached from it, "w prototypie" by
+   *  switching through the menu. A segmented switch on the screen is what that
+   *  means in an app you cannot navigate away from and back. */
+  dietActivitySleep: '/diet/activity-sleep',
 } as const
 
 /** Fills in ROUTES.journalDetail's `:id` param — use instead of building the path by hand. */
@@ -132,6 +138,8 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.dietJournals]: 'Dzienniczki żywieniowe',
   [ROUTES.dietHydration]: 'Nawodnienie',
   [ROUTES.dietSupplements]: 'Suplementy i leki',
+  /* §03's own name for the menu entry, kept verbatim. */
+  [ROUTES.dietActivitySleep]: 'Aktywność i sen',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',

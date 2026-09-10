@@ -64,6 +64,18 @@
   /* RGB triplets, so a tint change is one edit. */
   --shadow-tint: 44, 56, 51; /* --color-graphite */
   --sage-tint: 79, 122, 100; /* --color-sage */
+  --ochre-tint: 224, 180, 92; /* --color-ochre */
+
+  /* The chosen answer, in the diet module's own accent. Sage stays the colour
+     of an *action* (a submit button, a link out of the screen) and ochre marks
+     a *state* — the chip you picked, the hour you entered. Two roles rather
+     than two palettes: on a form that is nothing but chips, painting every
+     selection sage would make the screen look like eleven submit buttons.
+     Named here rather than mixed per screen, because the activity chips, the
+     sleep-quality scale and the wake-feeling chips are three components that
+     have to agree on what "selected" looks like. */
+  --color-ochre-soft: rgba(var(--ochre-tint), 0.28);
+  --color-ochre-edge: rgba(var(--ochre-tint), 0.9);
 
   /* Edges. Three weights and deliberately no fourth: a rule *inside* a card,
      the edge of a control or a quiet panel, and the one weight that still has

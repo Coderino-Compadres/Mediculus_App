@@ -1,0 +1,80 @@
+/* The shared minus/value/plus control.
+ *
+ * Its own stylesheet rather than a section of the screen that first needed it:
+ * the component is app-wide (nothing about it is dietary), and a control styled
+ * from pages/dietActivitySleep.css would arrive at its second caller invisible.
+ * Everything below reads styles/theme.css. */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stepper-label {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite);
+}
+
+.stepper-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 44px square, per WCAG 2.5.8 and both platforms' own guidance — these two sit
+   next to each other with a number between them, which is exactly the
+   arrangement that punishes a small target. */
+.stepper-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.stepper-button:hover {
+  border-color: var(--color-border-strong);
+}
+
+.stepper-button:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+/* At the control's floor or ceiling. Still focusable and still announced — see
+   the note in Stepper.tsx about why this is not the `disabled` attribute. */
+.stepper-button[aria-disabled='true'] {
+  color: var(--color-graphite-muted);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.stepper-button[aria-disabled='true']:hover {
+  border-color: var(--color-border);
+}
+
+/* The number itself. A fixed minimum width so the two buttons do not shuffle
+   sideways as the value grows from 5 to 120 — a target that moves under the
+   finger repeating a tap is the one defect this control can have. */
+.stepper-value {
+  min-width: 72px;
+  text-align: center;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  font-variant-numeric: tabular-nums;
+}

@@ -71,8 +71,10 @@ const PATIENT_ITEMS: MenuItem[] = [
 const DIET_ITEMS: MenuItem[] = [
   { label: 'Strona główna', to: ROUTES.diet },
   { label: routeTitle(ROUTES.dietJournals), to: ROUTES.dietJournals },
+  // §03's order: §08's two halves, then §09.
   { label: routeTitle(ROUTES.dietHydration), to: ROUTES.dietHydration },
   { label: routeTitle(ROUTES.dietSupplements), to: ROUTES.dietSupplements },
+  { label: routeTitle(ROUTES.dietActivitySleep), to: ROUTES.dietActivitySleep },
   { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
   { label: 'Przejdź do części psychoterapeutycznej', to: ROUTES.home },
 ]

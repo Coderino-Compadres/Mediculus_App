@@ -1,0 +1,558 @@
+/* "Aktywność i sen".
+ *
+ * Its own stylesheet on the same terms as dietHome.css and dietJournals.css:
+ * the diet module dresses itself from styles/theme.css rather than wearing
+ * another screen's class names. In particular the read-only badge below is a
+ * local class rather than journals.css's `.journal-readonly-badge` — the two
+ * screens agree on the *word* (utils/dayLock.ts holds it once) and each draws
+ * it from the tokens, which is the arrangement styles/panel.css exists to
+ * restore everywhere it was got wrong.
+ *
+ * Colour roles, and they are consistent with the rest of the module: sage is an
+ * action (the submit button, the way back), ochre is a chosen state (a selected
+ * chip, a grade on the scale, the hours somebody entered), lavender is the page
+ * and the one informational panel. No fourth colour is introduced here — the
+ * mockup tints the sleep-quality row blue, which belongs to no palette this app
+ * has.
+ *
+ * And, like both of its neighbours, no `text-transform: capitalize` on the
+ * date: Polish month and weekday names are lowercase. */
+
+.diet-as-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-as-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-as-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+}
+
+.diet-as-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-as-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.diet-as-subtitle {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}
+
+/* The way back: an arrow at the head of the row, the shape pages/DiaryEntry.tsx
+   and pages/JournalDetail.tsx use — one app, one way of going back. Drawn from
+   this module's own tokens rather than by importing .diary-entry-back.
+ *
+   It dresses an `<a>`, not a `<button>`. The shape is what the two modules
+   share; the element follows what the control does — a button where the back
+   control has to run something first (DiaryEntry's unsaved-changes guard), a
+   link where it just goes somewhere and can therefore be middle-clicked,
+   cmd-clicked and copied. Hence `text-decoration: none` and the explicit
+   centring: an anchor brings an underline and no box of its own.
+ *
+   44px rather than the 40 the psychotherapy screens use: the rest of this module
+   holds to WCAG 2.5.8's 44px target, and copying a shortfall is not the part of
+   the pattern worth sharing. */
+.diet-as-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-graphite);
+  text-decoration: none;
+  background: var(--color-surface);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.diet-as-back:hover {
+  color: var(--color-sage-hover);
+  text-decoration: none;
+}
+
+.diet-as-back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Takes the space between the arrow and the menu, so the title block stays put
+   whatever length the subtitle is. */
+.diet-as-header-titles {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* The segmented switch */
+
+/* The admission that nothing here is stored yet (NOT_STORED_NOTE). Quiet, like
+   the day-lock notice it sits above and contradicts, rather than an alert box:
+   it is a standing fact about the screen, not something that just went wrong.
+   The width and centring come from `.diet-as-page > *`. */
+.diet-as-not-stored {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+.diet-as-switch {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--color-surface-quiet);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+}
+
+.diet-as-switch-tab {
+  flex: 1;
+  min-height: 44px;
+  padding: 10px 16px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+/* Sage, not ochre: picking a half of the screen is navigation, and navigation
+   is an action. The ochre states below are answers the patient gave. */
+.diet-as-switch-tab-active {
+  background: var(--color-sage);
+  color: #fff;
+}
+
+.diet-as-switch-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Panels and cards */
+
+.diet-as-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-as-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.diet-as-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 17px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* The day lock and the intro line — the app speaking about its own rules,
+   quieter than anything the patient wrote. */
+.diet-as-lock,
+.diet-as-intro {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+.diet-as-readonly-badge {
+  display: inline-block;
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--color-lavender);
+  color: var(--color-graphite-muted);
+}
+
+/* Chip groups */
+
+.diet-as-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diet-as-group-label {
+  display: block;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-graphite);
+}
+
+.diet-as-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.diet-as-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 16px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+/* The 1-5 scale. Same chip, squared off to a fixed width so five digits read as
+   a scale rather than as five buttons of different sizes. */
+.diet-as-scale-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  min-height: 44px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+/* The chosen answer. Ochre fill under graphite type rather than white type on
+   ochre: --color-ochre is a background weight (~1.9:1 against white), so a
+   selected chip written in white would be the one unreadable thing on the
+   screen. The tint plus the full-strength edge is what carries the state. */
+.diet-as-chip-selected {
+  background: var(--color-ochre-soft);
+  border-color: var(--color-ochre-edge);
+  color: var(--color-graphite);
+  font-weight: var(--font-weight-semibold);
+}
+
+.diet-as-chip:focus-visible,
+.diet-as-scale-button:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+.diet-as-chip:disabled,
+.diet-as-scale-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* Fields */
+
+.diet-as-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diet-as-field label {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+}
+
+.diet-as-field input {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.diet-as-field input:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+/* The duration control plus its own way back to "unanswered". */
+.diet-as-duration-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+/* "Nie podaję czasu" — quieter than anything it sits under, because taking an
+   answer back is a smaller act than giving one. A link in a line of text as far
+   as weight goes, so its touch target comes from a pseudo-element rather than
+   real height: 44px of box here would push the chip row below it around. The
+   same technique .diet-as-back used to use when it was a link in text. */
+.diet-as-quiet-button {
+  position: relative;
+  padding: 0;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-sage-hover);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.diet-as-quiet-button::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  min-height: 44px;
+  transform: translateY(-50%);
+}
+
+.diet-as-quiet-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.diet-as-field-inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diet-as-field-inline label {
+  font-size: 14px;
+  color: var(--color-graphite);
+}
+
+.diet-as-steps-input {
+  width: 120px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.diet-as-hint {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: -8px 0 0;
+}
+
+/* Sleep hours and the one computed value */
+
+.diet-as-hours {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* The hours are an answer the patient gave, so they carry the module's state
+   colour — the mockup highlights them the same way.
+ *
+ * Scoped under .diet-as-field rather than winning with !important: the rule it
+ * has to beat is `.diet-as-field input`, which is the same specificity as a bare
+ * class and would be decided by source order. Two classes settle it outright.
+ * The same trap CLAUDE.md records between `.panel-empty` and `.journals-page`. */
+.diet-as-field .diet-as-time-input {
+  font-weight: var(--font-weight-semibold);
+  border-color: var(--color-ochre-edge);
+  background: var(--color-ochre-soft);
+}
+
+.diet-as-duration {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 14px 18px;
+  background: var(--color-lavender);
+  border-radius: var(--radius-control);
+}
+
+.diet-as-duration-label {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+}
+
+.diet-as-duration-value {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 20px;
+  color: var(--color-graphite);
+}
+
+.diet-as-duration-empty {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+}
+
+/* Two hours that read the same. --color-caution, not --color-error: this is
+   something to put right when there is a moment, not a failure — nothing is
+   blocked and the entry saves either way. The readable ochre is exactly what
+   that token exists for, and it keeps the note inside the module's palette
+   instead of introducing the diary's red. */
+.diet-as-duration-note {
+  font-size: 13px;
+  color: var(--color-caution);
+  line-height: 1.5;
+}
+
+/* The activity list */
+
+.diet-as-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* One activity. A rule on the left and nothing else — a card inside a card
+   reads as two levels of importance where there is one. The same treatment
+   .diet-journal-meal gets on the history screen. */
+.diet-as-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-left: 2px solid var(--color-divider);
+  padding-left: 14px;
+}
+
+.diet-as-entry-time {
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-caution);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* Readable ochre, not --color-ochre: this is type, and the background weight
+     would not pass as text. That is exactly what --color-caution exists for. */
+}
+
+.diet-as-entry-body {
+  flex: 1;
+}
+
+.diet-as-entry-title {
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* An activity saved without either detail: same size, quieter and italic, so it
+   reads as the app speaking rather than as the patient's own words. */
+.diet-as-entry-title-empty {
+  font-size: 14px;
+  font-style: italic;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.diet-as-entry-meta {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 2px 0 0;
+}
+
+.diet-as-empty {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Submit */
+
+.diet-as-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 12px 24px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: #fff;
+  background: var(--color-sage);
+  border: none;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.diet-as-submit:hover {
+  background: var(--color-sage-hover);
+}
+
+.diet-as-submit:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.diet-as-submit:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.diet-as-saved {
+  font-size: 13px;
+  color: var(--color-sage-hover);
+  margin: -8px 0 0;
+}
+
+@media (max-width: 420px) {
+  .diet-as-hours {
+    grid-template-columns: 1fr;
+  }
+}
