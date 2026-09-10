@@ -54,12 +54,19 @@
 
 import { apiRequest } from './client'
 import { toIsoDate } from '../utils/days'
+import { WATER } from '../utils/drinks'
+import type { DrinkName } from '../utils/drinks'
 import type {
   DietActivityDay,
   DietActivityEntry,
   DietDay,
   DietJournalDay,
   DietSleepNight,
+  HydrationDay,
+  HydrationDayTotal,
+  HydrationEntry,
+  Supplement,
+  SupplementInput,
 } from '../types/diet'
 
 /**

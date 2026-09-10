@@ -1,4 +1,5 @@
 import type { FeelingAfter } from '../utils/activity'
+import type { DrinkName } from '../utils/drinks'
 import type { SleepQuality, WakeFeeling } from '../utils/sleep'
 
 /**
@@ -249,4 +250,62 @@ export interface DietSleepNight {
    *  unlike the fields above it is not nullable. */
   awakenings: number
   wakeFeeling: WakeFeeling | null
+}
+
+/**
+ * One preparation on "Suplementy i leki" (§08), as
+ * `GET /api/diet/supplements/` answers it.
+ *
+ * ONLY `name` IS ANSWERED FOR CERTAIN. Everything else is nullable because
+ * somebody who knows they take magnesium and not the dose has to be able to
+ * write it down — §05's "żadne pole nie blokuje zapisu", applied to this form.
+ *
+ * `endDate` null means **bezterminowo**, the artboard's own wording for the
+ * vitamin D row, rather than an unanswered question. `utils/supplements.ts` is
+ * what turns the two dates into the period line ("od 12 marca, bezterminowo");
+ * the wording lives there and not on the wire, because a Polish declension in
+ * two places is two places free to drift.
+ *
+ * `takenToday` is the checkbox, and it is the *only* thing this shape says about
+ * whether a dose was taken. There is no count, no streak and no adherence
+ * figure — nor a "not taken" for any day, because unticking deletes the row and
+ * nothing in this app stores that somebody missed a medicine. That absence is
+ * the design: a "took 3 of 5" on the screen a patient opens every morning is
+ * exactly the kind of score this module is built without.
+ *
+ * `reminderEnabled` travels although **nothing sends a reminder** — this
+ * deployment has no push and no mail. It is the patient's answer to a question
+ * the form asks, kept so the day a scheduler exists it reads a column rather
+ * than asking everybody again, and the screen says out loud that nothing is
+ * sent yet.
+ */
+export interface Supplement {
+  id: string
+  name: string
+  dose: string | null
+  /** 'raz dziennie', 'wg zaleceń lekarza' — free text, not a vocabulary. */
+  frequency: string | null
+  /** 'HH:MM', or null for a preparation taken at no fixed hour. */
+  hour: string | null
+  /** 'YYYY-MM-DD'. */
+  startDate: string | null
+  /** 'YYYY-MM-DD', or null for "bezterminowo". */
+  endDate: string | null
+  reminderEnabled: boolean
+  takenToday: boolean
+}
+
+/** What the "+ Dodaj suplement lub lek" form submits, and what an edit submits.
+ *
+ *  Same shape minus the two things the server owns: the id, and whether it was
+ *  ticked off today (which is its own endpoint, because it is an act rather than
+ *  a property of the row). */
+export interface SupplementInput {
+  name: string
+  dose: string | null
+  frequency: string | null
+  hour: string | null
+  startDate: string | null
+  endDate: string | null
+  reminderEnabled: boolean
 }

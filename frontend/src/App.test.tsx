@@ -29,6 +29,16 @@ vi.mock('./api/diary', () => ({
   fetchTodayEntry: vi.fn(() => new Promise(() => {})),
   saveTodayEntry: vi.fn(),
 }))
+// Keep the real module — the diet screens import their empty producers and
+// their vocabularies from it — and hold only the requests pending, so each
+// screen renders its loading state instead of reaching for the network.
+vi.mock('./api/diet', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api/diet')>()),
+  fetchDietDay: vi.fn(() => new Promise(() => {})),
+  fetchDietHistory: vi.fn(() => new Promise(() => {})),
+  fetchHydration: vi.fn(() => new Promise(() => {})),
+  fetchSupplements: vi.fn(() => new Promise(() => {})),
+}))
 
 const { fetchCurrentUser } = await import('./api/auth')
 const mockedFetchUser = vi.mocked(fetchCurrentUser)
@@ -509,4 +519,40 @@ describe('the consent screen is only for accounts that need it', () => {
 
     expect(await screen.findByLabelText(/hasło/i)).toBeInTheDocument()
   })
+})
+
+describe('every screen in the diet module is reachable', () => {
+  /**
+   * A route table and a screen are two halves of one feature, and nothing was
+   * checking that they still met. `routes.test.ts` pins that each path has a
+   * title and that its params fill in; neither says a `<Route>` exists for it.
+   *
+   * WHY THIS EARNED A TEST. A merge dropped `dietHydration` and
+   * `dietSupplements` from ROUTES, App.tsx and HeaderMenu while leaving
+   * pages/DietHydration.tsx and pages/DietSupplements.tsx — two finished
+   * screens with their own passing tests — in the tree with nothing routed to
+   * them. Every one of those tests went on passing, because a page test mounts
+   * the component itself. This is the assertion that fails instead.
+   *
+   * It asserts reachability and nothing else: the `<h1>` is only how a screen
+   * is told apart from `pages/NotFound.tsx`, so a re-worded heading is a
+   * one-line change here rather than a reason to weaken the check.
+   */
+  const SCREENS: [string, string][] = [
+    [ROUTES.diet, 'Strona główna'],
+    [ROUTES.dietJournals, 'Dzienniczki żywieniowe'],
+    [ROUTES.dietHydration, 'Nawodnienie'],
+    [ROUTES.dietSupplements, 'Suplementy i leki'],
+    [ROUTES.dietActivitySleep, 'Aktywność i sen'],
+  ]
+
+  for (const [path, heading] of SCREENS) {
+    it(`${path} renders its own screen`, async () => {
+      mockedFetchUser.mockResolvedValueOnce({ ...TEST_USER })
+
+      renderAt(path)
+
+      expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
+    })
+  }
 })

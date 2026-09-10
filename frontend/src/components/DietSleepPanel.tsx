@@ -248,9 +248,13 @@ function DietSleepPanel({ today }: { today: Date }) {
           Zapisz sen
         </button>
 
+        {/* Says where the entry went, because `role="status"` is announced on
+            its own: a screen reader hears this sentence without the note at the
+            top of the page, and a bare "Zapisano." would then be the one thing
+            on the screen actively claiming a save that did not happen. */}
         {saved && (
           <p className="diet-as-saved" role="status">
-            Zapisano.
+            Zapisano — na razie tylko na tej karcie.
           </p>
         )}
       </section>

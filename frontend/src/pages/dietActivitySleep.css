@@ -118,6 +118,17 @@
 
 /* The segmented switch */
 
+/* The admission that nothing here is stored yet (NOT_STORED_NOTE). Quiet, like
+   the day-lock notice it sits above and contradicts, rather than an alert box:
+   it is a standing fact about the screen, not something that just went wrong.
+   The width and centring come from `.diet-as-page > *`. */
+.diet-as-not-stored {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
 .diet-as-switch {
   display: flex;
   gap: 4px;

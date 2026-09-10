@@ -125,6 +125,26 @@ describe('the screen itself', () => {
     expect(screen.getByRole('banner')).toContainElement(back)
   })
 
+  it('says out loud that nothing here is stored yet', () => {
+    /**
+     * The screen is a form with two "Zapisz" buttons, a list headed "Zapisane
+     * dzisiaj" and a day-lock notice promising the entry "zostanie zapisany na
+     * stałe" — and there is no `/api/diet/activity/` or `/api/diet/sleep/`
+     * behind any of it, so a reload loses everything. A patient writing down a
+     * week of walks and finding them gone is the defect `0009` already was once
+     * (told the entry had saved "pora dnia", dropped it silently), so the
+     * screen has to admit it.
+     *
+     * Pinned on the consequence rather than on the sentence: reword it freely,
+     * but a patient must still be told the entries do not survive a reload.
+     * Delete this test in the commit that wires the endpoints.
+     */
+    const { container } = renderWithProviders(<DietActivitySleep />)
+
+    expect(container.textContent).toMatch(/nie zapisuje/)
+    expect(container.textContent).toMatch(/odświeżeniu/)
+  })
+
   it('writes the day under the title, with a lowercase month', () => {
     const expected = new Date().toLocaleDateString('pl-PL', {
       weekday: 'long',
@@ -599,7 +619,7 @@ describe('the sleep form', () => {
     expect(save).toBeEnabled()
 
     await user.click(save)
-    expect(screen.getByText('Zapisano.')).toBeInTheDocument()
+    expect(screen.getByText(/^Zapisano/)).toBeInTheDocument()
   })
 
   it('tells "nothing filled in" apart from "these two cannot be measured"', async () => {
@@ -673,7 +693,7 @@ describe('the sleep form', () => {
     await goToSleep(user)
     await user.click(screen.getByRole('button', { name: 'Zapisz sen' }))
 
-    expect(screen.getByText('Zapisano.')).toBeInTheDocument()
+    expect(screen.getByText(/^Zapisano/)).toBeInTheDocument()
   })
 
   it('withdraws the confirmation as soon as anything is edited again', async () => {
@@ -684,7 +704,7 @@ describe('the sleep form', () => {
     await user.click(screen.getByRole('button', { name: 'Zapisz sen' }))
     await user.click(screen.getByRole('button', { name: 'Jakość snu: 4 z 5' }))
 
-    expect(screen.queryByText('Zapisano.')).toBeNull()
+    expect(screen.queryByText(/^Zapisano/)).toBeNull()
   })
 
   it('draws no chart of other nights and no score', async () => {

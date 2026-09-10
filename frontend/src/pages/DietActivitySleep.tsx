@@ -61,6 +61,28 @@ const TABS = [
   { id: 'sleep', label: 'Sen' },
 ] as const
 
+/**
+ * The whole of what this screen can honestly say about keeping what it collects.
+ *
+ * There is no `/api/diet/activity/` and no `/api/diet/sleep/`, so both panels
+ * hold their entries in component state and a reload loses them. Everything
+ * else on the screen reads as though that were not so: two buttons say
+ * "Zapisz", a list is headed "Zapisane dzisiaj", and the day-lock notice — the
+ * sentence the psychotherapy module says about a diary that *is* stored —
+ * promises the entry "zostanie zapisany na stałe". Saying nothing would leave a
+ * patient writing down a week of walks and finding them gone, which is the
+ * defect this project has already had once (see `0009` in CLAUDE.md: the entry
+ * form was told to have saved "pora dnia" and dropped it silently).
+ *
+ * Worded like `REMINDER_NOTE` in pages/DietSupplements.tsx, which is the same
+ * admission about the same module: what the app does today, then what it does
+ * not do yet, in that order. Remove it in the commit that wires the endpoints —
+ * not before, and not by softening it.
+ */
+const NOT_STORED_NOTE =
+  'Aplikacja jeszcze nie zapisuje tych wpisów — zostają tylko na tej karcie ' +
+  'i znikną po odświeżeniu strony.'
+
 type TabId = (typeof TABS)[number]['id']
 
 function DietActivitySleep() {
@@ -148,6 +170,10 @@ function DietActivitySleep() {
         </div>
         <HeaderMenu />
       </header>
+
+      {/* Above the switch rather than inside a panel: it is true of both halves,
+          and a reader meets it before the first "Zapisz" button either way. */}
+      <p className="diet-as-not-stored">{NOT_STORED_NOTE}</p>
 
       <div className="diet-as-switch" role="tablist" aria-label="Aktywność albo sen">
         {TABS.map((entry, index) => (
