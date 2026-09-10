@@ -29,11 +29,11 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
-from core.drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DRINK_IS_WATER,
+from core.drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DEFAULT_SERVING_ML,
                          DRINK_NAME_REQUIRED, DRINKS, GLASS_ML,
                          MAX_AMOUNT_ML, MAX_DRINK_NAME, MAX_ENTRIES_PER_DAY,
                          MIN_AMOUNT_ML, OTHER_DRINKS, WATER, WEEK_DAYS)
-from core.hydration import AMOUNT_REQUIRED, DAY_IS_FULL, build_hydration_day
+from core.hydration import DAY_IS_FULL, build_hydration_day
 from core.models import Hydration, Patient, Specjalist, User, UserRole
 
 PASSWORD = 'TajneHaslo123'
@@ -163,28 +163,54 @@ class DrinkingTests(HydrationTestCase):
 
         self.assertEqual(self.day()['entries'][0]['amount_ml'], BOTTLE_ML)
 
-    def test_water_with_no_amount_is_refused_rather_than_guessed(self):
-        """Refused either way; which field says so depends on which form asked.
+    def test_a_serving_with_no_size_given_is_a_glass(self):
+        """The rule this file used to pin the opposite of.
 
-        A body that *names* water carries a typed name, which only the custom
-        drink form sends — and that form renders no amount input, so answering
-        it under `amount_ml` would be a save failing under a field nobody can
-        see. It is told where the amount is asked for instead.
+        Water with no amount was a 400 ("podaj ilość") and a drink with no
+        amount was a row holding NULL. Both are a glass now: one tap means "I
+        drank a glass of it", which is what "+ Szklanka" has meant for water all
+        along, so the two acts write the same number.
+
+        WORTH KNOWING THAT THIS IS A NUMBER NOBODY TYPED. It enters a clinical
+        record and, on water, moves the goal bar — the sort of default this
+        project is otherwise careful not to invent. It holds only because the
+        screen says so above the chips; `DietHydration.test.tsx` pins that
+        sentence, and if it goes this default goes with it.
         """
-        response = self.drink(drink=WATER)
+        for body in ({}, {'drink': WATER}, {'drink': 'Herbata'}, {'drink': 'Lemoniada'}):
+            with self.subTest(body=body):
+                Hydration.objects.all().delete()
+                response = self.client.post(self.url(), body, format='json')
 
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(str(response.data['drink'][0]), DRINK_IS_WATER)
-        self.assertEqual(Hydration.objects.count(), 0)
+                self.assertEqual(response.status_code, 201)
+                self.assertEqual(Hydration.objects.get().amount_ml, DEFAULT_SERVING_ML)
 
-    def test_a_button_that_forgets_its_amount_is_answered_on_the_amount(self):
-        """No `drink` key at all — the "+ Szklanka" shape, where the missing
-        thing genuinely is the amount."""
-        response = self.client.post(self.url(), {}, format='json')
+    def test_typing_water_into_the_name_box_is_no_longer_refused(self):
+        """It records exactly what "+ Szklanka" records, so there is nothing
+        left to refuse — the message that used to point at the buttons is gone
+        with the rule that produced it."""
+        response = self.drink(drink='woda')
 
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(str(response.data['amount_ml'][0]), AMOUNT_REQUIRED)
-        self.assertEqual(Hydration.objects.count(), 0)
+        self.assertEqual(response.status_code, 201)
+        row = Hydration.objects.get()
+        self.assertEqual(row.drink, WATER)
+        self.assertEqual(row.amount_ml, DEFAULT_SERVING_ML)
+        self.assertEqual(self.day()['water_ml'], DEFAULT_SERVING_ML)
+
+    def test_a_glass_of_tea_still_counts_towards_no_water(self):
+        """The default is a size, not a conversion. This is the pairing that
+        would be easiest to get wrong: every drink now carries millilitres, so
+        the only thing separating tea from water is the filter on the total."""
+        self.drink(drink='Herbata')
+
+        self.assertEqual(Hydration.objects.get().amount_ml, DEFAULT_SERVING_ML)
+        self.assertEqual(self.day()['water_ml'], 0)
+        self.assertEqual(self.day()['glasses'], 0)
+
+    def test_a_given_amount_still_wins_over_the_default(self):
+        self.drink(drink='Herbata', amount_ml=300)
+
+        self.assertEqual(Hydration.objects.get().amount_ml, 300)
 
     def test_an_amount_outside_the_bounds_is_refused(self):
         for amount in (MIN_AMOUNT_ML - 1, MAX_AMOUNT_ML + 1, 0, -250):
@@ -298,7 +324,10 @@ class OtherDrinkTests(HydrationTestCase):
         entries = self.day()['entries']
 
         self.assertEqual(len(entries), 1)
-        self.assertIsNone(entries[0]['amount_ml'])
+        self.assertEqual(entries[0]['drink'], 'Kawa')
+        # A glass, like every serving that gave no size — and still counted
+        # towards nothing, which is the assertion above this one.
+        self.assertEqual(entries[0]['amount_ml'], DEFAULT_SERVING_ML)
 
     def test_water_with_lemon_is_deliberately_not_water(self):
         """The client's own list puts it under "Inne napoje". Reading that as an
@@ -337,10 +366,24 @@ class OtherDrinkTests(HydrationTestCase):
         self.assertEqual(Hydration.objects.count(), 0)
 
     def test_another_drink_still_needs_no_amount_at_all(self):
-        """One tap on a chip is still a serving. The size is optional, which is
-        §05's rule about every form in this module."""
+        """One tap on a chip is still a serving — §05's rule that no field
+        blocks a save. What it stores changed: an unmeasured serving is a glass
+        rather than a row holding NULL."""
         self.assertEqual(self.drink(drink='Herbata').status_code, 201)
-        self.assertIsNone(Hydration.objects.get().amount_ml)
+        self.assertEqual(Hydration.objects.get().amount_ml, DEFAULT_SERVING_ML)
+
+    def test_an_older_row_holding_no_amount_is_still_read_back(self):
+        """Nothing was backfilled, so NULL is what every serving written before
+        this default holds — and the list has to keep rendering it as a drink
+        with no size rather than as a glass it never was."""
+        Hydration.objects.create(
+            id_medical=self.patient.id_medical, entry_date=self.today,
+            drink='Herbata', amount_ml=None,
+        )
+
+        entry = self.day()['entries'][0]
+        self.assertIsNone(entry['amount_ml'])
+        self.assertEqual(entry['drink'], 'Herbata')
 
 
 class WaterIsTheOnlyOneCountedTests(HydrationTestCase):

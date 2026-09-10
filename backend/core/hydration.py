@@ -35,7 +35,7 @@ from django.db import transaction
 from django.db.models import Sum
 from rest_framework import serializers
 
-from .drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DRINK_IS_WATER,
+from .drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DEFAULT_SERVING_ML,
                      DRINK_NAME_REQUIRED, GLASS_ML, MAX_DRINK_NAME,
                      normalize_drink,
                      MAX_AMOUNT_ML, MAX_ENTRIES_PER_DAY, MIN_AMOUNT_ML, WATER,
@@ -44,9 +44,8 @@ from .models import Hydration
 
 import datetime
 
-#: Refusals the screen renders verbatim. Named because two of them are raised
-#: from a serializer and asserted in tests.
-AMOUNT_REQUIRED = 'Podaj ilość wody w mililitrach.'
+#: Refusals the screen renders verbatim. Named because they are raised from a
+#: serializer and asserted in tests.
 DAY_IS_FULL = (
     'Na dziś zapisano już maksymalną liczbę porcji. '
     'Jeśli to pomyłka, usuń któryś wpis.'
@@ -106,10 +105,10 @@ class HydrationEntrySerializer(serializers.Serializer):
     def validate_drink(self, value):
         """A name the column should hold, or a refusal on this field.
 
-        Only the two things that are wrong with the *name itself*: it is blank,
-        or it needs folding onto a canonical spelling. Whether water is allowed
-        depends on the amount, which is a second field — so that rule lives in
-        `validate` below, not here.
+        Only the two things that can be wrong with the *name itself*: it is
+        blank, or it needs folding onto a canonical spelling. Water is no longer
+        a special case here or anywhere else on the write path — a serving of it
+        with no size given is a glass, like every other drink.
 
         An *absent* `drink` is water (the "+ Szklanka" call); this never runs
         for a key that was not sent. A blank string is a different thing from an
@@ -121,22 +120,13 @@ class HydrationEntrySerializer(serializers.Serializer):
             raise serializers.ValidationError(DRINK_NAME_REQUIRED)
         return name
 
-    def validate(self, attrs):
-        drink = attrs.get('drink', WATER)
-        amount = attrs.get('amount_ml')
-        if drink == WATER and amount is None:
-            # WHICH FIELD CARRIES THIS DEPENDS ON WHICH FORM ASKED, and that is
-            # the point rather than a nicety. "+ Szklanka" sends an amount and
-            # no name, so a missing amount is genuinely about `amount_ml`. The
-            # custom-drink form sends a *typed name* and renders no amount input
-            # at all — so somebody who typed "woda" there must be answered on
-            # the box they typed into, and told where the amount is asked for.
-            # The other way round is a save that fails under an invisible field,
-            # which is the failure `Register.tsx` had with `invitation_code`.
-            if 'drink' in (getattr(self, 'initial_data', None) or {}):
-                raise serializers.ValidationError({'drink': DRINK_IS_WATER})
-            raise serializers.ValidationError({'amount_ml': AMOUNT_REQUIRED})
-        return attrs
+    # No `validate` of its own any more. Nothing about the *pair* of fields can
+    # be wrong: any drink may carry an amount, and one that carries none is a
+    # glass (`DEFAULT_SERVING_ML`, applied in `add_entry`). Both refusals that
+    # used to live here are gone with the rule that produced them —
+    # `AMOUNT_REQUIRED`, because water no longer needs a size given, and
+    # `DRINK_IS_WATER`, because typing "woda" in the custom form now records
+    # exactly what "+ Szklanka" records and there is nothing left to refuse.
 
 
 def serialize_entry(entry):
@@ -254,7 +244,22 @@ def add_entry(id_medical, data, today):
         id_medical=id_medical,
         entry_date=today,
         drink=data.get('drink', WATER),
-        amount_ml=data.get('amount_ml'),
+        # A SERVING WITH NO SIZE GIVEN IS A GLASS. One tap on a chip means "I
+        # drank a glass of tea", which is what the "+ Szklanka" button has meant
+        # for water all along — so the two acts now write the same number.
+        #
+        # BE CLEAR THAT THIS IS A NUMBER NOBODY TYPED. It goes into a clinical
+        # record, and for water it moves the goal bar, so it is the sort of
+        # default this project is otherwise careful not to invent (see the
+        # diary's sliders, which wrote a 0 nobody chose). It is defensible only
+        # because a *serving* is the unit the screen is built in and the patient
+        # is told: `pages/DietHydration.tsx` says "Bez podanej ilości zapisujemy
+        # szklankę" above the chips. If that line ever goes, this default has to
+        # go with it.
+        #
+        # `None` is still what an *older* row holds — nothing is backfilled, and
+        # `serialize_entry` renders a null amount as a drink with no size.
+        amount_ml=data.get('amount_ml') or DEFAULT_SERVING_ML,
     )
     return entry
 

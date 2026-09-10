@@ -246,15 +246,22 @@ function TodayCard({
  * of the commonest drinks rather than of everything a person drinks. Worth
  * confirming with the client, since it adds a control to their screen.
  *
- * IT ASKS FOR NO AMOUNT, exactly like the five chips, and that is what keeps the
- * client's rule ("nie przeliczamy na wodę") true by construction rather than by
- * care: a serving with no amount cannot reach the water total whatever it is
- * called. Somebody who wants to record 200 ml of juice is asking for a decision
- * the client has not made — see the note above the chips, which the typed drink
- * is covered by too.
+ * A SERVING WITH NO SIZE GIVEN IS RECORDED AS A GLASS, for every drink here and
+ * for water alike. One tap means "I drank a glass of it", which is what the
+ * "+ Szklanka" button has meant all along. It is a number nobody typed, going
+ * into a clinical record, so **the hint under the amount box says so** — that
+ * sentence is what makes the default honest rather than invented, and the
+ * default has to go if it ever does.
+ *
+ * NONE OF IT IS CONVERTED INTO WATER. That used to be guaranteed by there being
+ * no number to convert; now every serving carries one, and the only thing
+ * holding the client's rule is that the two places computing the total filter
+ * on the drink. The note above the chips still says it in words, and says it
+ * for the typed drink too.
  */
 function OtherDrinksCard({
   busy,
+  glassMl,
   maxDrinkName,
   minAmountMl,
   maxAmountMl,
@@ -262,6 +269,9 @@ function OtherDrinksCard({
   onDrink,
 }: {
   busy: boolean
+  /** Named in the hint below, because a serving with no size given is recorded
+   *  as this — a number nobody typed, so the screen has to say it. */
+  glassMl: number
   maxDrinkName: number
   minAmountMl: number
   maxAmountMl: number
@@ -356,7 +366,7 @@ function OtherDrinksCard({
           reason beside it is the failure the registration form had. */}
       <p className="hydration-drink-amount-hint" id="hydration-drink-amount-hint">
         {amountValid
-          ? `Możesz zostawić puste. Jeśli podajesz — od ${minAmountMl} do ${maxAmountMl} ml.`
+          ? `Bez podanej ilości zapisujemy szklankę (${glassMl} ml). Możesz podać swoją — od ${minAmountMl} do ${maxAmountMl} ml.`
           : `Podaj wartość od ${minAmountMl} do ${maxAmountMl} ml albo zostaw puste.`}
       </p>
 
@@ -675,6 +685,7 @@ function DietHydration() {
           <TodayCard day={day} busy={busy} onDrink={(ml, name) => void drink(ml, name)} />
           <OtherDrinksCard
             busy={busy}
+            glassMl={day.glassMl}
             maxDrinkName={day.maxDrinkName}
             minAmountMl={day.minAmountMl}
             maxAmountMl={day.maxAmountMl}

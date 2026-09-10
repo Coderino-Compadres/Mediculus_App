@@ -57,17 +57,6 @@ MAX_DRINK_NAME = 40
 
 DRINK_NAME_REQUIRED = 'Wpisz nazwę napoju.'
 
-#: Refused rather than folded onto the water button, and the reason is that the
-#: two acts are different: water is recorded *with an amount* and this form asks
-#: for none. Accepting it would write a serving of water of no size — a row that
-#: says nothing and moves no figure — and refusing it under `amount_ml`, a field
-#: this form does not render, would be a save that fails invisibly (the failure
-#: `Register.tsx` had with `invitation_code`). So it is refused by name, on the
-#: input the patient just typed into, pointing at the buttons that do take one.
-DRINK_IS_WATER = (
-    'Wodę zapisujesz przyciskami powyżej — tam podajesz też ilość.'
-)
-
 
 def normalize_drink(typed):
     """A typed drink name as the column should hold it.
@@ -107,6 +96,24 @@ GLASS_ML = 250
 #: `2 * GLASS_ML`: it is a serving the mockup names, and a deployment that
 #: decided a bottle is 700 ml would change this and not the glass.
 BOTTLE_ML = 500
+
+#: What one serving is when nobody says how much: a glass.
+#:
+#: `GLASS_ML` under a second name, and the second name is the point — these are
+#: two different facts that happen to share a value today. `GLASS_ML` is what
+#: the "+ Szklanka" button pours and what the goal is counted in; this is the
+#: size assumed for a tap that gave no size at all. A deployment that decided an
+#: unmeasured serving should be 200 ml would change this line and leave the
+#: glass alone.
+#:
+#: IT IS A NUMBER NOBODY TYPED, which is the thing to weigh before touching it:
+#: it enters a clinical record, and on water it moves the goal bar. This project
+#: is otherwise careful not to invent one (the diary's sliders wrote a 0 nobody
+#: chose, and that was a defect). What makes it defensible here is that a
+#: *serving* is the unit the whole screen is built in, and that the patient is
+#: told — `pages/DietHydration.tsx` says so above the chips. Remove the default
+#: if that sentence ever goes.
+DEFAULT_SERVING_ML = GLASS_ML
 
 #: "cel: 6 szklanek". A display target — see the module docstring.
 DAILY_TARGET_GLASSES = 6

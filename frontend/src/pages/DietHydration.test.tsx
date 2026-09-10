@@ -288,8 +288,27 @@ describe('inne napoje', () => {
 describe('millilitres for a drink that is not water', () => {
   const AMOUNT = /Ile\? \(ml, opcjonalnie\)/
 
+  it('says that a tap with no amount is recorded as a glass', async () => {
+    /**
+     * THE SENTENCE THAT MAKES THE DEFAULT HONEST. A serving with no size given
+     * is stored as 250 ml — a number nobody typed, entering a clinical record
+     * and, on water, moving the goal bar. This project is otherwise careful not
+     * to invent one (the diary's sliders wrote a 0 nobody chose, and that was a
+     * defect). It holds only because the patient is told.
+     *
+     * If this test is ever deleted, `DEFAULT_SERVING_ML` has to go with it.
+     */
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    expect(screen.getByText(/Bez podanej ilości zapisujemy szklankę \(250 ml\)/))
+      .toBeInTheDocument()
+  })
+
   it('is optional — a bare tap on a chip is still a serving', async () => {
-    /** The card's original interaction has to survive the new field. */
+    /** The card's original interaction has to survive the new field. The
+     *  browser sends no amount and the *server* applies the glass, so the
+     *  default has one definition rather than two. */
     recordDrink.mockResolvedValue(day())
     renderWithProviders(<DietHydration />)
     await screen.findByText('4')
