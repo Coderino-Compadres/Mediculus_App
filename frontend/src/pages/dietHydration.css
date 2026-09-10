@@ -461,3 +461,48 @@
   line-height: 1.5;
   margin: 0;
 }
+
+/* "Ile? (ml, opcjonalnie)" — one amount for whichever chip is tapped next.
+ *
+ * Above the chips and quiet: the chips are the act, this only qualifies it, so
+ * it must not read as the card's main control. One input rather than one per
+ * chip, which would turn a row of chips into a form. */
+.hydration-drink-amount {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hydration-drink-amount label {
+  font-size: 14px;
+  color: var(--color-graphite);
+}
+
+.hydration-drink-amount-input {
+  width: 108px;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 15px;
+  color: var(--color-graphite);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.hydration-drink-amount-input:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+.hydration-drink-amount-input[aria-invalid='true'] {
+  border-color: var(--color-caution);
+}
+
+.hydration-drink-amount-hint {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0;
+}

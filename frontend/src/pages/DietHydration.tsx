@@ -80,6 +80,13 @@ function dayLabel(iso: string): string {
 /** "Szklanka · 250 ml", or just the drink for everything without an amount. */
 function entryLabel(entry: HydrationEntry, glassMl: number, bottleMl: number): string {
   if (entry.amountMl === null) return entry.drink
+  // THE DRINK IS CHECKED BEFORE THE AMOUNT, and it has to be: the two serving
+  // names below belong to water's own buttons, and this function used to reach
+  // them for anything carrying a number — which was safe only while nothing but
+  // water could carry one. Now that every drink can, a 250 ml tea would have
+  // been listed as "Szklanka · 250 ml", i.e. as water, on the one screen whose
+  // whole rule is that other drinks are not water.
+  if (entry.drink !== WATER) return `${entry.drink} · ${entry.amountMl} ml`
   if (entry.amountMl === glassMl) return `Szklanka · ${entry.amountMl} ml`
   if (entry.amountMl === bottleMl) return `Butelka · ${entry.amountMl} ml`
   return `Woda · ${entry.amountMl} ml`
@@ -249,11 +256,15 @@ function TodayCard({
 function OtherDrinksCard({
   busy,
   maxDrinkName,
+  minAmountMl,
+  maxAmountMl,
   nameError,
   onDrink,
 }: {
   busy: boolean
   maxDrinkName: number
+  minAmountMl: number
+  maxAmountMl: number
   nameError: string | null
   /** Resolves to whether the serving was actually written. The typed-name form
    *  is the one caller that has to know: it must not clear and close over a
@@ -262,6 +273,19 @@ function OtherDrinksCard({
 }) {
   const [customOpen, setCustomOpen] = useState(false)
   const [name, setName] = useState('')
+  /**
+   * How much, for whichever drink is tapped next. Optional, and empty is the
+   * ordinary state — §05's rule that no field blocks a save, applied to a card
+   * whose whole interaction used to be one tap.
+   *
+   * ONE INPUT FOR THE WHOLE CARD rather than one per chip: the question ("ile?")
+   * is the same for all six, and six inputs would turn a row of chips into a
+   * form. It is read at the moment a chip is tapped and **cleared immediately
+   * afterwards** — see `pour` — because an amount that stayed would silently
+   * attach itself to the next tap, which is the kind of thing somebody notices
+   * a week later in their own records.
+   */
+  const [amount, setAmount] = useState('')
 
   /* Only that there is *something* to send. The rules about the name — folding
      it onto a chip, refusing water, the length — are the server's, and it
@@ -269,14 +293,34 @@ function OtherDrinksCard({
      rules free to disagree with it. */
   const nameValid = name.trim().length > 0
 
+  /** '' is "not saying", which is a valid serving. A number outside the bounds
+   *  is not sent at all, so the button says why rather than the server. */
+  const typed = Number(amount)
+  const amountGiven = amount.trim() !== ''
+  const amountValid =
+    !amountGiven ||
+    (Number.isFinite(typed) && typed >= minAmountMl && typed <= maxAmountMl)
+  const servingMl = amountGiven && amountValid ? typed : null
+
+  /** Record `drink`, with whatever is in the amount box, and empty the box.
+   *
+   *  Cleared on every attempt rather than only on success, unlike the name: an
+   *  amount is answered again in two keystrokes, while a name is not, and an
+   *  amount left behind is the one that quietly rides along on the next tap. */
+  async function pour(drink: string) {
+    const written = await onDrink(servingMl, drink)
+    setAmount('')
+    return written
+  }
+
   async function submitName() {
-    if (!nameValid || busy) return
+    if (!nameValid || !amountValid || busy) return
     // Cleared and closed on the *answer*, not on the tap. Closing optimistically
     // unmounted the input and its error the moment somebody typed "woda", so
     // the one refusal this form can produce had nowhere to be shown — the save
     // failed silently, which is the whole failure mode this screen's messages
     // exist to avoid. On a refusal the typed name stays, ready to be corrected.
-    if (await onDrink(null, name.trim())) {
+    if (await pour(name.trim())) {
       setName('')
       setCustomOpen(false)
     }
@@ -286,14 +330,44 @@ function OtherDrinksCard({
     <section className="hydration-card" aria-labelledby="hydration-drinks-heading">
       <h2 id="hydration-drinks-heading">Inne napoje</h2>
       <p className="hydration-note">{OTHER_DRINKS_NOTE}</p>
+
+      {/* Above the chips, because it is read at the moment one is tapped: a
+          field *under* the row would be answered after the act it belongs to.
+          Optional throughout — the card's original one-tap behaviour is what
+          happens when it is left empty. */}
+      <div className="hydration-drink-amount">
+        <label htmlFor="hydration-drink-amount">Ile? (ml, opcjonalnie)</label>
+        <input
+          id="hydration-drink-amount"
+          className="hydration-drink-amount-input"
+          type="number"
+          inputMode="numeric"
+          min={minAmountMl}
+          max={maxAmountMl}
+          step={10}
+          value={amount}
+          aria-invalid={amountValid ? undefined : true}
+          aria-describedby="hydration-drink-amount-hint"
+          onChange={(event) => setAmount(event.target.value)}
+        />
+      </div>
+      {/* The bounds are stated rather than only enforced, the same rule the
+          water card's custom amount follows: a control that refuses with no
+          reason beside it is the failure the registration form had. */}
+      <p className="hydration-drink-amount-hint" id="hydration-drink-amount-hint">
+        {amountValid
+          ? `Możesz zostawić puste. Jeśli podajesz — od ${minAmountMl} do ${maxAmountMl} ml.`
+          : `Podaj wartość od ${minAmountMl} do ${maxAmountMl} ml albo zostaw puste.`}
+      </p>
+
       <div className="hydration-chips">
         {OTHER_DRINKS.map((drink) => (
           <button
             key={drink}
             type="button"
             className="hydration-chip"
-            disabled={busy}
-            onClick={() => onDrink(null, drink)}
+            disabled={busy || !amountValid}
+            onClick={() => void pour(drink)}
           >
             {drink}
           </button>
@@ -337,7 +411,7 @@ function OtherDrinksCard({
             <button
               type="button"
               className="hydration-custom-submit"
-              disabled={busy || !nameValid}
+              disabled={busy || !nameValid || !amountValid}
               onClick={() => void submitName()}
             >
               Zapisz
@@ -602,6 +676,8 @@ function DietHydration() {
           <OtherDrinksCard
             busy={busy}
             maxDrinkName={day.maxDrinkName}
+            minAmountMl={day.minAmountMl}
+            maxAmountMl={day.maxAmountMl}
             nameError={drinkNameError}
             onDrink={drink}
           />

@@ -14,7 +14,12 @@ WHAT §08 OF THE MOCKUPS DECIDES, and what is therefore not open here:
   `progress` is capped at 1.0 for the bar's sake and the raw `glasses` is sent
   alongside it, so a day over the goal still says what it actually was.
 * **Other drinks are recorded and never converted.** `water_ml` sums only
-  `drink == WATER`; a serving of tea appears in `entries` and in nothing else.
+  `drink == WATER`; a serving of tea appears in `entries` and in nothing else —
+  now including its size, since every drink may carry one. That filter, in
+  `build_hydration_day` and in `_week`, is the *only* thing keeping the client's
+  rule true: it used to be additionally guaranteed by non-water servings having
+  no amount to add, and that guarantee is gone. Do not compute the total
+  anywhere else.
 * The screen shows **today**, and today alone, plus a seven-day bar chart. There
   is no history screen for hydration and no way to write into a past day.
 
@@ -42,9 +47,6 @@ import datetime
 #: Refusals the screen renders verbatim. Named because two of them are raised
 #: from a serializer and asserted in tests.
 AMOUNT_REQUIRED = 'Podaj ilość wody w mililitrach.'
-AMOUNT_NOT_FOR_DRINK = (
-    'Inne napoje zapisujemy bez ilości — nie przeliczamy ich na wodę.'
-)
 DAY_IS_FULL = (
     'Na dziś zapisano już maksymalną liczbę porcji. '
     'Jeśli to pomyłka, usuń któryś wpis.'
@@ -60,11 +62,23 @@ class HydrationEntrySerializer(serializers.Serializer):
     `GLASS_ML`/`BOTTLE_ML` a single definition — `core/drinks.py` on the server,
     `utils/drinks.ts` on the client, pinned to each other by `test_drinks.py`.
 
-    `drink` defaults to water so the commonest call is `{"amount_ml": 250}`, and
-    the two amount rules are refused rather than silently applied: a body asking
-    to record 400 ml of coffee is asking for something the module does not do,
-    and quietly dropping the number is how `time_of_day` lost a patient's answer
-    for weeks (see CLAUDE.md).
+    `drink` defaults to water so the commonest call is `{"amount_ml": 250}`.
+
+    **EVERY DRINK MAY CARRY AN AMOUNT, AND NONE BUT WATER HAS TO.** It used to be
+    the other way round — an amount on anything but water was a 400 — and that
+    refusal was doing two jobs at once. One was real: recording a size for a cup
+    of tea is information a patient may want kept. The other was structural, and
+    is the part that had to be replaced rather than dropped: while nothing but
+    water could carry an amount, no drink could *possibly* reach `water_ml`, so
+    the client's "nie przeliczamy na wodę" rule held by construction. It no
+    longer does. What holds it now is that both places computing the figure
+    filter on `drink == WATER` — `build_hydration_day` and `_week`, and nothing
+    else in this module touches the total. **Those two filters are the whole of
+    the rule**; `test_hydration_api.WaterIsTheOnlyOneCountedTests` is what fails
+    if either is loosened.
+
+    Water still *requires* an amount, because a glass of water of no size moves
+    the one figure this screen exists for by nothing.
 
     **`drink` IS FREE TEXT, NOT A `ChoiceField`**, so a patient can record a
     drink the artboard does not list. It was a closed vocabulary until §08's
@@ -122,8 +136,6 @@ class HydrationEntrySerializer(serializers.Serializer):
             if 'drink' in (getattr(self, 'initial_data', None) or {}):
                 raise serializers.ValidationError({'drink': DRINK_IS_WATER})
             raise serializers.ValidationError({'amount_ml': AMOUNT_REQUIRED})
-        if drink != WATER and amount is not None:
-            raise serializers.ValidationError({'amount_ml': AMOUNT_NOT_FOR_DRINK})
         return attrs
 
 
