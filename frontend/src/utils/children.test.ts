@@ -5,6 +5,7 @@ import {
   lastEntryLabel,
   linkedSinceLabel,
   showsStreak,
+  waitingLabel,
 } from './children'
 
 const TODAY = new Date(2026, 8, 2) // 2 września 2026, lokalna północ
@@ -103,5 +104,29 @@ describe('showsStreak', () => {
   it('shows a real run', () => {
     expect(showsStreak(2)).toBe(true)
     expect(showsStreak(11)).toBe(true)
+  })
+})
+
+
+describe('waitingLabel', () => {
+  /**
+   * What the header says when a child is waiting — the only place in the app
+   * that says it away from the card itself, because a minor's account is
+   * blocked until the request is answered and nothing can notify anybody out of
+   * band.
+   */
+  it('declines both the noun and the verb', () => {
+    expect(waitingLabel(1)).toBe('1 prośba oczekuje na odpowiedź')
+    expect(waitingLabel(2)).toBe('2 prośby oczekują na odpowiedź')
+    expect(waitingLabel(4)).toBe('4 prośby oczekują na odpowiedź')
+    expect(waitingLabel(5)).toBe('5 prośb oczekuje na odpowiedź')
+  })
+
+  it('gets the teens right, which is where the 2-4 rule stops applying', () => {
+    // 12, 13 and 14 take the genitive despite ending in 2-4 — the trap
+    // `pluralGlasses` documents on the other side of the app.
+    expect(waitingLabel(12)).toBe('12 prośb oczekuje na odpowiedź')
+    expect(waitingLabel(14)).toBe('14 prośb oczekuje na odpowiedź')
+    expect(waitingLabel(22)).toBe('22 prośby oczekują na odpowiedź')
   })
 })

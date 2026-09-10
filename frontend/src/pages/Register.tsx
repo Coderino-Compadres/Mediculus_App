@@ -16,6 +16,7 @@ import {
   validateConsent,
   validateDateOfBirth,
   validateAccountType,
+  validateInvitationCode,
   ageFromDateOfBirth,
   ADULT_AGE,
 } from '../utils/validation'
@@ -81,7 +82,9 @@ function accountTypeConflict(accountType: string, dateOfBirth: string): string |
 }
 
 /**
- * The invitation code, for the one account type it can apply to.
+ * The invitation code, for the one account type it can apply to — and which
+ * cannot be created without it (`validateInvitationCode`, and the backend's own
+ * `INVITATION_REQUIRED` behind it).
  *
  * Left out entirely for every other type rather than sent as '': the input is
  * rendered conditionally but its *value* lives in a form state that survives a
@@ -132,6 +135,14 @@ function Register() {
           lastName: validateName(currentValues.lastName, 'nazwisko'),
           dateOfBirth,
           email: validateEmail(currentValues.email),
+          // Asked only of a guardian, and the check itself decides that from
+          // `accountType` rather than trusting this call site: the input is
+          // rendered conditionally, so a condition spelled here as well would
+          // be a second place free to disagree with the one below.
+          invitationCode: validateInvitationCode(
+            currentValues.invitationCode,
+            currentValues.accountType,
+          ),
           password: validatePassword(currentValues.password),
           confirmPassword: validateConfirmPassword(currentValues.confirmPassword, currentValues.password),
           dataConsent: validateConsent(
@@ -249,23 +260,31 @@ function Register() {
           error={errors.email}
           disabled={submitting}
         />
-        {/* The code a specialist hands a parent (core/parent_invitations.py).
-            Optional — a guardian can register without one and be named by the
-            child afterwards — but never silently ignored: a code that does not
-            match refuses the registration rather than creating an unlinked
-            account that looks like it worked. */}
+        {/* The code a specialist hands a parent (core/parent_invitations.py),
+            and a guardian account cannot be created without one — see
+            `RegisterSerializer._check_invitation` for why the vouching lives
+            here. The hint above the input says where to get one, because the
+            person reading it may not know they need one at all and nothing can
+            send them one (this deployment sends no mail). */}
         {values.accountType === ACCOUNT_TYPES.parent && (
-          <FormField
-            id="invitationCode"
-            label="Kod od specjalisty (jeśli masz)"
-            type="text"
-            autoComplete="off"
-            placeholder="np. ABCD-EFGH-JKMN"
-            value={values.invitationCode}
-            onChange={handleChange}
-            error={errors.invitationCode}
-            disabled={submitting}
-          />
+          <>
+            <p className="auth-note">
+              Konto rodzica lub opiekuna zakłada się na kod otrzymany od
+              specjalisty prowadzącego dziecko. Jeśli go nie masz — poproś
+              o niego specjalistę.
+            </p>
+            <FormField
+              id="invitationCode"
+              label="Kod od specjalisty"
+              type="text"
+              autoComplete="off"
+              placeholder="np. ABCD-EFGH-JKMN"
+              value={values.invitationCode}
+              onChange={handleChange}
+              error={errors.invitationCode}
+              disabled={submitting}
+            />
+          </>
         )}
         <FormField
           id="password"

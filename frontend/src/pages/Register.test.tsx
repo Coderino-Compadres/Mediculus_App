@@ -48,6 +48,7 @@ const password = () => screen.getByLabelText('Hasło')
 const confirmPassword = () => screen.getByLabelText('Powtórz hasło')
 const dataConsent = () => screen.getByRole('checkbox', { name: /danych osobowych/i })
 const servicesConsent = () => screen.getByRole('checkbox', { name: /usług Fundacji/i })
+const invitationCode = () => screen.getByLabelText(/kod od specjalisty/i)
 const submitButton = () => screen.getByRole('button', { name: /załóż konto/i })
 
 interface FormValues {
@@ -57,6 +58,8 @@ interface FormValues {
   confirm?: string
   mail?: string
   consents?: boolean
+  /** Only rendered for a guardian, and required there — pass '' to leave it. */
+  code?: string
 }
 
 async function fillForm({
@@ -66,12 +69,18 @@ async function fillForm({
   confirm,
   mail = 'jan@example.com',
   consents = true,
+  code = 'ABCD-EFGH-JKMN',
 }: FormValues = {}) {
   await userEvent.selectOptions(accountType(), type)
   await userEvent.type(firstName(), 'Jan')
   await userEvent.type(lastName(), 'Testowy')
   await userEvent.type(dateOfBirth(), dob)
   await userEvent.type(email(), mail)
+  // The input only exists for a guardian, which is also the only type that has
+  // to answer it — see `validateInvitationCode`.
+  if (type === ACCOUNT_TYPES.parent && code) {
+    await userEvent.type(invitationCode(), code)
+  }
   await userEvent.type(password(), pass)
   await userEvent.type(confirmPassword(), confirm ?? pass)
   if (consents) {
@@ -258,6 +267,48 @@ describe('Register — the account type has to agree with the date of birth', ()
     await waitFor(() => expect(mockedRegister).toHaveBeenCalled())
   })
 
+  it('will not create a guardian account without a specialist’s code', async () => {
+    /**
+     * The rule the whole feature rests on: a guardian account asserts that this
+     * person is a child's legal guardian, the app cannot check that, and the
+     * treating specialist can. Refused here as well as on the backend, so the
+     * person is told before a round trip.
+     */
+    renderScreen()
+
+    await fillForm({ type: ACCOUNT_TYPES.parent, code: '' })
+    await userEvent.click(submitButton())
+
+    // Asserted through the input's own description rather than by text: the
+    // hint above the box says the same sentence, which is the point of it.
+    await waitFor(() => expect(invitationCode())
+      .toHaveAccessibleDescription(/kod otrzymany od specjalisty/i))
+    expect(mockedRegister).not.toHaveBeenCalled()
+  })
+
+  it('does not accept whitespace as a code', async () => {
+    renderScreen()
+
+    await fillForm({ type: ACCOUNT_TYPES.parent, code: '   ' })
+    await userEvent.click(submitButton())
+
+    await waitFor(() => expect(invitationCode())
+      .toHaveAccessibleDescription(/kod otrzymany od specjalisty/i))
+    expect(mockedRegister).not.toHaveBeenCalled()
+  })
+
+  it('asks a patient for no code at all', async () => {
+    /** The input is not on screen, and its absence must not block the form. */
+    mockedRegister.mockResolvedValue(TEST_USER)
+    renderScreen()
+
+    await fillForm({ type: ACCOUNT_TYPES.patient })
+
+    expect(screen.queryByLabelText(/kod od specjalisty/i)).not.toBeInTheDocument()
+    await userEvent.click(submitButton())
+    await waitFor(() => expect(mockedRegister).toHaveBeenCalled())
+  })
+
   it('says nothing about the conflict while the date itself is still missing', async () => {
     /** Otherwise the alert would contradict the "podaj datę urodzenia" below it. */
     renderScreen()
@@ -289,6 +340,28 @@ describe('Register — an account that gets created', () => {
       dataConsent: true,
       servicesConsent: true,
     }))
+  })
+
+  it('sends a guardian’s code, and says above the box where to get one', async () => {
+    /**
+     * The hint is above the input rather than under it because the code is
+     * something you either were given or have to go and ask for — and nothing
+     * can send it: this deployment has no mail at all.
+     */
+    mockedRegister.mockResolvedValue(TEST_USER)
+    renderScreen()
+
+    await fillForm({ type: ACCOUNT_TYPES.parent, code: 'ABCD-EFGH-JKMN' })
+
+    expect(screen.getByText(/poproś o niego specjalistę/i)).toBeInTheDocument()
+    await userEvent.click(submitButton())
+
+    await waitFor(() => expect(mockedRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountType: ACCOUNT_TYPES.parent,
+        invitationCode: 'ABCD-EFGH-JKMN',
+      }),
+    ))
   })
 
   it('opens the session from the answer instead of asking who we are', async () => {

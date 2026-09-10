@@ -1,0 +1,441 @@
+/* "Suplementy i leki" — the second half of §08 of the diet mockups.
+ *
+ * Its own stylesheet on the same terms as dietHome.css, dietJournals.css and
+ * dietHydration.css: the diet module dresses itself from styles/theme.css
+ * rather than wearing another screen's class names. The page frame, header and
+ * back link are the same shapes those three use, because a patient moving
+ * between the module's screens should not feel they changed product.
+ *
+ * The one hue that is not the app's sage is the hour badge, which is a token
+ * (--color-supplement*) rather than two literals — see theme.css for why the
+ * artboard's blue is darkened for the text and kept for the pill. Every button
+ * here is sage or plain, like every other action in the app.
+ *
+ * NOTHING ON THIS SCREEN IS DRAWN AS A SCORE, and that is a styling rule as
+ * much as a markup one: there is no bar, no ring, no percentage and no colour
+ * that means "you missed one". §08 rules that out for the water counter and it
+ * matters more here. */
+
+.supplement-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.supplement-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.supplement-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+
+.supplement-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.supplement-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* A link in a line of text, so its 44px touch target comes from a
+   pseudo-element rather than from real height — the technique every in-text
+   link in this app uses, because real height would push the layout around it. */
+.supplement-back {
+  position: relative;
+  display: inline-block;
+  width: fit-content;
+  font-size: 14px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-sage);
+  text-decoration: none;
+}
+
+.supplement-back::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  min-height: 44px;
+  transform: translateY(-50%);
+}
+
+.supplement-back:hover {
+  text-decoration: underline;
+}
+
+/* Status */
+
+.supplement-loading {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.supplement-error {
+  background: var(--color-error-bg);
+  border-radius: var(--radius-tile);
+  padding: 14px 16px;
+  color: var(--color-error);
+  font-size: 14px;
+  margin: 0;
+}
+
+.supplement-error p {
+  margin: 0 0 8px;
+}
+
+/* Cards */
+
+.supplement-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.supplement-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.supplement-note {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+.supplement-empty p {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  line-height: 1.6;
+  margin: 8px 0 0;
+}
+
+/* The list */
+
+.supplement-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.supplement-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+/* The artboard's 26px box inside a real 44×44 control.
+ *
+ * The 9px of slack is a *transparent border* rather than a margin, and that is
+ * the whole trick: the element's box is 44px (so a finger hits 44px), while
+ * `background-clip: content-box` paints only the 26px content box, whose corner
+ * radius comes out as 18 − 9 = 9px — the artboard's own. A margin would have
+ * left a 26px hit area with dead space around it, and stretching a pseudo-
+ * element off the square would have made the touch target depend on
+ * `input::after` rendering, which is not something to rest a control on.
+ *
+ * The square's edge is an inset shadow rather than a border, because the border
+ * is now doing the other job. */
+.supplement-check {
+  appearance: none;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 9px solid transparent;
+  border-radius: 18px;
+  background-color: var(--color-surface);
+  background-clip: content-box;
+  box-shadow: inset 0 0 0 1.5px var(--color-border-strong);
+  cursor: pointer;
+  position: relative;
+}
+
+.supplement-check:checked {
+  background-color: var(--color-sage);
+  box-shadow: inset 0 0 0 1.5px var(--color-sage);
+}
+
+/* The tick, drawn rather than typed: a glyph would inherit the font and sit
+   differently on every platform. Positioned against the padding box, i.e.
+   against the 26px square rather than the 44px target. The filled sage
+   background is what actually carries the checked state, so this is decoration
+   on top of it rather than the only signal. */
+.supplement-check:checked::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 4px;
+  width: 8px;
+  height: 13px;
+  border: solid #fff;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+
+.supplement-check:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--color-sage), var(--focus-ring);
+}
+
+.supplement-check:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.supplement-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.supplement-name {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 16px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.supplement-dose {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}
+
+.supplement-period {
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}
+
+.supplement-hour {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 8px;
+  padding: 5px 10px;
+  border-radius: 9px;
+  background: var(--color-supplement-bg);
+  color: var(--color-supplement);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Row actions */
+
+.supplement-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.supplement-quiet-button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-graphite-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.supplement-quiet-button:hover:not(:disabled) {
+  background: var(--color-lavender);
+  color: var(--color-graphite);
+}
+
+.supplement-quiet-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* The second tap of deleting. Ochre, not red: this is a consequence to weigh,
+   and red in this app is reserved for signing out and withdrawing a consent. */
+.supplement-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.supplement-confirm-text {
+  flex-basis: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-caution);
+}
+
+.supplement-danger-button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-caution);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-caution);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.supplement-danger-button:hover:not(:disabled) {
+  background: rgba(224, 180, 92, 0.16);
+}
+
+.supplement-danger-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* "+ Dodaj suplement lub lek" — dashed, as the artboard draws it: it opens a
+   form rather than recording anything, so it is the quiet action on the screen. */
+.supplement-add {
+  min-height: 50px;
+  padding: 12px 16px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-tile);
+  background: transparent;
+  color: var(--color-sage);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.supplement-add:hover {
+  background: rgba(var(--sage-tint), 0.08);
+}
+
+/* The form */
+
+.supplement-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.supplement-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.supplement-field {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.supplement-field label {
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-graphite);
+}
+
+.supplement-field input {
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 15px;
+  color: var(--color-graphite);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.supplement-field input:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+.supplement-field input[aria-invalid='true'] {
+  border-color: var(--color-error);
+}
+
+.supplement-field-hint {
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+}
+
+.supplement-field-error {
+  font-size: 12px;
+  color: var(--color-error);
+}
+
+/* The reminder question. A checkbox with its sentence, not a switch: a switch
+   implies something happens the moment it moves, and nothing does yet. */
+.supplement-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 14px;
+  color: var(--color-graphite);
+  cursor: pointer;
+}
+
+.supplement-toggle input {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  accent-color: var(--color-sage);
+  cursor: pointer;
+}
+
+.supplement-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.supplement-submit {
+  min-height: 44px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--color-sage);
+  color: #fff;
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.supplement-submit:hover:not(:disabled) {
+  background: var(--color-sage-hover);
+}
+
+.supplement-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

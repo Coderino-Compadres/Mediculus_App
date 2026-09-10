@@ -3,13 +3,23 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { useSignOut } from '../hooks/useSignOut'
 import { ROUTES, routeTitle } from '../routes'
-import { isGuardian, isSpecialist } from '../api/auth'
+import { isGuardian, isSpecialist, waitingChildren } from '../api/auth'
 import { roleLabel } from '../utils/roles'
+import { waitingLabel } from '../utils/children'
 import type { AuthUser } from '../api/auth'
 
 interface MenuItem {
   label: string
   to: string
+  /**
+   * A number worth interrupting for, rendered next to the label.
+   *
+   * Only the guardian's home screen has one today, and only when a child is
+   * waiting — see `guardianItems`. Deliberately not a generic "notifications"
+   * mechanism: there is exactly one thing in this app that blocks somebody
+   * else's account until you answer it.
+   */
+  badge?: number
 }
 
 const PATIENT_ITEMS: MenuItem[] = [
@@ -52,7 +62,9 @@ const PATIENT_ITEMS: MenuItem[] = [
  * historia dzienniczków żywieniowych, nawodnienie i suplementy, aktywność
  * fizyczna i sen, raporty, analiza, techniki psychodietetyczne, profil zdrowotny,
  * materiały edukacyjne — join this list as they are built, in the order §03
- * gives them. One open question for that artboard: whether "przełączanie
+ * gives them. "Nawodnienie" is the first to have done so; §08 pairs it with
+ * "Suplementy i leki", which is a screen of its own and is not built, so the
+ * entry is worded as the half that exists. One open question for that artboard: whether "przełączanie
  * modułów" means a direct jump to the other module (as below) or a link to the
  * chooser on /modules.
  */
@@ -87,6 +99,28 @@ const GUARDIAN_ITEMS: MenuItem[] = [
 ]
 
 /**
+ * The guardian's menu, with the waiting children counted on the entry that
+ * leads to the card answering them.
+ *
+ * WHY THE MENU CARRIES A NUMBER AT ALL. A minor's account is blocked until
+ * their guardian accepts (RODO art. 8), and **nothing can tell the guardian out
+ * of band** — this deployment sends no mail and has no push. Until now the only
+ * place that said so was the card itself, on one screen, which a guardian who
+ * had answered a request last week had no reason to open again. The child was
+ * left waiting on somebody who could not know.
+ *
+ * The count comes from the session (`/api/auth/me/`), so no screen makes a
+ * request of its own for it.
+ */
+function guardianItems(user: AuthUser): MenuItem[] {
+  const waiting = waitingChildren(user)
+  if (waiting === 0) return GUARDIAN_ITEMS
+  return GUARDIAN_ITEMS.map((item) => (
+    item.to === ROUTES.parentHome ? { ...item, badge: waiting } : item
+  ))
+}
+
+/**
  * A specialist's menu.
  *
  * Same reasoning as the guardian's, with one addition: the catalogue is here,
@@ -116,7 +150,7 @@ function menuItems(user: AuthUser | null, pathname: string): MenuItem[] {
   const patientItems = isDietRoute(pathname) ? DIET_ITEMS : PATIENT_ITEMS
   if (!user) return patientItems
   if (isSpecialist(user)) return SPECIALIST_ITEMS
-  return isGuardian(user) ? GUARDIAN_ITEMS : patientItems
+  return isGuardian(user) ? guardianItems(user) : patientItems
 }
 
 /** Header dropdown menu, shared by every screen with a home-style header (Home, DiaryEntry, …). */
@@ -147,19 +181,27 @@ function HeaderMenu() {
     await signOutAndLeave()
   }
 
+  const items = menuItems(user, pathname)
+  // Summed rather than read again from the session, so the dot on a closed menu
+  // and the number inside it cannot disagree about whether anything is waiting.
+  const waiting = items.reduce((total, item) => total + (item.badge ?? 0), 0)
+
   return (
     <div className="home-menu">
       <button
         ref={toggle}
         type="button"
         className="home-menu-toggle"
-        aria-label="Menu"
+        // The whole point of the dot is that it is visible with the menu shut,
+        // so what it means has to be in the label rather than in the colour.
+        aria-label={waiting > 0 ? `Menu — ${waitingLabel(waiting)}` : 'Menu'}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         <span />
         <span />
         <span />
+        {waiting > 0 && <span className="home-menu-dot" aria-hidden="true" />}
       </button>
 
       {open && (
@@ -174,7 +216,7 @@ function HeaderMenu() {
                 )}
               </div>
             )}
-            {menuItems(user, pathname).map((item) => (
+            {items.map((item) => (
               <Link
                 key={item.to}
                 to={item.to}
@@ -184,6 +226,15 @@ function HeaderMenu() {
                 onClick={() => setOpen(false)}
               >
                 {item.label}
+                {item.badge ? (
+                  <span className="home-menu-badge">
+                    {item.badge}
+                    {/* The digit alone is not an answer to "1 what?", and this
+                        is the one entry in the app that asks somebody to act on
+                        behalf of a blocked account. */}
+                    <span className="visually-hidden"> — {waitingLabel(item.badge)}</span>
+                  </span>
+                ) : null}
               </Link>
             ))}
             <button type="button" className="home-menu-signout" onClick={() => void onSignOut()}>

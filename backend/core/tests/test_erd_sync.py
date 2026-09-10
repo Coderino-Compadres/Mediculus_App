@@ -30,7 +30,8 @@ ERD_PATH = REPO_ROOT / 'ERD' / 'DIAGRAM.drawio'
 DIAGRAMMED_MODELS = [
     models.UserRole, models.User, models.Specjalist, models.Patient,
     models.ParentChild, models.ParentInvitation, models.Diary, models.MoodScale,
-    models.Technique, models.Raport,
+    models.Technique, models.Raport, models.Hydration, models.DietMeal,
+    models.Supplement, models.SupplementIntake,
 ]
 
 #: Columns the diagram is known to be missing, as of the last time this test was
@@ -183,6 +184,18 @@ class ErdDriftTests(SimpleTestCase):
 
     def test_raport_matches(self):
         self.assert_table_matches(models.Raport)
+
+    def test_hydration_matches(self):
+        self.assert_table_matches(models.Hydration)
+
+    def test_diet_meal_matches(self):
+        self.assert_table_matches(models.DietMeal)
+
+    def test_supplement_matches(self):
+        self.assert_table_matches(models.Supplement)
+
+    def test_supplement_intake_matches(self):
+        self.assert_table_matches(models.SupplementIntake)
 
     def test_the_dropped_column_is_gone_from_the_diagram_too(self):
         """0006 removed diary.overall_feeling; CLAUDE.md says the diagram was

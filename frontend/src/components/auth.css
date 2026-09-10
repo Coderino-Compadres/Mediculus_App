@@ -266,6 +266,19 @@
   margin: -6px 0 0;
 }
 
+/* `.auth-hint` for a note that sits *above* the input it explains, which is the
+   one case where the field alone cannot carry the meaning: the guardian code is
+   a thing you either were given or have to go and ask for, so the sentence has
+   to be readable before the empty box rather than under it. Same type, mirrored
+   margin — snug to the field below instead of the field above. */
+.auth-note {
+  font-weight: var(--font-weight-regular);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 0 -6px;
+}
+
 /* A footer action that reads as the link next to it, because it sits in the
    same sentence — but has to be a button: it acts instead of navigating. */
 .auth-link-button {

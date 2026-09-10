@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { renderWithProviders } from '../test/render'
+import { renderWithProviders, TEST_USER } from '../test/render'
 import { ApiError } from '../api/client'
 import GuardianInvitations from './GuardianInvitations'
 import type { GuardianInvitation } from '../api/guardian'
@@ -13,6 +13,15 @@ vi.mock('../api/guardian', () => ({
 }))
 const { fetchGuardianInvitations, acceptGuardianInvitation, rejectGuardianInvitation } =
   await import('../api/guardian')
+// The card re-reads the session after an answer, so the header's badge stops
+// saying a child is waiting. Kept real apart from that one call.
+vi.mock('../api/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/auth')>()),
+  fetchCurrentUser: vi.fn(),
+}))
+const { fetchCurrentUser } = await import('../api/auth')
+const mockedCurrentUser = vi.mocked(fetchCurrentUser)
+
 const mockedFetch = vi.mocked(fetchGuardianInvitations)
 const mockedAccept = vi.mocked(acceptGuardianInvitation)
 const mockedReject = vi.mocked(rejectGuardianInvitation)
@@ -28,6 +37,8 @@ beforeEach(() => {
   mockedFetch.mockReset()
   mockedAccept.mockReset()
   mockedReject.mockReset()
+  mockedCurrentUser.mockReset()
+  mockedCurrentUser.mockResolvedValue(null)
 })
 
 describe('what the guardian sees', () => {
@@ -78,6 +89,75 @@ describe('what the guardian sees', () => {
     renderWithProviders(<GuardianInvitations />)
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+  })
+})
+
+describe('answering — and the header that has to stop saying it', () => {
+  /**
+   * `pendingGuardianInvitations` rides on /api/auth/me/, so answering a request
+   * makes the session's own count stale — and the header draws its badge from
+   * exactly that. Without the re-read, a guardian who has just accepted keeps
+   * being told a child is waiting.
+   */
+  const GUARDIAN = {
+    ...TEST_USER, role: 'rodzic', isPatient: false, isChild: null,
+    pendingGuardianInvitations: 1,
+  }
+
+  it('re-reads the session and hands it over after accepting', async () => {
+    mockedFetch.mockResolvedValueOnce([INVITATION])
+    mockedAccept.mockResolvedValueOnce(undefined)
+    const answered = { ...GUARDIAN, pendingGuardianInvitations: 0 }
+    mockedCurrentUser.mockResolvedValue(answered)
+    const setUser = vi.fn()
+
+    renderWithProviders(<GuardianInvitations />, { user: GUARDIAN, setUser })
+    await userEvent.click(await screen.findByRole('button', { name: /zaakceptuj/i }))
+
+    await waitFor(() => expect(setUser).toHaveBeenCalledWith(answered))
+  })
+
+  it('does the same after a refusal, which also clears the request', async () => {
+    mockedFetch.mockResolvedValueOnce([INVITATION])
+    mockedReject.mockResolvedValueOnce(undefined)
+    mockedCurrentUser.mockResolvedValue({ ...GUARDIAN, pendingGuardianInvitations: 0 })
+    const setUser = vi.fn()
+
+    renderWithProviders(<GuardianInvitations />, { user: GUARDIAN, setUser })
+    await userEvent.click(await screen.findByRole('button', { name: /odrzuć/i }))
+
+    await waitFor(() => expect(setUser).toHaveBeenCalled())
+  })
+
+  it('does not report a failed re-read as a failed decision', async () => {
+    /** The decision went through. Saying "nie udało się" about it would be the
+     *  worse of the two errors, and a badge that lingers points at this card —
+     *  which is already correct. */
+    mockedFetch.mockResolvedValueOnce([INVITATION])
+    mockedAccept.mockResolvedValueOnce(undefined)
+    mockedCurrentUser.mockRejectedValue(new Error('network down'))
+    const setUser = vi.fn()
+
+    renderWithProviders(<GuardianInvitations />, { user: GUARDIAN, setUser })
+    await userEvent.click(await screen.findByRole('button', { name: /zaakceptuj/i }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/powiązane/i)
+    await waitFor(() => expect(mockedCurrentUser).toHaveBeenCalled())
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(setUser).not.toHaveBeenCalled()
+  })
+
+  it('leaves the session alone when the answer itself failed', async () => {
+    mockedFetch.mockResolvedValueOnce([INVITATION])
+    mockedAccept.mockRejectedValueOnce(new Error('network down'))
+    const setUser = vi.fn()
+
+    renderWithProviders(<GuardianInvitations />, { user: GUARDIAN, setUser })
+    await userEvent.click(await screen.findByRole('button', { name: /zaakceptuj/i }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(mockedCurrentUser).not.toHaveBeenCalled()
+    expect(setUser).not.toHaveBeenCalled()
   })
 })
 
