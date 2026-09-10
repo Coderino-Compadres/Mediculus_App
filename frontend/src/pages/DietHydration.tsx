@@ -228,15 +228,60 @@ function TodayCard({
   )
 }
 
-/** The chips from the artboard. A tap records a serving; nothing is selected
- *  afterwards, because this is an act rather than a setting. */
+/**
+ * The chips from the artboard, plus a way to name a drink they do not list.
+ *
+ * A tap records a serving; nothing is selected afterwards, because this is an
+ * act rather than a setting.
+ *
+ * "+ Inny napój" is NOT on the artboard, and it is the same kind of addition as
+ * the undo on the entries below: §08 draws five chips, and five chips is a list
+ * of the commonest drinks rather than of everything a person drinks. Worth
+ * confirming with the client, since it adds a control to their screen.
+ *
+ * IT ASKS FOR NO AMOUNT, exactly like the five chips, and that is what keeps the
+ * client's rule ("nie przeliczamy na wodę") true by construction rather than by
+ * care: a serving with no amount cannot reach the water total whatever it is
+ * called. Somebody who wants to record 200 ml of juice is asking for a decision
+ * the client has not made — see the note above the chips, which the typed drink
+ * is covered by too.
+ */
 function OtherDrinksCard({
   busy,
+  maxDrinkName,
+  nameError,
   onDrink,
 }: {
   busy: boolean
-  onDrink: (amountMl: number | null, drink?: DrinkName) => void
+  maxDrinkName: number
+  nameError: string | null
+  /** Resolves to whether the serving was actually written. The typed-name form
+   *  is the one caller that has to know: it must not clear and close over a
+   *  refusal, or the message below would have nothing left to sit under. */
+  onDrink: (amountMl: number | null, drink?: string) => Promise<boolean>
 }) {
+  const [customOpen, setCustomOpen] = useState(false)
+  const [name, setName] = useState('')
+
+  /* Only that there is *something* to send. The rules about the name — folding
+     it onto a chip, refusing water, the length — are the server's, and it
+     answers them under this field. A second copy here would be a second set of
+     rules free to disagree with it. */
+  const nameValid = name.trim().length > 0
+
+  async function submitName() {
+    if (!nameValid || busy) return
+    // Cleared and closed on the *answer*, not on the tap. Closing optimistically
+    // unmounted the input and its error the moment somebody typed "woda", so
+    // the one refusal this form can produce had nowhere to be shown — the save
+    // failed silently, which is the whole failure mode this screen's messages
+    // exist to avoid. On a refusal the typed name stays, ready to be corrected.
+    if (await onDrink(null, name.trim())) {
+      setName('')
+      setCustomOpen(false)
+    }
+  }
+
   return (
     <section className="hydration-card" aria-labelledby="hydration-drinks-heading">
       <h2 id="hydration-drinks-heading">Inne napoje</h2>
@@ -253,7 +298,63 @@ function OtherDrinksCard({
             {drink}
           </button>
         ))}
+        <button
+          type="button"
+          className="hydration-chip hydration-chip-quiet"
+          aria-expanded={customOpen}
+          onClick={() => setCustomOpen((open) => !open)}
+        >
+          + Inny napój
+        </button>
       </div>
+
+      {customOpen && (
+        /* Not a <form>, for the reason "Własna ilość" is not one: this card sits
+           on a screen with other actions and a nested form would make Enter
+           ambiguous. The button and the keydown are the two ways to submit. */
+        <div className="hydration-custom">
+          <label className="hydration-custom-label" htmlFor="hydration-custom-drink">
+            Co piłaś lub piłeś?
+          </label>
+          <div className="hydration-custom-row">
+            <input
+              id="hydration-custom-drink"
+              className="hydration-custom-input hydration-custom-input-text"
+              type="text"
+              value={name}
+              maxLength={maxDrinkName}
+              autoFocus
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? 'hydration-custom-drink-error' : undefined}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void submitName()
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="hydration-custom-submit"
+              disabled={busy || !nameValid}
+              onClick={() => void submitName()}
+            >
+              Zapisz
+            </button>
+          </div>
+          {/* The server's own sentence, under the input that produced it. The
+              one refusal a patient can actually reach here is typing "woda",
+              which is answered by pointing at the buttons that take an amount —
+              putting it above the card instead would be a save that failed
+              somewhere the eye is not. */}
+          {nameError && (
+            <p className="hydration-custom-error" id="hydration-custom-drink-error" role="alert">
+              {nameError}
+            </p>
+          )}
+        </div>
+      )}
     </section>
   )
 }
@@ -372,6 +473,11 @@ function DietHydration() {
    *  dropped connection. Separate from `loadError`, which means the screen has
    *  nothing to draw at all. */
   const [actionError, setActionError] = useState<string | null>(null)
+  /** A refusal Django attributed to `drink`, so it can be shown under the input
+   *  that produced it rather than above the card. Kept apart from
+   *  `actionError` for exactly that reason — one message, two places, and only
+   *  the field one is any use for a name the patient just typed. */
+  const [drinkNameError, setDrinkNameError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   /** Bumped by "Spróbuj ponownie", which is how the effect below is re-run —
@@ -412,18 +518,30 @@ function DietHydration() {
     setAttempt((n) => n + 1)
   }
 
-  async function drink(amountMl: number | null, name: DrinkName = WATER) {
-    if (busy) return
+  /** Returns whether the serving was written — see `OtherDrinksCard.onDrink`. */
+  async function drink(amountMl: number | null, name: string = WATER): Promise<boolean> {
+    if (busy) return false
     setBusy(true)
     setActionError(null)
+    setDrinkNameError(null)
     try {
       // The write answers with the whole day, so nothing here adds a glass to a
       // number of its own: what is on screen is what the server holds.
       setDay(await recordDrink(amountMl, name))
+      return true
     } catch (error) {
-      setActionError(
-        error instanceof ApiError ? error.message : 'Nie udało się zapisać.',
-      )
+      // A refusal about the *name* goes back to the input; anything else is a
+      // message above the card. `drink` is the only field on this screen that
+      // can carry one, which is why this is a lookup rather than a mapping
+      // table like the supplement form's.
+      const onTheName = error instanceof ApiError ? error.fieldErrors.drink : undefined
+      if (onTheName) setDrinkNameError(onTheName)
+      else {
+        setActionError(
+          error instanceof ApiError ? error.message : 'Nie udało się zapisać.',
+        )
+      }
+      return false
     } finally {
       setBusy(false)
     }
@@ -481,7 +599,12 @@ function DietHydration() {
           )}
 
           <TodayCard day={day} busy={busy} onDrink={(ml, name) => void drink(ml, name)} />
-          <OtherDrinksCard busy={busy} onDrink={(ml, name) => void drink(ml, name)} />
+          <OtherDrinksCard
+            busy={busy}
+            maxDrinkName={day.maxDrinkName}
+            nameError={drinkNameError}
+            onDrink={drink}
+          />
           <EntriesCard day={day} busy={busy} onRemove={(id) => void remove(id)} />
           <WeekCard day={day} />
         </>

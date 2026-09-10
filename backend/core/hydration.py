@@ -30,7 +30,9 @@ from django.db import transaction
 from django.db.models import Sum
 from rest_framework import serializers
 
-from .drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DRINKS, GLASS_ML,
+from .drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DRINK_IS_WATER,
+                     DRINK_NAME_REQUIRED, GLASS_ML, MAX_DRINK_NAME,
+                     normalize_drink,
                      MAX_AMOUNT_ML, MAX_ENTRIES_PER_DAY, MIN_AMOUNT_ML, WATER,
                      WEEK_DAYS)
 from .models import Hydration
@@ -63,18 +65,62 @@ class HydrationEntrySerializer(serializers.Serializer):
     to record 400 ml of coffee is asking for something the module does not do,
     and quietly dropping the number is how `time_of_day` lost a patient's answer
     for weeks (see CLAUDE.md).
+
+    **`drink` IS FREE TEXT, NOT A `ChoiceField`**, so a patient can record a
+    drink the artboard does not list. It was a closed vocabulary until §08's
+    chips turned out to be the commonest drinks rather than all of them, and
+    opening it is safe for a specific reason: what keeps the client's "nie
+    przeliczamy na wodę" rule true is the **amount** rule below, not the name
+    list. Anything that is not `WATER` may carry no amount, so no name a patient
+    invents can reach `water_ml`, which sums amounts on water alone.
+
+    A typed name goes through `normalize_drink`, which folds it onto the
+    canonical spelling when it matches a chip — otherwise a list would show
+    "herbata" and "Herbata" as two drinks. The one name it refuses is water's
+    own, because this form asks for no amount and water is meaningless without
+    one; the refusal lands under `drink`, the input that produced it, rather
+    than under `amount_ml`, which the custom-drink form does not render.
     """
 
-    drink = serializers.ChoiceField(choices=DRINKS, required=False, default=WATER)
+    drink = serializers.CharField(
+        required=False, allow_blank=True, max_length=MAX_DRINK_NAME)
     amount_ml = serializers.IntegerField(
         required=False, allow_null=True,
         min_value=MIN_AMOUNT_ML, max_value=MAX_AMOUNT_ML,
     )
 
+    def validate_drink(self, value):
+        """A name the column should hold, or a refusal on this field.
+
+        Only the two things that are wrong with the *name itself*: it is blank,
+        or it needs folding onto a canonical spelling. Whether water is allowed
+        depends on the amount, which is a second field — so that rule lives in
+        `validate` below, not here.
+
+        An *absent* `drink` is water (the "+ Szklanka" call); this never runs
+        for a key that was not sent. A blank string is a different thing from an
+        omitted one — somebody submitted the custom form empty — which is why
+        the field is `allow_blank` and refused here rather than by DRF.
+        """
+        name = normalize_drink(value)
+        if name is None:
+            raise serializers.ValidationError(DRINK_NAME_REQUIRED)
+        return name
+
     def validate(self, attrs):
         drink = attrs.get('drink', WATER)
         amount = attrs.get('amount_ml')
         if drink == WATER and amount is None:
+            # WHICH FIELD CARRIES THIS DEPENDS ON WHICH FORM ASKED, and that is
+            # the point rather than a nicety. "+ Szklanka" sends an amount and
+            # no name, so a missing amount is genuinely about `amount_ml`. The
+            # custom-drink form sends a *typed name* and renders no amount input
+            # at all — so somebody who typed "woda" there must be answered on
+            # the box they typed into, and told where the amount is asked for.
+            # The other way round is a save that fails under an invisible field,
+            # which is the failure `Register.tsx` had with `invitation_code`.
+            if 'drink' in (getattr(self, 'initial_data', None) or {}):
+                raise serializers.ValidationError({'drink': DRINK_IS_WATER})
             raise serializers.ValidationError({'amount_ml': AMOUNT_REQUIRED})
         if drink != WATER and amount is not None:
             raise serializers.ValidationError({'amount_ml': AMOUNT_NOT_FOR_DRINK})
@@ -130,6 +176,10 @@ def build_hydration_day(id_medical, today):
         'target_glasses': DAILY_TARGET_GLASSES,
         'min_amount_ml': MIN_AMOUNT_ML,
         'max_amount_ml': MAX_AMOUNT_ML,
+        # Travels for the same reason the bounds above do: the "Inny napój"
+        # input caps itself at what the serializer will accept, rather than the
+        # screen holding its own 40 and finding out by a 400.
+        'max_drink_name': MAX_DRINK_NAME,
         'water_ml': water_ml,
         'glasses': _glasses(water_ml),
         # Capped for the bar and uncapped in `glasses`: past the goal the bar is

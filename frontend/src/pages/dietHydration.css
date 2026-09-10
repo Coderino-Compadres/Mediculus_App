@@ -429,3 +429,35 @@
   font-weight: var(--font-weight-semibold);
   color: var(--color-water);
 }
+
+/* "+ Inny napój" — the way to record a drink the five chips do not name.
+ *
+ * A quieter chip than the five beside it, and deliberately: those are the
+ * drinks, this is the way to add one. Same height and same pill so it still
+ * reads as part of the row rather than as an action bolted onto its end. */
+.hydration-chip-quiet {
+  background: transparent;
+  border-style: dashed;
+  color: var(--color-graphite-muted);
+}
+
+.hydration-chip-quiet:hover {
+  border-style: solid;
+  color: var(--color-graphite);
+}
+
+/* The name input reuses `.hydration-custom-input`'s box; only the numeric
+   alignment has to go, since this one holds words. */
+.hydration-custom-input-text {
+  text-align: left;
+}
+
+/* The server's refusal about the name, under the input that produced it. Ochre
+   rather than red, the tone this app uses for everything a patient can simply
+   correct — see the entry form and the weekly report. */
+.hydration-custom-error {
+  font-size: 13px;
+  color: var(--color-caution);
+  line-height: 1.5;
+  margin: 0;
+}

@@ -56,7 +56,6 @@
 import { apiRequest } from './client'
 import { toIsoDate } from '../utils/days'
 import { WATER } from '../utils/drinks'
-import type { DrinkName } from '../utils/drinks'
 import type {
   DietActivityDay,
   DietActivityEntry,
@@ -180,6 +179,7 @@ interface HydrationDayPayload {
   target_glasses: number
   min_amount_ml: number
   max_amount_ml: number
+  max_drink_name: number
   water_ml: number
   glasses: number
   progress: number
@@ -199,7 +199,7 @@ function toEntry(payload: HydrationEntryPayload): HydrationEntry {
     // pinned to `utils/drinks.ts` by test_drinks.py — so a value arriving here
     // is one of ours. The cast records that this is the one place the two lists
     // are assumed to agree.
-    drink: payload.drink as DrinkName,
+    drink: payload.drink,
     amountMl: payload.amount_ml,
     at: payload.at,
   }
@@ -213,6 +213,7 @@ function toDay(payload: HydrationDayPayload): HydrationDay {
     targetGlasses: payload.target_glasses,
     minAmountMl: payload.min_amount_ml,
     maxAmountMl: payload.max_amount_ml,
+    maxDrinkName: payload.max_drink_name,
     waterMl: payload.water_ml,
     glasses: payload.glasses,
     progress: payload.progress,
@@ -282,12 +283,19 @@ export async function fetchHydration(): Promise<HydrationDay> {
  * `amountMl` is required for water and refused for everything else, which is the
  * server's rule and not this layer's: sending 250 ml of tea is a 400, on
  * purpose, rather than a number quietly dropped.
+ *
+ * `drink` IS A `string`, NOT A `DrinkName`, because the chips are the quick way
+ * in rather than the whole vocabulary — a patient may type a name of their own.
+ * Nothing is normalised here: folding "herbata" onto "Herbata" is the server's
+ * job (`normalize_drink`), and a second definition of "is this the same drink"
+ * in the browser is exactly the drift the shared vocabularies are tested
+ * against. The name travels as typed and comes back as stored.
  */
 export async function recordDrink(
   amountMl: number | null,
-  drink: DrinkName = WATER,
+  drink: string = WATER,
 ): Promise<HydrationDay> {
-  const body: { drink: DrinkName; amount_ml?: number } = { drink }
+  const body: { drink: string; amount_ml?: number } = { drink }
   if (amountMl !== null) body.amount_ml = amountMl
   const payload = await apiRequest<HydrationWritePayload>(HYDRATION_URL, {
     method: 'POST',

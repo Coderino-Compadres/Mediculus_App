@@ -19,8 +19,9 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from core.drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DRINKS, GLASS_ML,
-                         MAX_AMOUNT_ML, MAX_ENTRIES_PER_DAY, MIN_AMOUNT_ML,
-                         OTHER_DRINKS, WATER, WEEK_DAYS)
+                         MAX_AMOUNT_ML, MAX_DRINK_NAME, MAX_ENTRIES_PER_DAY,
+                         MIN_AMOUNT_ML, OTHER_DRINKS, WATER, WEEK_DAYS,
+                         normalize_drink)
 
 DRINKS_TS = (
     Path(__file__).resolve().parent.parent.parent.parent
@@ -119,3 +120,52 @@ class FrontendParityTests(SimpleTestCase):
     def test_and_in_the_same_order(self):
         """The chips are drawn in declaration order, and §08 fixes it."""
         self.assertEqual(self.frontend_others(), OTHER_DRINKS)
+
+
+class NormalizeTests(SimpleTestCase):
+    """`normalize_drink` — what a typed name becomes before it is stored.
+
+    The six chips are no longer everything `hydration.drink` may hold: a patient
+    can type a name of their own. This function is the whole of what stands
+    between that and the column, and its second job is the one worth having —
+    folding a typed name onto the canonical spelling, so one patient's list does
+    not show "herbata" and "Herbata" as two different drinks.
+
+    It lives on the server alone; `utils/drinks.ts` deliberately holds no copy,
+    because two definitions of "is this the same drink" is exactly the drift
+    this file exists to catch elsewhere.
+    """
+
+    def test_it_folds_a_typed_name_onto_the_chip_that_already_says_it(self):
+        for typed in ('herbata', 'HERBATA', 'Herbata', '  herbata  '):
+            with self.subTest(typed=typed):
+                self.assertEqual(normalize_drink(typed), 'Herbata')
+
+    def test_it_folds_case_insensitively_across_the_whole_vocabulary(self):
+        for known in DRINKS:
+            with self.subTest(drink=known):
+                self.assertEqual(normalize_drink(known.upper()), known)
+                self.assertEqual(normalize_drink(known.lower()), known)
+
+    def test_an_unknown_name_is_kept_as_typed(self):
+        self.assertEqual(normalize_drink('Sok pomarańczowy'), 'Sok pomarańczowy')
+
+    def test_it_trims_and_collapses_whitespace(self):
+        self.assertEqual(normalize_drink('  Sok   pomarańczowy '), 'Sok pomarańczowy')
+
+    def test_nothing_at_all_is_none_rather_than_an_empty_name(self):
+        """The caller decides what that means: a refusal on the form, and water
+        when the key was never sent."""
+        for empty in ('', '   ', '\t\n', None):
+            with self.subTest(empty=repr(empty)):
+                self.assertIsNone(normalize_drink(empty))
+
+    def test_water_normalizes_to_water_rather_than_being_refused_here(self):
+        """Whether water is allowed depends on the amount, which is another
+        field — so that rule is in the serializer, not in this function."""
+        self.assertEqual(normalize_drink('woda'), WATER)
+
+    def test_the_name_limit_is_a_name_rather_than_a_note(self):
+        """Long enough for a real drink, short enough that a row stays a row."""
+        self.assertGreaterEqual(MAX_DRINK_NAME, len('Sok pomarańczowy wyciskany'))
+        self.assertLessEqual(MAX_DRINK_NAME, 80)

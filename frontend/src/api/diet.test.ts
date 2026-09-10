@@ -44,6 +44,7 @@ const DAY_PAYLOAD = {
   target_glasses: 6,
   min_amount_ml: 10,
   max_amount_ml: 2000,
+  max_drink_name: 40,
   water_ml: 1000,
   glasses: 4,
   progress: 0.667,
@@ -86,6 +87,7 @@ describe('fetchHydration', () => {
     expect(day.targetGlasses).toBe(6)
     expect(day.minAmountMl).toBe(10)
     expect(day.maxAmountMl).toBe(2000)
+    expect(day.maxDrinkName).toBe(40)
     expect(day.waterMl).toBe(1000)
     expect(day.glasses).toBe(4)
     expect(day.progress).toBe(0.667)

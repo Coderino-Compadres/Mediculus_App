@@ -29,9 +29,10 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
-from core.drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DRINKS, GLASS_ML,
-                         MAX_AMOUNT_ML, MAX_ENTRIES_PER_DAY, MIN_AMOUNT_ML,
-                         OTHER_DRINKS, WATER, WEEK_DAYS)
+from core.drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DRINK_IS_WATER,
+                         DRINK_NAME_REQUIRED, DRINKS, GLASS_ML,
+                         MAX_AMOUNT_ML, MAX_DRINK_NAME, MAX_ENTRIES_PER_DAY,
+                         MIN_AMOUNT_ML, OTHER_DRINKS, WATER, WEEK_DAYS)
 from core.hydration import (AMOUNT_NOT_FOR_DRINK, AMOUNT_REQUIRED, DAY_IS_FULL,
                             build_hydration_day)
 from core.models import Hydration, Patient, Specjalist, User, UserRole
@@ -164,7 +165,23 @@ class DrinkingTests(HydrationTestCase):
         self.assertEqual(self.day()['entries'][0]['amount_ml'], BOTTLE_ML)
 
     def test_water_with_no_amount_is_refused_rather_than_guessed(self):
+        """Refused either way; which field says so depends on which form asked.
+
+        A body that *names* water carries a typed name, which only the custom
+        drink form sends — and that form renders no amount input, so answering
+        it under `amount_ml` would be a save failing under a field nobody can
+        see. It is told where the amount is asked for instead.
+        """
         response = self.drink(drink=WATER)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(str(response.data['drink'][0]), DRINK_IS_WATER)
+        self.assertEqual(Hydration.objects.count(), 0)
+
+    def test_a_button_that_forgets_its_amount_is_answered_on_the_amount(self):
+        """No `drink` key at all — the "+ Szklanka" shape, where the missing
+        thing genuinely is the amount."""
+        response = self.client.post(self.url(), {}, format='json')
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(str(response.data['amount_ml'][0]), AMOUNT_REQUIRED)
@@ -176,11 +193,72 @@ class DrinkingTests(HydrationTestCase):
                 self.assertEqual(self.drink(amount_ml=amount).status_code, 400)
         self.assertEqual(Hydration.objects.count(), 0)
 
-    def test_a_drink_outside_the_vocabulary_is_a_400_and_not_free_text(self):
-        response = self.drink(drink='Piwo')
+    def test_a_drink_the_chips_do_not_offer_can_be_typed(self):
+        """The vocabulary is the quick way in, not the whole of what may be drunk.
+
+        It was a closed `ChoiceField` until the chips turned out to be the
+        commonest drinks rather than all of them. What made opening it safe is
+        that the client's "nie przeliczamy na wodę" rule rests on the **amount**
+        rule, not on the name list — see the next test.
+        """
+        response = self.drink(drink='Sok pomarańczowy')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Hydration.objects.get().drink, 'Sok pomarańczowy')
+
+    def test_a_typed_drink_counts_towards_nothing(self):
+        """The rule the whole screen rests on, now that any name is accepted."""
+        self.drink(drink='Sok pomarańczowy')
+        self.drink(drink='Lemoniada')
+
+        day = self.day()
+        self.assertEqual(day['water_ml'], 0)
+        self.assertEqual(day['glasses'], 0)
+        self.assertEqual(day['progress'], 0)
+        self.assertEqual(len(day['entries']), 2)
+
+    def test_a_typed_drink_cannot_carry_an_amount_either(self):
+        """Which is *why* it can never reach the water total, whatever its name."""
+        response = self.drink(drink='Sok pomarańczowy', amount_ml=200)
 
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(str(response.data['amount_ml'][0]), AMOUNT_NOT_FOR_DRINK)
         self.assertEqual(Hydration.objects.count(), 0)
+
+    def test_a_typed_name_is_folded_onto_the_chip_that_already_says_it(self):
+        """Otherwise one patient's list shows "herbata" and "Herbata" as two
+        drinks, which is what makes a record read as unreliable."""
+        for typed in ('herbata', 'HERBATA', '  Herbata  '):
+            with self.subTest(typed=typed):
+                self.assertEqual(self.drink(drink=typed).status_code, 201)
+
+        self.assertEqual(
+            set(Hydration.objects.values_list('drink', flat=True)), {'Herbata'})
+
+    def test_a_typed_name_has_its_inner_whitespace_collapsed(self):
+        self.drink(drink='Sok   pomarańczowy')
+
+        self.assertEqual(Hydration.objects.get().drink, 'Sok pomarańczowy')
+
+    def test_a_blank_name_is_refused_on_the_input_that_produced_it(self):
+        for blank in ('', '   '):
+            with self.subTest(blank=blank):
+                response = self.drink(drink=blank)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    str(response.data['drink'][0]), DRINK_NAME_REQUIRED)
+        self.assertEqual(Hydration.objects.count(), 0)
+
+    def test_a_name_longer_than_the_column_should_hold_is_refused(self):
+        response = self.drink(drink='x' * (MAX_DRINK_NAME + 1))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('drink', response.data)
+        self.assertEqual(Hydration.objects.count(), 0)
+
+    def test_a_name_at_the_limit_is_accepted(self):
+        """The bound the screen's input carries has to be one the API takes."""
+        self.assertEqual(self.drink(drink='x' * MAX_DRINK_NAME).status_code, 201)
 
     def test_the_day_is_capped_as_a_backstop_against_a_stuck_button(self):
         for _ in range(MAX_ENTRIES_PER_DAY):

@@ -40,6 +40,7 @@ function hydrationDay(overrides: Partial<HydrationDay> = {}): HydrationDay {
     targetGlasses: 6,
     minAmountMl: 10,
     maxAmountMl: 2000,
+    maxDrinkName: 40,
     waterMl: 0,
     glasses: 0,
     progress: 0,

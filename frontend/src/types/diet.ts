@@ -1,5 +1,4 @@
 import type { FeelingAfter } from '../utils/activity'
-import type { DrinkName } from '../utils/drinks'
 import type { SleepQuality, WakeFeeling } from '../utils/sleep'
 
 /**
@@ -35,7 +34,16 @@ import type { SleepQuality, WakeFeeling } from '../utils/sleep'
  */
 export interface HydrationEntry {
   id: string
-  drink: DrinkName
+  /**
+   * One of `DRINKS`, or a name the patient typed.
+   *
+   * A plain `string` rather than `DrinkName`, and that is the type saying what
+   * the column now holds: the six chips are the quick way in, not the whole
+   * vocabulary. The server folds a typed name onto a chip's spelling when it
+   * matches one (`normalize_drink`), so this is never "herbata" next to
+   * "Herbata" — but it may be anything else the patient drinks.
+   */
+  drink: string
   amountMl: number | null
   /** ISO moment it was recorded — the list orders by it, newest first. */
   at: string | null
@@ -76,6 +84,9 @@ export interface HydrationDay {
   /** Bounds the "Własna ilość" input enforces before submitting. */
   minAmountMl: number
   maxAmountMl: number
+  /** How long a typed drink name may be — read off the payload rather than
+   *  spelled into the input, like the two bounds above. */
+  maxDrinkName: number
   waterMl: number
   glasses: number
   /** 0..1, for the bar's width. */
