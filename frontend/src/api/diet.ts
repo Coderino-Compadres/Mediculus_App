@@ -21,6 +21,7 @@
  *
  *   GET    /api/diet/today/                          → `fetchDietDay`
  *   GET    /api/diet/meals/                           → `fetchDietHistory`
+ *   POST   /api/diet/meals/                           → `createMeal`
  *   GET    /api/diet/hydration/                       → `fetchHydration`
  *   POST   /api/diet/hydration/                       → `recordDrink`
  *   DELETE /api/diet/hydration/<id>/                  → `removeDrink`
@@ -61,6 +62,9 @@ import type {
   DietActivityEntry,
   DietDay,
   DietJournalDay,
+  DietMeal,
+  DietMealInput,
+  DietMealSaved,
   DietSleepNight,
   HydrationDay,
   HydrationDayTotal,
@@ -132,17 +136,20 @@ export async function fetchDietDay(): Promise<DietDay> {
  * day is this meal on" already lives, and grouping it a second time in the
  * browser is how one meal ends up on two Tuesdays.
  */
+/** One meal, mapped once — the history reads it and so does the write's answer,
+ *  and two copies of a four-field mapping are two copies free to drift. */
+function toMeal(meal: DietMealPayload): DietMeal {
+  return {
+    id: meal.id,
+    kind: meal.kind,
+    time: meal.time,
+    description: meal.description,
+  }
+}
+
 export async function fetchDietHistory(): Promise<DietJournalDay[]> {
   const payload = await apiRequest<DietJournalDayPayload[]>('/api/diet/meals/')
-  return payload.map((day) => ({
-    date: day.date,
-    meals: day.meals.map((meal) => ({
-      id: meal.id,
-      kind: meal.kind,
-      time: meal.time,
-      description: meal.description,
-    })),
-  }))
+  return payload.map((day) => ({ date: day.date, meals: day.meals.map(toMeal) }))
 }
 
 /* ------------------------------------------------------------------ *
@@ -221,6 +228,45 @@ function toDay(payload: HydrationDayPayload): HydrationDay {
 }
 
 /** Today's water, today's servings and the last seven days. */
+/**
+ * Write one meal — §04's "Dodawanie posiłku".
+ *
+ * THE DAY IS NOT SENT, and that is the rule rather than a saving of bytes: the
+ * server stamps `entry_date` from its own clock, so this form can only ever
+ * address today. A browser that could name the day would be a form on a screen
+ * showing today, quietly writing into the archive — and the phone left open
+ * overnight is not a hypothetical, it is why `utils/dayLock.ts` exists.
+ *
+ * A BLANK ANSWER TRAVELS AS NULL rather than as '', so "not answered" has one
+ * representation on the wire. `description` is the exception and matches its
+ * column: '' is what an empty box means there, with no third state to tell
+ * apart.
+ *
+ * It answers with the row *and* the rebuilt day, which is why the return type
+ * carries both — see `DietMealSaved`.
+ */
+export async function createMeal(input: DietMealInput): Promise<DietMealSaved> {
+  const payload = await apiRequest<{ meal: DietMealPayload; day: DietDayPayload }>(
+    '/api/diet/meals/',
+    {
+      method: 'POST',
+      body: {
+        kind: input.kind || null,
+        time: input.time || null,
+        description: input.description.trim(),
+      },
+    },
+  )
+  return {
+    meal: toMeal(payload.meal),
+    day: {
+      date: payload.day.date,
+      streakDays: payload.day.streak_days,
+      mealCount: payload.day.meal_count,
+    },
+  }
+}
+
 export async function fetchHydration(): Promise<HydrationDay> {
   return toDay(await apiRequest<HydrationDayPayload>(HYDRATION_URL))
 }

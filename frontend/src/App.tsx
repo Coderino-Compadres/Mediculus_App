@@ -5,6 +5,7 @@ import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
 import DietHome from './pages/DietHome'
 import DietJournals from './pages/DietJournals'
+import DietMealForm from './pages/DietMealForm'
 import DietHydration from './pages/DietHydration'
 import DietSupplements from './pages/DietSupplements'
 import DietActivitySleep from './pages/DietActivitySleep'
@@ -386,6 +387,18 @@ function App() {
             element={
               <RequireAuth>
                 <DietJournals />
+              </RequireAuth>
+            }
+          />
+          {/* "Dodawanie posiłku" (§04) — the module's primary action, and the
+              only screen in it that writes a meal. A patient screen like the
+              rest, so RequireAuth's defaults keep a guardian and a specialist
+              out: the endpoint behind it is `_require_patient`. */}
+          <Route
+            path={ROUTES.dietMeal}
+            element={
+              <RequireAuth>
+                <DietMealForm />
               </RequireAuth>
             }
           />

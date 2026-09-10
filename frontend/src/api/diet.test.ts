@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createMeal,
   createSupplement,
   deleteSupplement,
   emptyActivityDay,
@@ -240,6 +241,68 @@ describe('the food diary', () => {
 
     expect(Object.keys(day.meals[0]).sort())
       .toEqual(['description', 'id', 'kind', 'time'])
+  })
+})
+
+describe('createMeal', () => {
+  const SAVED = {
+    meal: { id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' },
+    day: { date: '2026-09-11', streak_days: 4, meal_count: 3 },
+  }
+
+  it('posts the three fields a meal holds and nothing else', async () => {
+    apiRequest.mockResolvedValue(SAVED)
+
+    await createMeal({ kind: 'Obiad', time: '13:30', description: 'Zupa.' })
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/meals/', {
+      method: 'POST',
+      body: { kind: 'Obiad', time: '13:30', description: 'Zupa.' },
+    })
+  })
+
+  it('sends no date, because the server stamps the day', async () => {
+    /** A form that only shows today must not be able to write into the archive. */
+    apiRequest.mockResolvedValue(SAVED)
+
+    await createMeal({ kind: null, time: null, description: '' })
+
+    const body = apiRequest.mock.calls[0][1].body as Record<string, unknown>
+    expect(Object.keys(body).sort()).toEqual(['description', 'kind', 'time'])
+  })
+
+  it('turns a blank answer into null, so "unanswered" has one representation', async () => {
+    apiRequest.mockResolvedValue(SAVED)
+
+    await createMeal({ kind: '', time: '', description: '   ' })
+
+    expect(apiRequest.mock.calls[0][1].body).toEqual({
+      kind: null, time: null, description: '',
+    })
+  })
+
+  it('maps back both the row and the rebuilt day', async () => {
+    /** Both move when one meal is written; recomputing either here is how one
+     *  day ends up with two versions of itself. */
+    apiRequest.mockResolvedValue(SAVED)
+
+    const saved = await createMeal({ kind: 'Obiad', time: '13:30', description: 'Zupa.' })
+
+    expect(saved.meal).toEqual({
+      id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.',
+    })
+    expect(saved.day).toEqual({ date: '2026-09-11', streakDays: 4, mealCount: 3 })
+  })
+
+  it('keeps a zero a zero rather than treating it as missing', async () => {
+    apiRequest.mockResolvedValue({
+      ...SAVED, day: { date: '2026-09-11', streak_days: 0, meal_count: 0 },
+    })
+
+    const saved = await createMeal({ kind: null, time: null, description: '' })
+
+    expect(saved.day.streakDays).toBe(0)
+    expect(saved.day.mealCount).toBe(0)
   })
 })
 

@@ -1,0 +1,280 @@
+/* "Dodawanie posiłku" — §04/§05.
+ *
+ * Its own stylesheet on the same terms as dietHome.css, dietJournals.css and
+ * dietActivitySleep.css: the diet module dresses itself from styles/theme.css
+ * rather than wearing another screen's class names. The shapes below are the
+ * module's established ones (the 44px back arrow, the pill chips with the ochre
+ * "chosen" state, the sage submit) redeclared under this screen's prefix —
+ * which is the module's convention and the reason a rename here cannot reach
+ * another screen.
+ *
+ * No `text-transform: capitalize` anywhere, like its three siblings: the four
+ * stylesheets that carry it render "8 września" as "8 Września". */
+
+.diet-meal-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-meal-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-meal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+}
+
+.diet-meal-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-meal-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* The way back, in the module's own shape: 44px rather than the 40 the
+   psychotherapy screens use, and an `<a>` because it only goes somewhere —
+   this form runs no unsaved-changes guard, so it keeps middle-click and
+   "copy link address". */
+.diet-meal-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-graphite);
+  text-decoration: none;
+  background: var(--color-surface);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.diet-meal-back:hover {
+  color: var(--color-sage-hover);
+  text-decoration: none;
+}
+
+.diet-meal-back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.diet-meal-header-titles {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* `margin: 0 auto`, not `margin: 0` — the centring lives on
+   `.diet-meal-page > *` at the same specificity and loses by source order. The
+   trap dietJournals.css records. */
+.diet-meal-intro {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+/* Cards */
+
+.diet-meal-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diet-meal-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 17px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* Chips — the kind of meal. One choice, and pressing it again takes it back. */
+
+.diet-meal-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.diet-meal-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.diet-meal-chip:hover {
+  border-color: var(--color-border-strong);
+}
+
+.diet-meal-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* The chosen answer in the module's accent: ochre marks a *state*, sage stays
+   the colour of an action. The rule dietActivitySleep.css established — on a
+   card of nothing but chips, painting the selection sage makes the screen look
+   like six submit buttons. */
+.diet-meal-chip-selected {
+  background: var(--color-ochre-soft);
+  border-color: var(--color-ochre-edge);
+  color: var(--color-graphite);
+}
+
+/* Fields */
+
+.diet-meal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diet-meal-field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.diet-meal-field label {
+  font-size: 14px;
+  color: var(--color-graphite);
+}
+
+.diet-meal-time-input {
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 15px;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.diet-meal-textarea {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-control);
+  resize: vertical;
+}
+
+.diet-meal-time-input:focus-visible,
+.diet-meal-textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.diet-meal-hint {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Actions */
+
+.diet-meal-error {
+  font-size: 14px;
+  color: var(--color-caution);
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+.diet-meal-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.diet-meal-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 12px 24px;
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: #fff;
+  background: var(--color-sage);
+  border: none;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.diet-meal-submit:hover {
+  background: var(--color-sage-hover);
+}
+
+.diet-meal-submit:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.diet-meal-submit:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* A link in a line of controls, so its touch target comes from a pseudo-element
+   rather than real height — giving it a box would make "Anuluj" read as a
+   second button of equal weight, which it is not. */
+.diet-meal-cancel {
+  position: relative;
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+}
+
+.diet-meal-cancel::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  min-height: 44px;
+  transform: translateY(-50%);
+}
