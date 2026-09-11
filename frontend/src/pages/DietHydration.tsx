@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import Pagination from '../components/Pagination'
 import { fetchHydration, recordDrink, removeDrink } from '../api/diet'
 import { ApiError } from '../api/client'
+import { usePagination, type Pagination as PageSlice } from '../hooks/usePagination'
 import {
   OTHER_DRINKS,
   WATER,
@@ -443,13 +445,29 @@ function OtherDrinksCard({
   )
 }
 
-/** Today's servings, and the one thing on this screen that removes anything. */
+/**
+ * Today's servings, and the one thing on this screen that removes anything.
+ *
+ * PAGINATED at the app's usual `PAGE_SIZE` (hooks/usePagination.ts), which on
+ * this list is a readability measure and nothing more: `MAX_ENTRIES_PER_DAY`
+ * (40) is a backstop rather than a product rule, so most days never reach a
+ * second page. The pages are only over *this* card — "Ostatnie 7 dni" below is
+ * always exactly seven columns and must never gain a control of its own.
+ *
+ * The order is newest first (`core/hydration.py` sorts on `-created_at`), so a
+ * serving that was just recorded is on page one — which is why the screen
+ * resets to it after every write. Undoing a mis-tap is the whole reason this
+ * list has a "Usuń" at all, and it must not be a page turn away from the tap
+ * that caused it.
+ */
 function EntriesCard({
   day,
+  pages,
   busy,
   onRemove,
 }: {
   day: HydrationDay
+  pages: PageSlice<HydrationEntry>
   busy: boolean
   onRemove: (id: string) => void
 }) {
@@ -460,7 +478,7 @@ function EntriesCard({
         <p className="hydration-note">Jeszcze nic dziś nie zapisałaś ani nie zapisałeś.</p>
       ) : (
         <ul className="hydration-entries">
-          {day.entries.map((entry) => {
+          {pages.items.map((entry) => {
             const time = entryTime(entry)
             return (
               <li key={entry.id} className="hydration-entry">
@@ -485,6 +503,15 @@ function EntriesCard({
           })}
         </ul>
       )}
+      <Pagination
+        page={pages.page}
+        pageCount={pages.pageCount}
+        from={pages.from}
+        to={pages.to}
+        total={pages.total}
+        onChange={pages.goTo}
+        unit="wpisów"
+      />
     </section>
   )
 }
@@ -567,6 +594,9 @@ function DietHydration() {
   /** Bumped by "Spróbuj ponownie", which is how the effect below is re-run —
    *  the same shape Journals.tsx and the other list screens use. */
   const [attempt, setAttempt] = useState(0)
+  // Over today's servings only. "Ostatnie 7 dni" is always seven columns and
+  // takes no page of its own — one `?page=` per screen.
+  const pages = usePagination(day?.entries ?? [])
 
   // The house pattern: a promise chain with a `cancelled` flag rather than an
   // `async` effect body. `loading` starts true, so the first render already
@@ -612,6 +642,9 @@ function DietHydration() {
       // The write answers with the whole day, so nothing here adds a glass to a
       // number of its own: what is on screen is what the server holds.
       setDay(await recordDrink(amountMl, name))
+      // The new serving is at the top of a newest-first list, i.e. on page one,
+      // and the "Usuń" beside it is how a mis-tap is taken back.
+      pages.reset()
       return true
     } catch (error) {
       // A refusal about the *name* goes back to the input; anything else is a
@@ -692,7 +725,12 @@ function DietHydration() {
             nameError={drinkNameError}
             onDrink={drink}
           />
-          <EntriesCard day={day} busy={busy} onRemove={(id) => void remove(id)} />
+          <EntriesCard
+            day={day}
+            pages={pages}
+            busy={busy}
+            onRemove={(id) => void remove(id)}
+          />
           <WeekCard day={day} />
         </>
       )}

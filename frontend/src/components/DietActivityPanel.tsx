@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import Pagination from './Pagination'
 import Stepper from './Stepper'
 import { loadActivityDay, newActivityEntry } from '../api/diet'
 import { useCurrentDay } from '../hooks/useCurrentDay'
+import { usePagination } from '../hooks/usePagination'
 import { fromIsoDate } from '../utils/days'
 import {
   ACTIVITY_DURATION_DEFAULT,
@@ -120,6 +122,18 @@ function DietActivityPanel({ today }: { today: Date }) {
   const currentDay = useCurrentDay()
   const editable = isEditableDay(day.date, fromIsoDate(currentDay))
 
+  /**
+   * The day's activities, seven a page, like every other list in the app.
+   *
+   * The weakest case for it in the module and included for consistency rather
+   * than from pressure on the data: nothing here is stored, so a reload empties
+   * the list and a day rarely holds more than a handful of entries. It costs
+   * one `?page=`, which is free on this screen — the sleep panel beside it has
+   * no list, and the two tabs are component state rather than a query
+   * parameter. If the sleep panel ever grows one, the two cannot share this.
+   */
+  const pages = usePagination(day.entries)
+
   /** Taken from the day being edited rather than from `today`, so the deadline
    *  in the notice cannot name a different day from the data under it. */
   const dateLabel = fromIsoDate(day.date).toLocaleDateString('pl-PL', {
@@ -155,6 +169,8 @@ function DietActivityPanel({ today }: { today: Date }) {
     // anywhere: when `POST /api/diet/activity/` exists, this is the one place
     // that changes, and it changes in api/diet.ts rather than here.
     setDay((current) => ({ ...current, entries: [entry, ...current.entries] }))
+    // Newest first, so what was just written is on page one.
+    pages.reset()
     setDraft(EMPTY_DRAFT)
   }
 
@@ -332,11 +348,22 @@ function DietActivityPanel({ today }: { today: Date }) {
             kilka razy.
           </p>
         ) : (
-          <ul className="diet-as-entries">
-            {day.entries.map((entry) => (
-              <ActivityRow key={entry.id} entry={entry} editable={editable} />
-            ))}
-          </ul>
+          <>
+            <ul className="diet-as-entries">
+              {pages.items.map((entry) => (
+                <ActivityRow key={entry.id} entry={entry} editable={editable} />
+              ))}
+            </ul>
+            <Pagination
+              page={pages.page}
+              pageCount={pages.pageCount}
+              from={pages.from}
+              to={pages.to}
+              total={pages.total}
+              onChange={pages.goTo}
+              unit="wpisów"
+            />
+          </>
         )}
       </section>
     </div>

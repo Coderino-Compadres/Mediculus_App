@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
+import { PAGE_SIZE } from '../hooks/usePagination'
 import DietSupplements from './DietSupplements'
 import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
@@ -457,5 +458,117 @@ describe('what this screen refuses to show', () => {
 
     const rows = screen.getByRole('list', { name: /odhaczone dziś: 2/ })
     expect(within(rows).getAllByRole('listitem')).toHaveLength(3)
+  })
+})
+
+describe('the list is paginated', () => {
+  /**
+   * The one list in the app where paging costs something: this is a checklist
+   * opened every morning, so a preparation on page two is a page turn away from
+   * being ticked. `MAX_SUPPLEMENTS` (60) is a backstop rather than a product
+   * rule, so an ordinary regimen never meets a second page at all — which is
+   * why the first test here is that it does not.
+   */
+  const many = (count: number, from = 0) =>
+    Array.from({ length: count }, (_, index) => {
+      const n = from + index
+      // Hour-ordered, like the server's own ordering.
+      const hour = `${String(6 + n).padStart(2, '0')}:00`
+      return supplement({ id: `s-${n}`, name: `Preparat ${n}`, hour })
+    })
+
+  it('draws no control over an ordinary regimen', async () => {
+    fetchSupplements.mockResolvedValue(many(PAGE_SIZE))
+    await renderScreen()
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('shows seven positions on a page', async () => {
+    fetchSupplements.mockResolvedValue(many(20))
+    await renderScreen()
+
+    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+    expect(screen.getAllByRole('checkbox')).toHaveLength(PAGE_SIZE)
+  })
+
+  it('counts positions in the range it prints', async () => {
+    fetchSupplements.mockResolvedValue(many(20))
+    await renderScreen()
+
+    expect(screen.getByText(/1–7 z 20 pozycji/)).toBeInTheDocument()
+  })
+
+  it('moves through the pages', async () => {
+    fetchSupplements.mockResolvedValue(many(20))
+    await renderScreen()
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    expect(screen.getByText('Preparat 7')).toBeInTheDocument()
+    expect(screen.queryByText('Preparat 0')).toBeNull()
+  })
+
+  it('keeps the whole-list count out of the page, so no page becomes a score', async () => {
+    // `takenCount` describes "Twoja lista", not the seven rows in front of you.
+    // A count that moved with the page would be the "2 z 3" this screen exists
+    // not to show.
+    fetchSupplements.mockResolvedValue([
+      ...many(10).slice(0, 9),
+      supplement({ id: 's-taken', name: 'Odhaczony', hour: '23:00', takenToday: true }),
+    ])
+    await renderScreen()
+
+    const list = screen.getByRole('list', { name: /^Lista: 10 pozycji, odhaczone dziś: 1/ })
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(list).toHaveAccessibleName(/Lista: 10 pozycji, odhaczone dziś: 1/)
+  })
+
+  it('says which slice of the list is on screen, once there is more than one', async () => {
+    fetchSupplements.mockResolvedValue(many(20))
+    await renderScreen()
+
+    expect(
+      screen.getByRole('list', { name: /na tej stronie: 1–7$/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('turns to the page a newly written position landed on', async () => {
+    // The list is ordered by hour, so a preparation taken at 23:00 goes to the
+    // end — a page the patient was not on. A form that saves and then hides
+    // what it saved reads as a save that did nothing.
+    fetchSupplements.mockResolvedValue(many(20))
+    createSupplement.mockResolvedValue([
+      ...many(20),
+      supplement({ id: 's-late', name: 'Melatonina', hour: '23:00' }),
+    ])
+    await renderScreen()
+    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Melatonina')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    await waitFor(() => expect(screen.getByText('Melatonina')).toBeInTheDocument())
+    expect(screen.getByText(/Strona 3 z 3/)).toBeInTheDocument()
+  })
+
+  it('falls back a page rather than emptying when the last row on it goes', async () => {
+    fetchSupplements.mockResolvedValue(many(15))
+    deleteSupplement.mockResolvedValue(undefined)
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    expect(screen.getByText(/Strona 3 z 3/)).toBeInTheDocument()
+
+    fetchSupplements.mockResolvedValue(many(14))
+    // The hidden half of the name runs into the visible half, so a regex.
+    await userEvent.click(screen.getByRole('button', { name: /^Usuń.*Preparat 14$/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Tak, usuń/ }))
+
+    await waitFor(() => expect(screen.getByText(/Strona 2 z 2/)).toBeInTheDocument())
   })
 })

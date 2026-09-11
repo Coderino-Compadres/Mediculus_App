@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import Pagination from '../components/Pagination'
 import {
   createSupplement,
   deleteSupplement,
@@ -10,6 +11,7 @@ import {
   updateSupplement,
 } from '../api/diet'
 import { ApiError } from '../api/client'
+import { PAGE_SIZE, usePagination } from '../hooks/usePagination'
 import { doseLabel, periodLabel, pluralItems, takenCount } from '../utils/supplements'
 import type { Supplement, SupplementInput } from '../types/diet'
 import { ROUTES } from '../routes'
@@ -57,6 +59,25 @@ import './dietSupplements.css'
  * profile. §08's own note records the open question — whether "przyjmowane
  * leki" in §13's profile is the same data or a second entry — and §13 is not
  * built, so naming it here would answer it in markup.
+ *
+ * THE LIST PAGINATES AT `PAGE_SIZE`, the app's own list convention
+ * (hooks/usePagination.ts), and this is the one screen where that convention
+ * costs something rather than only helping: it is a checklist opened every
+ * morning, so a preparation on page two is a page turn away from being ticked.
+ * `MAX_SUPPLEMENTS` (60) is a backstop and not a product rule, so most lists
+ * will never see a second page at all. Two details are what keep the rest
+ * honest:
+ *
+ *   - **the list is ordered by hour, so a written row can land on any page.**
+ *     After a create or an edit the screen therefore turns to the page that now
+ *     holds that row (`revealPageOf`) rather than resetting to page one the way
+ *     the specialist panel's prepend-ordered lists do. A form that saves and
+ *     then hides what it saved is the kind of silent failure this module's
+ *     wording is otherwise careful about;
+ *   - **the accessible description of the list still counts the whole list**,
+ *     never the page. `takenCount` is restricted to that one caller on purpose
+ *     (see utils/supplements.ts): a count that moved with the page would be a
+ *     per-page tally, i.e. the "2 z 3" this screen exists not to show.
  */
 
 /** Said above the list, as the artboard says it. */
@@ -399,6 +420,7 @@ function DietSupplements() {
   /** null = the form is closed, '' = adding, an id = editing that row. */
   const [formFor, setFormFor] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const pages = usePagination(supplements ?? [])
 
   // The house pattern: a promise chain with a `cancelled` flag rather than an
   // `async` effect body.
@@ -433,21 +455,41 @@ function DietSupplements() {
     setAttempt((n) => n + 1)
   }
 
+  /**
+   * The page a row is on, once the rebuilt list has come back.
+   *
+   * Needed because the list is ordered by hour: a preparation taken at 8:00,
+   * written into a list that starts at 12:00, goes to the *front*, and one with
+   * no hour goes to the very end. So neither "stay where you are" nor "go to
+   * page one" reliably shows the row that was just saved, which on a paginated
+   * list reads as a save that did nothing.
+   */
+  function revealPageOf(list: Supplement[], id: string | undefined) {
+    if (id === undefined) return
+    const index = list.findIndex((item) => item.id === id)
+    if (index >= 0) pages.goTo(Math.floor(index / PAGE_SIZE) + 1)
+  }
+
   /** Every write answers with the rebuilt list, so nothing here patches state
    *  of its own — what is on screen is what the server holds. */
   async function run(
     act: () => Promise<Supplement[] | void>,
     fallback: string,
-    { closeForm = false } = {},
+    { closeForm = false, reveal = false } = {},
   ) {
     if (busy) return
     setBusy(true)
     setActionError(null)
     setErrors({})
+    // Taken before the write, so the one id the rebuilt list has that this set
+    // does not is the row that was just created.
+    const before = new Set((supplements ?? []).map((item) => item.id))
     try {
-      const list = await act()
-      if (list) setSupplements(list)
-      else setSupplements(await fetchSupplements())
+      const list = (await act()) ?? (await fetchSupplements())
+      setSupplements(list)
+      if (reveal) {
+        revealPageOf(list, list.find((item) => !before.has(item.id))?.id ?? formFor ?? undefined)
+      }
       if (closeForm) setFormFor(null)
     } catch (error) {
       const found = fieldErrors(error)
@@ -518,10 +560,14 @@ function DietSupplements() {
                    see the file header. */
                 aria-label={
                   `Lista: ${count} ${pluralItems(count)}, ` +
-                  `odhaczone dziś: ${takenCount(supplements)}`
+                  `odhaczone dziś: ${takenCount(supplements)}` +
+                  // Only when there is more than one, so the ordinary list says
+                  // exactly what it always said. The counts before it stay over
+                  // the whole list — see the note in the file header.
+                  (pages.pageCount > 1 ? `; na tej stronie: ${pages.from}–${pages.to}` : '')
                 }
               >
-                {supplements.map((supplement) => (
+                {pages.items.map((supplement) => (
                   <SupplementRow
                     key={supplement.id}
                     supplement={supplement}
@@ -546,6 +592,15 @@ function DietSupplements() {
                   />
                 ))}
               </ul>
+              <Pagination
+                page={pages.page}
+                pageCount={pages.pageCount}
+                from={pages.from}
+                to={pages.to}
+                total={pages.total}
+                onChange={pages.goTo}
+                unit="pozycji"
+              />
             </section>
           )}
 
@@ -577,7 +632,9 @@ function DietSupplements() {
                       ? updateSupplement(editing.id, input)
                       : createSupplement(input),
                   'Nie udało się zapisać pozycji.',
-                  { closeForm: true },
+                  // The list is hour-ordered, so the saved row may well be on
+                  // another page than the one the form was opened from.
+                  { closeForm: true, reveal: true },
                 )
               }
               onCancel={() => {
