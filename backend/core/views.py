@@ -6,6 +6,8 @@ that belong to the request as a whole rather than to one field — the frontend'
 `src/api/client.ts` splits them apart on exactly that convention.
 """
 
+import datetime
+
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.middleware.csrf import get_token
@@ -917,6 +919,49 @@ class DietMealHistoryView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class DietJournalDayView(APIView):
+    """GET /api/diet/days/<YYYY-MM-DD>/ — one day of the food diary.
+
+    The detail behind a row of §07's history. Read-only, and structurally so:
+    there is no write verb on this URL, the same way `/api/diary/<id>/` is
+    read-only for the psychotherapy diary. Writing belongs to today, which has
+    its own URLs — `/api/diet/meals/` to add and `/api/diet/meals/<id>/` to
+    correct.
+
+    ITS OWN URL RATHER THAN FILTERING THE HISTORY IN THE BROWSER. The history
+    answers with everything (up to `MAX_HISTORY_MEALS`), so a screen opened
+    straight from a link — a reload, a bookmark, the back button — would pull
+    a thousand meals to render one day. `(id_medical, entry_date)` is indexed
+    precisely for this.
+
+    UNDER `diet/days/` RATHER THAN `diet/meals/<date>/`: the meal URL next to
+    it names one meal by uuid, and two kinds of resource sharing a prefix is
+    how somebody eventually writes a path that matches both. It reads as a
+    sibling of `diet/today/`, which is what it is — the same shape for a day
+    that is not today.
+
+    A DAY THAT HOLDS NO MEAL IS A PLAIN 404, not an empty day: the history
+    lists exactly the days that hold one, so any other date names nothing.
+    Somebody else's day answers identically, because `load_day` filters on
+    `id_medical` — the convention `/api/diary/<id>/` sets.
+
+    A malformed date is a 404 as well rather than a 400. It cannot come from
+    the app (the only links are built by `dietJournalDayPath`), so it is a
+    typed URL, and "there is nothing here" is the true answer to one.
+    """
+
+    def get(self, request, entry_date):
+        patient = _require_patient(request, DIET_REFUSAL)
+        try:
+            day = datetime.date.fromisoformat(entry_date)
+        except ValueError:
+            raise NotFound()
+        found = meal_rules.load_day(patient.id_medical, day)
+        if found is None:
+            raise NotFound()
+        return Response(found)
 
 
 class DietMealView(APIView):

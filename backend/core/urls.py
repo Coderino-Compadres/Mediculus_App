@@ -62,6 +62,14 @@ urlpatterns = [
         'diet/meals/<uuid:id_meal>/',
         views.DietMealView.as_view(), name='diet-meal',
     ),
+    # One day of the food diary — §07's history opened out. Its own prefix
+    # rather than `diet/meals/<date>/`, so a date and a meal id never compete
+    # for one pattern; it is a sibling of `diet/today/`, which is the same
+    # shape for the day that is today.
+    path(
+        'diet/days/<str:entry_date>/',
+        views.DietJournalDayView.as_view(), name='diet-journal-day',
+    ),
     # §08's second half, "Suplementy i leki".
     path('diet/supplements/', views.SupplementsView.as_view(), name='diet-supplements'),
     path(

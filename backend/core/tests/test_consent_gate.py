@@ -66,6 +66,7 @@ def all_urls(
             'core:diet-hydration-entry', args=[hydration_id or uuid.uuid4()])),
         ('get', reverse('core:diet-today')),
         ('get', reverse('core:diet-meals')),
+        ('get', reverse('core:diet-journal-day', args=['2026-01-01'])),
         ('post', reverse('core:diet-meals')),
         ('put', reverse('core:diet-meal', args=[meal_id or uuid.uuid4()])),
         ('delete', reverse('core:diet-meal', args=[meal_id or uuid.uuid4()])),

@@ -130,6 +130,9 @@ def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None,
         # named account are health data too.
         ('get', reverse('core:diet-today'), 200),
         ('get', reverse('core:diet-meals'), 200),
+        # A day that holds no meal is a 404 — the endpoint running, which
+        # is all this sweep asks.
+        ('get', reverse('core:diet-journal-day', args=['2026-01-01']), 404),
         # An empty body is a valid meal (§05, literally), so this is a 201
         # rather than a 400 — the sweep only cares that the gate is open.
         ('post', reverse('core:diet-meals'), 201),

@@ -1,0 +1,211 @@
+/**
+ * "Dzienniczek dnia" — one day of §07's history, opened out.
+ *
+ * Its own stylesheet reading styles/theme.css, like every other screen in this
+ * module: dressing one screen in another's class names is the mistake
+ * styles/panel.css exists to undo. The shapes echo dietJournals.css because
+ * the two are one tap apart and show the same rows.
+ */
+
+.diet-day-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Every direct child is centred here. A rule below that sets the `margin`
+   shorthand would win on source order at equal specificity and throw its
+   element against the left edge of the window — which happened twice in this
+   module and was found by looking, not by a test. Use `margin-block`. */
+.diet-day-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-day-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* An arrow, the shape both of the client's mockup sets draw. A <Link> rather
+   than a <button>: this screen has nothing to run before leaving, so a button
+   would drop middle-click and "copy link address" for nothing. */
+.diet-day-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--color-graphite);
+  text-decoration: none;
+  border-radius: var(--radius-control);
+}
+
+.diet-day-back:hover {
+  background: rgba(var(--shadow-tint), 0.06);
+}
+
+.diet-day-header-titles {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.diet-day-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin-block: 0 4px;
+}
+
+.diet-day-header-titles h1 {
+  font-family: var(--font-heading);
+  font-size: 22px;
+  color: var(--color-graphite);
+  margin-block: 0;
+  /* The date is the heading, and Polish writes its month names lowercase —
+     `text-transform: capitalize` is the defect four other stylesheets carry. */
+}
+
+/* Status */
+
+.diet-day-count {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin-block: 0;
+}
+
+.diet-day-status {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin-block: 0;
+}
+
+.diet-day-status-error {
+  color: var(--color-caution);
+}
+
+.diet-day-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin-block: 0;
+}
+
+.diet-day-note a {
+  color: var(--color-graphite);
+}
+
+.diet-day-readonly-badge {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-quiet);
+  color: var(--color-graphite);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+}
+
+/* The day */
+
+.diet-day-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+}
+
+.diet-day-meals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.diet-day-meal {
+  padding: 14px 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+.diet-day-meal:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.diet-day-meal:last-child {
+  padding-bottom: 0;
+}
+
+.diet-day-meal-heading {
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+  margin-block: 0 4px;
+}
+
+.diet-day-meal-text {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-graphite-muted);
+  margin-block: 0;
+  /* A description can be a paragraph — §04 makes it one of the two things a
+     meal *is*, and this screen exists so it can be read at full length. */
+  overflow-wrap: anywhere;
+}
+
+.diet-day-meal-text-empty {
+  font-size: 14px;
+  line-height: 1.55;
+  font-style: italic;
+  color: var(--color-graphite-muted);
+  margin-block: 0;
+}
+
+/* Nothing here, which is an answer rather than a failure. */
+
+.diet-day-empty {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 24px 20px;
+}
+
+.diet-day-empty h2 {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin-block: 0 8px;
+}
+
+.diet-day-empty p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-graphite-muted);
+  margin-block: 0 16px;
+}
+
+.diet-day-empty-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+}

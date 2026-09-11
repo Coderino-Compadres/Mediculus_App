@@ -71,6 +71,12 @@ class DietTestCase(TestCase):
     def history_url(self):
         return reverse('core:diet-meals')
 
+    def day_detail_url(self, day):
+        return reverse(
+            'core:diet-journal-day',
+            args=[day.isoformat() if hasattr(day, 'isoformat') else day],
+        )
+
     def meal_url(self, meal):
         return reverse(
             'core:diet-meal',
@@ -723,3 +729,111 @@ class TodayMealsPayloadTests(DietTestCase):
 
         for meal in body['meals']:
             self.assertEqual(set(meal), {'id', 'kind', 'time', 'description'})
+
+
+class JournalDayTests(DietTestCase):
+    """GET /api/diet/days/<date>/ — one day of §07's history, opened out.
+
+    Its own URL rather than the browser filtering the history: that answers
+    with everything, so a screen opened from a link would pull a thousand
+    meals to render one day.
+    """
+
+    def test_it_answers_with_the_day_and_its_meals(self):
+        self.meal(kind='Śniadanie', at='08:00', text='Owsianka.')
+        self.meal(kind='Kolacja', at='19:00', text='Kanapka.')
+
+        body = self.client.get(self.day_detail_url(self.today)).json()
+
+        self.assertEqual(body['date'], self.today.isoformat())
+        self.assertEqual(
+            [m['description'] for m in body['meals']], ['Kanapka.', 'Owsianka.'])
+
+    def test_it_is_the_same_shape_as_a_row_of_the_history(self):
+        """One day has one answer: the list and the detail are a tap apart."""
+        self.meal(on=self.days_ago(2), kind='Obiad', at='13:00', text='Zupa.')
+        self.meal(on=self.days_ago(2), kind=None, at=None, text='Bez godziny.')
+
+        detail = self.client.get(self.day_detail_url(self.days_ago(2))).json()
+        history = self.client.get(self.history_url()).json()
+        row = next(
+            d for d in history if d['date'] == self.days_ago(2).isoformat())
+
+        self.assertEqual(detail, row)
+
+    def test_a_past_day_is_readable(self):
+        """§07 archives a day; it does not hide it."""
+        self.meal(on=self.days_ago(30), text='Dawny posiłek.')
+
+        response = self.client.get(self.day_detail_url(self.days_ago(30)))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [m['description'] for m in response.json()['meals']],
+            ['Dawny posiłek.'],
+        )
+
+    def test_a_day_with_no_meal_is_a_404_rather_than_an_empty_day(self):
+        """The history lists exactly the days that hold one, so any other
+        date names nothing."""
+        self.assertEqual(
+            self.client.get(self.day_detail_url(self.days_ago(5))).status_code,
+            404,
+        )
+
+    def test_a_future_date_is_a_404_too(self):
+        future = self.today + datetime.timedelta(days=3)
+
+        self.assertEqual(
+            self.client.get(self.day_detail_url(future)).status_code, 404)
+
+    def test_somebody_else_s_day_answers_like_a_nonexistent_one(self):
+        """A 403 would confirm the day exists — the /api/diary/<id>/ rule."""
+        other = self.make_patient(email='inny@example.com')
+        self.meal(patient=other, on=self.days_ago(1), text='Cudzy.')
+
+        response = self.client.get(self.day_detail_url(self.days_ago(1)))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_a_malformed_date_is_a_404_rather_than_a_500(self):
+        for bad in ('wczoraj', '2026-13-45', '2026-09', ''):
+            with self.subTest(bad=bad):
+                response = self.client.get(f'/api/diet/days/{bad}/')
+                self.assertIn(response.status_code, (404,))
+
+    def test_it_takes_no_write_verb(self):
+        """Read-only structurally: writing belongs to today's own URLs."""
+        self.meal()
+        url = self.day_detail_url(self.today)
+
+        for method in ('post', 'put', 'patch', 'delete'):
+            with self.subTest(method=method):
+                response = getattr(self.client, method)(url, {}, format='json')
+                self.assertEqual(response.status_code, 405)
+
+    def test_nothing_identifying_travels(self):
+        self.meal()
+
+        body = self.client.get(self.day_detail_url(self.today)).json()
+
+        flat = str(body)
+        self.assertNotIn(str(self.patient.id_medical), flat)
+        self.assertEqual(sorted(body), ['date', 'meals'])
+
+    def test_no_meal_on_the_day_carries_a_quantity(self):
+        """§04's scope, on the one screen that shows a day at full length."""
+        self.meal()
+
+        body = self.client.get(self.day_detail_url(self.today)).json()
+
+        for meal in body['meals']:
+            self.assertEqual(set(meal), {'id', 'kind', 'time', 'description'})
+
+    def test_a_guardian_is_refused_rather_than_shown_a_day(self):
+        guardian = self.make_user(email='opiekun@example.com', role='rodzic')
+        self.client = APIClient()
+        self.sign_in(guardian)
+
+        self.assertEqual(
+            self.client.get(self.day_detail_url(self.today)).status_code, 403)

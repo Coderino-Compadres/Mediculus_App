@@ -22,6 +22,7 @@
  *   GET    /api/diet/today/                          → `fetchDietDay`
  *   GET    /api/diet/meals/                           → `fetchDietHistory`
  *   POST   /api/diet/meals/                           → `createMeal`
+ *   GET    /api/diet/days/<date>/                     → `fetchDietJournalDay`
  *   PUT    /api/diet/meals/<id>/                      → `updateMeal`
  *   DELETE /api/diet/meals/<id>/                      → `deleteMeal`
  *   GET    /api/diet/hydration/                       → `fetchHydration`
@@ -169,7 +170,30 @@ function toMeal(meal: DietMealPayload): DietMeal {
 
 export async function fetchDietHistory(): Promise<DietJournalDay[]> {
   const payload = await apiRequest<DietJournalDayPayload[]>('/api/diet/meals/')
-  return payload.map((day) => ({ date: day.date, meals: day.meals.map(toMeal) }))
+  return payload.map(toJournalDay)
+}
+
+/** One day, mapped exactly like a row of the history — see `toJournalDay`. */
+function toJournalDay(day: DietJournalDayPayload): DietJournalDay {
+  return { date: day.date, meals: day.meals.map(toMeal) }
+}
+
+/**
+ * One day of the history, opened out.
+ *
+ * Its own request rather than filtering what `fetchDietHistory` returned: a
+ * screen reached by a link — a reload, a bookmark, the back button — has no
+ * such list to filter, and pulling the whole diary to render one day would be
+ * the cost of pretending otherwise.
+ *
+ * A day holding no meal is a 404 from the server, which the screen words as
+ * "nothing here" rather than as a failure — the history lists exactly the days
+ * that hold one, so any other date names nothing.
+ */
+export async function fetchDietJournalDay(date: string): Promise<DietJournalDay> {
+  return toJournalDay(
+    await apiRequest<DietJournalDayPayload>(`/api/diet/days/${date}/`),
+  )
 }
 
 /* ------------------------------------------------------------------ *

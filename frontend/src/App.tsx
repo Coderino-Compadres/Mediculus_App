@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ModuleSelect from './pages/ModuleSelect'
 import DietHome from './pages/DietHome'
+import DietJournalDay from './pages/DietJournalDay'
 import DietJournals from './pages/DietJournals'
 import DietMealForm from './pages/DietMealForm'
 import DietHydration from './pages/DietHydration'
@@ -387,6 +388,16 @@ function App() {
             element={
               <RequireAuth>
                 <DietJournals />
+              </RequireAuth>
+            }
+          />
+          {/* One day of that history, read-only. Declared after the bare
+              path so `/diet/journals` is not read as a date. */}
+          <Route
+            path={ROUTES.dietJournalDay}
+            element={
+              <RequireAuth>
+                <DietJournalDay />
               </RequireAuth>
             }
           />

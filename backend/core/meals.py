@@ -259,6 +259,39 @@ def streak_days(id_medical, today):
     return streak
 
 
+def load_day(id_medical, day):
+    """One day of the food diary, or None when it holds no meal.
+
+    The detail behind a row of §07's history. It exists because that row could
+    only ever be as long as a card allows: a day with six meals, each described
+    in a sentence or two, is a wall of text inside a list of seven such days,
+    and there was nowhere to open it out.
+
+    SAME SHAPE AS A ROW OF `load_history`, deliberately — `{date, meals}`, the
+    same `serialize_meal`, the same ordering. The screen behind this renders
+    the same thing the list does, so a second shape would be a second answer
+    about one day, and the list and the detail are one tap apart.
+
+    None rather than an empty day, because a day with no meals is not a day in
+    this diary: the history lists exactly the days that hold one, so a URL
+    naming any other is a URL naming nothing, and the view turns that into a
+    plain 404. That also means a *future* date and a date before the patient
+    started both answer the same way, which is what they are.
+    """
+    meals = (
+        DietMeal.objects
+        .filter(id_medical=id_medical, entry_date=day)
+        # `load_history`'s ordering inside a day, restated rather than shared
+        # only because the query differs; `test_diet_meals_api` pins the two
+        # against each other.
+        .order_by(F('eaten_at').desc(nulls_last=True), '-created_at')
+    )
+    rows = [serialize_meal(meal) for meal in meals]
+    if not rows:
+        return None
+    return {'date': day.isoformat(), 'meals': rows}
+
+
 def today_meals(id_medical, today):
     """Today's meals, in the order the history renders a day.
 
