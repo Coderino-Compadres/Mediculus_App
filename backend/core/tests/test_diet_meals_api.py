@@ -1,15 +1,18 @@
-"""`/api/diet/today/` and `/api/diet/meals/` — the food diary, read.
+"""`/api/diet/today/` and `/api/diet/meals/` — the food diary.
 
 WHAT THESE TWO ENDPOINTS CLOSED. Both screens they serve
 (`pages/DietHome.tsx`, `pages/DietJournals.tsx`) used to read a hardcoded empty
 day out of `api/diet.ts`, because nothing could write a meal and zero was
 therefore the true answer rather than a placeholder. They read rows now.
 
-WHAT IS DELIBERATELY NOT TESTED HERE is writing a meal, because there is no way
-to: §04's form is not built (its photo would be the first file this deployment
-ever stored) and neither URL accepts a write verb. `ReadOnlyTests` pins that,
-so a POST added later without the rest of the thinking fails a test rather than
-quietly opening the food diary to half-formed rows.
+WRITING IS §04 MINUS THE PHOTO, and `WriteTests` is where the argument for that
+lives. The form was held back by one field — a photo would be the first file
+this deployment ever stored — but `diet_meal` has no photo column, so the three
+things it does hold were writable all along. What the tests pin hardest is the
+pair of rules that keep the write honest: **nothing is required** (§05, taken
+literally — an empty body is a valid meal) and **the day is never an input**, so
+a body naming a date cannot rewrite the archive from a form that only shows
+today.
 
 THE ONE PROPERTY WORTH GUARDING ABOVE THE OTHERS is that nothing in either
 payload is a verdict. The module's premise is that it "nie liczy jedzenia", and
@@ -28,7 +31,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
-from core.meals import MAX_HISTORY_MEALS, MEAL_KINDS, streak_days
+from core.meals import (
+    MAX_HISTORY_MEALS, MAX_MEALS_PER_DAY, MEAL_KINDS, streak_days,
+)
 from core.models import DietMeal, Patient, Specjalist, User, UserRole
 
 PASSWORD = 'TajneHaslo123'
@@ -261,21 +266,178 @@ class NothingIsAVerdictTests(DietTestCase):
         self.assertNotIn(self.patient.user.email, blob)
 
 
-class ReadOnlyTests(DietTestCase):
-    """No write verb exists on either URL, and that is the current scope."""
+class WriteTests(DietTestCase):
+    """POST /api/diet/meals/ — §04's "Dodawanie posiłku"."""
+
+    def post(self, **body):
+        return self.client.post(self.history_url(), body, format='json')
+
+    def test_writes_the_three_things_a_meal_holds(self):
+        response = self.post(kind='Obiad', time='13:30', description='Zupa i kanapka.')
+
+        self.assertEqual(response.status_code, 201)
+        meal = DietMeal.objects.get()
+        self.assertEqual(meal.id_medical, self.patient.id_medical)
+        self.assertEqual(meal.entry_date, self.today)
+        self.assertEqual(meal.kind, 'Obiad')
+        self.assertEqual(meal.eaten_at.strftime('%H:%M'), '13:30')
+        self.assertEqual(meal.description, 'Zupa i kanapka.')
+
+    def test_nothing_is_required_so_an_empty_body_is_a_meal(self):
+        """§05, taken literally: a meal happened, and that is the whole record.
+
+        Not an edge case to tolerate — `pages/DietJournals.tsx` already renders
+        such a row as an ordinary one, and refusing it here would be a rule
+        invented by the serializer that neither the schema nor the mockups have.
+        """
+        response = self.post()
+
+        self.assertEqual(response.status_code, 201)
+        meal = DietMeal.objects.get()
+        self.assertIsNone(meal.kind)
+        self.assertIsNone(meal.eaten_at)
+        self.assertEqual(meal.description, '')
+
+    def test_a_blank_answer_is_stored_as_no_answer(self):
+        """'' from an emptied input is "unanswered", with one representation."""
+        response = self.post(kind='', time=None, description='   ')
+
+        self.assertEqual(response.status_code, 201)
+        meal = DietMeal.objects.get()
+        self.assertIsNone(meal.kind)
+        self.assertIsNone(meal.eaten_at)
+        self.assertEqual(meal.description, '')
+
+    def test_a_kind_outside_the_vocabulary_is_refused_not_dropped(self):
+        """`0009`'s lesson: a plain Serializer discards an undeclared key.
+
+        The diary's "pora dnia" was accepted, confirmed and silently thrown away
+        for weeks that way. A ChoiceField makes the same mistake a 400.
+        """
+        response = self.post(kind='Drugie danie')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('kind', response.json())
+        self.assertFalse(DietMeal.objects.exists())
+
+    def test_every_kind_the_picker_offers_is_accepted(self):
+        for kind in MEAL_KINDS:
+            with self.subTest(kind=kind):
+                self.assertEqual(self.post(kind=kind).status_code, 201)
+
+    def test_the_day_comes_from_the_clock_not_from_the_body(self):
+        """A form that only ever shows today must not be able to write Tuesday."""
+        response = self.post(
+            kind='Kolacja', entry_date='2020-01-01', date='2020-01-01')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(DietMeal.objects.get().entry_date, self.today)
+
+    def test_the_answer_carries_the_meal_and_the_rebuilt_day(self):
+        """Both, because the two screens reading this table draw different things.
+
+        The history draws the row; the home screen draws a count and a streak
+        that move the moment one meal is written. A browser recomputing either
+        is how one day ends up with two versions of itself.
+        """
+        body = self.post(kind='Śniadanie', time='08:10').json()
+
+        self.assertEqual(body['meal']['kind'], 'Śniadanie')
+        self.assertEqual(body['meal']['time'], '08:10')
+        self.assertEqual(body['day']['meal_count'], 1)
+        self.assertEqual(body['day']['streak_days'], 1)
+        self.assertEqual(body['day']['date'], self.today.isoformat())
+
+    def test_a_written_meal_shows_up_in_the_history(self):
+        self.post(kind='Przekąska', time='16:20', description='Orzechy.')
+
+        days = self.client.get(self.history_url()).json()
+        self.assertEqual(len(days), 1)
+        self.assertEqual(days[0]['date'], self.today.isoformat())
+        self.assertEqual(days[0]['meals'][0]['description'], 'Orzechy.')
+
+    def test_a_day_has_a_backstop_and_it_does_not_judge_how_much_somebody_eats(self):
+        DietMeal.objects.bulk_create([
+            DietMeal(id_medical=self.patient.id_medical, entry_date=self.today)
+            for _ in range(MAX_MEALS_PER_DAY)
+        ])
+
+        response = self.post(kind='Kolacja')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            DietMeal.objects.filter(entry_date=self.today).count(),
+            MAX_MEALS_PER_DAY,
+        )
+        # The wording is the point: a cap on rows must not read as the module
+        # having an opinion about the food.
+        said = str(response.json()).lower()
+        for verdict in ('za dużo', 'nie możesz', 'przekroczy', 'limit'):
+            self.assertNotIn(verdict, said)
+
+    def test_the_backstop_is_per_day_not_per_patient(self):
+        yesterday = self.today - datetime.timedelta(days=1)
+        DietMeal.objects.bulk_create([
+            DietMeal(id_medical=self.patient.id_medical, entry_date=yesterday)
+            for _ in range(MAX_MEALS_PER_DAY)
+        ])
+
+        self.assertEqual(self.post(kind='Obiad').status_code, 201)
+
+    def test_a_meal_is_written_against_the_session_and_nobody_else(self):
+        other = self.make_patient('inny@example.com')
+
+        self.post(kind='Obiad')
+
+        self.assertEqual(
+            DietMeal.objects.filter(id_medical=other.id_medical).count(), 0)
+        self.assertEqual(
+            DietMeal.objects.filter(id_medical=self.patient.id_medical).count(), 1)
+
+    def test_a_guardian_cannot_write_one(self):
+        guardian = self.make_user('opiekun2@example.com', role='rodzic')
+        self.sign_in(guardian)
+
+        self.assertEqual(self.post(kind='Obiad').status_code, 403)
+        self.assertFalse(DietMeal.objects.exists())
+
+    def test_a_visitor_cannot_write_one(self):
+        self.client = APIClient()
+
+        self.assertEqual(self.post(kind='Obiad').status_code, 403)
+        self.assertFalse(DietMeal.objects.exists())
+
+
+class VerbTests(DietTestCase):
+    """Which verbs exist on the two URLs, and why the missing ones are missing.
+
+    This class used to be `ReadOnlyTests` and pinned the opposite: no write verb
+    anywhere in the food diary. That was a real decision with a stated reason —
+    §04's form carries a photo, and a photo would be the first file this
+    deployment ever stored. What it got wrong is that `diet_meal` has no photo
+    column, so the three things it *can* hold were writable all along while
+    "Dodaj posiłek", the module's primary action, led to a placeholder from two
+    screens. The photo is still the open question; the form is no longer waiting
+    on it.
+    """
 
     def test_the_day_takes_no_write(self):
+        """Still none, and structurally: the day is derived from the meals."""
         for method in ('post', 'put', 'patch', 'delete'):
             with self.subTest(method=method):
                 response = getattr(self.client, method)(self.day_url(), {}, format='json')
                 self.assertEqual(response.status_code, 405)
 
-    def test_the_history_takes_no_write(self):
-        for method in ('post', 'put', 'patch', 'delete'):
+    def test_the_history_takes_a_post_and_nothing_else(self):
+        """A meal can be written. Correcting or removing one is the next gap."""
+        for method in ('put', 'patch', 'delete'):
             with self.subTest(method=method):
                 response = getattr(self.client, method)(
                     self.history_url(), {}, format='json')
                 self.assertEqual(response.status_code, 405)
+
+        self.assertEqual(
+            self.client.post(self.history_url(), {}, format='json').status_code, 201)
 
 
 class AccessTests(DietTestCase):

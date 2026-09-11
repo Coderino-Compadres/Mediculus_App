@@ -42,8 +42,9 @@ export const ROUTES = {
    *  built this key pointed at a PlaceholderPage, which is why the module tile
    *  and the patient menu both already lead here. */
   diet: '/diet',
-  /** "Dodawanie posiłku" (§04 of the mockups) — not built; the home screen's one
-   *  action has to land somewhere real. */
+  /** "Dodawanie posiłku" (§04) — pages/DietMealForm.tsx. The module's primary
+   *  action, and until §04 was built it pointed at a PlaceholderPage, which is
+   *  why the home screen and the history's empty state both already lead here. */
   dietMeal: '/diet/meal',
   /** "Historia dzienniczków żywieniowych" (§07) — pages/DietJournals.tsx. */
   dietJournals: '/diet/journals',
@@ -100,15 +101,15 @@ export interface PlaceholderRouteDef {
   backLabel?: string
 }
 
-/** Screens the mockup references that aren't built yet — every link needs a destination. */
-export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
-  {
-    path: ROUTES.dietMeal,
-    title: 'Dodawanie posiłku',
-    backTo: ROUTES.diet,
-    backLabel: '← Wróć do strony głównej dietetyki',
-  },
-]
+/** Screens the mockup references that aren't built yet — every link needs a
+ *  destination.
+ *
+ *  **Empty, and that is the state to keep it in.** Its last entry was
+ *  `dietMeal`, §04's form, which is now a real screen. An entry here is a link
+ *  that goes nowhere; adding one is fine while a screen is genuinely pending,
+ *  but it should leave again with the screen rather than outlive it. `App.tsx`
+ *  maps over this list, so an empty one renders nothing. */
+export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = []
 
 /**
  * What each screen is called, for `document.title` and for the announcement a
@@ -135,6 +136,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistTechniqueNew]: 'Nowa technika',
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',
   [ROUTES.diet]: 'Dietetyka i psychodietetyka',
+  [ROUTES.dietMeal]: 'Dodawanie posiłku',
   [ROUTES.dietJournals]: 'Dzienniczki żywieniowe',
   [ROUTES.dietHydration]: 'Nawodnienie',
   [ROUTES.dietSupplements]: 'Suplementy i leki',

@@ -248,3 +248,15 @@
 .diet-journals-status-error p {
   margin: 0 0 8px;
 }
+
+/* Said once, after §04's form navigates here having written a meal. Quiet and
+   sage rather than a banner: the meal is in the list right below it, so the
+   sentence only has to confirm that the tap landed. `margin: 0 auto` for the
+   same reason as `.diet-journals-intro` — the centring lives on
+   `.diet-journals-page > *` at equal specificity. */
+.diet-journals-saved-notice {
+  font-size: 14px;
+  color: var(--color-sage-hover);
+  line-height: 1.5;
+  margin: 0 auto;
+}

@@ -92,7 +92,9 @@ function DietSleepPanel({ today }: { today: Date }) {
   return (
     <div className="diet-as-panel">
       {editable ? (
-        <p className="diet-as-lock">{dayLockNotice(dateLabel)}</p>
+        /* `stored: false` — the deadline is true here, the promise that the
+           entry is then kept for good is not. See utils/dayLock.ts. */
+        <p className="diet-as-lock">{dayLockNotice(dateLabel, false)}</p>
       ) : (
         /* Which night is locked, named on the badge's own row. The header says
            which night it is *now*; a locked panel is showing an earlier one, and

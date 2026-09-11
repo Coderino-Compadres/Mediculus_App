@@ -14,7 +14,12 @@ WHAT §08 OF THE MOCKUPS DECIDES, and what is therefore not open here:
   `progress` is capped at 1.0 for the bar's sake and the raw `glasses` is sent
   alongside it, so a day over the goal still says what it actually was.
 * **Other drinks are recorded and never converted.** `water_ml` sums only
-  `drink == WATER`; a serving of tea appears in `entries` and in nothing else.
+  `drink == WATER`; a serving of tea appears in `entries` and in nothing else —
+  now including its size, since every drink may carry one. That filter, in
+  `build_hydration_day` and in `_week`, is the *only* thing keeping the client's
+  rule true: it used to be additionally guaranteed by non-water servings having
+  no amount to add, and that guarantee is gone. Do not compute the total
+  anywhere else.
 * The screen shows **today**, and today alone, plus a seven-day bar chart. There
   is no history screen for hydration and no way to write into a past day.
 
@@ -30,19 +35,17 @@ from django.db import transaction
 from django.db.models import Sum
 from rest_framework import serializers
 
-from .drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DRINKS, GLASS_ML,
+from .drinks import (BOTTLE_ML, DAILY_TARGET_GLASSES, DEFAULT_SERVING_ML,
+                     DRINK_NAME_REQUIRED, GLASS_ML, MAX_DRINK_NAME,
+                     normalize_drink,
                      MAX_AMOUNT_ML, MAX_ENTRIES_PER_DAY, MIN_AMOUNT_ML, WATER,
                      WEEK_DAYS)
 from .models import Hydration
 
 import datetime
 
-#: Refusals the screen renders verbatim. Named because two of them are raised
-#: from a serializer and asserted in tests.
-AMOUNT_REQUIRED = 'Podaj ilość wody w mililitrach.'
-AMOUNT_NOT_FOR_DRINK = (
-    'Inne napoje zapisujemy bez ilości — nie przeliczamy ich na wodę.'
-)
+#: Refusals the screen renders verbatim. Named because they are raised from a
+#: serializer and asserted in tests.
 DAY_IS_FULL = (
     'Na dziś zapisano już maksymalną liczbę porcji. '
     'Jeśli to pomyłka, usuń któryś wpis.'
@@ -58,27 +61,72 @@ class HydrationEntrySerializer(serializers.Serializer):
     `GLASS_ML`/`BOTTLE_ML` a single definition — `core/drinks.py` on the server,
     `utils/drinks.ts` on the client, pinned to each other by `test_drinks.py`.
 
-    `drink` defaults to water so the commonest call is `{"amount_ml": 250}`, and
-    the two amount rules are refused rather than silently applied: a body asking
-    to record 400 ml of coffee is asking for something the module does not do,
-    and quietly dropping the number is how `time_of_day` lost a patient's answer
-    for weeks (see CLAUDE.md).
+    `drink` defaults to water so the commonest call is `{"amount_ml": 250}`.
+
+    **EVERY DRINK MAY CARRY AN AMOUNT, AND NONE BUT WATER HAS TO.** It used to be
+    the other way round — an amount on anything but water was a 400 — and that
+    refusal was doing two jobs at once. One was real: recording a size for a cup
+    of tea is information a patient may want kept. The other was structural, and
+    is the part that had to be replaced rather than dropped: while nothing but
+    water could carry an amount, no drink could *possibly* reach `water_ml`, so
+    the client's "nie przeliczamy na wodę" rule held by construction. It no
+    longer does. What holds it now is that both places computing the figure
+    filter on `drink == WATER` — `build_hydration_day` and `_week`, and nothing
+    else in this module touches the total. **Those two filters are the whole of
+    the rule**; `test_hydration_api.WaterIsTheOnlyOneCountedTests` is what fails
+    if either is loosened.
+
+    Water still *requires* an amount, because a glass of water of no size moves
+    the one figure this screen exists for by nothing.
+
+    **`drink` IS FREE TEXT, NOT A `ChoiceField`**, so a patient can record a
+    drink the artboard does not list. It was a closed vocabulary until §08's
+    chips turned out to be the commonest drinks rather than all of them, and
+    opening it is safe for a specific reason: what keeps the client's "nie
+    przeliczamy na wodę" rule true is the **amount** rule below, not the name
+    list. Anything that is not `WATER` may carry no amount, so no name a patient
+    invents can reach `water_ml`, which sums amounts on water alone.
+
+    A typed name goes through `normalize_drink`, which folds it onto the
+    canonical spelling when it matches a chip — otherwise a list would show
+    "herbata" and "Herbata" as two drinks. The one name it refuses is water's
+    own, because this form asks for no amount and water is meaningless without
+    one; the refusal lands under `drink`, the input that produced it, rather
+    than under `amount_ml`, which the custom-drink form does not render.
     """
 
-    drink = serializers.ChoiceField(choices=DRINKS, required=False, default=WATER)
+    drink = serializers.CharField(
+        required=False, allow_blank=True, max_length=MAX_DRINK_NAME)
     amount_ml = serializers.IntegerField(
         required=False, allow_null=True,
         min_value=MIN_AMOUNT_ML, max_value=MAX_AMOUNT_ML,
     )
 
-    def validate(self, attrs):
-        drink = attrs.get('drink', WATER)
-        amount = attrs.get('amount_ml')
-        if drink == WATER and amount is None:
-            raise serializers.ValidationError({'amount_ml': AMOUNT_REQUIRED})
-        if drink != WATER and amount is not None:
-            raise serializers.ValidationError({'amount_ml': AMOUNT_NOT_FOR_DRINK})
-        return attrs
+    def validate_drink(self, value):
+        """A name the column should hold, or a refusal on this field.
+
+        Only the two things that can be wrong with the *name itself*: it is
+        blank, or it needs folding onto a canonical spelling. Water is no longer
+        a special case here or anywhere else on the write path — a serving of it
+        with no size given is a glass, like every other drink.
+
+        An *absent* `drink` is water (the "+ Szklanka" call); this never runs
+        for a key that was not sent. A blank string is a different thing from an
+        omitted one — somebody submitted the custom form empty — which is why
+        the field is `allow_blank` and refused here rather than by DRF.
+        """
+        name = normalize_drink(value)
+        if name is None:
+            raise serializers.ValidationError(DRINK_NAME_REQUIRED)
+        return name
+
+    # No `validate` of its own any more. Nothing about the *pair* of fields can
+    # be wrong: any drink may carry an amount, and one that carries none is a
+    # glass (`DEFAULT_SERVING_ML`, applied in `add_entry`). Both refusals that
+    # used to live here are gone with the rule that produced them —
+    # `AMOUNT_REQUIRED`, because water no longer needs a size given, and
+    # `DRINK_IS_WATER`, because typing "woda" in the custom form now records
+    # exactly what "+ Szklanka" records and there is nothing left to refuse.
 
 
 def serialize_entry(entry):
@@ -130,6 +178,10 @@ def build_hydration_day(id_medical, today):
         'target_glasses': DAILY_TARGET_GLASSES,
         'min_amount_ml': MIN_AMOUNT_ML,
         'max_amount_ml': MAX_AMOUNT_ML,
+        # Travels for the same reason the bounds above do: the "Inny napój"
+        # input caps itself at what the serializer will accept, rather than the
+        # screen holding its own 40 and finding out by a 400.
+        'max_drink_name': MAX_DRINK_NAME,
         'water_ml': water_ml,
         'glasses': _glasses(water_ml),
         # Capped for the bar and uncapped in `glasses`: past the goal the bar is
@@ -192,7 +244,22 @@ def add_entry(id_medical, data, today):
         id_medical=id_medical,
         entry_date=today,
         drink=data.get('drink', WATER),
-        amount_ml=data.get('amount_ml'),
+        # A SERVING WITH NO SIZE GIVEN IS A GLASS. One tap on a chip means "I
+        # drank a glass of tea", which is what the "+ Szklanka" button has meant
+        # for water all along — so the two acts now write the same number.
+        #
+        # BE CLEAR THAT THIS IS A NUMBER NOBODY TYPED. It goes into a clinical
+        # record, and for water it moves the goal bar, so it is the sort of
+        # default this project is otherwise careful not to invent (see the
+        # diary's sliders, which wrote a 0 nobody chose). It is defensible only
+        # because a *serving* is the unit the screen is built in and the patient
+        # is told: `pages/DietHydration.tsx` says "Bez podanej ilości zapisujemy
+        # szklankę" above the chips. If that line ever goes, this default has to
+        # go with it.
+        #
+        # `None` is still what an *older* row holds — nothing is backfilled, and
+        # `serialize_entry` renders a null amount as a drink with no size.
+        amount_ml=data.get('amount_ml') or DEFAULT_SERVING_ML,
     )
     return entry
 

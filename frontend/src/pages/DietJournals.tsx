@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
 import Pagination from '../components/Pagination'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { fetchDietHistory } from '../api/diet'
 import { fromIsoDate } from '../utils/days'
@@ -175,8 +175,26 @@ function DietJournals() {
     setAttempt((n) => n + 1)
   }
 
+  /**
+   * Shown once, after §04's form navigates here having written a meal.
+   *
+   * On the arrival rather than on the form, for the reason `/home` renders the
+   * diary's confirmation: the form leaves immediately, so a message on it would
+   * be one nobody can read. It rides on router state and disappears on the next
+   * navigation — a reload carries none and shows nothing, which is right,
+   * because by then the meal is simply in the list below.
+   */
+  const savedMeal = Boolean(
+    (useLocation().state as { savedMeal?: boolean } | null)?.savedMeal,
+  )
+
   return (
     <div className="diet-journals-page">
+      {savedMeal && (
+        <p className="diet-journals-saved-notice" role="status">
+          Zapisano posiłek.
+        </p>
+      )}
       <header className="diet-journals-header">
         <Link
           className="diet-journals-back"

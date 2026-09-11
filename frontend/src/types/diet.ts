@@ -1,5 +1,4 @@
 import type { FeelingAfter } from '../utils/activity'
-import type { DrinkName } from '../utils/drinks'
 import type { SleepQuality, WakeFeeling } from '../utils/sleep'
 
 /**
@@ -35,7 +34,16 @@ import type { SleepQuality, WakeFeeling } from '../utils/sleep'
  */
 export interface HydrationEntry {
   id: string
-  drink: DrinkName
+  /**
+   * One of `DRINKS`, or a name the patient typed.
+   *
+   * A plain `string` rather than `DrinkName`, and that is the type saying what
+   * the column now holds: the six chips are the quick way in, not the whole
+   * vocabulary. The server folds a typed name onto a chip's spelling when it
+   * matches one (`normalize_drink`), so this is never "herbata" next to
+   * "Herbata" — but it may be anything else the patient drinks.
+   */
+  drink: string
   amountMl: number | null
   /** ISO moment it was recorded — the list orders by it, newest first. */
   at: string | null
@@ -76,6 +84,9 @@ export interface HydrationDay {
   /** Bounds the "Własna ilość" input enforces before submitting. */
   minAmountMl: number
   maxAmountMl: number
+  /** How long a typed drink name may be — read off the payload rather than
+   *  spelled into the input, like the two bounds above. */
+  maxDrinkName: number
   waterMl: number
   glasses: number
   /** 0..1, for the bar's width. */
@@ -146,6 +157,47 @@ export interface DietMeal {
   /** What the patient typed. '' when they saved a meal without describing it,
    *  which the mockups explicitly allow ("niepełny wpis też jest wpisem"). */
   description: string
+}
+
+
+/**
+ * What §04's "Dodawanie posiłku" form submits.
+ *
+ * THE THREE THINGS A MEAL HOLDS, and deliberately no fourth. There is no
+ * portion, no weight and no calorie count — §04 states that scope outright —
+ * and no photo, which is the module's one open question rather than an
+ * oversight: `diet_meal` has no column for one, and where a file would live,
+ * how long it is kept and which consent covers it are all unanswered.
+ *
+ * NONE OF IT IS REQUIRED. §05's rule is that no field blocks a save, taken
+ * literally on both sides: an input with every field null is a valid meal, and
+ * the backend writes it. What it records is that a meal happened, which is
+ * itself the thing this diary is for.
+ *
+ * There is no date on this shape and there must not be: the server stamps the
+ * day from its own clock, so a form that only ever shows today cannot write
+ * into the archive.
+ */
+export interface DietMealInput {
+  /** One of `MEAL_KINDS` (utils/meals.ts), or null for a meal saved without
+   *  saying which one it was. A value outside that list is a 400, never a
+   *  silently dropped answer. */
+  kind: string | null
+  /** 'HH:MM', or null. Null is "not answered", not midnight. */
+  time: string | null
+  /** '' and null both mean "left empty"; the mapping sends one of them. */
+  description: string
+}
+
+/** What the write answers with: the row, and the day it moved.
+ *
+ *  Both, because the two screens reading this table draw different things — the
+ *  history draws the meal, the home screen draws a count and a streak that both
+ *  move when one meal is written. Recomputing either in the browser is how one
+ *  day ends up with two versions of itself. */
+export interface DietMealSaved {
+  meal: DietMeal
+  day: DietDay
 }
 
 /**

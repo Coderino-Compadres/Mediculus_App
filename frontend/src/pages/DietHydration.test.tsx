@@ -44,6 +44,7 @@ function day(overrides: Partial<HydrationDay> = {}): HydrationDay {
     targetGlasses: 6,
     minAmountMl: 10,
     maxAmountMl: 2000,
+    maxDrinkName: 40,
     waterMl: 1000,
     glasses: 4,
     progress: 0.667,
@@ -281,6 +282,234 @@ describe('inne napoje', () => {
     expect(
       await screen.findByText(/nie przeliczamy na wodę/),
     ).toBeInTheDocument()
+  })
+})
+
+describe('millilitres for a drink that is not water', () => {
+  const AMOUNT = /Ile\? \(ml, opcjonalnie\)/
+
+  it('says that a tap with no amount is recorded as a glass', async () => {
+    /**
+     * THE SENTENCE THAT MAKES THE DEFAULT HONEST. A serving with no size given
+     * is stored as 250 ml — a number nobody typed, entering a clinical record
+     * and, on water, moving the goal bar. This project is otherwise careful not
+     * to invent one (the diary's sliders wrote a 0 nobody chose, and that was a
+     * defect). It holds only because the patient is told.
+     *
+     * If this test is ever deleted, `DEFAULT_SERVING_ML` has to go with it.
+     */
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    expect(screen.getByText(/Bez podanej ilości zapisujemy szklankę \(250 ml\)/))
+      .toBeInTheDocument()
+  })
+
+  it('is optional — a bare tap on a chip is still a serving', async () => {
+    /** The card's original interaction has to survive the new field. The
+     *  browser sends no amount and the *server* applies the glass, so the
+     *  default has one definition rather than two. */
+    recordDrink.mockResolvedValue(day())
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Herbata' }))
+
+    expect(recordDrink).toHaveBeenCalledWith(null, 'Herbata')
+  })
+
+  it('sends the amount typed beside the chips', async () => {
+    recordDrink.mockResolvedValue(day())
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.type(screen.getByLabelText(AMOUNT), '300')
+    await userEvent.click(screen.getByRole('button', { name: 'Kawa' }))
+
+    expect(recordDrink).toHaveBeenCalledWith(300, 'Kawa')
+  })
+
+  it('sends it for a typed drink too', async () => {
+    recordDrink.mockResolvedValue(day())
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.type(screen.getByLabelText(AMOUNT), '250')
+    await userEvent.click(screen.getByRole('button', { name: '+ Inny napój' }))
+    await userEvent.type(screen.getByLabelText(/Co piłaś lub piłeś/), 'Lemoniada')
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz' }))
+
+    await waitFor(() => expect(recordDrink).toHaveBeenCalled())
+    expect(recordDrink).toHaveBeenCalledWith(250, 'Lemoniada')
+  })
+
+  it('empties itself after a serving, so it cannot ride along on the next tap', async () => {
+    /**
+     * The defect this field would otherwise have: 300 ml typed for a coffee,
+     * then a tap on "Herbata" an hour later silently recording 300 ml again.
+     * That is the sort of thing somebody finds in their own records a week
+     * later and cannot explain.
+     */
+    recordDrink.mockResolvedValue(day())
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.type(screen.getByLabelText(AMOUNT), '300')
+    await userEvent.click(screen.getByRole('button', { name: 'Kawa' }))
+    await waitFor(() => expect(screen.getByLabelText(AMOUNT)).toHaveValue(null))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Herbata' }))
+
+    expect(recordDrink).toHaveBeenLastCalledWith(null, 'Herbata')
+  })
+
+  it('refuses to send a number outside the bounds, and says why', async () => {
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.type(screen.getByLabelText(AMOUNT), '9000')
+
+    expect(screen.getByRole('button', { name: 'Herbata' })).toBeDisabled()
+    expect(screen.getByText(/od 10 do 2000 ml/)).toBeInTheDocument()
+    expect(recordDrink).not.toHaveBeenCalled()
+  })
+
+  it('reads its bounds off the payload rather than spelling them in', async () => {
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    const input = screen.getByLabelText(AMOUNT)
+    expect(input).toHaveAttribute('min', '10')
+    expect(input).toHaveAttribute('max', '2000')
+  })
+
+  it('still says out loud that none of it is counted as water', async () => {
+    /** More important now, not less: a number next to a drink invites exactly
+     *  the assumption the client ruled out. */
+    renderWithProviders(<DietHydration />)
+
+    expect(await screen.findByText(/nie przeliczamy na wodę/)).toBeInTheDocument()
+  })
+
+  it('lists a measured drink by its own name, never as a glass of water', async () => {
+    /**
+     * `entryLabel` used to reach "Szklanka · 250 ml" for anything carrying an
+     * amount, which was safe only while nothing but water could carry one. A
+     * 250 ml tea would have been listed as water on the one screen whose whole
+     * rule is that it is not.
+     */
+    fetchHydration.mockResolvedValueOnce(
+      day({
+        entries: [
+          { id: 'e1', drink: 'Herbata', amountMl: 250, at: '2026-09-09T10:00:00+02:00' },
+        ],
+      }),
+    )
+    renderWithProviders(<DietHydration />)
+
+    // Two matches by design: the row's own label and the "Usuń" button's
+    // accessible name, which quotes the entry it removes.
+    expect(await screen.findAllByText(/Herbata · 250 ml/)).not.toHaveLength(0)
+    // Scoped to the serving label: "+ Szklanka" is a button on the water
+    // card above and is meant to be there.
+    expect(screen.queryAllByText(/Szklanka · 250 ml/)).toHaveLength(0)
+  })
+})
+
+describe('a drink the chips do not name', () => {
+  it('is reachable from the chip row, and only once asked for', async () => {
+    /* Not on §08's artboard — five chips is the commonest drinks rather than
+       all of them. Behind a control, so the card stays a row of chips. */
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    expect(screen.queryByLabelText(/Co piłaś lub piłeś/)).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Inny napój' }))
+
+    expect(screen.getByLabelText(/Co piłaś lub piłeś/)).toBeInTheDocument()
+  })
+
+  it('records the typed name as a serving with no amount', async () => {
+    /** The absent amount is what keeps it out of the water total, whatever it
+     *  is called — the client's rule made structural rather than careful. */
+    recordDrink.mockResolvedValue(day())
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Inny napój' }))
+    await userEvent.type(screen.getByLabelText(/Co piłaś lub piłeś/), 'Sok pomarańczowy')
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz' }))
+
+    await waitFor(() => expect(recordDrink).toHaveBeenCalled())
+    expect(recordDrink).toHaveBeenCalledWith(null, 'Sok pomarańczowy')
+  })
+
+  it('normalises nothing itself — the name travels as typed', async () => {
+    /* Folding "herbata" onto "Herbata" is the server's job; a second definition
+       here is the drift the shared vocabularies are tested against. */
+    recordDrink.mockResolvedValue(day())
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Inny napój' }))
+    await userEvent.type(screen.getByLabelText(/Co piłaś lub piłeś/), '  herbata  ')
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz' }))
+
+    await waitFor(() => expect(recordDrink).toHaveBeenCalled())
+    expect(recordDrink).toHaveBeenCalledWith(null, 'herbata')
+  })
+
+  it('cannot be submitted empty', async () => {
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Inny napój' }))
+
+    expect(screen.getByRole('button', { name: 'Zapisz' })).toBeDisabled()
+  })
+
+  it('caps the input at the length the server accepts', async () => {
+    /* Read off the payload, not spelled into the markup — like the two amount
+       bounds beside it. */
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Inny napój' }))
+
+    expect(screen.getByLabelText(/Co piłaś lub piłeś/)).toHaveAttribute('maxlength', '40')
+  })
+
+  it('shows a refusal about the name under the input that produced it', async () => {
+    /**
+     * The one refusal a patient can actually reach here is typing "woda", and
+     * it has to land on the box they typed into: this form renders no amount
+     * input, so answering under `amount_ml` would be a save failing somewhere
+     * the eye is not — the failure `Register.tsx` had with `invitation_code`.
+     */
+    recordDrink.mockRejectedValue(
+      new ApiError(400, null, { drink: 'Wodę zapisujesz przyciskami powyżej.' }),
+    )
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Inny napój' }))
+    await userEvent.type(screen.getByLabelText(/Co piłaś lub piłeś/), 'woda')
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Wodę zapisujesz przyciskami/)
+    expect(screen.getByLabelText(/Co piłaś lub piłeś/)).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('asks for no amount at all', async () => {
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Inny napój' }))
+
+    const input = screen.getByLabelText(/Co piłaś lub piłeś/)
+    expect(input).toHaveAttribute('type', 'text')
+    expect(screen.queryByLabelText(/Ile wypiłaś lub wypiłeś/)).toBeNull()
   })
 })
 

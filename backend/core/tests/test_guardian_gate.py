@@ -117,7 +117,11 @@ def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None):
         # diary: a minor nobody has vouched for writes no health data, and a
         # glass of water logged against a named account is that.
         ('get', reverse('core:diet-hydration'), 200),
-        ('post', reverse('core:diet-hydration'), 400),
+        # 201, not the 400 this used to expect: an empty body was a refusal
+        # while water needed its size given, and it is a glass now. The sweep
+        # cares that the gate is *open*, so the code is whatever the endpoint
+        # legitimately answers with nothing in the body.
+        ('post', reverse('core:diet-hydration'), 201),
         ('delete', reverse(
             'core:diet-hydration-entry', args=[hydration_id or uuid.uuid4()]), 404),
         # The rest of the diet module: the food diary and §08's supplement

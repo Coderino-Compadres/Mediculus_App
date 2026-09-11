@@ -21,6 +21,7 @@
  *
  *   GET    /api/diet/today/                          → `fetchDietDay`
  *   GET    /api/diet/meals/                           → `fetchDietHistory`
+ *   POST   /api/diet/meals/                           → `createMeal`
  *   GET    /api/diet/hydration/                       → `fetchHydration`
  *   POST   /api/diet/hydration/                       → `recordDrink`
  *   DELETE /api/diet/hydration/<id>/                  → `removeDrink`
@@ -55,12 +56,14 @@
 import { apiRequest } from './client'
 import { toIsoDate } from '../utils/days'
 import { WATER } from '../utils/drinks'
-import type { DrinkName } from '../utils/drinks'
 import type {
   DietActivityDay,
   DietActivityEntry,
   DietDay,
   DietJournalDay,
+  DietMeal,
+  DietMealInput,
+  DietMealSaved,
   DietSleepNight,
   HydrationDay,
   HydrationDayTotal,
@@ -132,17 +135,20 @@ export async function fetchDietDay(): Promise<DietDay> {
  * day is this meal on" already lives, and grouping it a second time in the
  * browser is how one meal ends up on two Tuesdays.
  */
+/** One meal, mapped once — the history reads it and so does the write's answer,
+ *  and two copies of a four-field mapping are two copies free to drift. */
+function toMeal(meal: DietMealPayload): DietMeal {
+  return {
+    id: meal.id,
+    kind: meal.kind,
+    time: meal.time,
+    description: meal.description,
+  }
+}
+
 export async function fetchDietHistory(): Promise<DietJournalDay[]> {
   const payload = await apiRequest<DietJournalDayPayload[]>('/api/diet/meals/')
-  return payload.map((day) => ({
-    date: day.date,
-    meals: day.meals.map((meal) => ({
-      id: meal.id,
-      kind: meal.kind,
-      time: meal.time,
-      description: meal.description,
-    })),
-  }))
+  return payload.map((day) => ({ date: day.date, meals: day.meals.map(toMeal) }))
 }
 
 /* ------------------------------------------------------------------ *
@@ -173,6 +179,7 @@ interface HydrationDayPayload {
   target_glasses: number
   min_amount_ml: number
   max_amount_ml: number
+  max_drink_name: number
   water_ml: number
   glasses: number
   progress: number
@@ -192,7 +199,7 @@ function toEntry(payload: HydrationEntryPayload): HydrationEntry {
     // pinned to `utils/drinks.ts` by test_drinks.py — so a value arriving here
     // is one of ours. The cast records that this is the one place the two lists
     // are assumed to agree.
-    drink: payload.drink as DrinkName,
+    drink: payload.drink,
     amountMl: payload.amount_ml,
     at: payload.at,
   }
@@ -206,6 +213,7 @@ function toDay(payload: HydrationDayPayload): HydrationDay {
     targetGlasses: payload.target_glasses,
     minAmountMl: payload.min_amount_ml,
     maxAmountMl: payload.max_amount_ml,
+    maxDrinkName: payload.max_drink_name,
     waterMl: payload.water_ml,
     glasses: payload.glasses,
     progress: payload.progress,
@@ -221,6 +229,45 @@ function toDay(payload: HydrationDayPayload): HydrationDay {
 }
 
 /** Today's water, today's servings and the last seven days. */
+/**
+ * Write one meal — §04's "Dodawanie posiłku".
+ *
+ * THE DAY IS NOT SENT, and that is the rule rather than a saving of bytes: the
+ * server stamps `entry_date` from its own clock, so this form can only ever
+ * address today. A browser that could name the day would be a form on a screen
+ * showing today, quietly writing into the archive — and the phone left open
+ * overnight is not a hypothetical, it is why `utils/dayLock.ts` exists.
+ *
+ * A BLANK ANSWER TRAVELS AS NULL rather than as '', so "not answered" has one
+ * representation on the wire. `description` is the exception and matches its
+ * column: '' is what an empty box means there, with no third state to tell
+ * apart.
+ *
+ * It answers with the row *and* the rebuilt day, which is why the return type
+ * carries both — see `DietMealSaved`.
+ */
+export async function createMeal(input: DietMealInput): Promise<DietMealSaved> {
+  const payload = await apiRequest<{ meal: DietMealPayload; day: DietDayPayload }>(
+    '/api/diet/meals/',
+    {
+      method: 'POST',
+      body: {
+        kind: input.kind || null,
+        time: input.time || null,
+        description: input.description.trim(),
+      },
+    },
+  )
+  return {
+    meal: toMeal(payload.meal),
+    day: {
+      date: payload.day.date,
+      streakDays: payload.day.streak_days,
+      mealCount: payload.day.meal_count,
+    },
+  }
+}
+
 export async function fetchHydration(): Promise<HydrationDay> {
   return toDay(await apiRequest<HydrationDayPayload>(HYDRATION_URL))
 }
@@ -236,12 +283,19 @@ export async function fetchHydration(): Promise<HydrationDay> {
  * `amountMl` is required for water and refused for everything else, which is the
  * server's rule and not this layer's: sending 250 ml of tea is a 400, on
  * purpose, rather than a number quietly dropped.
+ *
+ * `drink` IS A `string`, NOT A `DrinkName`, because the chips are the quick way
+ * in rather than the whole vocabulary — a patient may type a name of their own.
+ * Nothing is normalised here: folding "herbata" onto "Herbata" is the server's
+ * job (`normalize_drink`), and a second definition of "is this the same drink"
+ * in the browser is exactly the drift the shared vocabularies are tested
+ * against. The name travels as typed and comes back as stored.
  */
 export async function recordDrink(
   amountMl: number | null,
-  drink: DrinkName = WATER,
+  drink: string = WATER,
 ): Promise<HydrationDay> {
-  const body: { drink: DrinkName; amount_ml?: number } = { drink }
+  const body: { drink: string; amount_ml?: number } = { drink }
   if (amountMl !== null) body.amount_ml = amountMl
   const payload = await apiRequest<HydrationWritePayload>(HYDRATION_URL, {
     method: 'POST',

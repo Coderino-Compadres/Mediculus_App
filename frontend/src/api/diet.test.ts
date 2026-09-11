@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createMeal,
   createSupplement,
   deleteSupplement,
   emptyActivityDay,
@@ -43,6 +44,7 @@ const DAY_PAYLOAD = {
   target_glasses: 6,
   min_amount_ml: 10,
   max_amount_ml: 2000,
+  max_drink_name: 40,
   water_ml: 1000,
   glasses: 4,
   progress: 0.667,
@@ -85,6 +87,7 @@ describe('fetchHydration', () => {
     expect(day.targetGlasses).toBe(6)
     expect(day.minAmountMl).toBe(10)
     expect(day.maxAmountMl).toBe(2000)
+    expect(day.maxDrinkName).toBe(40)
     expect(day.waterMl).toBe(1000)
     expect(day.glasses).toBe(4)
     expect(day.progress).toBe(0.667)
@@ -240,6 +243,68 @@ describe('the food diary', () => {
 
     expect(Object.keys(day.meals[0]).sort())
       .toEqual(['description', 'id', 'kind', 'time'])
+  })
+})
+
+describe('createMeal', () => {
+  const SAVED = {
+    meal: { id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' },
+    day: { date: '2026-09-11', streak_days: 4, meal_count: 3 },
+  }
+
+  it('posts the three fields a meal holds and nothing else', async () => {
+    apiRequest.mockResolvedValue(SAVED)
+
+    await createMeal({ kind: 'Obiad', time: '13:30', description: 'Zupa.' })
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/meals/', {
+      method: 'POST',
+      body: { kind: 'Obiad', time: '13:30', description: 'Zupa.' },
+    })
+  })
+
+  it('sends no date, because the server stamps the day', async () => {
+    /** A form that only shows today must not be able to write into the archive. */
+    apiRequest.mockResolvedValue(SAVED)
+
+    await createMeal({ kind: null, time: null, description: '' })
+
+    const body = apiRequest.mock.calls[0][1].body as Record<string, unknown>
+    expect(Object.keys(body).sort()).toEqual(['description', 'kind', 'time'])
+  })
+
+  it('turns a blank answer into null, so "unanswered" has one representation', async () => {
+    apiRequest.mockResolvedValue(SAVED)
+
+    await createMeal({ kind: '', time: '', description: '   ' })
+
+    expect(apiRequest.mock.calls[0][1].body).toEqual({
+      kind: null, time: null, description: '',
+    })
+  })
+
+  it('maps back both the row and the rebuilt day', async () => {
+    /** Both move when one meal is written; recomputing either here is how one
+     *  day ends up with two versions of itself. */
+    apiRequest.mockResolvedValue(SAVED)
+
+    const saved = await createMeal({ kind: 'Obiad', time: '13:30', description: 'Zupa.' })
+
+    expect(saved.meal).toEqual({
+      id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.',
+    })
+    expect(saved.day).toEqual({ date: '2026-09-11', streakDays: 4, mealCount: 3 })
+  })
+
+  it('keeps a zero a zero rather than treating it as missing', async () => {
+    apiRequest.mockResolvedValue({
+      ...SAVED, day: { date: '2026-09-11', streak_days: 0, meal_count: 0 },
+    })
+
+    const saved = await createMeal({ kind: null, time: null, description: '' })
+
+    expect(saved.day.streakDays).toBe(0)
+    expect(saved.day.mealCount).toBe(0)
   })
 })
 

@@ -6,12 +6,37 @@
  * and the home screen's copy had it wrong past four ("5 posiłki"), which is the
  * ordinary fate of a Polish declension that lives in a component.
  *
- * There is deliberately nothing else in this file. A meal has no quantity to
- * format: §04 of the mockups states the module's scope outright — no product
- * search and no numeric field, a photo and a description being the only two
- * sources of a meal's content — so there is no portion, weight or calorie to
- * render, and this is the file somebody would add one to.
+ * `MEAL_KINDS` joined it when §04's form was built, and it is the second half
+ * of `backend/core/meals.py`'s list rather than a translation of it: the Polish
+ * name *is* the stored value, the same arrangement as `utils/drinks.ts` and
+ * `utils/emotions.ts`. A name spelled differently on one side is a picker the
+ * server refuses with a 400 — `test_meals.py` parses this file and compares
+ * both lists, and their order, character for character.
+ *
+ * THERE IS STILL NO QUANTITY IN THIS FILE, and that is the line worth keeping.
+ * §04 states the module's scope outright — no product search and no numeric
+ * field, a photo and a description being the only two sources of a meal's
+ * content — so there is no portion, weight or calorie to format, and this is
+ * the file somebody would add one to.
  */
+
+/**
+ * What §04's picker offers, in the order it draws them — which is also the
+ * order of a day, so it is content rather than presentation.
+ *
+ * Picking none is an ordinary answer: §05's rule is that no field blocks a
+ * save, so the form lets a chip be pressed a second time to take it back.
+ */
+export const MEAL_KINDS = [
+  'Śniadanie',
+  'Drugie śniadanie',
+  'Obiad',
+  'Podwieczorek',
+  'Kolacja',
+  'Przekąska',
+] as const
+
+export type MealKind = (typeof MEAL_KINDS)[number]
 
 /** "1 posiłek", "3 posiłki", "5 posiłków" — with the teens, which are all -ów. */
 export function pluralMeals(count: number): string {

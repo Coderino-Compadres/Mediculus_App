@@ -17,6 +17,14 @@ is the reason a value lives here instead of being spelled into a view:
   anywhere multiplies it by a coefficient. `Woda z cytryną` sitting in that list
   rather than counting as water is the client's call, not an oversight.
 
+  **A patient may now also type a name of their own**, which does not weaken
+  that rule — it relies on it. A custom drink carries no amount, exactly like
+  the five chips, so it *cannot* reach `water_ml`, which sums only servings
+  whose drink is `WATER`. The vocabulary stayed closed for as long as it did
+  because a `ChoiceField` is the cheapest way to be sure of that; what makes it
+  safe to open is that the amount rule, not the name list, is what keeps the
+  water total water.
+
 * **The goal is a point of reference, never a verdict.** "Po przekroczeniu celu
   pasek po prostu jest pełny. Nie ma gratulacji, serii ani komunikatu o
   niedoborze." Which is why nothing here is a threshold and nothing computes a
@@ -36,8 +44,49 @@ WATER = 'Woda'
 #: The order is the order the chips are drawn in on §08's artboard.
 OTHER_DRINKS = ('Herbata', 'Kawa', 'Napar ziołowy', 'Woda z cytryną', 'Kompot')
 
-#: Everything `hydration.drink` may hold.
+#: The names the screen offers as buttons. **Not** everything the column may
+#: hold any more — see `normalize_drink`: a patient can type a name of their
+#: own, and `hydration.drink` is free text with these six as the quick way in.
 DRINKS = (WATER,) + OTHER_DRINKS
+
+#: How long a typed drink name may be. A name, not a note — somebody describing
+#: what they drank in a sentence is writing in the wrong box, and the column is
+#: read back into a chip-sized row ("Kompot · 14:20"). Generous enough for
+#: "Sok pomarańczowy wyciskany", short enough that the list stays readable.
+MAX_DRINK_NAME = 40
+
+DRINK_NAME_REQUIRED = 'Wpisz nazwę napoju.'
+
+
+def normalize_drink(typed):
+    """A typed drink name as the column should hold it.
+
+    Two jobs, and the second is the one worth having.
+
+    It trims and collapses runs of whitespace, so a stray space does not make a
+    second kind of tea.
+
+    And it **folds a typed name onto the canonical one whenever it matches a
+    known drink**, ignoring case: "herbata", "HERBATA" and "Herbata " are all
+    the chip's own `Herbata`. Without that, a patient's own list would show the
+    same drink two or three ways depending on how they happened to type it,
+    which is exactly the sort of thing that makes a record read as unreliable.
+    The folding is here rather than in the browser so there is one definition of
+    it; `utils/drinks.ts` deliberately holds no copy.
+
+    Returns None for a name that is nothing but whitespace — the caller decides
+    whether that is a refusal (it is, on the form) or simply water (it is, when
+    the field is absent altogether).
+    """
+    if not typed:
+        return None
+    collapsed = ' '.join(str(typed).split())
+    if not collapsed:
+        return None
+    for known in DRINKS:
+        if collapsed.casefold() == known.casefold():
+            return known
+    return collapsed
 
 #: What "one glass" means, so the goal in glasses and the amounts in millilitres
 #: are the same scale. From the artboard's own buttons: "+ Szklanka / 250 ml".
@@ -47,6 +96,24 @@ GLASS_ML = 250
 #: `2 * GLASS_ML`: it is a serving the mockup names, and a deployment that
 #: decided a bottle is 700 ml would change this and not the glass.
 BOTTLE_ML = 500
+
+#: What one serving is when nobody says how much: a glass.
+#:
+#: `GLASS_ML` under a second name, and the second name is the point — these are
+#: two different facts that happen to share a value today. `GLASS_ML` is what
+#: the "+ Szklanka" button pours and what the goal is counted in; this is the
+#: size assumed for a tap that gave no size at all. A deployment that decided an
+#: unmeasured serving should be 200 ml would change this line and leave the
+#: glass alone.
+#:
+#: IT IS A NUMBER NOBODY TYPED, which is the thing to weigh before touching it:
+#: it enters a clinical record, and on water it moves the goal bar. This project
+#: is otherwise careful not to invent one (the diary's sliders wrote a 0 nobody
+#: chose, and that was a defect). What makes it defensible here is that a
+#: *serving* is the unit the whole screen is built in, and that the patient is
+#: told — `pages/DietHydration.tsx` says so above the chips. Remove the default
+#: if that sentence ever goes.
+DEFAULT_SERVING_ML = GLASS_ML
 
 #: "cel: 6 szklanek". A display target — see the module docstring.
 DAILY_TARGET_GLASSES = 6
