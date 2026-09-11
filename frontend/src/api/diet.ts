@@ -59,6 +59,8 @@
 import { apiRequest } from './client'
 import { toIsoDate } from '../utils/days'
 import { WATER } from '../utils/drinks'
+import { buildDietReports, findDietReport } from '../utils/dietReport'
+import type { DietReportSource, DietWeeklyReport } from '../types/dietReport'
 import type {
   DietActivityDay,
   DietActivityEntry,
@@ -698,4 +700,50 @@ export function loadActivityDay(today: Date = new Date()): DietActivityDay {
 /** The same for the sleep screen. */
 export function loadSleepNight(today: Date = new Date()): DietSleepNight {
   return emptySleepNight(today)
+}
+
+/* ------------------------------------------------------------------ *
+ *  Raporty tygodniowe (§10)
+ *
+ *  Same terms again: there is no `/api/diet/reports/`. A report is derived in
+ *  the browser from the four diaries — which is how the psychotherapy module
+ *  started too, and worth knowing why that one moved: deriving in the browser
+ *  meant one document per browser, and the "has this week ended" cutoff was
+ *  read on the client clock while the dates came from Europe/Warsaw. Both
+ *  arguments apply here the moment a specialist can read one of these, so
+ *  `utils/dietReport.ts` and `utils/dietWeeks.ts` are written as pure functions
+ *  over plain data — a backend port is a transcription, not a rewrite.
+ * ------------------------------------------------------------------ */
+
+/** A diary nobody has written in: no reports, and that is a true answer rather
+ *  than a placeholder — exactly what `emptyDietDay` is for the home screen. */
+export function emptyDietReportSource(): DietReportSource {
+  return { meals: [], hydration: [], activity: [], sleep: [] }
+}
+
+/**
+ * What the report screens read.
+ *
+ * **TO SEE THE SCREENS FILLED IN**, swap the one call below for
+ * `sampleDietReportSource(today)` and add its import from
+ * `./dietReportSamples`. That is the whole change, and it is deliberately in
+ * this file rather than in the screens: when `GET /api/diet/reports/` exists
+ * these two functions become requests and nothing on either screen moves.
+ *
+ * `today` is an argument rather than a clock read, because a week closes at
+ * midnight and the list has to gain its new row without a reload — the screens
+ * pass what `hooks/useCurrentDay.ts` gives them. See utils/dayLock.ts for what
+ * this module already got wrong by freezing that value once.
+ */
+export function loadDietReports(today: Date = new Date()): DietWeeklyReport[] {
+  return buildDietReports(emptyDietReportSource(), toIsoDate(today))
+}
+
+/** One report by its week id, or null when no week with entries carries it —
+ *  a typed-in address and a week nobody wrote in answer the same way. */
+export function loadDietReport(
+  id: string,
+  today: Date = new Date(),
+): DietWeeklyReport | null {
+  return findDietReport(loadDietReports(today), id)
 }

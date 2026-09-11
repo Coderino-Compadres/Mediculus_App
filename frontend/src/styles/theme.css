@@ -46,13 +46,27 @@
   --color-supplement: #4a68a0;
   --color-supplement-bg: #eef2fa;
 
-  /* Ochre dark enough to be read as type on white, for wording that is a
+  /* Ochre dark enough to be read against white — 5.36:1, so it clears AA at
+     the 12-13px it is used at, where --color-ochre itself is a background and
+     at ~1.9:1 on white is not readable as type at all. That is the whole
+     reason this second value exists. Three stylesheets still hold the literal
+     rather than the token — pages/reportDetail.css (twice) and
+     pages/techniques.css — which is pre-existing and worth a separate pass;
+     grep for 8a6416 before believing this is the only definition.
+
+     TWO NAMES, ONE HEX, AND THE SPLIT IS ABOUT MEANING RATHER THAN COLOUR.
+     --color-caution is the readable ochre used for wording that is a
      consequence to weigh rather than an error: an invitation that cannot be
-     undone, a care relationship about to end. --color-ochre itself is a
-     background — at ~1.9:1 on white it is not readable as text, which is why
-     this second value exists at all. It was hardcoded as #8a6416 in three
-     stylesheets before it had a name. */
-  --color-caution: #8a6416;
+     undone, a care relationship about to end. The diet module's weekly report
+     needs the same ink for things that are not warnings at all — the hour a
+     meal was eaten, the dot marking that one happened — and naming those
+     "caution" would say on the screen's behalf that a late dinner is something
+     to answer for, which is exactly what §15 keeps that module free of. So the
+     value is defined once under the neutral name and --color-caution points at
+     it: a future change to the readable ochre moves both, and neither name can
+     drift from the other. */
+  --color-ochre-text: #8a6416;
+  --color-caution: var(--color-ochre-text);
 
   /* Surfaces. Opaque white is a card that holds something real; the
      translucent one is a panel that frames rather than holds — a statement of

@@ -1,0 +1,183 @@
+/* "Raporty" — the diet module's report history (§10).
+ *
+ * Its own stylesheet on the same terms as dietJournals.css and
+ * dietActivitySleep.css: the module dresses itself from styles/theme.css rather
+ * than wearing another screen's class names. In particular it does *not*
+ * import reports.css — the psychotherapy list is a different document with a
+ * different week behind it, and sharing a stylesheet is how two screens end up
+ * being changed as one by accident.
+ *
+ * Colour roles, unchanged from the rest of the module: ochre is the module's
+ * own mark (the nadtytuł), sage is an action (the row's "Otwórz"), lavender is
+ * the page. Nothing on this screen is red — there is no error state here,
+ * because there is no request.
+ *
+ * And no `text-transform: capitalize` on any date: "1 września", not
+ * "1 Września". */
+
+.diet-reports-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-reports-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-reports-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+}
+
+.diet-reports-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-reports-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* The way back: the arrow in the header, as on this module's other screens.
+   A link rather than a button — it only goes somewhere, so it keeps
+   middle-click, cmd-click and "copy link address". 44px, per WCAG 2.5.8. */
+.diet-reports-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-graphite);
+  text-decoration: none;
+  background: var(--color-surface);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.diet-reports-back:hover {
+  color: var(--color-sage-hover);
+  text-decoration: none;
+}
+
+.diet-reports-back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.diet-reports-header-titles {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* `margin: 0 auto`, not `margin: 0` — the centring lives on
+   `.diet-reports-page > *` at the same specificity and loses to a bare
+   `margin: 0` by source order, which silently un-centres the paragraph while
+   every card around it stays in the column. The trap dietJournals.css records. */
+.diet-reports-intro {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+/* The list */
+
+.diet-reports-list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diet-reports-row {
+  display: block;
+}
+
+/* The whole row is the link, so the target is the card rather than one word of
+   it — no ::after trick needed here, unlike the inline links elsewhere in the
+   app, because this one is already a box. */
+.diet-reports-link {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 12px;
+  min-height: 44px;
+  padding: 16px 20px;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  text-decoration: none;
+}
+
+.diet-reports-link:hover {
+  text-decoration: none;
+}
+
+.diet-reports-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-card), var(--focus-ring);
+}
+
+.diet-reports-range {
+  grid-column: 1;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 17px;
+  color: var(--color-graphite);
+}
+
+.diet-reports-days {
+  grid-column: 1;
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+}
+
+/* Sage, like every other action in the app. `aria-hidden`: the link's own text
+   already names the week, and "Otwórz" read out after it adds nothing. */
+.diet-reports-open {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-sage);
+  white-space: nowrap;
+}
+
+.diet-reports-link:hover .diet-reports-open {
+  color: var(--color-sage-hover);
+}
+
+/* Empty state: one sentence on the page, not a card. There is nothing to press
+   and nothing to fix, so a card would give it a weight it does not have. */
+.diet-reports-empty {
+  font-size: 15px;
+  color: var(--color-graphite-muted);
+  line-height: 1.5;
+  margin: 0 auto;
+}
