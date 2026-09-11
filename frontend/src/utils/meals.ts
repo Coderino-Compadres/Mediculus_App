@@ -46,3 +46,24 @@ export function pluralMeals(count: number): string {
   if (last >= 2 && last <= 4 && (teens < 12 || teens > 14)) return `${count} posiłki`
   return `${count} posiłków`
 }
+
+/**
+ * "Przekąska · 16:20", or whichever half the patient answered.
+ *
+ * The mockups' own formatting, from §05's header. Null when a meal answered
+ * neither question — which is an ordinary meal (§05: no field blocks a save),
+ * so the caller leads with the description instead. Nothing here reads
+ * "Nieznany posiłek": the app does not label an answer somebody chose not to
+ * give.
+ *
+ * Shared by the history and the home screen's list of today. It was the
+ * history's own local function until today's meals became editable and the
+ * home screen had to render them too — and a second copy is the shape in
+ * which one screen starts writing "16:20 · Przekąska".
+ */
+export function mealHeading(meal: {
+  kind: string | null
+  time: string | null
+}): string | null {
+  return [meal.kind, meal.time].filter(Boolean).join(' · ') || null
+}

@@ -6,10 +6,10 @@ import { Link, useLocation } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { fetchDietHistory } from '../api/diet'
 import { fromIsoDate } from '../utils/days'
-import { pluralMeals } from '../utils/meals'
+import { mealHeading, pluralMeals } from '../utils/meals'
 import { usePagination } from '../hooks/usePagination'
 import type { DietJournalDay, DietMeal } from '../types/diet'
-import { ROUTES } from '../routes'
+import { dietJournalDayPath, ROUTES } from '../routes'
 import './dietJournals.css'
 
 /**
@@ -70,10 +70,13 @@ import './dietJournals.css'
  * empty state therefore still offers "Dodaj posiłek", which leads to the
  * placeholder that screen will replace.
  *
- * NOTHING OPENS FROM A ROW, deliberately. A detail screen for one day is not
- * built and its URL is not invented here; instead the day's meals are on the row
- * itself, so the screen is useful without navigating. If §07 has a detail, that
- * is where the route comes from.
+ * A ROW OPENS NOW, into `pages/DietJournalDay.tsx`. This header used to say
+ * the opposite — that a detail screen was not built and its URL not invented
+ * here — which was right until one was asked for. What has not changed is why
+ * the meals stay on the card: the list is useful without navigating, and the
+ * detail is for a day too long to read inside a card that also has to show six
+ * others. **That screen's layout is still not from §07**, whose artboard could
+ * not be read; if §07 has a detail, it replaces it.
  */
 
 /** "wtorek, 8 września" — the weekday included, and the month lowercase, as
@@ -85,17 +88,6 @@ function dayLabel(iso: string): string {
     day: 'numeric',
     month: 'long',
   })
-}
-
-/**
- * "Przekąska · 16:20", or whichever half the patient answered.
- *
- * A meal that says neither is still a meal — it is described by its text, and
- * the row leads with that instead. Nothing here reads "Nieznany posiłek": the
- * app does not label an answer somebody chose not to give.
- */
-function mealHeading(meal: DietMeal): string | null {
-  return [meal.kind, meal.time].filter(Boolean).join(' · ') || null
 }
 
 function MealRow({ meal }: { meal: DietMeal }) {
@@ -115,12 +107,35 @@ function MealRow({ meal }: { meal: DietMeal }) {
   )
 }
 
+/**
+ * One day in the list.
+ *
+ * THE HEADING IS A LINK into `pages/DietJournalDay.tsx`, which is what makes
+ * this list a way *in* rather than the only view of a day. The meals stay on
+ * the card, so the list is still useful without navigating — the detail is
+ * for a day too long to read inside a card that also has to show six others.
+ *
+ * The link wraps the heading rather than the whole card: the card holds the
+ * meals, and a link around a block of text makes every word of a description
+ * part of the link's accessible name. The name says the date and how many
+ * meals, which is what the reader is choosing between.
+ */
 function DayCard({ day }: { day: DietJournalDay }) {
+  const count = pluralMeals(day.meals.length)
+
   return (
     <article className="diet-journal-day" aria-labelledby={`diet-day-${day.date}`}>
       <header className="diet-journal-day-header">
-        <h2 id={`diet-day-${day.date}`}>{dayLabel(day.date)}</h2>
-        <span className="diet-journal-day-count">{pluralMeals(day.meals.length)}</span>
+        <h2 id={`diet-day-${day.date}`}>
+          <Link
+            className="diet-journal-day-link"
+            to={dietJournalDayPath(day.date)}
+            aria-label={`${dayLabel(day.date)}, ${count} — otwórz dzienniczek dnia`}
+          >
+            {dayLabel(day.date)}
+          </Link>
+        </h2>
+        <span className="diet-journal-day-count">{count}</span>
       </header>
       <ul className="diet-journal-meals">
         {day.meals.map((meal) => (

@@ -1,6 +1,6 @@
 MEDICAL_MODELS = {
     'diary', 'moodscale', 'technique', 'raport', 'hydration', 'dietmeal',
-    'supplement', 'supplementintake',
+    'supplement', 'supplementhour', 'supplementintake',
 }
 
 

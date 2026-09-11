@@ -1,7 +1,14 @@
 import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-/** Rows per page on the two list screens, as the client asked for. */
+/**
+ * Rows per page, as the client asked for on the first two list screens.
+ *
+ * Every list that paginates uses this same number rather than picking its own:
+ * a patient crossing between the two modules, and a specialist crossing between
+ * the panel's screens, should meet the same list. Callers may override it, and
+ * so far none needs to.
+ */
 export const PAGE_SIZE = 7
 
 /** The query parameter carrying the page, and the value that is left out of it. */
@@ -25,12 +32,19 @@ export interface Pagination<T> {
 /**
  * Splits an already-loaded list into pages, with the page in the URL.
  *
- * Client-side on purpose: both lists arrive whole (`/api/diary/` and
- * `/api/reports/` answer with everything), and "Dzienniczki" filters what it
- * already has. Paginating on the server while filtering here would hand out
- * pages of the wrong list. So this is a readability feature, not a payload one —
- * the moment `MAX_HISTORY_ENTRIES` is a real ceiling rather than a backstop,
- * both halves have to move to the backend together.
+ * Client-side on purpose: every list that uses this arrives whole — `/api/diary/`
+ * and `/api/reports/` answer with everything, and so do `/api/diet/meals/` and
+ * the four specialist-panel endpoints, none of which takes a page parameter at
+ * all — and "Dzienniczki" filters what it already has. Paginating on the server
+ * while filtering here would hand out pages of the wrong list. So this is a
+ * readability feature, not a payload one — the moment `MAX_HISTORY_ENTRIES` is a
+ * real ceiling rather than a backstop, both halves have to move to the backend
+ * together.
+ *
+ * ONE `?page=` PER SCREEN, which is the constraint to remember when reaching for
+ * this: two lists on one screen sharing the query parameter would turn each
+ * other's pages. `components/SpecialistPatients.tsx` is where that came up — it
+ * paginates the caseload and leaves the pending invitations whole.
  *
  * The page lives in the query string rather than in component state so that
  * opening a row from page three and pressing back returns to page three. It is

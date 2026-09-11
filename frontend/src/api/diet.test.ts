@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createMeal,
   createSupplement,
+  deleteMeal,
   deleteSupplement,
   emptyActivityDay,
   emptyDietDay,
@@ -15,6 +16,7 @@ import {
   recordDrink,
   removeDrink,
   setSupplementTaken,
+  updateMeal,
   updateSupplement,
 } from './diet'
 import { toIsoDate } from '../utils/days'
@@ -65,7 +67,7 @@ describe('the empty shapes a screen starts from', () => {
      *  card's mistake with a nicer number. */
     const day = emptyDietDay(new Date('2026-09-11T10:00:00'))
 
-    expect(day).toEqual({ date: '2026-09-11', streakDays: 0, mealCount: 0 })
+    expect(day).toEqual({ date: '2026-09-11', streakDays: 0, mealCount: 0, meals: [] })
   })
 
   it('and carries no hydration of its own', () => {
@@ -182,25 +184,42 @@ describe('the food diary', () => {
   it('maps the day the home screen draws', async () => {
     apiRequest.mockResolvedValue({
       date: '2026-09-09', streak_days: 4, meal_count: 3,
+      meals: [{ id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' }],
     })
 
     await expect(fetchDietDay()).resolves.toEqual({
       date: '2026-09-09',
       streakDays: 4,
       mealCount: 3,
+      meals: [{ id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' }],
     })
     expect(apiRequest).toHaveBeenCalledWith('/api/diet/today/')
   })
 
   it('keeps a zero a zero rather than turning it into a placeholder', async () => {
     apiRequest.mockResolvedValue({
-      date: '2026-09-09', streak_days: 0, meal_count: 0,
+      date: '2026-09-09', streak_days: 0, meal_count: 0, meals: [],
     })
 
     const day = await fetchDietDay()
 
     expect(day.streakDays).toBe(0)
     expect(day.mealCount).toBe(0)
+    expect(day.meals).toEqual([])
+  })
+
+  it('survives a day with no meals key at all', async () => {
+    /** A backend a release behind this file. Throwing would take the screen
+     *  down to show a count of zero — strictly worse than the count the
+     *  server did send. Same judgement as `needsConsents` failing open. */
+    apiRequest.mockResolvedValue({
+      date: '2026-09-09', streak_days: 4, meal_count: 3,
+    })
+
+    const day = await fetchDietDay()
+
+    expect(day.meals).toEqual([])
+    expect(day.mealCount).toBe(3)
   })
 
   it('maps the history as days holding meals, not as a flat list', async () => {
@@ -249,7 +268,10 @@ describe('the food diary', () => {
 describe('createMeal', () => {
   const SAVED = {
     meal: { id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' },
-    day: { date: '2026-09-11', streak_days: 4, meal_count: 3 },
+    day: {
+      date: '2026-09-11', streak_days: 4, meal_count: 3,
+      meals: [{ id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' }],
+    },
   }
 
   it('posts the three fields a meal holds and nothing else', async () => {
@@ -293,12 +315,16 @@ describe('createMeal', () => {
     expect(saved.meal).toEqual({
       id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.',
     })
-    expect(saved.day).toEqual({ date: '2026-09-11', streakDays: 4, mealCount: 3 })
+    expect(saved.day).toEqual({
+      date: '2026-09-11', streakDays: 4, mealCount: 3,
+      meals: [{ id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' }],
+    })
   })
 
   it('keeps a zero a zero rather than treating it as missing', async () => {
     apiRequest.mockResolvedValue({
-      ...SAVED, day: { date: '2026-09-11', streak_days: 0, meal_count: 0 },
+      ...SAVED,
+      day: { date: '2026-09-11', streak_days: 0, meal_count: 0, meals: [] },
     })
 
     const saved = await createMeal({ kind: null, time: null, description: '' })
@@ -314,7 +340,7 @@ describe('suplementy i leki', () => {
     name: 'Witamina D3',
     dose: '2000 IU',
     frequency: 'raz dziennie',
-    hour: '08:00',
+    hours: ['08:00'],
     start_date: '2026-03-12',
     end_date: null,
     reminder_enabled: true,
@@ -329,7 +355,7 @@ describe('suplementy i leki', () => {
       name: 'Witamina D3',
       dose: '2000 IU',
       frequency: 'raz dziennie',
-      hour: '08:00',
+      hours: ['08:00'],
       startDate: '2026-03-12',
       endDate: null,
       reminderEnabled: true,
@@ -347,7 +373,7 @@ describe('suplementy i leki', () => {
       name: '  Magnez  ',
       dose: '',
       frequency: '   ',
-      hour: '',
+      hours: [''],
       startDate: '',
       endDate: '',
       reminderEnabled: false,
@@ -359,7 +385,7 @@ describe('suplementy i leki', () => {
         name: 'Magnez',
         dose: null,
         frequency: null,
-        hour: null,
+        hours: [],
         start_date: null,
         end_date: null,
         reminder_enabled: false,
@@ -373,7 +399,7 @@ describe('suplementy i leki', () => {
     apiRequest.mockResolvedValue([PAYLOAD, { ...PAYLOAD, id: 's2', name: 'Magnez' }])
 
     const list = await createSupplement({
-      name: 'Magnez', dose: null, frequency: null, hour: null,
+      name: 'Magnez', dose: null, frequency: null, hours: [],
       startDate: null, endDate: null, reminderEnabled: true,
     })
 
@@ -384,7 +410,7 @@ describe('suplementy i leki', () => {
     apiRequest.mockResolvedValue([PAYLOAD])
 
     await updateSupplement('s1', {
-      name: 'Witamina D3', dose: null, frequency: null, hour: '08:00',
+      name: 'Witamina D3', dose: null, frequency: null, hours: ['08:00'],
       startDate: '2026-03-12', endDate: null, reminderEnabled: true,
     })
 
@@ -517,5 +543,65 @@ describe('the empty producers', () => {
     expect(night.wokeUpAt).toBeNull()
     expect(night.quality).toBeNull()
     expect(night.wakeFeeling).toBeNull()
+  })
+})
+
+describe('updateMeal and deleteMeal — correcting today', () => {
+  const DAY = {
+    date: '2026-09-11', streak_days: 4, meal_count: 1,
+    meals: [{ id: 'm1', kind: 'Kolacja', time: '19:30', description: 'Zupa.' }],
+  }
+
+  it('puts to the meal\'s own URL and replaces every field', async () => {
+    /** PUT, not PATCH: the form submits its whole state, so a field cleared on
+     *  screen is an answer taken back rather than one left alone. */
+    apiRequest.mockResolvedValue({ meal: DAY.meals[0], day: DAY })
+
+    await updateMeal('m1', { kind: 'Kolacja', time: '19:30', description: 'Zupa.' })
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/meals/m1/', {
+      method: 'PUT',
+      body: { kind: 'Kolacja', time: '19:30', description: 'Zupa.' },
+    })
+  })
+
+  it('sends no date on an edit either', async () => {
+    /** A meal cannot be moved between days; the server refuses, and a browser
+     *  that tried would be silently ignored rather than told. */
+    apiRequest.mockResolvedValue({ meal: DAY.meals[0], day: DAY })
+
+    await updateMeal('m1', { kind: null, time: null, description: '' })
+
+    const body = apiRequest.mock.calls[0][1].body as Record<string, unknown>
+    expect(Object.keys(body).sort()).toEqual(['description', 'kind', 'time'])
+  })
+
+  it('maps back the row and the rebuilt day', async () => {
+    apiRequest.mockResolvedValue({ meal: DAY.meals[0], day: DAY })
+
+    const saved = await updateMeal('m1', {
+      kind: 'Kolacja', time: '19:30', description: 'Zupa.',
+    })
+
+    expect(saved.meal.id).toBe('m1')
+    expect(saved.day.meals).toHaveLength(1)
+    expect(saved.day.mealCount).toBe(1)
+  })
+
+  it('deletes by id and answers with the day that is left', async () => {
+    /** Three things move when a meal goes — the list, the count and the
+     *  streak — so the server rebuilds them rather than the browser. */
+    apiRequest.mockResolvedValue({
+      day: { date: '2026-09-11', streak_days: 0, meal_count: 0, meals: [] },
+    })
+
+    const day = await deleteMeal('m1')
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/meals/m1/', {
+      method: 'DELETE',
+    })
+    expect(day.meals).toEqual([])
+    expect(day.mealCount).toBe(0)
+    expect(day.streakDays).toBe(0)
   })
 })

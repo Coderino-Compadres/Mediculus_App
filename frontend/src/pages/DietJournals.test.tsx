@@ -159,10 +159,10 @@ describe('a day with meals', () => {
     expect(screen.getByText('Jogurt i garść orzechów, przy biurku.')).toBeInTheDocument()
   })
 
-  it('shows the meals inside the day rather than behind a link', async () => {
-    /** No detail screen is invented here: §07 is what decides whether one
-     *  exists, so the day carries its own content and nothing on the row
-     *  promises somewhere to go. */
+  it('keeps the meals on the card even though the day now opens', async () => {
+    /** The detail screen exists, but the list is still useful without
+     *  navigating — that was the reason the meals were inline before there
+     *  was anywhere to go, and it did not stop being true. */
     mockedHistory.mockResolvedValue([day()])
 
     await renderJournals()
@@ -170,8 +170,34 @@ describe('a day with meals', () => {
     const card = screen.getByRole('article')
 
     expect(within(card).getAllByRole('listitem')).toHaveLength(1)
-    expect(within(card).queryAllByRole('link')).toEqual([])
     expect(within(card).queryAllByRole('button')).toEqual([])
+  })
+
+  it('opens the day from its heading', async () => {
+    mockedHistory.mockResolvedValue([day({ date: '2026-09-08' })])
+
+    await renderJournals()
+
+    const link = screen.getByRole('link', { name: /otwórz dzienniczek dnia/i })
+
+    expect(link).toHaveAttribute('href', '/diet/journals/2026-09-08')
+  })
+
+  it('names the day and its meal count in the link, not the descriptions', async () => {
+    /** A link wrapping the whole card would make every word of every
+     *  description part of its accessible name. What the reader is choosing
+     *  between is the date and how much is in it. */
+    mockedHistory.mockResolvedValue([
+      day({ date: '2026-09-08', meals: [meal({ description: 'Zupa z torebki.' })] }),
+    ])
+
+    await renderJournals()
+
+    const link = screen.getByRole('link', { name: /otwórz dzienniczek dnia/i })
+
+    expect(link).toHaveAccessibleName(/wtorek, 8 września/i)
+    expect(link).toHaveAccessibleName(/1 posiłek/)
+    expect(link).not.toHaveAccessibleName(/Zupa z torebki/)
   })
 })
 

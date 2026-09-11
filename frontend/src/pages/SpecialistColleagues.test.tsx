@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders, TEST_USER } from '../test/render'
+import { PAGE_SIZE } from '../hooks/usePagination'
 import SpecialistColleagues from './SpecialistColleagues'
 import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
@@ -281,5 +282,92 @@ describe('SpecialistColleagues — the roster', () => {
     expect(await screen.findByRole('link', { name: /wróć do panelu/i })).toHaveAttribute(
       'href', ROUTES.specialistHome,
     )
+  })
+})
+
+describe('SpecialistColleagues — the roster is paginated', () => {
+  /**
+   * The strongest case for pagination in the app: `/api/specialist/colleagues/`
+   * answers with *every* specialist account, it is not filtered to the ones you
+   * created, and there is no delete endpoint — so the roster only ever grows.
+   */
+  const manyColleagues = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      ...CREATED,
+      id: `colleague-${index}`,
+      email: `kolega${index}@wp.pl`,
+      surname: `Nazwisko${index}`,
+    }))
+
+  const rows = () => screen.getAllByText(/^kolega\d+@wp\.pl$/)
+
+  it('shows seven accounts on a page', async () => {
+    mockedList.mockResolvedValue(manyColleagues(20))
+    renderScreen()
+
+    await screen.findByText(/Strona 1 z 3/)
+
+    expect(rows()).toHaveLength(PAGE_SIZE)
+  })
+
+  it('counts accounts in the range it prints', async () => {
+    mockedList.mockResolvedValue(manyColleagues(20))
+    renderScreen()
+
+    expect(await screen.findByText(/1–7 z 20 kont/)).toBeInTheDocument()
+  })
+
+  it('draws no control when everything fits on one page', async () => {
+    mockedList.mockResolvedValue(manyColleagues(PAGE_SIZE))
+    renderScreen()
+
+    await screen.findByText(/kolega0@wp\.pl/)
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('moves through the pages', async () => {
+    mockedList.mockResolvedValue(manyColleagues(20))
+    renderScreen()
+    await screen.findByText(/Strona 1 z 3/)
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    expect(screen.getByText('kolega7@wp.pl')).toBeInTheDocument()
+    expect(screen.queryByText('kolega0@wp.pl')).toBeNull()
+  })
+
+  it('keeps saying what the list is not, on every page', async () => {
+    // The note belongs to the roster rather than to a page of it: somebody
+    // reading page three is exactly as likely to wonder whose patients these
+    // colleagues have.
+    mockedList.mockResolvedValue(manyColleagues(20))
+    renderScreen()
+    await screen.findByText(/Strona 1 z 3/)
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/nie widzisz tu pacjentów innych/i)).toBeInTheDocument()
+  })
+
+  it('goes back to page one when an account is created, so its password is next to it', async () => {
+    // The new row is prepended, i.e. it lands on page one. A specialist left on
+    // page three would be copying a password out of a panel with no visible
+    // account to attach it to.
+    mockedList.mockResolvedValue(manyColleagues(20))
+    mockedCreate.mockResolvedValue({ password: 'ABCD-EFGH-JKMN-PQRT', specialist: CREATED })
+    renderScreen()
+    await screen.findByText(/Strona 1 z 3/)
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+
+    await fillForm()
+    await userEvent.click(screen.getByRole('button', { name: /utwórz konto specjalisty/i }))
+
+    // 21 accounts is still three pages; what changed is which one is on screen.
+    await waitFor(() => expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument())
+    // Twice: the panel that hands the password over names the address too.
+    expect(screen.getAllByText('anna@wp.pl').length).toBeGreaterThan(1)
+    expect(screen.getByText('ABCD-EFGH-JKMN-PQRT')).toBeInTheDocument()
   })
 })

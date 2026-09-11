@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders, TEST_USER } from '../test/render'
+import { PAGE_SIZE } from '../hooks/usePagination'
 import SpecialistParentAccounts from './SpecialistParentAccounts'
 import { ApiError } from '../api/client'
 import type {
@@ -337,5 +338,61 @@ describe('the invitations already issued', () => {
 
     expect(await screen.findByText(/Nie udało się anulować zaproszenia/)).toBeInTheDocument()
     expect(screen.queryByText(/Nie udało się wczytać/)).toBeNull()
+  })
+})
+
+describe('the list of issued invitations is paginated', () => {
+  /**
+   * A used invitation is marked, never deleted — the account it created exists
+   * and dropping the row would only lose the trail — so this list grows for as
+   * long as the specialist practises, with spent and expired codes piling up in
+   * front of the live ones.
+   */
+  const manyInvitations = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      invitation({ id: `i-${index}`, email: `rodzic${index}@wp.pl` }),
+    )
+
+  it('shows seven invitations on a page', async () => {
+    await render({ invitations: manyInvitations(20) })
+
+    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+    expect(screen.getAllByText(/^rodzic\d+@wp\.pl$/)).toHaveLength(PAGE_SIZE)
+  })
+
+  it('counts invitations in the range it prints', async () => {
+    await render({ invitations: manyInvitations(20) })
+
+    expect(screen.getByText(/1–7 z 20 zaproszeń/)).toBeInTheDocument()
+  })
+
+  it('draws no control when everything fits on one page', async () => {
+    await render({ invitations: manyInvitations(PAGE_SIZE) })
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('moves through the pages', async () => {
+    await render({ invitations: manyInvitations(20) })
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    expect(screen.getByText('rodzic7@wp.pl')).toBeInTheDocument()
+    expect(screen.queryByText('rodzic0@wp.pl')).toBeNull()
+  })
+
+  it('goes back to page one when a code is issued, so the code is next to its row', async () => {
+    // The code is shown once and nothing can read it back, so it must not be
+    // readable above a page that does not contain the invitation it belongs to.
+    await render({ invitations: manyInvitations(20) })
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+
+    await issue()
+
+    await waitFor(() => expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument())
+    expect(screen.getByText('ABCD-EFGH-JKMN-PQRT')).toBeInTheDocument()
+    expect(screen.getAllByText('rodzic@wp.pl').length).toBeGreaterThan(0)
   })
 })

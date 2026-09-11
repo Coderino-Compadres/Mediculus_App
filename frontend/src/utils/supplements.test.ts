@@ -26,7 +26,7 @@ function supplement(overrides: Partial<Supplement> = {}): Supplement {
     name: 'Witamina D3',
     dose: '2000 IU',
     frequency: 'raz dziennie',
-    hour: '08:00',
+    hours: ['08:00'],
     startDate: '2026-03-12',
     endDate: null,
     reminderEnabled: true,

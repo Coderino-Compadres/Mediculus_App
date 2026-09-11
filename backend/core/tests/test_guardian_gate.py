@@ -86,7 +86,8 @@ class GateTestCase(TestCase):
         )
 
 
-def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None):
+def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None,
+                  meal_id=None):
     """Every URL that reads or writes clinical data, with the verbs it accepts.
 
     Built as a list rather than checked endpoint by endpoint so that adding a
@@ -129,6 +130,16 @@ def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None):
         # named account are health data too.
         ('get', reverse('core:diet-today'), 200),
         ('get', reverse('core:diet-meals'), 200),
+        # A day that holds no meal is a 404 — the endpoint running, which
+        # is all this sweep asks.
+        ('get', reverse('core:diet-journal-day', args=['2026-01-01']), 404),
+        # An empty body is a valid meal (§05, literally), so this is a 201
+        # rather than a 400 — the sweep only cares that the gate is open.
+        ('post', reverse('core:diet-meals'), 201),
+        # 404 rather than 200: the id names no meal of this patient's, which is
+        # the endpoint running.
+        ('put', reverse('core:diet-meal', args=[meal_id or uuid.uuid4()]), 404),
+        ('delete', reverse('core:diet-meal', args=[meal_id or uuid.uuid4()]), 404),
         ('get', reverse('core:diet-supplements'), 200),
         ('post', reverse('core:diet-supplements'), 400),
         ('put', reverse('core:diet-supplement', args=[supplement_id or uuid.uuid4()]), 404),

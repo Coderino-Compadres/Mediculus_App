@@ -236,10 +236,25 @@
   margin: 4px 0 0;
 }
 
-.supplement-hour {
+/* The hours a preparation is taken at, all on its own row. Several badges
+   rather than one, because a probiotic at 06:45 and again at 12:00 is one
+   position on the list — wrapping so a three-times-a-day preparation does not
+   push the row wider than a phone. */
+.supplement-hours {
   flex-shrink: 0;
   align-self: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
   margin-top: 8px;
+  /* Keeps the badges from eating the name column on a narrow screen: past
+     this they wrap among themselves instead. */
+  max-width: 45%;
+}
+
+.supplement-hour {
+  flex-shrink: 0;
   padding: 5px 10px;
   border-radius: 9px;
   background: var(--color-supplement-bg);
@@ -438,4 +453,80 @@
 .supplement-submit:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* The hours on the form: one row per hour, plus the control that adds
+   another. A fieldset, so the boxes read as one answer. */
+.supplement-hours-field {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.supplement-hours-field legend {
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-graphite);
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.supplement-hour-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.supplement-hour-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Quiet, and 44px (WCAG 2.5.8) despite being a single character: it sits
+   beside a time input on a phone, which is exactly where a small target gets
+   mis-tapped. Removing the last hour empties it rather than taking the field
+   away, so this is never destructive in a way that needs confirming. */
+.supplement-hour-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-graphite-muted);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.supplement-hour-remove:hover {
+  background: rgba(var(--shadow-tint), 0.06);
+  color: var(--color-graphite);
+}
+
+.supplement-hour-add {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-graphite);
+  background: none;
+  border: none;
+  border-radius: var(--radius-control);
+  padding: 10px 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.supplement-hour-add:disabled {
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: none;
 }

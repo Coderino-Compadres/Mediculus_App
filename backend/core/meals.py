@@ -86,6 +86,20 @@ DAY_IS_FULL = (
     'Usuń któryś, jeśli chcesz dopisać kolejny.'
 )
 
+#: Why an older meal cannot be corrected.
+#:
+#: The psychotherapy diary's rule applied to a fourth kind of row: today is
+#: editable and nothing older is. Said as a sentence rather than answered with
+#: a 404, because unlike a serving of water from yesterday, a meal from
+#: yesterday is on the history screen the patient is looking at — see `find`.
+#:
+#: It names no fault of theirs and offers the one thing that still works: the
+#: day is closed, not the diary.
+MEAL_NOT_TODAY = (
+    'Poprawiać można tylko dzisiejsze posiłki — wcześniejsze dni są już '
+    'zapisane. Możesz dopisać nowy posiłek do dzisiejszego dnia.'
+)
+
 
 class MealSerializer(serializers.Serializer):
     """What §04's "Dodawanie posiłku" form sends.
@@ -155,6 +169,29 @@ class MealSerializer(serializers.Serializer):
                 description=(validated_data.get('description') or '').strip(),
             )
 
+    def update(self, instance, validated_data):
+        """PUT **replaces**, the same rule as `/api/diary/today/`.
+
+        The form submits its whole state, so a field left out is an answer
+        taken back rather than one left unchanged. A merge would make clearing
+        the hour impossible from the only form that writes it.
+
+        `entry_date` is deliberately absent here as it is in `create()`: an
+        edit cannot move a meal to another day. Which day a meal belongs to is
+        the one thing about it nobody typed — it came from the server's clock —
+        and a form that could change it would be a way into an archived day
+        through the back door.
+
+        No `MAX_MEALS_PER_DAY` check: this writes no new row, so the count that
+        bound is about cannot go up here.
+        """
+        instance.kind = validated_data.get('kind') or None
+        instance.eaten_at = validated_data.get('time')
+        instance.description = (validated_data.get('description') or '').strip()
+        instance.save(
+            update_fields=['kind', 'eaten_at', 'description', 'updated_at'])
+        return instance
+
 
 def serialize_meal(meal):
     """One meal, as `frontend/src/types/diet.ts`'s `DietMeal` reads it.
@@ -222,26 +259,109 @@ def streak_days(id_medical, today):
     return streak
 
 
+def load_day(id_medical, day):
+    """One day of the food diary, or None when it holds no meal.
+
+    The detail behind a row of §07's history. It exists because that row could
+    only ever be as long as a card allows: a day with six meals, each described
+    in a sentence or two, is a wall of text inside a list of seven such days,
+    and there was nowhere to open it out.
+
+    SAME SHAPE AS A ROW OF `load_history`, deliberately — `{date, meals}`, the
+    same `serialize_meal`, the same ordering. The screen behind this renders
+    the same thing the list does, so a second shape would be a second answer
+    about one day, and the list and the detail are one tap apart.
+
+    None rather than an empty day, because a day with no meals is not a day in
+    this diary: the history lists exactly the days that hold one, so a URL
+    naming any other is a URL naming nothing, and the view turns that into a
+    plain 404. That also means a *future* date and a date before the patient
+    started both answer the same way, which is what they are.
+    """
+    meals = (
+        DietMeal.objects
+        .filter(id_medical=id_medical, entry_date=day)
+        # `load_history`'s ordering inside a day, restated rather than shared
+        # only because the query differs; `test_diet_meals_api` pins the two
+        # against each other.
+        .order_by(F('eaten_at').desc(nulls_last=True), '-created_at')
+    )
+    rows = [serialize_meal(meal) for meal in meals]
+    if not rows:
+        return None
+    return {'date': day.isoformat(), 'meals': rows}
+
+
+def today_meals(id_medical, today):
+    """Today's meals, in the order the history renders a day.
+
+    NEWEST FIRST, which is `load_history`'s ordering and not a second opinion
+    about it. This docstring used to claim they were shared while the query
+    said `asc` against the history's `desc` — so the *same* day, today, was
+    drawn one way on the home screen and the other way in "Dzienniczki
+    żywieniowe", one screen apart. Found by reading both in a browser, which
+    is the only place the two are visible at once.
+
+    Sharing it rather than picking per screen is the point: which order a day
+    happened in is a fact about the day, not a property of the screen showing
+    it. It also puts the meal just written at the top, next to the "Edytuj"
+    that corrects it.
+    """
+    return list(
+        DietMeal.objects.filter(id_medical=id_medical, entry_date=today)
+        .order_by(F('eaten_at').desc(nulls_last=True), '-created_at')
+    )
+
+
 def build_diet_day(id_medical, today):
     """Everything `pages/DietHome.tsx` draws about today.
 
-    A *count* of meals rather than the meals themselves, because that screen
-    never renders one — it renders whether the day has started. The meals belong
-    to "Historia dzienniczków żywieniowych" (`load_history`), which is a screen
-    away.
+    IT CARRIES THE MEALS THEMSELVES, not only a count. It used to be the count
+    alone, on the argument that the home screen renders whether the day has
+    started and the meals live a screen away in the history. That stopped being
+    true when today's meals became **editable**: correcting a mistyped meal is
+    something somebody does about *today*, on the screen they are already on,
+    and a home screen that knew only "three" could offer no way to reach the
+    one that is wrong. The history still holds every other day.
+
+    `meal_count` stays alongside them rather than being derived in the browser
+    from `len(meals)`. It is what the greeting line renders, and two places
+    counting one day is how they end up disagreeing — the same reason
+    `/api/diet/hydration/` sends its figures rather than its arithmetic.
 
     Nothing here is a verdict, and there is nothing in the shape that could
-    become one: no target, no comparison with yesterday, no flag. §02's rule is
+    become one: no target, no comparison with yesterday, no flag, and — now
+    that the meals travel — still no quantity on any of them. §02's rule is
     that "pusty dzień nie jest brakiem: jest zaproszeniem bez presji", and the
     module's whole premise is that it does not score a day.
     """
+    meals = today_meals(id_medical, today)
     return {
         'date': today.isoformat(),
         'streak_days': streak_days(id_medical, today),
-        'meal_count': DietMeal.objects.filter(
-            id_medical=id_medical, entry_date=today,
-        ).count(),
+        'meal_count': len(meals),
+        'meals': [serialize_meal(meal) for meal in meals],
     }
+
+
+def find(id_medical, id_meal):
+    """One of this patient's meals, or None.
+
+    Filtered on `id_medical` alongside the id, so somebody else's meal answers
+    exactly like a nonexistent one — the same convention as `supplements.find`
+    and `diary.load_entry`.
+
+    IT DOES **NOT** FILTER ON TODAY, unlike `hydration.remove_entry`, and the
+    difference is deliberate rather than an inconsistency. Hydration's list
+    only ever shows today, so a serving from yesterday is a row the patient
+    cannot see and a 404 tells them nothing they did not know. A *meal* from
+    yesterday is on the history screen in front of them, and answering "no such
+    thing" about a row somebody is looking at is a worse answer than saying it
+    is archived. The view checks the day and refuses with `MEAL_NOT_TODAY`.
+    """
+    return DietMeal.objects.filter(
+        id_medical=id_medical, id_meal=id_meal,
+    ).first()
 
 
 def load_history(id_medical):

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders, TEST_USER } from '../test/render'
+import { PAGE_SIZE } from '../hooks/usePagination'
 import SpecialistTechniques from './SpecialistTechniques'
 import { ApiError } from '../api/client'
 import type { StoredTechnique } from '../api/techniques'
@@ -202,5 +203,65 @@ describe('deleting a technique', () => {
 
     await screen.findByText('Nie udało się usunąć techniki. Spróbuj ponownie.')
     expect(screen.queryByText(/Nie udało się wczytać/)).toBeNull()
+  })
+})
+
+describe('the list is paginated', () => {
+  /**
+   * Writing into the catalogue is the point of the screen, so this list only
+   * grows, and every row carries three actions — one of them the delete. A long
+   * unbroken column of "Usuń" buttons is the shape in which the wrong one gets
+   * pressed.
+   */
+  const many = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      technique({ id: `id-tech-${index}`, idTechnique: index + 1, nazwa: `Technika ${index}` }),
+    )
+
+  it('shows seven techniques on a page', async () => {
+    await render(many(20))
+
+    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+    expect(screen.getAllByText(/^Technika \d+$/)).toHaveLength(PAGE_SIZE)
+  })
+
+  it('counts techniques in the range it prints', async () => {
+    await render(many(20))
+
+    expect(screen.getByText(/1–7 z 20 technik/)).toBeInTheDocument()
+  })
+
+  it('draws no control when everything fits on one page', async () => {
+    await render(many(PAGE_SIZE))
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('moves through the pages', async () => {
+    await render(many(20))
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    expect(screen.getByText('Technika 7')).toBeInTheDocument()
+    expect(screen.queryByText('Technika 0')).toBeNull()
+  })
+
+  it('falls back a page rather than emptying when the last row on it is deleted', async () => {
+    // Deleting the only row on the last page leaves a page number past the end.
+    // usePagination clamps it, so the screen lands on what is now the last page
+    // instead of drawing an empty list under "Strona 3 z 2".
+    await render(many(15))
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    expect(screen.getByText(/Strona 3 z 3/)).toBeInTheDocument()
+    expect(screen.getByText('Technika 14')).toBeInTheDocument()
+
+    mockedDelete.mockResolvedValueOnce(undefined)
+    await userEvent.click(screen.getByRole('button', { name: 'Usuń' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Usuń na pewno' }))
+
+    await waitFor(() => expect(screen.getByText(/Strona 2 z 2/)).toBeInTheDocument())
+    expect(screen.getAllByText(/^Technika \d+$/)).toHaveLength(PAGE_SIZE)
   })
 })

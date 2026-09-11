@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
+import { PAGE_SIZE } from '../hooks/usePagination'
 import DietHydration from './DietHydration'
 import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
@@ -609,5 +610,82 @@ describe('what the screen must not say', () => {
     await screen.findByText('4')
 
     expect(screen.queryByText(/suplement|lek[iów]|przypomnien/i)).toBeNull()
+  })
+})
+
+describe("today's servings are paginated and the week is not", () => {
+  /**
+   * A readability measure and nothing more: `MAX_ENTRIES_PER_DAY` (40) is a
+   * backstop rather than a product rule, so an ordinary day never reaches a
+   * second page.
+   *
+   * "Ostatnie 7 dni" must never gain a control of its own — it is exactly seven
+   * columns by definition, and there is one `?page=` to go round.
+   */
+  const servings = (count: number) =>
+    // Newest first, as core/hydration.py orders them.
+    Array.from({ length: count }, (_, index) => ({
+      id: `e-${index}`,
+      drink: 'Woda',
+      amountMl: 250,
+      at: `2026-09-11T${String(22 - index).padStart(2, '0')}:00:00+02:00`,
+    }))
+
+  it('draws no control over an ordinary day', async () => {
+    fetchHydration.mockResolvedValue(day({ entries: servings(PAGE_SIZE) }))
+    renderWithProviders(<DietHydration />)
+
+    await screen.findByText('Dzisiejsze wpisy')
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('shows seven servings on a page and counts them as wpisy', async () => {
+    fetchHydration.mockResolvedValue(day({ entries: servings(20) }))
+    renderWithProviders(<DietHydration />)
+
+    expect(await screen.findByText(/Strona 1 z 3/)).toBeInTheDocument()
+    expect(screen.getByText(/1–7 z 20 wpisów/)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /^Usuń/ })).toHaveLength(PAGE_SIZE)
+  })
+
+  it('leaves the seven-day chart whole on every page', async () => {
+    // It is seven columns by definition; a page control over it would be a
+    // control that can only be pressed to no effect.
+    fetchHydration.mockResolvedValue(day({ entries: servings(20) }))
+    renderWithProviders(<DietHydration />)
+    await screen.findByText(/Strona 1 z 3/)
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    // One nav, over the servings — not two.
+    expect(screen.getAllByRole('navigation', { name: 'Paginacja' })).toHaveLength(1)
+    expect(screen.getByText('Ostatnie 7 dni')).toBeInTheDocument()
+  })
+
+  it('goes back to page one when a serving is recorded, so it can be taken back', async () => {
+    // The list is newest-first and the "Usuń" beside a serving is the whole
+    // reason it is drawn: an undo must not be a page turn away from the tap
+    // that needed it.
+    fetchHydration.mockResolvedValue(day({ entries: servings(20) }))
+    recordDrink.mockResolvedValue(day({ entries: servings(21) }))
+    renderWithProviders(<DietHydration />)
+    await screen.findByText(/Strona 1 z 3/)
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /\+ Szklanka/ }))
+
+    await waitFor(() => expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument())
+  })
+
+  it('still says nothing that is a verdict, on a paginated day', async () => {
+    fetchHydration.mockResolvedValue(day({ entries: servings(20) }))
+    renderWithProviders(<DietHydration />)
+    await screen.findByText(/Strona 1 z 3/)
+
+    for (const forbidden of [/gratul/i, /seria/i, /pod rząd/i, /brakuje/i, /za mało/i]) {
+      expect(screen.queryByText(forbidden)).toBeNull()
+    }
   })
 })

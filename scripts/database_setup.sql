@@ -464,9 +464,9 @@ CREATE TABLE IF NOT EXISTS supplement (
     -- 'raz dziennie', 'wg zaleceń lekarza'.
     frequency TEXT,
 
-    -- The hour it is meant to be taken at, which is what a reminder would fire
-    -- on. NULL for a preparation with no fixed hour.
-    hour TIME,
+    -- The hours are their own table (supplement_hour) -- a preparation can be
+    -- taken more than once a day, and two rows here would read as two
+    -- different preparations.
 
     start_date DATE,
     end_date DATE,
@@ -476,6 +476,34 @@ CREATE TABLE IF NOT EXISTS supplement (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ----------------------------
+-- SUPPLEMENT_HOUR
+-- The hours one preparation is taken at. Zero rows is "no fixed hour".
+--
+-- A table rather than a JSONB column, unlike technique.schools/steps: the
+-- argument there was that a step has no identity and nothing queries one, and
+-- both are false here. A reminder scheduler asks "which preparations are due
+-- at 06:45", which is a query by hour.
+--
+-- id_supplement is a real FOREIGN KEY for the same reason supplement_intake's
+-- is: both tables live in medical_db, so Postgres can enforce it.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS supplement_hour (
+    id_supplement_hour UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    id_supplement UUID NOT NULL
+        REFERENCES supplement (id_supplement) ON DELETE CASCADE,
+
+    hour TIME NOT NULL,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    -- The same hour twice is a double-submitted form, not a second dose.
+    CONSTRAINT uq_supplement_hour UNIQUE (id_supplement, hour)
+);
+
+CREATE INDEX IF NOT EXISTS idx_supplement_hour_hour ON supplement_hour (hour);
 
 -- ----------------------------
 -- SUPPLEMENT_INTAKE

@@ -46,8 +46,19 @@ export const ROUTES = {
    *  action, and until §04 was built it pointed at a PlaceholderPage, which is
    *  why the home screen and the history's empty state both already lead here. */
   dietMeal: '/diet/meal',
+  /** Correcting one of today's meals — pages/DietMealForm.tsx again, in edit
+   *  mode. Its own URL rather than an inline form on the home screen, so the
+   *  rules about what a meal may hold have one definition; §04's form already
+   *  carries them. Only today's meals can be reached: the backend refuses an
+   *  older one, and no screen offers the link. */
+  dietMealEdit: '/diet/meal/:id',
   /** "Historia dzienniczków żywieniowych" (§07) — pages/DietJournals.tsx. */
   dietJournals: '/diet/journals',
+  /** One day of that history, opened out — pages/DietJournalDay.tsx. Keyed by
+   *  the calendar day rather than by an id, because a *dzienniczek* in this
+   *  module **is** a day: there is no `diet_day` row to name. Read-only, like
+   *  `journalDetail`; today is edited on the module's home screen. */
+  dietJournalDay: '/diet/journals/:date',
   /** "Nawodnienie" — the first half of §08 of the mockups.
    *  pages/DietHydration.tsx, and the first screen in this module that had a
    *  backend behind it. */
@@ -91,6 +102,15 @@ export function specialistPatientReportPath(patientId: string, reportId: string)
 
 export function specialistTechniqueEditPath(id: number | string): string {
   return ROUTES.specialistTechniqueEdit.replace(':id', String(id))
+}
+
+export function dietMealEditPath(id: string): string {
+  return ROUTES.dietMealEdit.replace(':id', id)
+}
+
+/** `date` is 'YYYY-MM-DD', the shape `utils/days.ts` writes and the API reads. */
+export function dietJournalDayPath(date: string): string {
+  return ROUTES.dietJournalDay.replace(':date', date)
 }
 
 export interface PlaceholderRouteDef {
@@ -137,7 +157,9 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',
   [ROUTES.diet]: 'Dietetyka i psychodietetyka',
   [ROUTES.dietMeal]: 'Dodawanie posiłku',
+  [ROUTES.dietMealEdit]: 'Edycja posiłku',
   [ROUTES.dietJournals]: 'Dzienniczki żywieniowe',
+  [ROUTES.dietJournalDay]: 'Dzienniczek dnia',
   [ROUTES.dietHydration]: 'Nawodnienie',
   [ROUTES.dietSupplements]: 'Suplementy i leki',
   /* §03's own name for the menu entry, kept verbatim. */

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
+import { PAGE_SIZE } from '../hooks/usePagination'
 import SpecialistPatients from './SpecialistPatients'
 import { ApiError } from '../api/client'
 import type { SpecialistCaseload, SpecialistPatient } from '../api/specialist'
@@ -331,5 +332,79 @@ describe('inviting a patient', () => {
     await render()
 
     expect(screen.getByText(/nie widzisz treści dzienniczka/)).toBeInTheDocument()
+  })
+})
+
+describe('the caseload is paginated and the pending list is not', () => {
+  /**
+   * A full practice is dozens of patients and a card here is not a row — name,
+   * address, three figures and, behind two taps, the control that ends the care
+   * relationship. Fifty of them bury the invite form under the fold on the
+   * specialist's own landing screen.
+   *
+   * The pending list stays whole: an invitation is answered or withdrawn, so it
+   * does not accumulate — and there is one `?page=` to go round, so paginating
+   * both would have the two lists turning each other's pages.
+   */
+  const manyPatients = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      patient({ id: `p-${index}`, name: 'Pacjent', surname: String(index), email: `p${index}@wp.pl` }),
+    )
+
+  it('shows seven patients on a page', async () => {
+    await render(caseload({ patients: manyPatients(20) }))
+
+    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { name: /^Pacjent \d+$/ })).toHaveLength(PAGE_SIZE)
+  })
+
+  it('counts patients in the range it prints', async () => {
+    await render(caseload({ patients: manyPatients(20) }))
+
+    expect(screen.getByText(/1–7 z 20 pacjentów/)).toBeInTheDocument()
+  })
+
+  it('draws no control when everything fits on one page', async () => {
+    await render(caseload({ patients: manyPatients(PAGE_SIZE) }))
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('moves through the pages', async () => {
+    await render(caseload({ patients: manyPatients(20) }))
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Pacjent 7' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Pacjent 0' })).toBeNull()
+  })
+
+  it('leaves the pending invitations whole, on every page of the caseload', async () => {
+    // They are not counted by the control above them and they do not move with
+    // it: a pending row grants nothing, and hiding one behind a page of
+    // accepted patients would lose the only place it is visible.
+    await render(
+      caseload({
+        patients: manyPatients(20),
+        pending: [patient({ id: 'p-pending', name: 'Zofia', surname: 'Czeka', acceptedAt: null, activity: null })],
+      }),
+    )
+    expect(screen.getByText('Zofia Czeka')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    expect(screen.getByText('Zofia Czeka')).toBeInTheDocument()
+    // Still 20 accepted patients, not 21: the two lists are counted apart.
+    expect(screen.getByText(/z 20 pacjentów/)).toBeInTheDocument()
+  })
+
+  it('keeps the invite form reachable from any page', async () => {
+    await render(caseload({ patients: manyPatients(20) }))
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByLabelText('Adres e-mail pacjenta')).toBeInTheDocument()
   })
 })
