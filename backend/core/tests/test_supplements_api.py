@@ -21,19 +21,23 @@ than handed an empty list.
 """
 
 import datetime
+import re
 import uuid
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
-from core.models import (Patient, Specjalist, Supplement, SupplementIntake,
+from core.models import (Patient, Specjalist, Supplement, SupplementHour,
+                         SupplementIntake,
                          User, UserRole)
-from core.supplements import (END_BEFORE_START, LIST_IS_FULL, MAX_SUPPLEMENTS)
+from core.supplements import (END_BEFORE_START, LIST_IS_FULL,
+                              MAX_HOURS_PER_SUPPLEMENT, MAX_SUPPLEMENTS)
 
 PASSWORD = 'TajneHaslo123'
 
@@ -76,13 +80,27 @@ class SupplementTestCase(TestCase):
         body.setdefault('name', 'Witamina D3')
         return self.client.post(self.url(), body, format='json')
 
-    def row(self, patient=None, name='Magnez', hour='21:00', **fields):
-        return Supplement.objects.create(
+    def row(self, patient=None, name='Magnez', hour='21:00', hours=None,
+            **fields):
+        """One preparation, with its hours.
+
+        `hour=` is kept as the one-hour shorthand most of this file uses;
+        `hours=` is the list, for the twice-a-day case. `hour=None` means no
+        fixed hour, which is now zero rows rather than a NULL column.
+        """
+        supplement = Supplement.objects.create(
             id_medical=(patient or self.patient).id_medical,
             name=name,
-            hour=datetime.time.fromisoformat(hour) if hour else None,
             **fields,
         )
+        chosen = hours if hours is not None else ([hour] if hour else [])
+        SupplementHour.objects.bulk_create([
+            SupplementHour(
+                supplement=supplement, hour=datetime.time.fromisoformat(h),
+            )
+            for h in chosen
+        ])
+        return supplement
 
 
 class ListTests(SupplementTestCase):
@@ -98,7 +116,7 @@ class ListTests(SupplementTestCase):
         row = self.client.get(self.url()).json()[0]
 
         self.assertEqual(sorted(row), [
-            'dose', 'end_date', 'frequency', 'hour', 'id', 'name',
+            'dose', 'end_date', 'frequency', 'hours', 'id', 'name',
             'reminder_enabled', 'start_date', 'taken_today',
         ])
 
@@ -148,7 +166,7 @@ class CreateTests(SupplementTestCase):
         self.assertEqual(row.name, 'Magnez')
         self.assertIsNone(row.dose)
         self.assertIsNone(row.frequency)
-        self.assertIsNone(row.hour)
+        self.assertEqual(list(row.hours.all()), [])
         self.assertIsNone(row.start_date)
         self.assertIsNone(row.end_date)
 
@@ -170,14 +188,15 @@ class CreateTests(SupplementTestCase):
     def test_the_whole_form_is_stored(self):
         self.add(
             name='Sertralina', dose='50 mg', frequency='raz dziennie',
-            hour='08:00', start_date='2026-03-03', end_date='2026-09-02',
+            hours=['08:00'], start_date='2026-03-03', end_date='2026-09-02',
             reminder_enabled=False,
         )
 
         row = Supplement.objects.get()
         self.assertEqual(row.dose, '50 mg')
         self.assertEqual(row.frequency, 'raz dziennie')
-        self.assertEqual(row.hour, datetime.time(8, 0))
+        self.assertEqual(
+            [h.hour for h in row.hours.all()], [datetime.time(8, 0)])
         self.assertEqual(row.start_date, datetime.date(2026, 3, 3))
         self.assertEqual(row.end_date, datetime.date(2026, 9, 2))
         self.assertFalse(row.reminder_enabled)
@@ -209,7 +228,7 @@ class CreateTests(SupplementTestCase):
         """Not the row that was written: the list is ordered by hour."""
         self.row(name='Wieczorny', hour='21:00')
 
-        body = self.add(name='Poranny', hour='07:00').json()
+        body = self.add(name='Poranny', hours=['07:00']).json()
 
         self.assertEqual([row['name'] for row in body], ['Poranny', 'Wieczorny'])
 
@@ -243,7 +262,7 @@ class EditTests(SupplementTestCase):
 
         response = self.client.put(
             self.item_url(row.pk),
-            {'name': 'Magnez', 'dose': '400 mg', 'hour': '21:00'},
+            {'name': 'Magnez', 'dose': '400 mg', 'hours': ['21:00']},
             format='json',
         )
 
@@ -456,3 +475,200 @@ class AccessTests(SupplementTestCase):
                     .status_code,
                     405,
                 )
+
+
+class HoursTests(SupplementTestCase):
+    """Several hours for one preparation — §08's row, taken twice a day.
+
+    THE CASE THIS EXISTS FOR: a probiotic at 06:45 and again at 12:00 is *one*
+    position on the list. Before `supplement_hour` it could only be written as
+    two preparations with the same name — two rows, two checkboxes, and a
+    medicine list that reads as two different probiotics.
+    """
+
+    def test_a_preparation_can_be_written_with_several_hours(self):
+        body = self.add(name='Probiotyk', hours=['06:45', '12:00']).json()
+
+        row = next(r for r in body if r['name'] == 'Probiotyk')
+        self.assertEqual(row['hours'], ['06:45', '12:00'])
+
+    def test_it_is_one_row_on_the_list_not_two(self):
+        """The whole point: one position, several hours on it."""
+        self.add(name='Probiotyk', hours=['06:45', '12:00'])
+
+        body = self.client.get(self.url()).json()
+
+        self.assertEqual([r['name'] for r in body], ['Probiotyk'])
+
+    def test_the_hours_come_back_in_the_order_of_a_day(self):
+        """Written out of order, read in order — `bulk_create` promises
+        nothing about the order rows come back in, so the ordering is
+        explicit."""
+        self.add(name='Wapń', hours=['20:00', '08:00', '14:00'])
+
+        row = self.client.get(self.url()).json()[0]
+
+        self.assertEqual(row['hours'], ['08:00', '14:00', '20:00'])
+
+    def test_the_same_hour_twice_is_one_hour_rather_than_an_error(self):
+        """A double-submitted form, not a second dose — the same choice
+        `uq_supplement_intake_day` makes for a double-tapped checkbox."""
+        response = self.add(name='Magnez', hours=['21:00', '21:00'])
+
+        self.assertEqual(response.status_code, 201)
+        row = next(r for r in response.json() if r['name'] == 'Magnez')
+        self.assertEqual(row['hours'], ['21:00'])
+
+    def test_no_hours_at_all_is_an_ordinary_row(self):
+        """Zero rows is "no fixed hour", which is what a NULL column meant."""
+        body = self.add(name='Witamina C', hours=[]).json()
+
+        row = next(r for r in body if r['name'] == 'Witamina C')
+        self.assertEqual(row['hours'], [])
+
+    def test_the_field_may_be_left_out_entirely(self):
+        """Nothing but `name` is required — §05's rule, unchanged."""
+        body = self.add(name='Bez godzin').json()
+
+        row = next(r for r in body if r['name'] == 'Bez godzin')
+        self.assertEqual(row['hours'], [])
+
+    def test_put_replaces_the_hours_rather_than_adding_to_them(self):
+        """An hour left out is an hour taken off, the same rule the rest of
+        this form follows."""
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+
+        self.client.put(
+            self.item_url(supplement.id_supplement),
+            {'name': 'Probiotyk', 'hours': ['06:45']},
+            format='json',
+        )
+
+        self.assertEqual(
+            [h.hour.strftime('%H:%M') for h in supplement.hours.order_by('hour')],
+            ['06:45'],
+        )
+
+    def test_an_edit_can_add_an_hour_to_a_once_daily_preparation(self):
+        supplement = self.row(name='Probiotyk', hour='06:45')
+
+        body = self.client.put(
+            self.item_url(supplement.id_supplement),
+            {'name': 'Probiotyk', 'hours': ['06:45', '12:00']},
+            format='json',
+        ).json()
+
+        self.assertEqual(body[0]['hours'], ['06:45', '12:00'])
+
+    def test_an_edit_can_clear_every_hour(self):
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+
+        body = self.client.put(
+            self.item_url(supplement.id_supplement), {'name': 'Probiotyk'},
+            format='json').json()
+
+        self.assertEqual(body[0]['hours'], [])
+
+    def test_a_value_that_is_not_a_time_is_a_400_rather_than_dropped(self):
+        """`0009`'s lesson: a plain Serializer drops a key it does not name
+        *without an error*, which is how the diary's "pora dnia" was accepted,
+        confirmed and lost."""
+        response = self.add(name='Magnez', hours=['rano'])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Supplement.objects.filter(name='Magnez').exists())
+
+    def test_a_refused_write_leaves_the_old_hours_alone(self):
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+
+        self.client.put(
+            self.item_url(supplement.id_supplement),
+            {'name': 'Probiotyk', 'hours': ['06:45'],
+             'start_date': '2026-09-10', 'end_date': '2026-09-01'},
+            format='json',
+        )
+
+        self.assertEqual(supplement.hours.count(), 2)
+
+    def test_there_is_a_backstop_on_how_many_hours_one_row_may_carry(self):
+        """Like MAX_SUPPLEMENTS: a bound on the table, not an opinion about a
+        regimen."""
+        too_many = [f'{h:02d}:00' for h in range(MAX_HOURS_PER_SUPPLEMENT + 1)]
+
+        response = self.add(name='Magnez', hours=too_many)
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_the_list_is_ordered_by_the_earliest_hour(self):
+        """A twice-daily preparation belongs where its morning is — sorting on
+        the latest would put it after the evening magnesium."""
+        self.row(name='Wieczorny', hour='21:00')
+        self.row(name='Probiotyk', hours=['06:45', '22:00'])
+
+        names = [row['name'] for row in self.client.get(self.url()).json()]
+
+        self.assertEqual(names, ['Probiotyk', 'Wieczorny'])
+
+    def test_deleting_the_preparation_takes_its_hours_with_it(self):
+        """CASCADE, like the ticks."""
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+
+        self.client.delete(self.item_url(supplement.id_supplement))
+
+        self.assertEqual(SupplementHour.objects.count(), 0)
+
+    def test_one_patient_s_hours_do_not_reach_another_s_row(self):
+        other = self.make_patient(email='inny@example.com')
+        self.row(patient=other, name='Cudzy', hours=['06:45'])
+        self.row(name='Mój', hour='08:00')
+
+        body = self.client.get(self.url()).json()
+
+        self.assertEqual([r['name'] for r in body], ['Mój'])
+
+    def test_the_ticking_is_still_one_checkbox_for_the_whole_day(self):
+        """Deliberately unchanged, and worth pinning as a decision rather than
+        leaving as an accident: a tick is a fact about a *day*
+        (`uq_supplement_intake_day`), so a preparation taken twice has one
+        checkbox, not two. Whether each dose should be tickable separately is
+        a question for the client — and answering it means the intake table
+        learns about hours, which is a schema change and a decision about what
+        an untaken dose would mean."""
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+
+        body = self.client.post(
+            self.intake_url(supplement.id_supplement)).json()
+
+        row = body[0]
+        self.assertEqual(row['hours'], ['06:45', '12:00'])
+        self.assertIs(row['taken_today'], True)
+        self.assertEqual(
+            SupplementIntake.objects.filter(supplement=supplement).count(), 1)
+
+
+class SharedLimitTests(SimpleTestCase):
+    """`MAX_HOURS_PER_SUPPLEMENT` is declared twice, once per language.
+
+    The same cross-language guard `test_meals.py` puts on the meal kinds, and
+    for a milder version of the same reason: the frontend copy only stops the
+    form offering another box, so a stale one costs a confusing 400 about a
+    field the patient cannot see rather than a lost value. Cheap to pin,
+    invisible when it drifts.
+    """
+
+    TS = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / 'frontend' / 'src' / 'utils' / 'supplements.ts'
+    )
+
+    def test_the_frontend_declares_the_same_number(self):
+        source = self.TS.read_text(encoding='utf-8')
+        match = re.search(
+            r'export const MAX_HOURS_PER_SUPPLEMENT = (\d+)', source)
+        if not match:
+            raise AssertionError(
+                f'No `export const MAX_HOURS_PER_SUPPLEMENT = <n>` in '
+                f'{self.TS}. If it was renamed, this parser has to follow it '
+                '— silently matching nothing would retire the guard.'
+            )
+        self.assertEqual(int(match.group(1)), MAX_HOURS_PER_SUPPLEMENT)

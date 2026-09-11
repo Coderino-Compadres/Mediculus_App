@@ -1,5 +1,4 @@
 import type { FeelingAfter } from '../utils/activity'
-import type { DrinkName } from '../utils/drinks'
 import type { SleepQuality, WakeFeeling } from '../utils/sleep'
 
 /**
@@ -35,7 +34,16 @@ import type { SleepQuality, WakeFeeling } from '../utils/sleep'
  */
 export interface HydrationEntry {
   id: string
-  drink: DrinkName
+  /**
+   * One of `DRINKS`, or a name the patient typed.
+   *
+   * A plain `string` rather than `DrinkName`, and that is the type saying what
+   * the column now holds: the six chips are the quick way in, not the whole
+   * vocabulary. The server folds a typed name onto a chip's spelling when it
+   * matches one (`normalize_drink`), so this is never "herbata" next to
+   * "Herbata" — but it may be anything else the patient drinks.
+   */
+  drink: string
   amountMl: number | null
   /** ISO moment it was recorded — the list orders by it, newest first. */
   at: string | null
@@ -76,6 +84,9 @@ export interface HydrationDay {
   /** Bounds the "Własna ilość" input enforces before submitting. */
   minAmountMl: number
   maxAmountMl: number
+  /** How long a typed drink name may be — read off the payload rather than
+   *  spelled into the input, like the two bounds above. */
+  maxDrinkName: number
   waterMl: number
   glasses: number
   /** 0..1, for the bar's width. */
@@ -115,11 +126,27 @@ export interface DietDay {
    */
   streakDays: number
   /**
-   * How many meals today holds. A count rather than the meals themselves,
-   * because this screen never renders a meal — it renders whether the day has
-   * started. The list of meals belongs to "Historia dzienniczków żywieniowych".
+   * How many meals today holds.
+   *
+   * Kept alongside `meals` rather than derived from its length: it is what the
+   * greeting line renders, it travels from the server, and two places counting
+   * one day is how they end up disagreeing.
    */
   mealCount: number
+  /**
+   * Today's meals, in the order the history renders a day — newest first,
+   * the unhoured ones last.
+   *
+   * The home screen used to get a count alone, on the argument that it renders
+   * whether the day has started and the meals live a screen away in the
+   * history. That stopped being true when today's meals became **editable**:
+   * correcting a mistyped meal is something somebody does about today, on the
+   * screen they are already on, and a home screen that knew only "three" could
+   * offer no way to reach the one that is wrong.
+   *
+   * Only today. Every other day is still the history's.
+   */
+  meals: DietMeal[]
 }
 
 /**
@@ -146,6 +173,47 @@ export interface DietMeal {
   /** What the patient typed. '' when they saved a meal without describing it,
    *  which the mockups explicitly allow ("niepełny wpis też jest wpisem"). */
   description: string
+}
+
+
+/**
+ * What §04's "Dodawanie posiłku" form submits.
+ *
+ * THE THREE THINGS A MEAL HOLDS, and deliberately no fourth. There is no
+ * portion, no weight and no calorie count — §04 states that scope outright —
+ * and no photo, which is the module's one open question rather than an
+ * oversight: `diet_meal` has no column for one, and where a file would live,
+ * how long it is kept and which consent covers it are all unanswered.
+ *
+ * NONE OF IT IS REQUIRED. §05's rule is that no field blocks a save, taken
+ * literally on both sides: an input with every field null is a valid meal, and
+ * the backend writes it. What it records is that a meal happened, which is
+ * itself the thing this diary is for.
+ *
+ * There is no date on this shape and there must not be: the server stamps the
+ * day from its own clock, so a form that only ever shows today cannot write
+ * into the archive.
+ */
+export interface DietMealInput {
+  /** One of `MEAL_KINDS` (utils/meals.ts), or null for a meal saved without
+   *  saying which one it was. A value outside that list is a 400, never a
+   *  silently dropped answer. */
+  kind: string | null
+  /** 'HH:MM', or null. Null is "not answered", not midnight. */
+  time: string | null
+  /** '' and null both mean "left empty"; the mapping sends one of them. */
+  description: string
+}
+
+/** What the write answers with: the row, and the day it moved.
+ *
+ *  Both, because the two screens reading this table draw different things — the
+ *  history draws the meal, the home screen draws a count and a streak that both
+ *  move when one meal is written. Recomputing either in the browser is how one
+ *  day ends up with two versions of itself. */
+export interface DietMealSaved {
+  meal: DietMeal
+  day: DietDay
 }
 
 /**
@@ -285,13 +353,32 @@ export interface Supplement {
   dose: string | null
   /** 'raz dziennie', 'wg zaleceń lekarza' — free text, not a vocabulary. */
   frequency: string | null
-  /** 'HH:MM', or null for a preparation taken at no fixed hour. */
-  hour: string | null
+  /**
+   * The hours it is taken at, 'HH:MM' each, in the order of a day.
+   *
+   * A LIST, because a preparation can be taken more than once a day — a
+   * probiotic at 06:45 and again at 12:00 is one position on this list with
+   * two hours on its row, not two positions sharing a name. Empty means no
+   * fixed hour, which is what the single nullable `hour` used to mean.
+   *
+   * Sorted and de-duplicated by the server, so nothing here has to.
+   */
+  hours: string[]
   /** 'YYYY-MM-DD'. */
   startDate: string | null
   /** 'YYYY-MM-DD', or null for "bezterminowo". */
   endDate: string | null
   reminderEnabled: boolean
+  /**
+   * Whether it was ticked off **today** — one tick for the whole day, even on
+   * a preparation taken several times.
+   *
+   * That is deliberate rather than an oversight: a tick is a fact about a day
+   * (`uq_supplement_intake_day`), and making each dose tickable separately
+   * would mean the intake table learning about hours *and* a decision about
+   * what an untaken dose means — which is the one thing §08 says this module
+   * must not record.
+   */
   takenToday: boolean
 }
 
@@ -304,7 +391,9 @@ export interface SupplementInput {
   name: string
   dose: string | null
   frequency: string | null
-  hour: string | null
+  /** Zero or more 'HH:MM'. PUT replaces them, so an hour left out is an hour
+   *  taken off — the same rule the rest of this form follows. */
+  hours: string[]
   startDate: string | null
   endDate: string | null
   reminderEnabled: boolean

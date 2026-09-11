@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import HeaderMenu from '../components/HeaderMenu'
-import { emptyDietDay, fetchDietDay, fetchHydration } from '../api/diet'
+import { deleteMeal, emptyDietDay, fetchDietDay, fetchHydration } from '../api/diet'
+import { ApiError } from '../api/client'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
 import { formatGlasses, pluralGlasses } from '../utils/drinks'
-import { pluralMeals } from '../utils/meals'
-import type { DietDay, HydrationDay } from '../types/diet'
-import { ROUTES } from '../routes'
+import { mealHeading, pluralMeals } from '../utils/meals'
+import type { DietDay, DietMeal, HydrationDay } from '../types/diet'
+import { dietMealEditPath, ROUTES } from '../routes'
 import './dietHome.css'
 
 /**
@@ -54,10 +55,16 @@ const EMPTY_DAY_LEAD =
 const DAY_SUMMARY_EMPTY =
   'To miejsce wypełni się samo, kiedy zapiszesz pierwszy posiłek z opisem samopoczucia.'
 
-function TodayCard({ day }: { day: DietDay }) {
+function TodayCard({
+  day,
+  onChanged,
+}: {
+  day: DietDay
+  onChanged: (day: DietDay) => void
+}) {
   const navigate = useNavigate()
 
-  if (day.mealCount > 0) return <StartedDayCard day={day} />
+  if (day.mealCount > 0) return <StartedDayCard day={day} onChanged={onChanged} />
 
   return (
     <section className="diet-card diet-today" aria-labelledby="diet-today-heading">
@@ -75,24 +82,192 @@ function TodayCard({ day }: { day: DietDay }) {
   )
 }
 
+const DELETE_ERROR = 'Nie udało się usunąć posiłku.'
+
 /**
- * The day once it holds a meal — and deliberately the plainest thing that can
- * be true rather than a guess at the design.
+ * One of today's meals, with the two things that can be done to it.
  *
- * §02 of the mockups is "Strona główna modułu — dwa stany dnia" and this is the
- * second one; its artboard is in the part of the document the canvas viewer
- * would not scroll to. This branch is reachable now (`/api/diet/today/` answers
- * with a real count), which makes replacing it from §07's own artboard the next
- * thing to do here — the mockup draws an axis of meals with hours, descriptions
- * and an emotion dot, and none of that is guessed at below. Replace it from the
- * mockup; do not extend it from here.
+ * DELETING ASKS TWICE, the same two-step `DietSupplements` uses and for the
+ * same reason: this is a phone, the button sits under a thumb, and there is no
+ * undo — a deleted meal has to be typed again. Editing does not ask, because
+ * the form it opens is itself the confirmation and "Anuluj" leads back.
+ *
+ * The accessible names carry the meal, because "Usuń" repeated down a list of
+ * four tells a screen-reader user nothing about which one they are on. The
+ * visible label stays short.
  */
-function StartedDayCard({ day }: { day: DietDay }) {
+function TodayMealRow({
+  meal,
+  busy,
+  confirming,
+  onAskToDelete,
+  onCancelDelete,
+  onDelete,
+}: {
+  meal: DietMeal
+  busy: boolean
+  confirming: boolean
+  onAskToDelete: () => void
+  onCancelDelete: () => void
+  onDelete: () => void
+}) {
+  const heading = mealHeading(meal)
+  const description = meal.description.trim()
+  /** What names this meal out loud. Falls back to its description and then to
+   *  a plain word, because a meal may legitimately answer nothing at all. */
+  const name = heading ?? (description || 'posiłek bez opisu')
+
+  return (
+    <li className="diet-today-meal">
+      <div className="diet-today-meal-body">
+        {heading && <p className="diet-today-meal-heading">{heading}</p>}
+        {/* Said plainly rather than left blank — a meal saved without a
+            description is an ordinary entry (§05), and an empty row would read
+            as something that failed to load. */}
+        <p
+          className={
+            description ? 'diet-today-meal-text' : 'diet-today-meal-text-empty'
+          }
+        >
+          {description || 'Zapisany bez opisu.'}
+        </p>
+      </div>
+      <div className="diet-today-meal-actions">
+        {confirming ? (
+          <>
+            <span className="diet-today-confirm-text">Usunąć ten posiłek?</span>
+            <button
+              type="button"
+              className="diet-today-quiet-button"
+              disabled={busy}
+              onClick={onDelete}
+            >
+              Tak, usuń
+            </button>
+            <button
+              type="button"
+              className="diet-today-quiet-button"
+              onClick={onCancelDelete}
+            >
+              Nie usuwaj
+            </button>
+          </>
+        ) : (
+          <>
+            {/* `aria-label` rather than a visually-hidden span: the span's
+                text also matched a `getByText` for the heading it repeats, and
+                its leading space is collapsed at the element boundary, so the
+                name came out "EdytujObiad · 13:30" — the same wart the
+                supplement list's delete button has. */}
+            <Link
+              className="diet-today-quiet-link"
+              to={dietMealEditPath(meal.id)}
+              aria-label={`Edytuj ${name}`}
+            >
+              Edytuj
+            </Link>
+            <button
+              type="button"
+              className="diet-today-quiet-button"
+              disabled={busy}
+              onClick={onAskToDelete}
+              aria-label={`Usuń ${name}`}
+            >
+              Usuń
+            </button>
+          </>
+        )}
+      </div>
+    </li>
+  )
+}
+
+/**
+ * The day once it holds a meal — §02's second state.
+ *
+ * ITS LAYOUT IS STILL NOT FROM THE MOCKUPS. §02's filled artboard is in the
+ * part of the document the canvas viewer would not scroll to (it answers to no
+ * scroll, drag or Present from the browser extension), so what is below is
+ * built from the module's own rules rather than from the designer's screen.
+ * The mockup draws an axis of meals with hours, descriptions and an emotion
+ * dot; the emotion dot in particular is **not** guessed at here, because no
+ * column holds one. Replace this from §02 rather than extending it.
+ *
+ * WHAT IT GAINED, and why it is no longer only a count: today's meals are
+ * editable. A card that said "Dzisiaj zapisane: 3 posiłki" could offer no way
+ * to reach the one that is wrong, so a mistyped meal stayed mistyped — the gap
+ * `backend/core/meals.py` and the supplement list both argued about. The meals
+ * themselves now travel on `/api/diet/today/`.
+ *
+ * ONLY TODAY IS HERE. Every other day is the history's, read-only, exactly as
+ * §07 says an archived day is — and the backend refuses an edit to one
+ * regardless of what a screen offers.
+ *
+ * NOTHING IN THIS LIST MEASURES OR JUDGES A MEAL: no quantity, no order
+ * number, no "brakuje kolacji", no target for the day. §04 states that scope
+ * and `DietHome.test.tsx` sweeps for it.
+ */
+function StartedDayCard({
+  day,
+  onChanged,
+}: {
+  day: DietDay
+  onChanged: (day: DietDay) => void
+}) {
   const navigate = useNavigate()
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function remove(meal: DietMeal) {
+    if (busyId !== null) return
+    setBusyId(meal.id)
+    setError(null)
+    try {
+      // The server answers with the rebuilt day — the list, the count and the
+      // streak all move when a meal goes, and a browser patching its own copy
+      // is how one day ends up with two versions of itself.
+      onChanged(await deleteMeal(meal.id))
+      setConfirmingId(null)
+    } catch (cause: unknown) {
+      // The server's own sentence when it gave one: the refusals a patient can
+      // actually reach here are gates (an unlinked minor, withdrawn consents)
+      // and the day having rolled over since the screen was opened — each
+      // arrives saying what to do about it.
+      setError(cause instanceof ApiError ? cause.message : DELETE_ERROR)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <section className="diet-card diet-today" aria-labelledby="diet-today-heading">
       <p className="diet-eyebrow">DZISIEJSZY DZIENNICZEK</p>
       <h2 id="diet-today-heading">Dzisiaj zapisane: {pluralMeals(day.mealCount)}</h2>
+
+      <ul className="diet-today-meals">
+        {day.meals.map((meal) => (
+          <TodayMealRow
+            key={meal.id}
+            meal={meal}
+            busy={busyId === meal.id}
+            confirming={confirmingId === meal.id}
+            onAskToDelete={() => {
+              setError(null)
+              setConfirmingId(meal.id)
+            }}
+            onCancelDelete={() => setConfirmingId(null)}
+            onDelete={() => void remove(meal)}
+          />
+        ))}
+      </ul>
+
+      {error && (
+        <p className="diet-today-error" role="alert">
+          {error}
+        </p>
+      )}
+
       <button
         type="button"
         className="diet-primary-button"
@@ -210,6 +385,18 @@ function DietHome() {
     month: 'long',
   })
 
+  /**
+   * Shown once, after the edit form navigates back here having saved.
+   *
+   * On the arrival rather than on the form, the same shape `DietJournals` uses
+   * for a newly written meal and `/home` for a diary entry: the form leaves
+   * immediately, so a message on it is one nobody can read. The corrected meal
+   * is in the list right below this line.
+   */
+  const savedMeal = Boolean(
+    (useLocation().state as { savedMeal?: boolean } | null)?.savedMeal,
+  )
+
   return (
     <div className="diet-page">
       <header className="diet-header">
@@ -223,6 +410,12 @@ function DietHome() {
             has (every entry of which leads somewhere real) rather than a guess. */}
         <HeaderMenu />
       </header>
+
+      {savedMeal && (
+        <p className="diet-saved-notice" role="status">
+          Zapisano zmiany w posiłku.
+        </p>
+      )}
 
       <section className="diet-welcome">
         <div>
@@ -239,7 +432,7 @@ function DietHome() {
         </div>
       </section>
 
-      <TodayCard day={day} />
+      <TodayCard day={day} onChanged={setDay} />
 
       {hydration && <HydrationCard day={hydration} />}
 

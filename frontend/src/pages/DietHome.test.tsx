@@ -17,6 +17,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
  *  the screen starts from and falls back to, and stubbing it would hide the one
  *  thing worth knowing about a failed load here — that the screen keeps drawing
  *  an inviting empty day rather than an error box. */
+const deleteMeal = vi.fn<(id: string) => Promise<DietDay>>()
 const fetchHydration = vi.fn<() => Promise<HydrationDay>>()
 const fetchDietDay = vi.fn<() => Promise<DietDay>>()
 vi.mock('../api/diet', async (importOriginal) => {
@@ -25,11 +26,12 @@ vi.mock('../api/diet', async (importOriginal) => {
     ...actual,
     fetchHydration: () => fetchHydration(),
     fetchDietDay: () => fetchDietDay(),
+    deleteMeal: (id: string) => deleteMeal(id),
   }
 })
 
 function dietDay(overrides: Partial<DietDay> = {}): DietDay {
-  return { date: '2026-09-09', streakDays: 0, mealCount: 0, ...overrides }
+  return { date: '2026-09-09', streakDays: 0, mealCount: 0, meals: [], ...overrides }
 }
 
 function hydrationDay(overrides: Partial<HydrationDay> = {}): HydrationDay {
@@ -40,6 +42,7 @@ function hydrationDay(overrides: Partial<HydrationDay> = {}): HydrationDay {
     targetGlasses: 6,
     minAmountMl: 10,
     maxAmountMl: 2000,
+    maxDrinkName: 40,
     waterMl: 0,
     glasses: 0,
     progress: 0,
@@ -338,5 +341,161 @@ describe('the disclaimer', () => {
     renderWithProviders(<DietHome />)
 
     expect(screen.getByText(APP_DISCLAIMER)).toBeInTheDocument()
+  })
+})
+
+describe("today's meals are on the screen and can be corrected", () => {
+  /**
+   * WHY THEY ARE HERE AT ALL. The card used to be a count — "Dzisiaj zapisane:
+   * 3 posiłki" — which could offer no way to reach the one that is wrong, so a
+   * mistyped meal stayed mistyped. Correcting a meal is something somebody
+   * does about *today*, on the screen they are already on.
+   */
+  const meal = (overrides: Partial<DietDay['meals'][number]> = {}) => ({
+    id: 'm1',
+    kind: 'Obiad' as string | null,
+    time: '13:30' as string | null,
+    description: 'Zupa i kanapka.',
+    ...overrides,
+  })
+
+  const dayWith = (...meals: ReturnType<typeof meal>[]) =>
+    dietDay({ mealCount: meals.length, meals })
+
+  it('lists them with the mockups\' own label', async () => {
+    fetchDietDay.mockResolvedValue(dayWith(meal()))
+
+    renderWithProviders(<DietHome />)
+
+    expect(await screen.findByText('Obiad · 13:30')).toBeInTheDocument()
+    expect(screen.getByText('Zupa i kanapka.')).toBeInTheDocument()
+  })
+
+  it('renders a meal that answered nothing as an ordinary row', async () => {
+    /** §05: no field blocks a save, so this is a legitimate entry rather than
+     *  something that failed to load. */
+    fetchDietDay.mockResolvedValue(
+      dayWith(meal({ kind: null, time: null, description: '' })),
+    )
+
+    renderWithProviders(<DietHome />)
+
+    expect(await screen.findByText('Zapisany bez opisu.')).toBeInTheDocument()
+    expect(screen.queryByText(/nieznany/i)).toBeNull()
+  })
+
+  it('opens the edit form for the meal that was pressed', async () => {
+    fetchDietDay.mockResolvedValue(dayWith(meal(), meal({ id: 'm2', kind: 'Kolacja', time: '19:00' })))
+
+    renderWithProviders(<DietHome />)
+    const link = await screen.findByRole('link', { name: /Edytuj Kolacja · 19:00/ })
+
+    expect(link).toHaveAttribute('href', '/diet/meal/m2')
+  })
+
+  it('names each meal in the accessible name of its buttons', async () => {
+    /** "Usuń" four times down a list tells a screen-reader user nothing about
+     *  which one they are on. */
+    fetchDietDay.mockResolvedValue(dayWith(meal()))
+
+    renderWithProviders(<DietHome />)
+    await screen.findByText('Obiad · 13:30')
+
+    expect(
+      screen.getByRole('button', { name: /Usuń Obiad · 13:30/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('asks twice before deleting, and does nothing on the first tap', async () => {
+    /** A phone, a thumb, and no undo — the same two-step the supplement list
+     *  uses. */
+    fetchDietDay.mockResolvedValue(dayWith(meal()))
+
+    renderWithProviders(<DietHome />)
+    await userEvent.click(await screen.findByRole('button', { name: /^Usuń/ }))
+
+    expect(screen.getByText('Usunąć ten posiłek?')).toBeInTheDocument()
+    expect(deleteMeal).not.toHaveBeenCalled()
+  })
+
+  it('can be talked out of it', async () => {
+    fetchDietDay.mockResolvedValue(dayWith(meal()))
+
+    renderWithProviders(<DietHome />)
+    await userEvent.click(await screen.findByRole('button', { name: /^Usuń/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Nie usuwaj' }))
+
+    expect(screen.queryByText('Usunąć ten posiłek?')).toBeNull()
+    expect(deleteMeal).not.toHaveBeenCalled()
+  })
+
+  it('redraws the day from the answer rather than patching its own copy', async () => {
+    /** The list, the count and the streak all move when a meal goes. */
+    const kept = meal({ id: 'm2', kind: 'Kolacja', time: '19:00', description: 'Kanapka.' })
+    fetchDietDay.mockResolvedValue(dayWith(meal(), kept))
+    deleteMeal.mockResolvedValue(
+      dietDay({ mealCount: 1, streakDays: 0, meals: [kept] }),
+    )
+
+    renderWithProviders(<DietHome />)
+    await userEvent.click(await screen.findByRole('button', { name: /Usuń Obiad · 13:30/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Tak, usuń' }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: 'Dzisiaj zapisane: 1 posiłek' }),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.queryByText('Zupa i kanapka.')).toBeNull()
+    expect(deleteMeal).toHaveBeenCalledWith('m1')
+  })
+
+  it('shows the server\'s own sentence when a delete is refused', async () => {
+    /** Every refusal a patient can actually reach here is a gate, or the day
+     *  having rolled over — each arrives saying what to do about it. */
+    const { ApiError } = await import('../api/client')
+    fetchDietDay.mockResolvedValue(dayWith(meal()))
+    deleteMeal.mockRejectedValue(
+      new ApiError(403, 'Poprawiać można tylko dzisiejsze posiłki.'),
+    )
+
+    renderWithProviders(<DietHome />)
+    await userEvent.click(await screen.findByRole('button', { name: /^Usuń/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Tak, usuń' }))
+
+    expect(
+      await screen.findByText('Poprawiać można tylko dzisiejsze posiłki.'),
+    ).toBeInTheDocument()
+    // Still there: a refused delete removed nothing.
+    expect(screen.getByText('Zupa i kanapka.')).toBeInTheDocument()
+  })
+
+  it('measures and judges nothing about the meals it lists', async () => {
+    /** §04 states the module's scope; this list is where somebody would add a
+     *  portion or a "brakuje kolacji". */
+    fetchDietDay.mockResolvedValue(
+      dayWith(meal(), meal({ id: 'm2', kind: 'Kolacja', time: '19:00', description: 'Kanapka.' })),
+    )
+
+    renderWithProviders(<DietHome />)
+    await screen.findByText('Zupa i kanapka.')
+
+    for (const forbidden of [
+      /kcal/i, /kalor/i, /gram/i, /porcj/i, /waga/i, /białk/i,
+      /brakuje/i, /cel dnia/i, /za mało/i, /gratul/i,
+    ]) {
+      expect(screen.queryByText(forbidden)).toBeNull()
+    }
+    expect(screen.queryByRole('progressbar')).toBeNull()
+  })
+
+  it('offers no edit link when the day holds nothing', async () => {
+    fetchDietDay.mockResolvedValue(dietDay({ mealCount: 0, meals: [] }))
+
+    renderWithProviders(<DietHome />)
+    await screen.findByRole('heading', { name: 'Jeszcze pusty' })
+
+    expect(screen.queryByRole('link', { name: /Edytuj/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Usuń/ })).toBeNull()
   })
 })

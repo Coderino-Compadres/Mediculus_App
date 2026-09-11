@@ -16,6 +16,8 @@ not be one keystroke from putting it in a real record.
 
 import datetime
 import io
+import re
+from pathlib import Path
 
 from django.contrib.auth.hashers import make_password
 from django.core.management import CommandError, call_command
@@ -23,12 +25,45 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from core.drinks import WATER
-from core.management.commands.seed_demo_diary import (DIET_DAYS,
+from core.drinks import OTHER_DRINKS
+from core.management.commands.seed_demo_diary import (ALL_SUPPLEMENT_SHAPES,
+                                                      DIET_DAYS, MEAL_DAYS,
                                                       SUPPLEMENT_SHAPES,
-                                                      WATER_ML_BY_DAY)
+                                                      WATER_ML_BY_DAY,
+                                                      last_completed_week_start)
+from core.supplements import MAX_SUPPLEMENTS
 from core.meals import streak_days
 from core.models import (Diary, DietMeal, Hydration, Patient, Supplement,
                          SupplementIntake, User, UserRole)
+
+#: `PAGE_SIZE` read out of the frontend, the same cross-language guard
+#: `test_meals.py` and `test_drinks.py` put on their vocabularies.
+#:
+#: It is here because the whole value of MEAL_DAYS rests on a number declared in
+#: TypeScript: the history screen paginates at PAGE_SIZE *days*, so a seed of
+#: exactly that many days renders no control at all. Raise PAGE_SIZE to twenty
+#: and the seed is silently back to one page — a demo that looks like the
+#: feature was never built, with nothing failing anywhere.
+PAGINATION_TS = (
+    Path(__file__).resolve().parent.parent.parent.parent
+    / 'frontend' / 'src' / 'hooks' / 'usePagination.ts'
+)
+
+
+def frontend_page_size():
+    """The number of rows a list screen puts on one page."""
+    source = PAGINATION_TS.read_text(encoding='utf-8')
+    match = re.search(r'export const PAGE_SIZE = (\d+)', source)
+    if not match:
+        raise AssertionError(
+            f'No `export const PAGE_SIZE = <n>` in {PAGINATION_TS}. If it was '
+            'renamed or reshaped, this parser has to follow it — silently '
+            'matching nothing would retire the guard.'
+        )
+    return int(match.group(1))
+
+
+FRONTEND_PAGE_SIZE = frontend_page_size()
 
 
 @override_settings(DEBUG=True)
@@ -91,19 +126,59 @@ class DietHalfTests(SeedDemoDiaryTests):
 
         self.assertTrue(self.meals().filter(entry_date=self.today).exists())
 
-    def test_it_covers_the_seven_days_the_chart_draws(self):
+    def test_the_meals_run_further_back_than_the_chart_does(self):
+        """MEAL_DAYS, not DIET_DAYS, and the difference is what makes the
+        history screen's pagination visible on a seeded database: seven days is
+        exactly one page, so the control renders nothing at all."""
         self.seed()
 
         oldest = self.meals().order_by('entry_date').first()
         self.assertEqual(
-            oldest.entry_date, self.today - datetime.timedelta(days=DIET_DAYS - 1))
+            oldest.entry_date, self.today - datetime.timedelta(days=MEAL_DAYS - 1))
 
-    def test_the_run_has_a_gap_in_it(self):
-        """A seed of seven identical days would hide what a real diary looks like."""
+    def test_the_seeded_history_fills_more_than_one_page(self):
+        """The point of MEAL_DAYS. PAGE_SIZE in the frontend is seven days, and
+        a row on that screen is a day — so a seed of one page's worth left
+        `components/Pagination.tsx` rendering nothing, which is correct on the
+        screen and indistinguishable from a missing feature on the demo."""
         self.seed()
 
         days = set(self.meals().values_list('entry_date', flat=True))
-        self.assertEqual(len(days), DIET_DAYS - 1)
+
+        self.assertGreater(len(days), FRONTEND_PAGE_SIZE)
+
+    def test_the_water_stays_inside_the_window_the_chart_draws(self):
+        """Deliberately *not* raised with MEAL_DAYS: hydration has no history
+        screen, so a serving older than the chart is a row nothing can reach."""
+        self.seed()
+
+        oldest = (
+            Hydration.objects.filter(id_medical=self.patient.id_medical)
+            .order_by('entry_date').first()
+        )
+        self.assertEqual(
+            oldest.entry_date, self.today - datetime.timedelta(days=DIET_DAYS - 1))
+
+    def test_the_run_has_a_gap_in_it(self):
+        """A seed of identical days would hide what a real diary looks like."""
+        self.seed()
+
+        days = set(self.meals().values_list('entry_date', flat=True))
+        self.assertEqual(len(days), MEAL_DAYS - 1)
+
+    def test_the_gap_is_on_the_history_s_first_page(self):
+        """Otherwise the one thing it exists to show — that a real diary has
+        days missing — is two page turns away from anybody looking at the
+        demo."""
+        self.seed()
+
+        days = set(self.meals().values_list('entry_date', flat=True))
+        first_page = {
+            self.today - datetime.timedelta(days=offset)
+            for offset in range(FRONTEND_PAGE_SIZE)
+        }
+
+        self.assertTrue(first_page - days)
 
     def test_the_streak_stops_at_the_gap(self):
         self.seed()
@@ -210,3 +285,221 @@ class DebugGuardTests(SeedDemoDiaryTests):
 
         self.assertFalse(Diary.objects.exists())
         self.assertFalse(DietMeal.objects.exists())
+
+
+class NoDiaryTests(SeedDemoDiaryTests):
+    """`--no-diary`, the flag that makes the command safe on a real account.
+
+    THE DIARY HALF REPLACES LAST COMPLETED WEEK — that is what makes it
+    idempotent, and on an account whose entries somebody actually wrote it is a
+    week of their own writing deleted and fabricated demo text put in its
+    place. There is no undo and the command is one line. So the first test here
+    is the only one that really matters: with the flag, nothing in the diary is
+    touched.
+    """
+
+    def existing_entry(self):
+        """One real entry inside the window the diary half would replace."""
+        week_start = last_completed_week_start(self.today)
+        entry = Diary.objects.create(
+            id_medical=self.patient.id_medical,
+            current_mood='dobrze',
+            situation_place='Wpis napisany przez człowieka.',
+        )
+        # `created_at` is auto_now_add, so it is written afterwards — the same
+        # way the command itself has to do it. Passing it to create() is
+        # silently ignored, which would leave this entry dated today, i.e.
+        # outside the window the diary half replaces, and the test would pass
+        # for the wrong reason.
+        Diary.objects.filter(pk=entry.pk).update(
+            created_at=timezone.make_aware(
+                datetime.datetime.combine(
+                    week_start + datetime.timedelta(days=1),
+                    datetime.time(12, 0),
+                )
+            )
+        )
+        # `update()` does not touch the instance in memory, and a test reading
+        # `entry.created_at` off a stale object would be asserting about the
+        # moment it was created rather than the date it was moved to.
+        entry.refresh_from_db()
+        return entry
+
+    def test_it_leaves_an_existing_diary_entry_alone(self):
+        mine = self.existing_entry()
+
+        call_command(
+            'seed_demo_diary', 'test@wp.pl', '--no-diary', stdout=io.StringIO())
+
+        mine.refresh_from_db()
+        self.assertEqual(Diary.objects.count(), 1)
+        self.assertEqual(mine.situation_place, 'Wpis napisany przez człowieka.')
+
+    def test_the_entry_it_protects_really_is_inside_the_replaced_week(self):
+        """Guards the test above from passing vacuously: an entry dated today
+        would survive the diary half too, and prove nothing."""
+        mine = self.existing_entry()
+        week_start = last_completed_week_start(self.today)
+
+        self.assertEqual(
+            mine.created_at.astimezone(
+                timezone.get_current_timezone()).date(),
+            week_start + datetime.timedelta(days=1),
+        )
+
+    def test_without_the_flag_that_same_entry_is_replaced(self):
+        """The behaviour the flag exists to avoid, pinned so the reason for it
+        cannot quietly stop being true."""
+        mine = self.existing_entry()
+
+        self.seed()
+
+        self.assertFalse(Diary.objects.filter(pk=mine.pk).exists())
+
+    def test_it_still_writes_the_diet_half(self):
+        call_command(
+            'seed_demo_diary', 'test@wp.pl', '--no-diary', stdout=io.StringIO())
+
+        self.assertTrue(self.meals().exists())
+
+    def test_the_address_needs_no_flagged_day_count(self):
+        """There is no diary entry for a risky-behaviour note to go on, so
+        requiring the number would be asking for an answer that reaches
+        nothing."""
+        call_command(
+            'seed_demo_diary', 'test@wp.pl', '--no-diary', stdout=io.StringIO())
+
+        self.assertTrue(self.meals().exists())
+
+    def test_it_still_refuses_an_account_with_no_patient_row(self):
+        """The --no-diary path resolves the patient itself, so it has to make
+        the same refusals as the path it bypasses."""
+        User.objects.create(
+            email='opiekun@wp.pl', password_hash=make_password('x'))
+
+        with self.assertRaises(CommandError):
+            call_command('seed_demo_diary', 'opiekun@wp.pl', '--no-diary',
+                         stdout=io.StringIO())
+
+    def test_together_with_no_diet_it_refuses_rather_than_doing_nothing(self):
+        with self.assertRaises(CommandError):
+            call_command('seed_demo_diary', 'test@wp.pl', '--no-diary',
+                         '--no-diet', stdout=io.StringIO())
+
+
+class ScaleTests(SeedDemoDiaryTests):
+    """`--meal-days`, `--water-days` and `--supplements`."""
+
+    def test_meal_days_sets_how_far_back_the_history_goes(self):
+        self.seed('--meal-days', '40')
+
+        oldest = self.meals().order_by('entry_date').first()
+        self.assertEqual(
+            oldest.entry_date, self.today - datetime.timedelta(days=39))
+
+    def test_a_smaller_run_clears_what_a_larger_one_left(self):
+        """Otherwise the history keeps days from a seed nobody asked for any
+        more, and the screen shows two runs at once."""
+        self.seed('--meal-days', '40')
+
+        self.seed('--meal-days', '10')
+
+        oldest = self.meals().order_by('entry_date').first()
+        self.assertEqual(
+            oldest.entry_date, self.today - datetime.timedelta(days=9))
+
+    def test_every_day_past_the_seventh_still_gets_its_water(self):
+        """The regression `WATER_ML_BY_DAY[:DIET_DAYS]` would have caused: the
+        pool is cycled, not sliced, so a longer run does not leave days with
+        meals and no water at all."""
+        self.seed('--water-days', '21')
+
+        # Day 14 back takes the pool's first entry again, which is non-zero.
+        day = self.today - datetime.timedelta(days=14)
+        self.assertEqual(self.water_on(day), WATER_ML_BY_DAY[0])
+
+    def test_water_stops_where_it_was_asked_to(self):
+        self.seed('--water-days', '10')
+
+        outside = self.today - datetime.timedelta(days=10)
+        self.assertEqual(self.water_on(outside), 0)
+
+    def test_supplements_defaults_to_the_artboard_s_three(self):
+        self.seed()
+
+        self.assertEqual(
+            Supplement.objects.filter(
+                id_medical=self.patient.id_medical).count(),
+            len(SUPPLEMENT_SHAPES),
+        )
+
+    def test_a_longer_list_is_written_and_every_name_is_distinct(self):
+        """Two rows with one name on a medicine list is a demo that reads as a
+        bug rather than as data."""
+        self.seed('--supplements', '15')
+
+        names = list(
+            Supplement.objects.filter(id_medical=self.patient.id_medical)
+            .values_list('name', flat=True)
+        )
+        self.assertEqual(len(names), 15)
+        self.assertEqual(len(set(names)), 15)
+
+    def test_a_longer_list_is_not_a_fuller_one(self):
+        """§08's rule survives the scale: an absent tick is a question nobody
+        answered, so a list of fifteen must not come out fifteen-for-fifteen
+        and start reading as a score."""
+        self.seed('--supplements', '15')
+
+        ticked = SupplementIntake.objects.filter(
+            supplement__id_medical=self.patient.id_medical,
+            entry_date=self.today,
+        ).count()
+
+        self.assertLess(ticked, 15)
+        self.assertGreater(ticked, 0)
+
+    def test_more_preparations_than_the_seed_has_is_refused(self):
+        with self.assertRaises(CommandError):
+            self.seed('--supplements', str(len(ALL_SUPPLEMENT_SHAPES) + 1))
+
+    def test_a_list_the_api_would_refuse_is_refused_here_too(self):
+        """MAX_SUPPLEMENTS is what the endpoint stops at, so a longer seeded
+        list would be a state the app cannot produce and the patient cannot
+        get back to."""
+        self.assertGreater(MAX_SUPPLEMENTS, len(ALL_SUPPLEMENT_SHAPES))
+
+    def test_zero_days_is_refused_rather_than_silently_writing_nothing(self):
+        for flag in ('--meal-days', '--water-days'):
+            with self.subTest(flag=flag):
+                with self.assertRaises(CommandError):
+                    self.seed(flag, '0')
+
+    def test_nothing_is_written_when_the_scale_is_refused(self):
+        """Validated before the first write, not between two of them."""
+        with self.assertRaises(CommandError):
+            self.seed('--meal-days', '0')
+
+        self.assertFalse(DietMeal.objects.exists())
+        self.assertFalse(Diary.objects.exists())
+
+
+class OtherDrinksTests(SeedDemoDiaryTests):
+    def test_every_chip_the_screen_offers_is_seeded_today(self):
+        self.seed()
+
+        drinks = set(
+            Hydration.objects.filter(
+                id_medical=self.patient.id_medical, entry_date=self.today,
+            ).exclude(drink=WATER).values_list('drink', flat=True)
+        )
+
+        self.assertEqual(drinks, set(OTHER_DRINKS))
+
+    def test_not_one_of_them_moves_the_water_figure(self):
+        """The client's rule, and the reason all five are seeded rather than
+        two: if any of them were ever counted, a day holding the whole list
+        would show it plainly."""
+        self.seed()
+
+        self.assertEqual(self.water_on(self.today), WATER_ML_BY_DAY[0])

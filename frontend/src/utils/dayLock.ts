@@ -60,8 +60,24 @@ export function isEditableDay(date: string, now: Date = new Date()): boolean {
 /** What a row that can no longer be changed is labelled. From pages/Journals.tsx. */
 export const READ_ONLY_BADGE = 'Tylko odczyt'
 
-/** What a form that can still be changed says about its deadline. From
- *  pages/DiaryEntry.tsx, where `dateLabel` is "piątek, 14 sierpnia". */
-export function dayLockNotice(dateLabel: string): string {
-  return `Ten wpis możesz edytować do końca dzisiejszego dnia (${dateLabel}). Później zostanie zapisany na stałe.`
+/**
+ * What a form that can still be changed says about its deadline. From
+ * pages/DiaryEntry.tsx, where `dateLabel` is "piątek, 14 sierpnia".
+ *
+ * `stored` IS WHETHER THERE IS SOMEWHERE FOR THE ENTRY TO BE KEPT, and it
+ * exists because the second sentence is a promise rather than a description of
+ * the rule. The rule is that today is editable and a past day is not, which
+ * holds on a screen with no backend just as well; "Później zostanie zapisany na
+ * stałe" additionally claims the entry survives, which on /diet/activity-sleep
+ * is false — nothing there reaches an endpoint and a reload loses it. Rendered
+ * anyway, it sat one line under the note admitting exactly that, so the screen
+ * contradicted itself in two consecutive paragraphs.
+ *
+ * It defaults to true because every *other* screen this helper is for does
+ * store what it collects. Pass false only while a screen genuinely keeps
+ * nothing, and drop the argument in the commit that gives it an endpoint.
+ */
+export function dayLockNotice(dateLabel: string, stored = true): string {
+  const deadline = `Ten wpis możesz edytować do końca dzisiejszego dnia (${dateLabel}).`
+  return stored ? `${deadline} Później zostanie zapisany na stałe.` : deadline
 }

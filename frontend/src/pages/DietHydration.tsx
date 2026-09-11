@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import Pagination from '../components/Pagination'
 import { fetchHydration, recordDrink, removeDrink } from '../api/diet'
 import { ApiError } from '../api/client'
+import { usePagination, type Pagination as PageSlice } from '../hooks/usePagination'
 import {
   OTHER_DRINKS,
   WATER,
@@ -80,6 +82,13 @@ function dayLabel(iso: string): string {
 /** "Szklanka · 250 ml", or just the drink for everything without an amount. */
 function entryLabel(entry: HydrationEntry, glassMl: number, bottleMl: number): string {
   if (entry.amountMl === null) return entry.drink
+  // THE DRINK IS CHECKED BEFORE THE AMOUNT, and it has to be: the two serving
+  // names below belong to water's own buttons, and this function used to reach
+  // them for anything carrying a number — which was safe only while nothing but
+  // water could carry one. Now that every drink can, a 250 ml tea would have
+  // been listed as "Szklanka · 250 ml", i.e. as water, on the one screen whose
+  // whole rule is that other drinks are not water.
+  if (entry.drink !== WATER) return `${entry.drink} · ${entry.amountMl} ml`
   if (entry.amountMl === glassMl) return `Szklanka · ${entry.amountMl} ml`
   if (entry.amountMl === bottleMl) return `Butelka · ${entry.amountMl} ml`
   return `Woda · ${entry.amountMl} ml`
@@ -228,43 +237,237 @@ function TodayCard({
   )
 }
 
-/** The chips from the artboard. A tap records a serving; nothing is selected
- *  afterwards, because this is an act rather than a setting. */
+/**
+ * The chips from the artboard, plus a way to name a drink they do not list.
+ *
+ * A tap records a serving; nothing is selected afterwards, because this is an
+ * act rather than a setting.
+ *
+ * "+ Inny napój" is NOT on the artboard, and it is the same kind of addition as
+ * the undo on the entries below: §08 draws five chips, and five chips is a list
+ * of the commonest drinks rather than of everything a person drinks. Worth
+ * confirming with the client, since it adds a control to their screen.
+ *
+ * A SERVING WITH NO SIZE GIVEN IS RECORDED AS A GLASS, for every drink here and
+ * for water alike. One tap means "I drank a glass of it", which is what the
+ * "+ Szklanka" button has meant all along. It is a number nobody typed, going
+ * into a clinical record, so **the hint under the amount box says so** — that
+ * sentence is what makes the default honest rather than invented, and the
+ * default has to go if it ever does.
+ *
+ * NONE OF IT IS CONVERTED INTO WATER. That used to be guaranteed by there being
+ * no number to convert; now every serving carries one, and the only thing
+ * holding the client's rule is that the two places computing the total filter
+ * on the drink. The note above the chips still says it in words, and says it
+ * for the typed drink too.
+ */
 function OtherDrinksCard({
   busy,
+  glassMl,
+  maxDrinkName,
+  minAmountMl,
+  maxAmountMl,
+  nameError,
   onDrink,
 }: {
   busy: boolean
-  onDrink: (amountMl: number | null, drink?: DrinkName) => void
+  /** Named in the hint below, because a serving with no size given is recorded
+   *  as this — a number nobody typed, so the screen has to say it. */
+  glassMl: number
+  maxDrinkName: number
+  minAmountMl: number
+  maxAmountMl: number
+  nameError: string | null
+  /** Resolves to whether the serving was actually written. The typed-name form
+   *  is the one caller that has to know: it must not clear and close over a
+   *  refusal, or the message below would have nothing left to sit under. */
+  onDrink: (amountMl: number | null, drink?: string) => Promise<boolean>
 }) {
+  const [customOpen, setCustomOpen] = useState(false)
+  const [name, setName] = useState('')
+  /**
+   * How much, for whichever drink is tapped next. Optional, and empty is the
+   * ordinary state — §05's rule that no field blocks a save, applied to a card
+   * whose whole interaction used to be one tap.
+   *
+   * ONE INPUT FOR THE WHOLE CARD rather than one per chip: the question ("ile?")
+   * is the same for all six, and six inputs would turn a row of chips into a
+   * form. It is read at the moment a chip is tapped and **cleared immediately
+   * afterwards** — see `pour` — because an amount that stayed would silently
+   * attach itself to the next tap, which is the kind of thing somebody notices
+   * a week later in their own records.
+   */
+  const [amount, setAmount] = useState('')
+
+  /* Only that there is *something* to send. The rules about the name — folding
+     it onto a chip, refusing water, the length — are the server's, and it
+     answers them under this field. A second copy here would be a second set of
+     rules free to disagree with it. */
+  const nameValid = name.trim().length > 0
+
+  /** '' is "not saying", which is a valid serving. A number outside the bounds
+   *  is not sent at all, so the button says why rather than the server. */
+  const typed = Number(amount)
+  const amountGiven = amount.trim() !== ''
+  const amountValid =
+    !amountGiven ||
+    (Number.isFinite(typed) && typed >= minAmountMl && typed <= maxAmountMl)
+  const servingMl = amountGiven && amountValid ? typed : null
+
+  /** Record `drink`, with whatever is in the amount box, and empty the box.
+   *
+   *  Cleared on every attempt rather than only on success, unlike the name: an
+   *  amount is answered again in two keystrokes, while a name is not, and an
+   *  amount left behind is the one that quietly rides along on the next tap. */
+  async function pour(drink: string) {
+    const written = await onDrink(servingMl, drink)
+    setAmount('')
+    return written
+  }
+
+  async function submitName() {
+    if (!nameValid || !amountValid || busy) return
+    // Cleared and closed on the *answer*, not on the tap. Closing optimistically
+    // unmounted the input and its error the moment somebody typed "woda", so
+    // the one refusal this form can produce had nowhere to be shown — the save
+    // failed silently, which is the whole failure mode this screen's messages
+    // exist to avoid. On a refusal the typed name stays, ready to be corrected.
+    if (await pour(name.trim())) {
+      setName('')
+      setCustomOpen(false)
+    }
+  }
+
   return (
     <section className="hydration-card" aria-labelledby="hydration-drinks-heading">
       <h2 id="hydration-drinks-heading">Inne napoje</h2>
       <p className="hydration-note">{OTHER_DRINKS_NOTE}</p>
+
+      {/* Above the chips, because it is read at the moment one is tapped: a
+          field *under* the row would be answered after the act it belongs to.
+          Optional throughout — the card's original one-tap behaviour is what
+          happens when it is left empty. */}
+      <div className="hydration-drink-amount">
+        <label htmlFor="hydration-drink-amount">Ile? (ml, opcjonalnie)</label>
+        <input
+          id="hydration-drink-amount"
+          className="hydration-drink-amount-input"
+          type="number"
+          inputMode="numeric"
+          min={minAmountMl}
+          max={maxAmountMl}
+          step={10}
+          value={amount}
+          aria-invalid={amountValid ? undefined : true}
+          aria-describedby="hydration-drink-amount-hint"
+          onChange={(event) => setAmount(event.target.value)}
+        />
+      </div>
+      {/* The bounds are stated rather than only enforced, the same rule the
+          water card's custom amount follows: a control that refuses with no
+          reason beside it is the failure the registration form had. */}
+      <p className="hydration-drink-amount-hint" id="hydration-drink-amount-hint">
+        {amountValid
+          ? `Bez podanej ilości zapisujemy szklankę (${glassMl} ml). Możesz podać swoją — od ${minAmountMl} do ${maxAmountMl} ml.`
+          : `Podaj wartość od ${minAmountMl} do ${maxAmountMl} ml albo zostaw puste.`}
+      </p>
+
       <div className="hydration-chips">
         {OTHER_DRINKS.map((drink) => (
           <button
             key={drink}
             type="button"
             className="hydration-chip"
-            disabled={busy}
-            onClick={() => onDrink(null, drink)}
+            disabled={busy || !amountValid}
+            onClick={() => void pour(drink)}
           >
             {drink}
           </button>
         ))}
+        <button
+          type="button"
+          className="hydration-chip hydration-chip-quiet"
+          aria-expanded={customOpen}
+          onClick={() => setCustomOpen((open) => !open)}
+        >
+          + Inny napój
+        </button>
       </div>
+
+      {customOpen && (
+        /* Not a <form>, for the reason "Własna ilość" is not one: this card sits
+           on a screen with other actions and a nested form would make Enter
+           ambiguous. The button and the keydown are the two ways to submit. */
+        <div className="hydration-custom">
+          <label className="hydration-custom-label" htmlFor="hydration-custom-drink">
+            Co piłaś lub piłeś?
+          </label>
+          <div className="hydration-custom-row">
+            <input
+              id="hydration-custom-drink"
+              className="hydration-custom-input hydration-custom-input-text"
+              type="text"
+              value={name}
+              maxLength={maxDrinkName}
+              autoFocus
+              aria-invalid={nameError ? true : undefined}
+              aria-describedby={nameError ? 'hydration-custom-drink-error' : undefined}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void submitName()
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="hydration-custom-submit"
+              disabled={busy || !nameValid || !amountValid}
+              onClick={() => void submitName()}
+            >
+              Zapisz
+            </button>
+          </div>
+          {/* The server's own sentence, under the input that produced it. The
+              one refusal a patient can actually reach here is typing "woda",
+              which is answered by pointing at the buttons that take an amount —
+              putting it above the card instead would be a save that failed
+              somewhere the eye is not. */}
+          {nameError && (
+            <p className="hydration-custom-error" id="hydration-custom-drink-error" role="alert">
+              {nameError}
+            </p>
+          )}
+        </div>
+      )}
     </section>
   )
 }
 
-/** Today's servings, and the one thing on this screen that removes anything. */
+/**
+ * Today's servings, and the one thing on this screen that removes anything.
+ *
+ * PAGINATED at the app's usual `PAGE_SIZE` (hooks/usePagination.ts), which on
+ * this list is a readability measure and nothing more: `MAX_ENTRIES_PER_DAY`
+ * (40) is a backstop rather than a product rule, so most days never reach a
+ * second page. The pages are only over *this* card — "Ostatnie 7 dni" below is
+ * always exactly seven columns and must never gain a control of its own.
+ *
+ * The order is newest first (`core/hydration.py` sorts on `-created_at`), so a
+ * serving that was just recorded is on page one — which is why the screen
+ * resets to it after every write. Undoing a mis-tap is the whole reason this
+ * list has a "Usuń" at all, and it must not be a page turn away from the tap
+ * that caused it.
+ */
 function EntriesCard({
   day,
+  pages,
   busy,
   onRemove,
 }: {
   day: HydrationDay
+  pages: PageSlice<HydrationEntry>
   busy: boolean
   onRemove: (id: string) => void
 }) {
@@ -275,7 +478,7 @@ function EntriesCard({
         <p className="hydration-note">Jeszcze nic dziś nie zapisałaś ani nie zapisałeś.</p>
       ) : (
         <ul className="hydration-entries">
-          {day.entries.map((entry) => {
+          {pages.items.map((entry) => {
             const time = entryTime(entry)
             return (
               <li key={entry.id} className="hydration-entry">
@@ -300,6 +503,15 @@ function EntriesCard({
           })}
         </ul>
       )}
+      <Pagination
+        page={pages.page}
+        pageCount={pages.pageCount}
+        from={pages.from}
+        to={pages.to}
+        total={pages.total}
+        onChange={pages.goTo}
+        unit="wpisów"
+      />
     </section>
   )
 }
@@ -372,11 +584,19 @@ function DietHydration() {
    *  dropped connection. Separate from `loadError`, which means the screen has
    *  nothing to draw at all. */
   const [actionError, setActionError] = useState<string | null>(null)
+  /** A refusal Django attributed to `drink`, so it can be shown under the input
+   *  that produced it rather than above the card. Kept apart from
+   *  `actionError` for exactly that reason — one message, two places, and only
+   *  the field one is any use for a name the patient just typed. */
+  const [drinkNameError, setDrinkNameError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   /** Bumped by "Spróbuj ponownie", which is how the effect below is re-run —
    *  the same shape Journals.tsx and the other list screens use. */
   const [attempt, setAttempt] = useState(0)
+  // Over today's servings only. "Ostatnie 7 dni" is always seven columns and
+  // takes no page of its own — one `?page=` per screen.
+  const pages = usePagination(day?.entries ?? [])
 
   // The house pattern: a promise chain with a `cancelled` flag rather than an
   // `async` effect body. `loading` starts true, so the first render already
@@ -412,18 +632,33 @@ function DietHydration() {
     setAttempt((n) => n + 1)
   }
 
-  async function drink(amountMl: number | null, name: DrinkName = WATER) {
-    if (busy) return
+  /** Returns whether the serving was written — see `OtherDrinksCard.onDrink`. */
+  async function drink(amountMl: number | null, name: string = WATER): Promise<boolean> {
+    if (busy) return false
     setBusy(true)
     setActionError(null)
+    setDrinkNameError(null)
     try {
       // The write answers with the whole day, so nothing here adds a glass to a
       // number of its own: what is on screen is what the server holds.
       setDay(await recordDrink(amountMl, name))
+      // The new serving is at the top of a newest-first list, i.e. on page one,
+      // and the "Usuń" beside it is how a mis-tap is taken back.
+      pages.reset()
+      return true
     } catch (error) {
-      setActionError(
-        error instanceof ApiError ? error.message : 'Nie udało się zapisać.',
-      )
+      // A refusal about the *name* goes back to the input; anything else is a
+      // message above the card. `drink` is the only field on this screen that
+      // can carry one, which is why this is a lookup rather than a mapping
+      // table like the supplement form's.
+      const onTheName = error instanceof ApiError ? error.fieldErrors.drink : undefined
+      if (onTheName) setDrinkNameError(onTheName)
+      else {
+        setActionError(
+          error instanceof ApiError ? error.message : 'Nie udało się zapisać.',
+        )
+      }
+      return false
     } finally {
       setBusy(false)
     }
@@ -481,8 +716,21 @@ function DietHydration() {
           )}
 
           <TodayCard day={day} busy={busy} onDrink={(ml, name) => void drink(ml, name)} />
-          <OtherDrinksCard busy={busy} onDrink={(ml, name) => void drink(ml, name)} />
-          <EntriesCard day={day} busy={busy} onRemove={(id) => void remove(id)} />
+          <OtherDrinksCard
+            busy={busy}
+            glassMl={day.glassMl}
+            maxDrinkName={day.maxDrinkName}
+            minAmountMl={day.minAmountMl}
+            maxAmountMl={day.maxAmountMl}
+            nameError={drinkNameError}
+            onDrink={drink}
+          />
+          <EntriesCard
+            day={day}
+            pages={pages}
+            busy={busy}
+            onRemove={(id) => void remove(id)}
+          />
           <WeekCard day={day} />
         </>
       )}

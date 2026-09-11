@@ -532,9 +532,9 @@ class Supplement(models.Model):
     dose = models.TextField(null=True, blank=True)
     # 'raz dziennie', 'wg zaleceń lekarza'.
     frequency = models.TextField(null=True, blank=True)
-    # The hour it is meant to be taken at, which is also what a reminder would
-    # fire on. NULL for a preparation taken with no fixed hour.
-    hour = models.TimeField(null=True, blank=True)
+    # The hours are their own table (`SupplementHour`, reachable as `.hours`),
+    # because a preparation can be taken more than once a day. No rows there is
+    # "no fixed hour", which is what a NULL in the old single column meant.
     start_date = models.DateField(null=True, blank=True)
     # NULL is 'bezterminowo' -- see the class docstring.
     end_date = models.DateField(null=True, blank=True)
@@ -550,6 +550,52 @@ class Supplement(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class SupplementHour(models.Model):
+    """One of the hours a preparation is taken at.
+
+    A row per hour rather than one column, because somebody takes a probiotic
+    at 06:45 and again at 12:00 and that is *one* preparation — two rows on the
+    list would read as two different probiotics. Zero rows means no fixed hour,
+    which is what a NULL in the old `supplement.hour` meant.
+
+    A TABLE RATHER THAN A JSONB COLUMN, unlike `technique.schools`/`steps`. The
+    argument there was that a step has no identity and nothing queries one;
+    both are false here. `reminder_enabled` exists so that the day a scheduler
+    arrives it reads a value rather than asking everybody again, and what that
+    scheduler asks is "which preparations are due at 06:45" — a query by hour.
+
+    `supplement` is a real foreign key with CASCADE, like `SupplementIntake`'s
+    and for the same reason: both tables are in medical_db, so Postgres can
+    enforce it, and an hour belongs to the preparation it is an hour of. The
+    application-only join is the one that crosses databases.
+    """
+
+    id_supplement_hour = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False)
+    supplement = models.ForeignKey(
+        Supplement, on_delete=models.CASCADE, db_column='id_supplement',
+        related_name='hours',
+    )
+    hour = models.TimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'supplement_hour'
+        indexes = [
+            models.Index(fields=['hour'], name='idx_supplement_hour_hour'),
+        ]
+        constraints = [
+            # The same hour twice is a double-submitted form, not a second
+            # dose — the same choice `uq_supplement_intake_day` makes.
+            models.UniqueConstraint(
+                fields=['supplement', 'hour'], name='uq_supplement_hour',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.supplement_id} {self.hour}'
 
 
 class SupplementIntake(models.Model):

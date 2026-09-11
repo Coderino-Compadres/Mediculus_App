@@ -38,7 +38,7 @@ PASSWORD = 'TajneHaslo123'
 #: to core/urls.py and forgetting the gate shows up here as a missing entry.
 def all_urls(
     diary_id, report_id, invitation_id, patient_id=None, hydration_id=None,
-    supplement_id=None,
+    supplement_id=None, meal_id=None,
 ):
     patient_id = patient_id or invitation_id
     return [
@@ -66,6 +66,10 @@ def all_urls(
             'core:diet-hydration-entry', args=[hydration_id or uuid.uuid4()])),
         ('get', reverse('core:diet-today')),
         ('get', reverse('core:diet-meals')),
+        ('get', reverse('core:diet-journal-day', args=['2026-01-01'])),
+        ('post', reverse('core:diet-meals')),
+        ('put', reverse('core:diet-meal', args=[meal_id or uuid.uuid4()])),
+        ('delete', reverse('core:diet-meal', args=[meal_id or uuid.uuid4()])),
         ('get', reverse('core:diet-supplements')),
         ('post', reverse('core:diet-supplements')),
         ('put', reverse('core:diet-supplement', args=[supplement_id or uuid.uuid4()])),

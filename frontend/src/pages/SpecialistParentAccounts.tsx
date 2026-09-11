@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import Pagination from '../components/Pagination'
 import SelectField from '../components/SelectField'
 import { ApiError } from '../api/client'
 import {
@@ -12,6 +13,7 @@ import {
   type ParentInvitation,
   type SpecialistPatient,
 } from '../api/specialist'
+import { usePagination } from '../hooks/usePagination'
 import { linkedSinceLabel } from '../utils/children'
 import { patientLabel } from '../utils/specialist'
 import { ROUTES } from '../routes'
@@ -42,6 +44,16 @@ import './specialist.css'
  * select below is filtered to this specialist's minor patients rather than
  * accepting a typed id: the backend refuses anyone else's patient, and an id
  * field would be a way to ask whether an account exists.
+ *
+ * THE LIST OF ISSUED INVITATIONS IS PAGINATED, seven rows a page like every
+ * other list in the app (hooks/usePagination.ts), and it is the one below that
+ * needs it most: a used invitation is *marked, never deleted* — the account it
+ * created exists and dropping the row would only lose the trail — so this list
+ * grows monotonically for as long as the specialist practises, and the expired
+ * and spent codes accumulate in front of the live ones. Issuing a code sends
+ * the screen back to page one, where the new row is: the plaintext code above
+ * is shown once, and it has to be readable next to the invitation it belongs
+ * to.
  */
 
 const LOAD_ERROR = 'Nie udało się wczytać wystawionych zaproszeń. Spróbuj ponownie.'
@@ -68,6 +80,7 @@ function SpecialistParentAccounts() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const retry = () => setAttempt((value) => value + 1)
+  const pages = usePagination(invitations)
 
   const [patientId, setPatientId] = useState('')
   const [parentEmail, setParentEmail] = useState('')
@@ -113,6 +126,9 @@ function SpecialistParentAccounts() {
       const result = await createParentInvitation({ patientId, parentEmail: parentEmail.trim() })
       setIssued(result)
       setInvitations((current) => [result.invitation, ...current])
+      // The new invitation is prepended, i.e. on page one, and the code above
+      // is only meaningful next to the row that says whose it is.
+      pages.reset()
       setParentEmail('')
       setPatientId('')
     } catch (cause: unknown) {
@@ -272,7 +288,7 @@ function SpecialistParentAccounts() {
             {invitations.length === 0 ? (
               <p className="panel-empty">Nie wystawiłeś jeszcze żadnego zaproszenia.</p>
             ) : (
-              invitations.map((invitation) => (
+              pages.items.map((invitation) => (
                 <article key={invitation.id} className="specialist-list-row">
                   <div>
                     <p className="specialist-list-title">{invitation.email}</p>
@@ -301,6 +317,15 @@ function SpecialistParentAccounts() {
                 </article>
               ))
             )}
+            <Pagination
+              page={pages.page}
+              pageCount={pages.pageCount}
+              from={pages.from}
+              to={pages.to}
+              total={pages.total}
+              onChange={pages.goTo}
+              unit="zaproszeń"
+            />
           </section>
         </>
       )}

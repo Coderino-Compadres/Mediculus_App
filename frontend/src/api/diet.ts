@@ -21,6 +21,10 @@
  *
  *   GET    /api/diet/today/                          → `fetchDietDay`
  *   GET    /api/diet/meals/                           → `fetchDietHistory`
+ *   POST   /api/diet/meals/                           → `createMeal`
+ *   GET    /api/diet/days/<date>/                     → `fetchDietJournalDay`
+ *   PUT    /api/diet/meals/<id>/                      → `updateMeal`
+ *   DELETE /api/diet/meals/<id>/                      → `deleteMeal`
  *   GET    /api/diet/hydration/                       → `fetchHydration`
  *   POST   /api/diet/hydration/                       → `recordDrink`
  *   DELETE /api/diet/hydration/<id>/                  → `removeDrink`
@@ -63,6 +67,9 @@ import type {
   DietActivityEntry,
   DietDay,
   DietJournalDay,
+  DietMeal,
+  DietMealInput,
+  DietMealSaved,
   DietSleepNight,
   HydrationDay,
   HydrationDayTotal,
@@ -89,6 +96,7 @@ export function emptyDietDay(today: Date = new Date()): DietDay {
     date: toIsoDate(today),
     streakDays: 0,
     mealCount: 0,
+    meals: [],
   }
 }
 
@@ -102,6 +110,12 @@ interface DietDayPayload {
   date: string
   streak_days: number
   meal_count: number
+  /** Optional on the wire, not in the type the screens read. A backend a
+   *  release behind this file sends a day with no `meals` key, and throwing on
+   *  it would take the whole screen down to show a count of zero — strictly
+   *  worse than the count the server did send, next to an empty list. Same
+   *  judgement as `needsConsents` failing open in `api/auth.ts`. */
+  meals?: DietMealPayload[]
 }
 
 /** As `core.meals.serialize_meal` sends it. */
@@ -117,14 +131,26 @@ interface DietJournalDayPayload {
   meals: DietMealPayload[]
 }
 
-/** Today's meal count and the food diary's own streak. */
-export async function fetchDietDay(): Promise<DietDay> {
-  const payload = await apiRequest<DietDayPayload>('/api/diet/today/')
+/**
+ * One day, mapped once.
+ *
+ * Four callers now — the read and the three writes that answer with the
+ * rebuilt day — and the shape gained a field the moment today's meals became
+ * editable. Four copies of that mapping would be four chances for one of them
+ * to keep sending a day with no meals in it.
+ */
+function toDietDay(payload: DietDayPayload): DietDay {
   return {
     date: payload.date,
     streakDays: payload.streak_days,
     mealCount: payload.meal_count,
+    meals: (payload.meals ?? []).map(toMeal),
   }
+}
+
+/** Today's meals, their count, and the food diary's own streak. */
+export async function fetchDietDay(): Promise<DietDay> {
+  return toDietDay(await apiRequest<DietDayPayload>('/api/diet/today/'))
 }
 
 /**
@@ -134,17 +160,43 @@ export async function fetchDietDay(): Promise<DietDay> {
  * day is this meal on" already lives, and grouping it a second time in the
  * browser is how one meal ends up on two Tuesdays.
  */
+/** One meal, mapped once — the history reads it and so does the write's answer,
+ *  and two copies of a four-field mapping are two copies free to drift. */
+function toMeal(meal: DietMealPayload): DietMeal {
+  return {
+    id: meal.id,
+    kind: meal.kind,
+    time: meal.time,
+    description: meal.description,
+  }
+}
+
 export async function fetchDietHistory(): Promise<DietJournalDay[]> {
   const payload = await apiRequest<DietJournalDayPayload[]>('/api/diet/meals/')
-  return payload.map((day) => ({
-    date: day.date,
-    meals: day.meals.map((meal) => ({
-      id: meal.id,
-      kind: meal.kind,
-      time: meal.time,
-      description: meal.description,
-    })),
-  }))
+  return payload.map(toJournalDay)
+}
+
+/** One day, mapped exactly like a row of the history — see `toJournalDay`. */
+function toJournalDay(day: DietJournalDayPayload): DietJournalDay {
+  return { date: day.date, meals: day.meals.map(toMeal) }
+}
+
+/**
+ * One day of the history, opened out.
+ *
+ * Its own request rather than filtering what `fetchDietHistory` returned: a
+ * screen reached by a link — a reload, a bookmark, the back button — has no
+ * such list to filter, and pulling the whole diary to render one day would be
+ * the cost of pretending otherwise.
+ *
+ * A day holding no meal is a 404 from the server, which the screen words as
+ * "nothing here" rather than as a failure — the history lists exactly the days
+ * that hold one, so any other date names nothing.
+ */
+export async function fetchDietJournalDay(date: string): Promise<DietJournalDay> {
+  return toJournalDay(
+    await apiRequest<DietJournalDayPayload>(`/api/diet/days/${date}/`),
+  )
 }
 
 /* ------------------------------------------------------------------ *
@@ -175,6 +227,7 @@ interface HydrationDayPayload {
   target_glasses: number
   min_amount_ml: number
   max_amount_ml: number
+  max_drink_name: number
   water_ml: number
   glasses: number
   progress: number
@@ -194,7 +247,7 @@ function toEntry(payload: HydrationEntryPayload): HydrationEntry {
     // pinned to `utils/drinks.ts` by test_drinks.py — so a value arriving here
     // is one of ours. The cast records that this is the one place the two lists
     // are assumed to agree.
-    drink: payload.drink as DrinkName,
+    drink: payload.drink,
     amountMl: payload.amount_ml,
     at: payload.at,
   }
@@ -208,6 +261,7 @@ function toDay(payload: HydrationDayPayload): HydrationDay {
     targetGlasses: payload.target_glasses,
     minAmountMl: payload.min_amount_ml,
     maxAmountMl: payload.max_amount_ml,
+    maxDrinkName: payload.max_drink_name,
     waterMl: payload.water_ml,
     glasses: payload.glasses,
     progress: payload.progress,
@@ -223,6 +277,89 @@ function toDay(payload: HydrationDayPayload): HydrationDay {
 }
 
 /** Today's water, today's servings and the last seven days. */
+/**
+ * Write one meal — §04's "Dodawanie posiłku".
+ *
+ * THE DAY IS NOT SENT, and that is the rule rather than a saving of bytes: the
+ * server stamps `entry_date` from its own clock, so this form can only ever
+ * address today. A browser that could name the day would be a form on a screen
+ * showing today, quietly writing into the archive — and the phone left open
+ * overnight is not a hypothetical, it is why `utils/dayLock.ts` exists.
+ *
+ * A BLANK ANSWER TRAVELS AS NULL rather than as '', so "not answered" has one
+ * representation on the wire. `description` is the exception and matches its
+ * column: '' is what an empty box means there, with no third state to tell
+ * apart.
+ *
+ * It answers with the row *and* the rebuilt day, which is why the return type
+ * carries both — see `DietMealSaved`.
+ */
+export async function createMeal(input: DietMealInput): Promise<DietMealSaved> {
+  const payload = await apiRequest<{ meal: DietMealPayload; day: DietDayPayload }>(
+    '/api/diet/meals/',
+    {
+      method: 'POST',
+      body: {
+        kind: input.kind || null,
+        time: input.time || null,
+        description: input.description.trim(),
+      },
+    },
+  )
+  return { meal: toMeal(payload.meal), day: toDietDay(payload.day) }
+}
+
+/**
+ * Correct today's meal — PUT, so it **replaces** rather than merges.
+ *
+ * The form submits its whole state, the same rule as the diary's own entry and
+ * the supplement form: a field cleared on screen is an answer taken back, not
+ * one left alone. Sending only what changed would make clearing the hour
+ * impossible from the only form that writes it.
+ *
+ * The day is not sent here either, and on an edit that matters more than on a
+ * create: the server refuses to move a meal between days, so a browser that
+ * tried would be silently ignored rather than told.
+ *
+ * ONLY TODAY'S MEAL. An older one answers 403 with the server's own sentence
+ * (`meals.MEAL_NOT_TODAY`) rather than a 404 — it is on the history screen in
+ * front of the patient, so "no such thing" would be the wrong answer. Screens
+ * render that message rather than a generic one.
+ */
+export async function updateMeal(
+  id: string,
+  input: DietMealInput,
+): Promise<DietMealSaved> {
+  const payload = await apiRequest<{ meal: DietMealPayload; day: DietDayPayload }>(
+    `/api/diet/meals/${id}/`,
+    {
+      method: 'PUT',
+      body: {
+        kind: input.kind || null,
+        time: input.time || null,
+        description: input.description.trim(),
+      },
+    },
+  )
+  return { meal: toMeal(payload.meal), day: toDietDay(payload.day) }
+}
+
+/**
+ * Drop today's meal, and answer with the day it left behind.
+ *
+ * The rebuilt day rather than nothing, because three things on the home screen
+ * move when one meal goes: the list, the count and the streak — a day emptied
+ * of its last meal breaks the run. Recomputing that in the browser is how one
+ * day ends up with two versions of itself.
+ */
+export async function deleteMeal(id: string): Promise<DietDay> {
+  const payload = await apiRequest<{ day: DietDayPayload }>(
+    `/api/diet/meals/${id}/`,
+    { method: 'DELETE' },
+  )
+  return toDietDay(payload.day)
+}
+
 export async function fetchHydration(): Promise<HydrationDay> {
   return toDay(await apiRequest<HydrationDayPayload>(HYDRATION_URL))
 }
@@ -238,12 +375,19 @@ export async function fetchHydration(): Promise<HydrationDay> {
  * `amountMl` is required for water and refused for everything else, which is the
  * server's rule and not this layer's: sending 250 ml of tea is a 400, on
  * purpose, rather than a number quietly dropped.
+ *
+ * `drink` IS A `string`, NOT A `DrinkName`, because the chips are the quick way
+ * in rather than the whole vocabulary — a patient may type a name of their own.
+ * Nothing is normalised here: folding "herbata" onto "Herbata" is the server's
+ * job (`normalize_drink`), and a second definition of "is this the same drink"
+ * in the browser is exactly the drift the shared vocabularies are tested
+ * against. The name travels as typed and comes back as stored.
  */
 export async function recordDrink(
   amountMl: number | null,
-  drink: DrinkName = WATER,
+  drink: string = WATER,
 ): Promise<HydrationDay> {
-  const body: { drink: DrinkName; amount_ml?: number } = { drink }
+  const body: { drink: string; amount_ml?: number } = { drink }
   if (amountMl !== null) body.amount_ml = amountMl
   const payload = await apiRequest<HydrationWritePayload>(HYDRATION_URL, {
     method: 'POST',
@@ -275,7 +419,10 @@ interface SupplementPayload {
   name: string
   dose: string | null
   frequency: string | null
-  hour: string | null
+  /** Optional on the wire for the reason `DietDayPayload.meals` is: a backend
+   *  a release behind this file sends no such key, and an empty list is a
+   *  better answer than a screen that throws. */
+  hours?: string[]
   start_date: string | null
   end_date: string | null
   reminder_enabled: boolean
@@ -288,7 +435,7 @@ function toSupplement(payload: SupplementPayload): Supplement {
     name: payload.name,
     dose: payload.dose,
     frequency: payload.frequency,
-    hour: payload.hour,
+    hours: payload.hours ?? [],
     startDate: payload.start_date,
     endDate: payload.end_date,
     reminderEnabled: payload.reminder_enabled,
@@ -312,7 +459,11 @@ function toPayload(input: SupplementInput): Record<string, unknown> {
     name: input.name.trim(),
     dose: text(input.dose),
     frequency: text(input.frequency),
-    hour: text(input.hour),
+    // Blanks dropped rather than sent: the form keeps an empty row while
+    // somebody is still typing into it, and '' is not a time. Sorting and
+    // de-duplicating is the server's job (`validate_hours`), so this sends
+    // what was typed.
+    hours: input.hours.map((hour) => hour.trim()).filter((hour) => hour !== ''),
     start_date: text(input.startDate),
     end_date: text(input.endDate),
     reminder_enabled: input.reminderEnabled,

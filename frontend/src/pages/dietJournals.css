@@ -248,3 +248,43 @@
 .diet-journals-status-error p {
   margin: 0 0 8px;
 }
+
+/* Said once, after §04's form navigates here having written a meal. Quiet and
+   sage rather than a banner: the meal is in the list right below it, so the
+   sentence only has to confirm that the tap landed. `margin: 0 auto` for the
+   same reason as `.diet-journals-intro` — the centring lives on
+   `.diet-journals-page > *` at equal specificity. */
+.diet-journals-saved-notice {
+  font-size: 14px;
+  color: var(--color-sage-hover);
+  line-height: 1.5;
+  margin: 0 auto;
+}
+
+/* The day's heading is the way into its own screen. Underlined, because a
+   link in a heading with no other cue is a link nobody finds; 44px of height
+   comes from the row it sits in rather than from the link itself, which would
+   push the count out of line (WCAG 2.5.8 — the same technique the app's other
+   in-text links use). */
+.diet-journal-day-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  border-radius: var(--radius-control);
+}
+
+.diet-journal-day-link:hover {
+  color: var(--color-sage-hover);
+}
+
+.diet-journal-day-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* Stretches the target over the header row, so the whole line opens the day
+     while the accessible name stays just the date and the count. */
+}
+
+.diet-journal-day-header {
+  position: relative;
+}

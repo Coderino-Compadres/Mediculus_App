@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
+import { PAGE_SIZE } from '../hooks/usePagination'
 import DietActivitySleep from './DietActivitySleep'
 import { nightLabel } from '../utils/sleep'
 import { ROUTES } from '../routes'
@@ -856,5 +857,82 @@ describe('the language', () => {
 
     expect(screen.getByRole('heading', { name: 'Aktywność dzisiaj' })).toBeInTheDocument()
     expect(screen.queryByText(/robiłaś/)).toBeNull()
+  })
+})
+
+describe('the activity list is paginated', () => {
+  /**
+   * The weakest case in the module and included for consistency with the rest
+   * of it: nothing here is stored, so a reload empties the list and an ordinary
+   * day holds a handful of rows. What matters is the two properties below —
+   * that the ordinary day meets no control at all, and that the sleep half
+   * never grows a second one, because there is one `?page=` to go round.
+   */
+  const entries = (count: number) =>
+    // Newest first, the order the panel writes in.
+    Array.from({ length: count }, (_, index) => ({
+      id: `a-${index}`,
+      date: TODAY,
+      time: `${String(20 - index).padStart(2, '0')}:00`,
+      kind: 'Spacer',
+      kindOther: '',
+      durationMinutes: 30,
+      feelingAfter: null,
+    }))
+
+  it('draws no control over an ordinary day', () => {
+    mockedActivity.mockImplementation(() => activityDay({ entries: entries(PAGE_SIZE) }))
+    renderWithProviders(<DietActivitySleep />)
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('shows seven entries on a page and counts them as wpisy', () => {
+    mockedActivity.mockImplementation(() => activityDay({ entries: entries(20) }))
+    renderWithProviders(<DietActivitySleep />)
+
+    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+    expect(screen.getByText(/1–7 z 20 wpisów/)).toBeInTheDocument()
+    // "Spacer · 30 min" — the row composes the kind with the duration.
+    expect(within(visiblePanel()).getAllByText(/^Spacer · /)).toHaveLength(PAGE_SIZE)
+  })
+
+  it('moves through the pages', async () => {
+    const user = userEvent.setup()
+    mockedActivity.mockImplementation(() => activityDay({ entries: entries(20) }))
+    renderWithProviders(<DietActivitySleep />)
+
+    await user.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    expect(within(visiblePanel()).getByText('13:00')).toBeInTheDocument()
+    expect(within(visiblePanel()).queryByText('20:00')).toBeNull()
+  })
+
+  it('leaves the sleep half with no control of its own', async () => {
+    // One `?page=` per screen: a second paginated list here would turn this
+    // one's pages. The sleep panel is a form and a night, never a list.
+    const user = userEvent.setup()
+    mockedActivity.mockImplementation(() => activityDay({ entries: entries(20) }))
+    renderWithProviders(<DietActivitySleep />)
+    expect(screen.getAllByRole('navigation', { name: 'Paginacja' })).toHaveLength(1)
+
+    await goToSleep(user)
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('goes back to page one when an activity is written, so it is on screen', async () => {
+    const user = userEvent.setup()
+    mockedActivity.mockImplementation(() => activityDay({ entries: entries(20) }))
+    renderWithProviders(<DietActivitySleep />)
+    await user.click(screen.getByRole('button', { name: /następna/i }))
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Zapisz aktywność' }))
+
+    // 21 entries is still three pages; what changed is which one is on screen.
+    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+    expect(screen.getByText(/1–7 z 21 wpisów/)).toBeInTheDocument()
   })
 })

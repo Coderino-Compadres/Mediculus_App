@@ -6,6 +6,8 @@ that belong to the request as a whole rather than to one field — the frontend'
 `src/api/client.ts` splits them apart on exactly that convention.
 """
 
+import datetime
+
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.middleware.csrf import get_token
@@ -30,6 +32,7 @@ from .diary import (DiaryEntrySerializer, load_entry, load_history,
 from .hydration import (HydrationEntrySerializer, add_entry as add_hydration,
                         build_hydration_day, remove_entry as remove_hydration,
                         serialize_entry as serialize_hydration_entry)
+from . import meals as meal_rules
 from .meals import build_diet_day, load_history as load_meal_history
 from . import supplements as supplement_rules
 from .guardian import (STATUS_ACCEPTED, accept_invitation, accepted_children,
@@ -838,12 +841,11 @@ class DietDayView(APIView):
     """GET /api/diet/today/ — the diet home screen's day.
 
     Read-only, and structurally so: there is no write verb on this URL. What
-    writes a meal is §04's "Dodawanie posiłku" form, which is not built — the
-    photo in it would be the first file this deployment ever stored, and where
-    it lives, how long it is kept and which consent covers it are all
-    unanswered. Until then the rows come from `manage.py seed_demo_diary` and
-    `scripts/mock_data.sql`, and this endpoint reports what the table actually
-    holds instead of the zeros `api/diet.ts` used to invent.
+    writes a meal is `POST /api/diet/meals/`, one endpoint over — the day is
+    derived from that table rather than stored, so a write here would be a
+    second way to move a count that is only ever a `COUNT(*)`. The figures this
+    answers with move on their own the moment a meal is written, which is why
+    that POST hands the rebuilt day back with the row it wrote.
 
     THE PAYLOAD CANNOT BECOME A VERDICT. It is a date, a streak and a count of
     today's meals, and that is the whole of it: no target, no comparison with
@@ -863,25 +865,172 @@ class DietDayView(APIView):
 
 
 class DietMealHistoryView(APIView):
-    """GET /api/diet/meals/ — "Historia dzienniczków żywieniowych" (§07).
+    """GET/POST /api/diet/meals/ — the history (§07), and one more meal (§04).
 
-    Every day that holds a meal, newest first, with the meals inside the day —
-    grouped on the server because `entry_date` is where the answer to "which day
-    is this" already lives, and two ends grouping it separately is how one meal
-    ends up on two Tuesdays.
+    GET answers every day that holds a meal, newest first, with the meals inside
+    the day — grouped on the server because `entry_date` is where the answer to
+    "which day is this" already lives, and two ends grouping it separately is
+    how one meal ends up on two Tuesdays. It answers with everything (bounded by
+    `meals.MAX_HISTORY_MEALS`), like `/api/diary/` and for the same reason: the
+    screen filters and pages in the browser, so paginating here would hand out
+    pages of a different list.
 
-    Answers with everything (bounded by `meals.MAX_HISTORY_MEALS`), like
-    `/api/diary/` and for the same reason: the screen filters and pages in the
-    browser, so paginating here would hand out pages of a different list.
+    POST writes §04's "Dodawanie posiłku". **It can only ever address today** —
+    `entry_date` comes from the server's clock, never from the body — so §07's
+    rule that a past day is archived is structural rather than a permission
+    anybody can forget: there is no URL that names an older day, exactly the
+    shape `/api/diary/today/` gives the psychotherapy diary.
 
-    Read-only structurally, like the archive it mirrors: no write verb exists on
-    this URL, and §07's rule that a past day is read-only is therefore not a
-    permission anybody can forget to check.
+    IT ANSWERS WITH BOTH HALVES, `{"meal": …, "day": …}`, the same choice
+    `/api/diet/hydration/` makes. The two screens that read this table draw
+    different things — the history draws the meal, the home screen draws a count
+    and a streak that both move when one meal is written — and a browser
+    recomputing either from the row it just sent is how one day ends up with two
+    versions of itself. It is deliberately **not** the whole rebuilt history:
+    that is up to `MAX_HISTORY_MEALS` rows, and unlike the supplement list it
+    has no ordering a new row could be misplaced in — a meal written today
+    belongs at the top of the newest day, which is where the next GET puts it.
+
+    PUT and DELETE are on `DietMealView` below, on a URL that names the meal.
+
+    Not throttled, for the same reason the other two diet writes are not: what
+    is worth protecting is the table, `MAX_MEALS_PER_DAY` bounds that, and a
+    rate cap would be reachable by somebody catching up on a day's three meals
+    in one sitting.
     """
 
     def get(self, request):
         patient = _require_patient(request, DIET_REFUSAL)
         return Response(load_meal_history(patient.id_medical))
+
+    def post(self, request):
+        patient = _require_patient(request, DIET_REFUSAL)
+        today = timezone.localdate()
+        serializer = meal_rules.MealSerializer(
+            data=request.data,
+            context={'id_medical': patient.id_medical, 'today': today},
+        )
+        serializer.is_valid(raise_exception=True)
+        meal = serializer.save()
+        return Response(
+            {
+                'meal': meal_rules.serialize_meal(meal),
+                'day': build_diet_day(patient.id_medical, today),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DietJournalDayView(APIView):
+    """GET /api/diet/days/<YYYY-MM-DD>/ — one day of the food diary.
+
+    The detail behind a row of §07's history. Read-only, and structurally so:
+    there is no write verb on this URL, the same way `/api/diary/<id>/` is
+    read-only for the psychotherapy diary. Writing belongs to today, which has
+    its own URLs — `/api/diet/meals/` to add and `/api/diet/meals/<id>/` to
+    correct.
+
+    ITS OWN URL RATHER THAN FILTERING THE HISTORY IN THE BROWSER. The history
+    answers with everything (up to `MAX_HISTORY_MEALS`), so a screen opened
+    straight from a link — a reload, a bookmark, the back button — would pull
+    a thousand meals to render one day. `(id_medical, entry_date)` is indexed
+    precisely for this.
+
+    UNDER `diet/days/` RATHER THAN `diet/meals/<date>/`: the meal URL next to
+    it names one meal by uuid, and two kinds of resource sharing a prefix is
+    how somebody eventually writes a path that matches both. It reads as a
+    sibling of `diet/today/`, which is what it is — the same shape for a day
+    that is not today.
+
+    A DAY THAT HOLDS NO MEAL IS A PLAIN 404, not an empty day: the history
+    lists exactly the days that hold one, so any other date names nothing.
+    Somebody else's day answers identically, because `load_day` filters on
+    `id_medical` — the convention `/api/diary/<id>/` sets.
+
+    A malformed date is a 404 as well rather than a 400. It cannot come from
+    the app (the only links are built by `dietJournalDayPath`), so it is a
+    typed URL, and "there is nothing here" is the true answer to one.
+    """
+
+    def get(self, request, entry_date):
+        patient = _require_patient(request, DIET_REFUSAL)
+        try:
+            day = datetime.date.fromisoformat(entry_date)
+        except ValueError:
+            raise NotFound()
+        found = meal_rules.load_day(patient.id_medical, day)
+        if found is None:
+            raise NotFound()
+        return Response(found)
+
+
+class DietMealView(APIView):
+    """PUT/DELETE /api/diet/meals/<id>/ — correcting today's meal, or dropping it.
+
+    WHY IT EXISTS. The supplement list has had both since it was built, with
+    the argument that a mistyped dose on a medicine list has to be correctable;
+    the same argument applies to a meal and went unacted on. Until this view a
+    meal was write-once: a description typed into the wrong meal, an hour
+    wrong by an hour, a meal recorded twice — all of them permanent, on a
+    screen whose whole premise is that writing something down should be easy.
+
+    ONLY TODAY, which is the psychotherapy diary's rule applied to a fourth
+    kind of row (`/api/diary/today/`, the hydration entry, the supplement
+    tick). A day that has ended is a record, and §07 says a past day is
+    archived.
+
+    AN OLDER MEAL IS REFUSED WITH A SENTENCE, NOT A 404 — the one place this
+    module deliberately parts company with `hydration.remove_entry`. Hydration
+    only ever lists today, so a serving from yesterday is a row the patient
+    cannot see and a 404 hides nothing from them. A meal from yesterday is on
+    the history screen in front of them, and "no such thing" about a row
+    somebody is looking at is a worse answer than "that day is closed".
+    `meals.find` carries the argument and the 403 carries `MEAL_NOT_TODAY`.
+
+    SOMEBODY ELSE'S MEAL IS STILL A PLAIN 404, on both verbs: `meals.find`
+    filters on `id_medical` alongside the id, so nothing leaks about whether
+    the row exists — the same convention as `/api/diary/<id>/`.
+
+    BOTH ANSWER WITH THE REBUILT DAY, and DELETE with nothing else. The home
+    screen draws a count, a streak and now the meals themselves, and all three
+    move when one meal is edited or dropped; a browser patching its own copy is
+    how one day ends up with two versions of itself. PUT carries the row as
+    well, like POST, because the history renders it.
+
+    Not throttled, for the reason the other diet writes are not: what is worth
+    protecting is the table, and neither verb can grow it.
+    """
+
+    def _meal(self, request, id_meal, today):
+        """This patient's meal, editable today, or the refusal that applies."""
+        patient = _require_patient(request, DIET_REFUSAL)
+        meal = meal_rules.find(patient.id_medical, id_meal)
+        if meal is None:
+            raise NotFound()
+        if meal.entry_date != today:
+            raise PermissionDenied(meal_rules.MEAL_NOT_TODAY)
+        return patient, meal
+
+    def put(self, request, id_meal):
+        today = timezone.localdate()
+        patient, meal = self._meal(request, id_meal, today)
+        serializer = meal_rules.MealSerializer(
+            meal,
+            data=request.data,
+            context={'id_medical': patient.id_medical, 'today': today},
+        )
+        serializer.is_valid(raise_exception=True)
+        meal = serializer.save()
+        return Response({
+            'meal': meal_rules.serialize_meal(meal),
+            'day': build_diet_day(patient.id_medical, today),
+        })
+
+    def delete(self, request, id_meal):
+        today = timezone.localdate()
+        patient, meal = self._meal(request, id_meal, today)
+        meal.delete()
+        return Response({'day': build_diet_day(patient.id_medical, today)})
 
 
 class SupplementsView(APIView):

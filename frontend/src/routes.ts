@@ -42,11 +42,23 @@ export const ROUTES = {
    *  built this key pointed at a PlaceholderPage, which is why the module tile
    *  and the patient menu both already lead here. */
   diet: '/diet',
-  /** "Dodawanie posiłku" (§04 of the mockups) — not built; the home screen's one
-   *  action has to land somewhere real. */
+  /** "Dodawanie posiłku" (§04) — pages/DietMealForm.tsx. The module's primary
+   *  action, and until §04 was built it pointed at a PlaceholderPage, which is
+   *  why the home screen and the history's empty state both already lead here. */
   dietMeal: '/diet/meal',
+  /** Correcting one of today's meals — pages/DietMealForm.tsx again, in edit
+   *  mode. Its own URL rather than an inline form on the home screen, so the
+   *  rules about what a meal may hold have one definition; §04's form already
+   *  carries them. Only today's meals can be reached: the backend refuses an
+   *  older one, and no screen offers the link. */
+  dietMealEdit: '/diet/meal/:id',
   /** "Historia dzienniczków żywieniowych" (§07) — pages/DietJournals.tsx. */
   dietJournals: '/diet/journals',
+  /** One day of that history, opened out — pages/DietJournalDay.tsx. Keyed by
+   *  the calendar day rather than by an id, because a *dzienniczek* in this
+   *  module **is** a day: there is no `diet_day` row to name. Read-only, like
+   *  `journalDetail`; today is edited on the module's home screen. */
+  dietJournalDay: '/diet/journals/:date',
   /** "Nawodnienie" — the first half of §08 of the mockups.
    *  pages/DietHydration.tsx, and the first screen in this module that had a
    *  backend behind it. */
@@ -110,6 +122,15 @@ export function specialistTechniqueEditPath(id: number | string): string {
   return ROUTES.specialistTechniqueEdit.replace(':id', String(id))
 }
 
+export function dietMealEditPath(id: string): string {
+  return ROUTES.dietMealEdit.replace(':id', id)
+}
+
+/** `date` is 'YYYY-MM-DD', the shape `utils/days.ts` writes and the API reads. */
+export function dietJournalDayPath(date: string): string {
+  return ROUTES.dietJournalDay.replace(':date', date)
+}
+
 export interface PlaceholderRouteDef {
   path: string
   title: string
@@ -118,15 +139,15 @@ export interface PlaceholderRouteDef {
   backLabel?: string
 }
 
-/** Screens the mockup references that aren't built yet — every link needs a destination. */
-export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
-  {
-    path: ROUTES.dietMeal,
-    title: 'Dodawanie posiłku',
-    backTo: ROUTES.diet,
-    backLabel: '← Wróć do strony głównej dietetyki',
-  },
-]
+/** Screens the mockup references that aren't built yet — every link needs a
+ *  destination.
+ *
+ *  **Empty, and that is the state to keep it in.** Its last entry was
+ *  `dietMeal`, §04's form, which is now a real screen. An entry here is a link
+ *  that goes nowhere; adding one is fine while a screen is genuinely pending,
+ *  but it should leave again with the screen rather than outlive it. `App.tsx`
+ *  maps over this list, so an empty one renders nothing. */
+export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = []
 
 /**
  * What each screen is called, for `document.title` and for the announcement a
@@ -153,7 +174,10 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistTechniqueNew]: 'Nowa technika',
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',
   [ROUTES.diet]: 'Dietetyka i psychodietetyka',
+  [ROUTES.dietMeal]: 'Dodawanie posiłku',
+  [ROUTES.dietMealEdit]: 'Edycja posiłku',
   [ROUTES.dietJournals]: 'Dzienniczki żywieniowe',
+  [ROUTES.dietJournalDay]: 'Dzienniczek dnia',
   [ROUTES.dietHydration]: 'Nawodnienie',
   [ROUTES.dietSupplements]: 'Suplementy i leki',
   /* §03's own name for the menu entry, kept verbatim. */

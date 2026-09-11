@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import Pagination from '../components/Pagination'
 import {
   createSupplement,
   deleteSupplement,
@@ -10,7 +11,14 @@ import {
   updateSupplement,
 } from '../api/diet'
 import { ApiError } from '../api/client'
-import { doseLabel, periodLabel, pluralItems, takenCount } from '../utils/supplements'
+import { PAGE_SIZE, usePagination } from '../hooks/usePagination'
+import {
+  MAX_HOURS_PER_SUPPLEMENT,
+  doseLabel,
+  periodLabel,
+  pluralItems,
+  takenCount,
+} from '../utils/supplements'
 import type { Supplement, SupplementInput } from '../types/diet'
 import { ROUTES } from '../routes'
 import './dietSupplements.css'
@@ -57,6 +65,25 @@ import './dietSupplements.css'
  * profile. §08's own note records the open question — whether "przyjmowane
  * leki" in §13's profile is the same data or a second entry — and §13 is not
  * built, so naming it here would answer it in markup.
+ *
+ * THE LIST PAGINATES AT `PAGE_SIZE`, the app's own list convention
+ * (hooks/usePagination.ts), and this is the one screen where that convention
+ * costs something rather than only helping: it is a checklist opened every
+ * morning, so a preparation on page two is a page turn away from being ticked.
+ * `MAX_SUPPLEMENTS` (60) is a backstop and not a product rule, so most lists
+ * will never see a second page at all. Two details are what keep the rest
+ * honest:
+ *
+ *   - **the list is ordered by hour, so a written row can land on any page.**
+ *     After a create or an edit the screen therefore turns to the page that now
+ *     holds that row (`revealPageOf`) rather than resetting to page one the way
+ *     the specialist panel's prepend-ordered lists do. A form that saves and
+ *     then hides what it saved is the kind of silent failure this module's
+ *     wording is otherwise careful about;
+ *   - **the accessible description of the list still counts the whole list**,
+ *     never the page. `takenCount` is restricted to that one caller on purpose
+ *     (see utils/supplements.ts): a count that moved with the page would be a
+ *     per-page tally, i.e. the "2 z 3" this screen exists not to show.
  */
 
 /** Said above the list, as the artboard says it. */
@@ -73,7 +100,9 @@ const EMPTY_INPUT: SupplementInput = {
   name: '',
   dose: '',
   frequency: '',
-  hour: '',
+  // One empty row, so the form opens with a box to type an hour into rather
+  // than with a button that has to be found first.
+  hours: [''],
   startDate: '',
   endDate: '',
   reminderEnabled: true,
@@ -86,7 +115,10 @@ function toInput(supplement: Supplement): SupplementInput {
     name: supplement.name,
     dose: supplement.dose ?? '',
     frequency: supplement.frequency ?? '',
-    hour: supplement.hour ?? '',
+    // An empty row when there are none, for the same reason as above — a
+    // preparation with no fixed hour is still edited on a form that offers
+    // one. The blank is dropped on the way out (`toPayload`).
+    hours: supplement.hours.length > 0 ? [...supplement.hours] : [''],
     startDate: supplement.startDate ?? '',
     endDate: supplement.endDate ?? '',
     reminderEnabled: supplement.reminderEnabled,
@@ -100,7 +132,7 @@ const FIELD_BY_COLUMN: Record<string, keyof SupplementInput> = {
   name: 'name',
   dose: 'dose',
   frequency: 'frequency',
-  hour: 'hour',
+  hours: 'hours',
   start_date: 'startDate',
   end_date: 'endDate',
   reminder_enabled: 'reminderEnabled',
@@ -216,7 +248,20 @@ function SupplementRow({
           )}
         </div>
       </div>
-      {supplement.hour && <span className="supplement-hour">{supplement.hour}</span>}
+      {/* Every hour the preparation is taken at, on the one row it belongs
+          to — the case this list exists for is a probiotic at 06:45 and again
+          at 12:00, which is one position and two badges, never two positions
+          sharing a name. Nothing counts them: "2 ×" next to a medicine would
+          be the module scoring a regimen. */}
+      {supplement.hours.length > 0 && (
+        <span className="supplement-hours">
+          {supplement.hours.map((hour) => (
+            <span key={hour} className="supplement-hour">
+              {hour}
+            </span>
+          ))}
+        </span>
+      )}
     </li>
   )
 }
@@ -250,6 +295,32 @@ function SupplementForm({
 
   function set<K extends keyof SupplementInput>(key: K, value: SupplementInput[K]) {
     setInput((current) => ({ ...current, [key]: value }))
+  }
+
+  /** One hour changed, by position. */
+  function setHour(index: number, value: string) {
+    setInput((current) => ({
+      ...current,
+      hours: current.hours.map((hour, at) => (at === index ? value : hour)),
+    }))
+  }
+
+  function addHour() {
+    setInput((current) => ({ ...current, hours: [...current.hours, ''] }))
+  }
+
+  /**
+   * Take one hour off the form.
+   *
+   * The last one is emptied rather than removed, so the field never
+   * disappears: a preparation with no fixed hour is an ordinary answer, and
+   * the way to say it has to stay visible. Blanks are dropped on the way out.
+   */
+  function removeHour(index: number) {
+    setInput((current) => {
+      const left = current.hours.filter((_, at) => at !== index)
+      return { ...current, hours: left.length > 0 ? left : [''] }
+    })
   }
 
   return (
@@ -300,16 +371,57 @@ function SupplementForm({
         </div>
       </div>
 
+      {/* SEVERAL HOURS FOR ONE PREPARATION, which is what this whole field
+          exists for: a probiotic taken at 06:45 and again at 12:00 is one
+          position on the list. Before it, the only way to write that was two
+          preparations with the same name.
+
+          A fieldset, because these inputs are one answer — without it a
+          screen reader announces three unrelated "Godzina" boxes. Each is
+          numbered in its own label for the same reason. */}
+      <fieldset className="supplement-field supplement-hours-field">
+        <legend>Godziny</legend>
+        {input.hours.map((hour, index) => (
+          <div className="supplement-hour-row" key={index}>
+            <label
+              className="visually-hidden"
+              htmlFor={`supplement-hour-${index}`}
+            >
+              Godzina {index + 1}
+            </label>
+            <input
+              id={`supplement-hour-${index}`}
+              type="time"
+              value={hour}
+              onChange={(event) => setHour(index, event.target.value)}
+            />
+            <button
+              type="button"
+              className="supplement-hour-remove"
+              onClick={() => removeHour(index)}
+              aria-label={`Usuń godzinę ${index + 1}`}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="supplement-hour-add"
+          onClick={addHour}
+          disabled={input.hours.length >= MAX_HOURS_PER_SUPPLEMENT}
+        >
+          + Dodaj godzinę
+        </button>
+        {/* Said rather than only enforced, like the end date below: no hour
+            at all is a complete answer, not a gap. */}
+        <span className="supplement-field-hint">
+          Jeśli bierzesz coś kilka razy dziennie, dodaj kolejne godziny.
+          Możesz też nie podawać żadnej.
+        </span>
+      </fieldset>
+
       <div className="supplement-field-row">
-        <div className="supplement-field">
-          <label htmlFor="supplement-hour">Godzina</label>
-          <input
-            id="supplement-hour"
-            type="time"
-            value={input.hour ?? ''}
-            onChange={(event) => set('hour', event.target.value)}
-          />
-        </div>
         <div className="supplement-field">
           <label htmlFor="supplement-start">Od kiedy</label>
           <input
@@ -399,6 +511,7 @@ function DietSupplements() {
   /** null = the form is closed, '' = adding, an id = editing that row. */
   const [formFor, setFormFor] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const pages = usePagination(supplements ?? [])
 
   // The house pattern: a promise chain with a `cancelled` flag rather than an
   // `async` effect body.
@@ -433,21 +546,41 @@ function DietSupplements() {
     setAttempt((n) => n + 1)
   }
 
+  /**
+   * The page a row is on, once the rebuilt list has come back.
+   *
+   * Needed because the list is ordered by hour: a preparation taken at 8:00,
+   * written into a list that starts at 12:00, goes to the *front*, and one with
+   * no hour goes to the very end. So neither "stay where you are" nor "go to
+   * page one" reliably shows the row that was just saved, which on a paginated
+   * list reads as a save that did nothing.
+   */
+  function revealPageOf(list: Supplement[], id: string | undefined) {
+    if (id === undefined) return
+    const index = list.findIndex((item) => item.id === id)
+    if (index >= 0) pages.goTo(Math.floor(index / PAGE_SIZE) + 1)
+  }
+
   /** Every write answers with the rebuilt list, so nothing here patches state
    *  of its own — what is on screen is what the server holds. */
   async function run(
     act: () => Promise<Supplement[] | void>,
     fallback: string,
-    { closeForm = false } = {},
+    { closeForm = false, reveal = false } = {},
   ) {
     if (busy) return
     setBusy(true)
     setActionError(null)
     setErrors({})
+    // Taken before the write, so the one id the rebuilt list has that this set
+    // does not is the row that was just created.
+    const before = new Set((supplements ?? []).map((item) => item.id))
     try {
-      const list = await act()
-      if (list) setSupplements(list)
-      else setSupplements(await fetchSupplements())
+      const list = (await act()) ?? (await fetchSupplements())
+      setSupplements(list)
+      if (reveal) {
+        revealPageOf(list, list.find((item) => !before.has(item.id))?.id ?? formFor ?? undefined)
+      }
       if (closeForm) setFormFor(null)
     } catch (error) {
       const found = fieldErrors(error)
@@ -518,10 +651,14 @@ function DietSupplements() {
                    see the file header. */
                 aria-label={
                   `Lista: ${count} ${pluralItems(count)}, ` +
-                  `odhaczone dziś: ${takenCount(supplements)}`
+                  `odhaczone dziś: ${takenCount(supplements)}` +
+                  // Only when there is more than one, so the ordinary list says
+                  // exactly what it always said. The counts before it stay over
+                  // the whole list — see the note in the file header.
+                  (pages.pageCount > 1 ? `; na tej stronie: ${pages.from}–${pages.to}` : '')
                 }
               >
-                {supplements.map((supplement) => (
+                {pages.items.map((supplement) => (
                   <SupplementRow
                     key={supplement.id}
                     supplement={supplement}
@@ -546,6 +683,15 @@ function DietSupplements() {
                   />
                 ))}
               </ul>
+              <Pagination
+                page={pages.page}
+                pageCount={pages.pageCount}
+                from={pages.from}
+                to={pages.to}
+                total={pages.total}
+                onChange={pages.goTo}
+                unit="pozycji"
+              />
             </section>
           )}
 
@@ -577,7 +723,9 @@ function DietSupplements() {
                       ? updateSupplement(editing.id, input)
                       : createSupplement(input),
                   'Nie udało się zapisać pozycji.',
-                  { closeForm: true },
+                  // The list is hour-ordered, so the saved row may well be on
+                  // another page than the one the form was opened from.
+                  { closeForm: true, reveal: true },
                 )
               }
               onCancel={() => {

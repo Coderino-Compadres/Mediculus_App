@@ -48,10 +48,10 @@ copy.
 """
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Min, Prefetch
 from rest_framework import serializers
 
-from .models import Supplement, SupplementIntake
+from .models import Supplement, SupplementHour, SupplementIntake
 
 #: A backstop on rows per patient, in the spirit of
 #: `hydration.MAX_ENTRIES_PER_DAY`: this is a table a patient can grow by
@@ -66,6 +66,19 @@ LIST_IS_FULL = (
     'Usuń którąś, żeby dodać nową.'
 )
 END_BEFORE_START = 'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.'
+
+#: How many hours one preparation may carry.
+#:
+#: A backstop like `MAX_SUPPLEMENTS`, not a product rule: nothing is taken
+#: twelve times a day, and the point is that a script cannot grow the table
+#: through a form. The refusal is worded as a limit on the *list* rather than
+#: as an opinion about a regimen — the same care `meals.DAY_IS_FULL` takes.
+MAX_HOURS_PER_SUPPLEMENT = 12
+
+TOO_MANY_HOURS = (
+    'To bardzo dużo godzin dla jednej pozycji. '
+    'Jeśli potrzebujesz więcej, dopisz ją jako osobną pozycję.'
+)
 
 
 class SupplementSerializer(serializers.Serializer):
@@ -92,10 +105,33 @@ class SupplementSerializer(serializers.Serializer):
         max_length=120, required=False, allow_blank=True, allow_null=True)
     frequency = serializers.CharField(
         max_length=120, required=False, allow_blank=True, allow_null=True)
-    hour = serializers.TimeField(required=False, allow_null=True)
+    # A LIST, because a preparation can be taken more than once a day — a
+    # probiotic at 06:45 and again at 12:00 is one position on the list, not
+    # two. An empty list is "no fixed hour", which is what a missing `hour`
+    # used to mean, so the field stays optional and nothing is required by it.
+    #
+    # Declared rather than left to be discovered: a plain `Serializer` drops a
+    # key it does not name *without an error*, which is how the diary's "pora
+    # dnia" was accepted, confirmed and silently lost (`0009`). A value that
+    # is not a time is a 400 here.
+    hours = serializers.ListField(
+        child=serializers.TimeField(), required=False, allow_empty=True,
+        max_length=MAX_HOURS_PER_SUPPLEMENT,
+    )
     start_date = serializers.DateField(required=False, allow_null=True)
     end_date = serializers.DateField(required=False, allow_null=True)
     reminder_enabled = serializers.BooleanField(required=False, default=True)
+
+    def validate_hours(self, value):
+        """Sorted and de-duplicated, so the row reads as a day.
+
+        The same hour twice is a double-submitted form rather than a second
+        dose — the unique constraint says so in the schema, and answering with
+        a 400 would make an ordinary slip an error. Sorting here rather than on
+        the way out means the stored rows are in the order the form meant them,
+        and the screen never has to.
+        """
+        return sorted(set(value))
 
     def validate(self, attrs):
         start = attrs.get('start_date')
@@ -119,7 +155,6 @@ class SupplementSerializer(serializers.Serializer):
             'name': data['name'].strip(),
             'dose': text('dose'),
             'frequency': text('frequency'),
-            'hour': data.get('hour'),
             'start_date': data.get('start_date'),
             'end_date': data.get('end_date'),
             'reminder_enabled': data.get('reminder_enabled', True),
@@ -136,15 +171,39 @@ class SupplementSerializer(serializers.Serializer):
                 # request-level refusal in this API — `firstMessage` in
                 # src/api/client.ts reads a list's first entry.
                 raise serializers.ValidationError({'detail': [LIST_IS_FULL]})
-            return Supplement.objects.create(
+            supplement = Supplement.objects.create(
                 id_medical=id_medical, **self._clean(validated_data),
             )
+            _write_hours(supplement, validated_data.get('hours') or [])
+            return supplement
 
     def update(self, instance, validated_data):
-        for field, value in self._clean(validated_data).items():
-            setattr(instance, field, value)
-        instance.save()
+        # One transaction, because the hours are replaced by delete-then-write:
+        # a failure between the two would leave a preparation with no hours at
+        # all, which is a different answer rather than a partial one.
+        with transaction.atomic(using='medical'):
+            for field, value in self._clean(validated_data).items():
+                setattr(instance, field, value)
+            instance.save()
+            # PUT replaces, so an hour left out is an hour taken off — the same
+            # rule the rest of this form follows. A merge would make removing
+            # one impossible from the only form that writes them.
+            _write_hours(instance, validated_data.get('hours') or [])
         return instance
+
+
+def _write_hours(supplement, hours):
+    """Replace a preparation's hours with exactly these.
+
+    Delete-then-create rather than a diff: the list is at most
+    `MAX_HOURS_PER_SUPPLEMENT` rows, nothing refers to an hour by id, and a
+    diff would be more code for a saving nobody can measure. The hours are
+    already sorted and de-duplicated by `validate_hours`.
+    """
+    supplement.hours.all().delete()
+    SupplementHour.objects.bulk_create([
+        SupplementHour(supplement=supplement, hour=hour) for hour in hours
+    ])
 
 
 def serialize_supplement(supplement, *, taken_today):
@@ -166,7 +225,11 @@ def serialize_supplement(supplement, *, taken_today):
         'name': supplement.name,
         'dose': supplement.dose or None,
         'frequency': supplement.frequency or None,
-        'hour': supplement.hour.strftime('%H:%M') if supplement.hour else None,
+        # A LIST, in the order of a day. Empty means no fixed hour, which is
+        # what a null `hour` used to mean — the screen renders nothing rather
+        # than an empty badge. `supplement.hours` is prefetched by
+        # `list_supplements`, so this costs no query per row.
+        'hours': [h.hour.strftime('%H:%M') for h in supplement.hours.all()],
         'start_date': supplement.start_date.isoformat() if supplement.start_date else None,
         'end_date': supplement.end_date.isoformat() if supplement.end_date else None,
         'reminder_enabled': supplement.reminder_enabled,
@@ -177,11 +240,33 @@ def serialize_supplement(supplement, *, taken_today):
 def _order(queryset):
     """The order §08 draws the list in: by hour, then by name.
 
-    `nulls_last`, because a preparation with no hour would otherwise open a list
-    whose whole shape is "what to take, and when" — Postgres puts NULLs first on
-    an ASC ordering unless told otherwise.
+    THE HOUR SORTED ON IS THE EARLIEST ONE, annotated with `Min` over the
+    related rows — a preparation taken at 06:45 and 12:00 belongs where the
+    morning is, because that is when the list is read. Sorting on the latest
+    would put a twice-daily probiotic after the evening magnesium.
+
+    `nulls_last`, because a preparation with no hour at all would otherwise
+    open a list whose whole shape is "what to take, and when" — Postgres puts
+    NULLs first on an ASC ordering unless told otherwise, and `Min` over no
+    rows is NULL.
+
+    `prefetch_related` is here rather than at the call site because every
+    caller of this function renders the hours: without it the list is one
+    query per row, which is exactly the N+1 `list_supplements` takes care to
+    avoid for the ticks.
     """
-    return queryset.order_by(F('hour').asc(nulls_last=True), 'name', 'created_at')
+    return (
+        queryset
+        .annotate(first_hour=Min('hours__hour'))
+        # Ordered explicitly rather than through Meta.ordering: the rows are
+        # written by `bulk_create`, which promises nothing about the order
+        # they come back in, and a badge row reading "12:00 · 06:45" is a day
+        # out of sequence. Doing it here keeps it out of the migration state.
+        .prefetch_related(
+            Prefetch('hours', queryset=SupplementHour.objects.order_by('hour')),
+        )
+        .order_by(F('first_hour').asc(nulls_last=True), 'name', 'created_at')
+    )
 
 
 def list_supplements(id_medical, today):

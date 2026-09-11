@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
+import { PAGE_SIZE } from '../hooks/usePagination'
+import { MAX_HOURS_PER_SUPPLEMENT } from '../utils/supplements'
 import DietSupplements from './DietSupplements'
 import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
@@ -46,7 +48,7 @@ function supplement(overrides: Partial<Supplement> = {}): Supplement {
     name: 'Witamina D3',
     dose: '2000 IU',
     frequency: 'raz dziennie',
-    hour: '08:00',
+    hours: ['08:00'],
     startDate: '2026-03-12',
     endDate: null,
     reminderEnabled: true,
@@ -171,7 +173,7 @@ describe('a row', () => {
     /** §05's rule: no field blocks a save, so the screen must not invent the
      *  missing halves or label them as missing. */
     fetchSupplements.mockResolvedValue([
-      supplement({ dose: null, frequency: null, hour: null, startDate: null }),
+      supplement({ dose: null, frequency: null, hours: [], startDate: null }),
     ])
 
     await renderScreen()
@@ -398,7 +400,7 @@ describe('reminders', () => {
 describe('what this screen refuses to show', () => {
   const list = [
     supplement({ id: 'a', name: 'Witamina D3', takenToday: true }),
-    supplement({ id: 'b', name: 'Magnez', takenToday: false, hour: '21:00' }),
+    supplement({ id: 'b', name: 'Magnez', takenToday: false, hours: ['21:00'] }),
     supplement({ id: 'c', name: 'Sertralina', takenToday: true }),
   ]
 
@@ -457,5 +459,263 @@ describe('what this screen refuses to show', () => {
 
     const rows = screen.getByRole('list', { name: /odhaczone dziś: 2/ })
     expect(within(rows).getAllByRole('listitem')).toHaveLength(3)
+  })
+})
+
+describe('the list is paginated', () => {
+  /**
+   * The one list in the app where paging costs something: this is a checklist
+   * opened every morning, so a preparation on page two is a page turn away from
+   * being ticked. `MAX_SUPPLEMENTS` (60) is a backstop rather than a product
+   * rule, so an ordinary regimen never meets a second page at all — which is
+   * why the first test here is that it does not.
+   */
+  const many = (count: number, from = 0) =>
+    Array.from({ length: count }, (_, index) => {
+      const n = from + index
+      // Hour-ordered, like the server's own ordering.
+      const hour = `${String(6 + n).padStart(2, '0')}:00`
+      return supplement({ id: `s-${n}`, name: `Preparat ${n}`, hours: [hour] })
+    })
+
+  it('draws no control over an ordinary regimen', async () => {
+    fetchSupplements.mockResolvedValue(many(PAGE_SIZE))
+    await renderScreen()
+
+    expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
+  })
+
+  it('shows seven positions on a page', async () => {
+    fetchSupplements.mockResolvedValue(many(20))
+    await renderScreen()
+
+    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+    expect(screen.getAllByRole('checkbox')).toHaveLength(PAGE_SIZE)
+  })
+
+  it('counts positions in the range it prints', async () => {
+    fetchSupplements.mockResolvedValue(many(20))
+    await renderScreen()
+
+    expect(screen.getByText(/1–7 z 20 pozycji/)).toBeInTheDocument()
+  })
+
+  it('moves through the pages', async () => {
+    fetchSupplements.mockResolvedValue(many(20))
+    await renderScreen()
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
+    expect(screen.getByText('Preparat 7')).toBeInTheDocument()
+    expect(screen.queryByText('Preparat 0')).toBeNull()
+  })
+
+  it('keeps the whole-list count out of the page, so no page becomes a score', async () => {
+    // `takenCount` describes "Twoja lista", not the seven rows in front of you.
+    // A count that moved with the page would be the "2 z 3" this screen exists
+    // not to show.
+    fetchSupplements.mockResolvedValue([
+      ...many(10).slice(0, 9),
+      supplement({ id: 's-taken', name: 'Odhaczony', hours: ['23:00'], takenToday: true }),
+    ])
+    await renderScreen()
+
+    const list = screen.getByRole('list', { name: /^Lista: 10 pozycji, odhaczone dziś: 1/ })
+
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+
+    expect(list).toHaveAccessibleName(/Lista: 10 pozycji, odhaczone dziś: 1/)
+  })
+
+  it('says which slice of the list is on screen, once there is more than one', async () => {
+    fetchSupplements.mockResolvedValue(many(20))
+    await renderScreen()
+
+    expect(
+      screen.getByRole('list', { name: /na tej stronie: 1–7$/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('turns to the page a newly written position landed on', async () => {
+    // The list is ordered by hour, so a preparation taken at 23:00 goes to the
+    // end — a page the patient was not on. A form that saves and then hides
+    // what it saved reads as a save that did nothing.
+    fetchSupplements.mockResolvedValue(many(20))
+    createSupplement.mockResolvedValue([
+      ...many(20),
+      supplement({ id: 's-late', name: 'Melatonina', hours: ['23:00'] }),
+    ])
+    await renderScreen()
+    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Melatonina')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    await waitFor(() => expect(screen.getByText('Melatonina')).toBeInTheDocument())
+    expect(screen.getByText(/Strona 3 z 3/)).toBeInTheDocument()
+  })
+
+  it('falls back a page rather than emptying when the last row on it goes', async () => {
+    fetchSupplements.mockResolvedValue(many(15))
+    deleteSupplement.mockResolvedValue(undefined)
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    await userEvent.click(screen.getByRole('button', { name: /następna/i }))
+    expect(screen.getByText(/Strona 3 z 3/)).toBeInTheDocument()
+
+    fetchSupplements.mockResolvedValue(many(14))
+    // The hidden half of the name runs into the visible half, so a regex.
+    await userEvent.click(screen.getByRole('button', { name: /^Usuń.*Preparat 14$/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Tak, usuń/ }))
+
+    await waitFor(() => expect(screen.getByText(/Strona 2 z 2/)).toBeInTheDocument())
+  })
+})
+
+describe('several hours for one preparation', () => {
+  /**
+   * THE CASE THIS EXISTS FOR: somebody takes a probiotic at 06:45 and again
+   * at 12:00. That is *one* position on the list with two hours on its row —
+   * before `supplement_hour` the only way to write it was two preparations
+   * sharing a name, which reads as two different probiotics.
+   */
+
+  it('shows every hour on the one row the preparation occupies', async () => {
+    fetchSupplements.mockResolvedValue([
+      supplement({ name: 'Probiotyk', hours: ['06:45', '12:00'] }),
+    ])
+
+    await renderScreen()
+
+    expect(screen.getByText('06:45')).toBeInTheDocument()
+    expect(screen.getByText('12:00')).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('renders a preparation with no hour without an empty badge', async () => {
+    fetchSupplements.mockResolvedValue([
+      supplement({ name: 'Witamina C', hours: [] }),
+    ])
+
+    await renderScreen()
+
+    expect(screen.getByText('Witamina C')).toBeInTheDocument()
+    expect(document.querySelector('.supplement-hour')).toBeNull()
+  })
+
+  it('counts nothing next to the hours', async () => {
+    /** "2 ×" beside a medicine would be the module scoring a regimen, which
+     *  is the one thing §08 says this screen must not do. */
+    fetchSupplements.mockResolvedValue([
+      supplement({ name: 'Probiotyk', hours: ['06:45', '12:00'] }),
+    ])
+
+    await renderScreen()
+
+    for (const forbidden of [/2 ×/, /2x/i, /dwa razy dziennie/i, /razy dziennie/i]) {
+      expect(screen.queryByText(forbidden)).toBeNull()
+    }
+  })
+
+  it('offers another hour box and sends both', async () => {
+    createSupplement.mockResolvedValue([])
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Probiotyk')
+
+    await userEvent.type(screen.getByLabelText('Godzina 1'), '06:45')
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj godzinę' }))
+    await userEvent.type(screen.getByLabelText('Godzina 2'), '12:00')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    expect(createSupplement).toHaveBeenCalledWith(
+      expect.objectContaining({ hours: ['06:45', '12:00'] }),
+    )
+  })
+
+  it('can take an hour off again', async () => {
+    createSupplement.mockResolvedValue([])
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Probiotyk')
+    await userEvent.type(screen.getByLabelText('Godzina 1'), '06:45')
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj godzinę' }))
+    await userEvent.type(screen.getByLabelText('Godzina 2'), '12:00')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Usuń godzinę 2' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    expect(createSupplement).toHaveBeenCalledWith(
+      expect.objectContaining({ hours: ['06:45'] }),
+    )
+  })
+
+  it('keeps a box on screen after the last hour is removed', async () => {
+    /** No fixed hour is an ordinary answer, so the way to say it must not
+     *  vanish with the field. */
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Godzina 1'), '06:45')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Usuń godzinę 1' }))
+
+    expect(screen.getByLabelText('Godzina 1')).toHaveValue('')
+  })
+
+  it('sends no hours at all when none was typed', async () => {
+    createSupplement.mockResolvedValue([])
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Witamina C')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    expect(createSupplement).toHaveBeenCalledWith(
+      expect.objectContaining({ hours: [''] }),
+    )
+  })
+
+  it('opens an edit with every hour the preparation has', async () => {
+    fetchSupplements.mockResolvedValue([
+      supplement({ name: 'Probiotyk', hours: ['06:45', '12:00'] }),
+    ])
+    await renderScreen()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Edytuj/ }))
+
+    expect(screen.getByLabelText('Godzina 1')).toHaveValue('06:45')
+    expect(screen.getByLabelText('Godzina 2')).toHaveValue('12:00')
+  })
+
+  it('stops offering more boxes at the backstop', async () => {
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+
+    const add = screen.getByRole('button', { name: '+ Dodaj godzinę' })
+    for (let i = 1; i < MAX_HOURS_PER_SUPPLEMENT; i += 1) {
+      await userEvent.click(add)
+    }
+
+    expect(add).toBeDisabled()
+    expect(screen.getAllByLabelText(/^Godzina \d+$/)).toHaveLength(
+      MAX_HOURS_PER_SUPPLEMENT,
+    )
+  })
+
+  it('still ticks the whole day with one checkbox', async () => {
+    /** Deliberate: a tick is a fact about a day, so a preparation taken twice
+     *  has one checkbox. Whether each dose should be tickable separately is a
+     *  question for the client — and answering it means the intake table
+     *  learning about hours, plus a decision about what an untaken dose
+     *  would mean. */
+    fetchSupplements.mockResolvedValue([
+      supplement({ name: 'Probiotyk', hours: ['06:45', '12:00'] }),
+    ])
+
+    await renderScreen()
+
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1)
   })
 })

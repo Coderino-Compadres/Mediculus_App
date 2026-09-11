@@ -125,6 +125,126 @@
   margin: 8px 0 20px;
 }
 
+/* Today's meals, listed on the card so the one that is wrong can be reached.
+   Not from §02's artboard — see StartedDayCard; what is here is a list, not
+   the mockup's axis with its emotion dot. */
+.diet-today-meals {
+  list-style: none;
+  margin: 16px 0 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diet-today-meal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+.diet-today-meal-body {
+  /* Takes the row's width so the actions wrap under it on a phone rather than
+     squeezing a description into a column two words wide. */
+  flex: 1 1 min(100%, 14rem);
+  min-width: 0;
+}
+
+.diet-today-meal-heading {
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+  margin: 0 0 2px;
+}
+
+.diet-today-meal-text {
+  color: var(--color-graphite-muted);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+  /* A description can be a paragraph (§04 makes it one of the two things a
+     meal *is*), and this is a summary card — so it wraps rather than being
+     cut, but the words are not broken. */
+  overflow-wrap: anywhere;
+}
+
+/* A meal saved with no description is an ordinary entry, said in words. */
+.diet-today-meal-text-empty {
+  color: var(--color-graphite-muted);
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.diet-today-meal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.diet-today-confirm-text {
+  font-size: 13px;
+  color: var(--color-caution);
+}
+
+/* Quiet, because neither is the card's action — "Dodaj posiłek" below is.
+   Both reach 44px (WCAG 2.5.8) through real padding: they are boxes in a row
+   of their own, so height costs no layout here. */
+.diet-today-quiet-button,
+.diet-today-quiet-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-graphite);
+  background: none;
+  border: none;
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.diet-today-quiet-button:hover:not(:disabled),
+.diet-today-quiet-link:hover {
+  background: rgba(var(--shadow-tint), 0.06);
+}
+
+.diet-today-quiet-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.diet-today-error {
+  color: var(--color-caution);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+/* The confirmation after an edit, on arrival back from the form.
+   `margin-bottom` alone, never the `margin` shorthand: `.diet-page > *`
+   centres every child with `margin-left/right: auto` at the same specificity,
+   so a shorthand here wins on source order and throws the notice against the
+   left edge of the window. Found in manual testing, and the same fragility
+   CLAUDE.md records for `.panel-empty` under `.journals-page > *`. */
+.diet-saved-notice {
+  background: var(--color-surface-quiet);
+  border-radius: var(--radius-card);
+  color: var(--color-graphite);
+  font-size: 14px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+}
+
 /* The one action on the screen. Sage, like every other primary action in the
    app (.auth-submit, .today-add-button, .panel-button); full width because on
    the mockup it fills the card. */

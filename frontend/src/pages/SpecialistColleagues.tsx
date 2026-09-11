@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import FormField from '../components/FormField'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import Pagination from '../components/Pagination'
 import { ApiError } from '../api/client'
 import {
   COLLEAGUE_FIELDS,
@@ -13,6 +14,7 @@ import {
 } from '../api/specialist'
 import { toFormErrors } from '../api/auth'
 import { useAuth } from '../auth/authContext'
+import { usePagination } from '../hooks/usePagination'
 import { linkedSinceLabel } from '../utils/children'
 import { colleagueLabel } from '../utils/specialist'
 import { ROUTES } from '../routes'
@@ -57,6 +59,14 @@ import './specialist.css'
  * agreed to *them*, not to every specialist in the list — see
  * COLLEAGUE_SUMMARY_FIELDS in core/colleagues.py, which is the payload's own
  * argument for holding identity and nothing else.
+ *
+ * THE ROSTER IS PAGINATED, seven rows a page like every other list in the app
+ * (hooks/usePagination.ts). It is the list with the strongest case for it:
+ * `/api/specialist/colleagues/` answers with *every* specialist account in the
+ * system, it is not filtered to the ones you created, and there is no delete
+ * endpoint — so it only ever grows. Creating an account sends the screen back
+ * to page one, because the new row is prepended and a specialist reading the
+ * password above has to be able to see the account it belongs to.
  */
 
 const LOAD_ERROR = 'Nie udało się wczytać listy kont specjalistów. Spróbuj ponownie.'
@@ -81,6 +91,7 @@ function SpecialistColleagues() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const retry = () => setAttempt((value) => value + 1)
+  const pages = usePagination(colleagues)
 
   const [values, setValues] = useState(EMPTY_FORM)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -135,6 +146,9 @@ function SpecialistColleagues() {
       })
       setCreated(result)
       setColleagues((current) => [result.specialist, ...current])
+      // The new row goes to the top of the list, which is page one — and the
+      // password handed over above is only useful next to the account it opens.
+      pages.reset()
       setValues(EMPTY_FORM)
     } catch (cause: unknown) {
       if (cause instanceof ApiError) {
@@ -287,7 +301,7 @@ function SpecialistColleagues() {
                  drawn as an empty box. */
               <p className="panel-empty">Nie ma jeszcze żadnych kont specjalistów.</p>
             ) : (
-              colleagues.map((colleague) => (
+              pages.items.map((colleague) => (
                 <article key={colleague.id} className="specialist-list-row">
                   <div>
                     <p className="specialist-list-title">
@@ -311,6 +325,15 @@ function SpecialistColleagues() {
                 </article>
               ))
             )}
+            <Pagination
+              page={pages.page}
+              pageCount={pages.pageCount}
+              from={pages.from}
+              to={pages.to}
+              total={pages.total}
+              onChange={pages.goTo}
+              unit="kont"
+            />
             {/* Says what the list is not, for the same reason the panel's
                 "Zakres dostępu" card does: a roster of colleagues invites the
                 question of whose patients they are, and the answer is that this

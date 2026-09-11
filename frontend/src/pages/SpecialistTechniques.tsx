@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import Pagination from '../components/Pagination'
 import { ApiError } from '../api/client'
 import { deleteTechnique, fetchMyTechniques, type StoredTechnique } from '../api/techniques'
+import { usePagination } from '../hooks/usePagination'
 import { SCHOOL_BADGES } from '../utils/techniques'
 import { ROUTES, specialistTechniqueEditPath, techniqueDetailPath } from '../routes'
 import './journals.css'
@@ -29,6 +31,12 @@ import './specialist.css'
  * `find_for_specjalist` filters on `author_id_specjalist`, so a colleague's
  * technique answers like a nonexistent one. Correcting somebody else's clinical
  * wording is a conversation, not a form.
+ *
+ * SEVEN ROWS A PAGE, the app's own list convention (hooks/usePagination.ts).
+ * This list only grows — writing into the catalogue is the point of the screen
+ * and the endpoint answers with all of it — and the rows carry three actions
+ * each, one of them destructive. A long unbroken column of "Usuń" buttons is
+ * the shape in which the wrong one gets pressed.
  */
 
 const LOAD_ERROR = 'Nie udało się wczytać Twoich technik. Spróbuj ponownie.'
@@ -40,6 +48,7 @@ function SpecialistTechniques() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const retry = () => setAttempt((value) => value + 1)
+  const pages = usePagination(techniques)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<number | null>(null)
@@ -133,7 +142,7 @@ function SpecialistTechniques() {
               Nie dodałeś jeszcze żadnej techniki.
             </p>
           )}
-          {techniques.map((technique) => (
+          {pages.items.map((technique) => (
             <article key={technique.idTechnique} className="specialist-list-row">
               <div>
                 <p className="specialist-list-title">{technique.nazwa}</p>
@@ -188,6 +197,15 @@ function SpecialistTechniques() {
               </div>
             </article>
           ))}
+          <Pagination
+            page={pages.page}
+            pageCount={pages.pageCount}
+            from={pages.from}
+            to={pages.to}
+            total={pages.total}
+            onChange={pages.goTo}
+            unit="technik"
+          />
         </div>
       )}
     </div>
