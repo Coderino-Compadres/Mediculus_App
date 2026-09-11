@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import Pagination from './Pagination'
 import { ApiError } from '../api/client'
 import {
   dropPatient,
@@ -8,6 +9,7 @@ import {
   type SpecialistCaseload,
   type SpecialistPatient,
 } from '../api/specialist'
+import { usePagination } from '../hooks/usePagination'
 import { entryDateLabel, lastEntryLabel, showsStreak } from '../utils/children'
 import { patientLabel } from '../utils/specialist'
 import { pluralDays } from '../utils/reports'
@@ -35,6 +37,16 @@ import './specialistPatients.css'
  * has a specialist all answer identically, so this form cannot be used to ask
  * who has an account here and what kind of care they are in. The way out of a
  * mistyped address is the patient sitting in front of you.
+ *
+ * ONLY THE CASELOAD IS PAGINATED, seven cards a page like every other list in
+ * the app (hooks/usePagination.ts). A full practice is dozens of patients and a
+ * card here is not a row — it carries a name, an address, three figures and,
+ * behind two taps, the control that ends the care relationship; a column of
+ * fifty of them buries the invite form under the fold on the specialist's own
+ * landing screen. The pending list is deliberately left whole: an invitation is
+ * answered or withdrawn, so it does not accumulate, and there is one `?page=`
+ * to go round — paginating both would have the two lists turning each other's
+ * pages.
  */
 
 const LOAD_ERROR = 'Nie udało się wczytać listy pacjentów.'
@@ -171,6 +183,7 @@ function SpecialistPatients() {
   // Which accepted patient has been asked about; a pending invitation needs no
   // confirmation, because withdrawing one takes nothing away.
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const pages = usePagination(caseload.patients)
   // Separate from `failed`: a change that did not go through is not a list that
   // did not load, and saying the latter sends the specialist to reload a screen
   // whose content is already right.
@@ -272,7 +285,7 @@ function SpecialistPatients() {
             </p>
           )}
 
-          {caseload.patients.map((patient) => (
+          {pages.items.map((patient) => (
             <PatientCard
               key={patient.id}
               patient={patient}
@@ -283,6 +296,16 @@ function SpecialistPatients() {
               onDrop={() => void drop(patient)}
             />
           ))}
+
+          <Pagination
+            page={pages.page}
+            pageCount={pages.pageCount}
+            from={pages.from}
+            to={pages.to}
+            total={pages.total}
+            onChange={pages.goTo}
+            unit="pacjentów"
+          />
 
           {caseload.pending.length > 0 && (
             <div className="panel-quiet">
