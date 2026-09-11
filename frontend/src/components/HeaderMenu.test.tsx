@@ -299,6 +299,18 @@ describe('inside the diet module', () => {
     )
   })
 
+  it('offers the module\'s own reports, not the psychotherapy ones', async () => {
+    /** Both entries are called "Raporty" because both are reports — but the
+     *  two modules do not agree on what a week is, so the diet menu must lead
+     *  to /diet/reports. The sweep above already pins that /reports appears
+     *  nowhere in this menu. */
+    await openAt(ROUTES.diet)
+
+    expect(screen.getByRole('link', { name: 'Raporty' })).toHaveAttribute(
+      'href', ROUTES.dietReports,
+    )
+  })
+
   it('does not offer the psychotherapy archive under that name', async () => {
     /** Two screens called "Dzienniczki" in one menu is how a patient ends up
      *  looking for their meals in the emotion diary. */

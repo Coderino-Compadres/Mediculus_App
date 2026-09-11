@@ -8,6 +8,8 @@ import DietJournals from './pages/DietJournals'
 import DietHydration from './pages/DietHydration'
 import DietSupplements from './pages/DietSupplements'
 import DietActivitySleep from './pages/DietActivitySleep'
+import DietReports from './pages/DietReports'
+import DietReportDetail from './pages/DietReportDetail'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
@@ -419,6 +421,27 @@ function App() {
             element={
               <RequireAuth>
                 <DietActivitySleep />
+              </RequireAuth>
+            }
+          />
+          {/* The diet module's weekly reports (§10), list and detail. Patient
+              screens like every other one under /diet, so RequireAuth's
+              defaults keep a guardian and a specialist out: both derive from
+              the same clinical rows the rest of the module reads, and neither
+              account has a `patient` row to read them against. */}
+          <Route
+            path={ROUTES.dietReports}
+            element={
+              <RequireAuth>
+                <DietReports />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.dietReportDetail}
+            element={
+              <RequireAuth>
+                <DietReportDetail />
               </RequireAuth>
             }
           />

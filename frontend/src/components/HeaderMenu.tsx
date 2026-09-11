@@ -75,6 +75,11 @@ const DIET_ITEMS: MenuItem[] = [
   { label: routeTitle(ROUTES.dietHydration), to: ROUTES.dietHydration },
   { label: routeTitle(ROUTES.dietSupplements), to: ROUTES.dietSupplements },
   { label: routeTitle(ROUTES.dietActivitySleep), to: ROUTES.dietActivitySleep },
+  // §03 lists "Raporty" after the two halves of §08 and §09, and this is the
+  // module's own — /diet/reports, not the psychotherapy /reports. The two
+  // entries are named the same because they are the same word for two
+  // different documents; a patient only ever sees one of the two menus.
+  { label: routeTitle(ROUTES.dietReports), to: ROUTES.dietReports },
   { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
   { label: 'Przejdź do części psychoterapeutycznej', to: ROUTES.home },
 ]

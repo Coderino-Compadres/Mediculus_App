@@ -60,6 +60,17 @@ export const ROUTES = {
    *  switching through the menu. A segmented switch on the screen is what that
    *  means in an app you cannot navigate away from and back. */
   dietActivitySleep: '/diet/activity-sleep',
+  /** "Raporty" (§10) — the diet module's own weekly reports.
+   *
+   *  Its own pair of routes rather than a reuse of `/reports`, and the reason
+   *  is not tidiness: the two modules do not agree on what a week is. The
+   *  psychotherapy report covers a Monday-Sunday week (`core/reports.py`
+   *  `start_of_week`); this one covers seven days counted from the patient's
+   *  first entry, which is what both of the client's mockup sets say and what
+   *  she said out loud ("jeśli dzienniczki są rozpoczęte od wtorku, to do
+   *  następnego wtorku"). Nothing here touches the psychotherapy half. */
+  dietReports: '/diet/reports',
+  dietReportDetail: '/diet/reports/:id',
 } as const
 
 /** Fills in ROUTES.journalDetail's `:id` param — use instead of building the path by hand. */
@@ -75,6 +86,13 @@ export function reportDetailPath(id: string): string {
 /** The same for ROUTES.techniqueDetail, whose `:id` is a technique slug ('tipp'). */
 export function techniqueDetailPath(id: string): string {
   return ROUTES.techniqueDetail.replace(':id', id)
+}
+
+/** The same for ROUTES.dietReportDetail, whose `:id` is also a week
+ *  ('week-2026-09-01') — the id names the week's *first* day, which in this
+ *  module is rarely a Monday. See utils/dietWeeks.ts. */
+export function dietReportDetailPath(id: string): string {
+  return ROUTES.dietReportDetail.replace(':id', id)
 }
 
 /** Fills in the two `:params` of a specialist's view of one patient's reports. */
@@ -140,6 +158,14 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.dietSupplements]: 'Suplementy i leki',
   /* §03's own name for the menu entry, kept verbatim. */
   [ROUTES.dietActivitySleep]: 'Aktywność i sen',
+  /* The same two words the psychotherapy module uses, deliberately. The titles
+     are keyed by path, the two menus are separate lists picked by route
+     (`HeaderMenu.isDietRoute`), and a patient inside "DIETETYKA I
+     PSYCHODIETETYKA" reading "Raporty" is reading the right word — renaming
+     one of them to keep a map's values unique would be inventing a label to
+     satisfy a data structure. */
+  [ROUTES.dietReports]: 'Raporty',
+  [ROUTES.dietReportDetail]: 'Raport tygodniowy',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',

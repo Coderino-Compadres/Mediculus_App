@@ -1,0 +1,389 @@
+/* One weekly report in the diet module (§10, the detail half).
+ *
+ * Its own stylesheet, and specifically *not* reportDetail.css: the
+ * psychotherapy report opens with a full-bleed sage hero card carrying a
+ * download button, and this document has neither. Sharing that sheet would
+ * have meant inheriting the shape of a screen this one deliberately is not.
+ *
+ * Colour roles as everywhere else in the module: ochre marks the module's own
+ * things (the nadtytuł, the hours of meals, a day that holds an entry), sage is
+ * an action, lavender is the page, white is a card. **Nothing here is red.** A
+ * day without an entry is not an error and a quiet week is not a failure —
+ * §15 reserves red for signing out and withdrawing consent, and this screen has
+ * neither.
+ *
+ * No `text-transform: capitalize` anywhere: Polish weekday and month names are
+ * lowercase. */
+
+.diet-report-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-report-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-report-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+}
+
+.diet-report-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-report-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.diet-report-range {
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}
+
+/* The arrow leads back to the list of reports, not to the module home: this
+   screen is one level deeper, and the header arrow means "one screen back"
+   throughout both mockup sets. */
+.diet-report-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-graphite);
+  text-decoration: none;
+  background: var(--color-surface);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.diet-report-back:hover {
+  color: var(--color-sage-hover);
+  text-decoration: none;
+}
+
+.diet-report-back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.diet-report-header-titles {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* Cards */
+
+.diet-report-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.diet-report-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 14px;
+}
+
+/* Regularność wpisów — seven chips, in the week's own order */
+
+.diet-report-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* A chip is not interactive, so it carries no 44px floor — the target rule is
+   about things you press. It is sized to be legible seven across a 390px
+   screen, which `flex: 1 1 0` plus a floor does without a media query. */
+.diet-report-day-chip {
+  flex: 1 1 0;
+  min-width: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+/* Ochre for a day that holds an entry — the module's "active state" colour,
+   per §15. The state is written out for a screen reader in the markup, so the
+   colour is a second channel rather than the only one.
+
+   THE BORDER CARRIES THE DIFFERENCE, NOT THE FILL. --color-ochre-soft over
+   white is rgb(246, 234, 209), which is 1.19:1 against the empty chip beside
+   it — a strip of seven that a sighted reader with any loss of contrast
+   sensitivity cannot read at all. --color-ochre-edge as the border was not the
+   answer either, at 1.80:1. --color-ochre-text is 5.36:1 on white, so the
+   outline is what separates the two states and the fill stays as the quiet
+   second channel it was drawn as. */
+.diet-report-day-chip-filled {
+  background: var(--color-ochre-soft);
+  border-color: var(--color-ochre-text);
+}
+
+.diet-report-day-chip-weekday {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  color: var(--color-graphite);
+}
+
+.diet-report-day-chip-date {
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+}
+
+/* Pory posiłków — the grid */
+
+/* The table scrolls inside its own card rather than pushing the page sideways,
+   which is what a fifth column ("Bez godziny") does on the narrowest screens. */
+.diet-report-grid-scroll {
+  overflow-x: auto;
+}
+
+.diet-report-grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.diet-report-grid th,
+.diet-report-grid td {
+  padding: 8px 6px;
+  text-align: center;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.diet-report-grid thead th {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+  white-space: nowrap;
+}
+
+.diet-report-grid tbody th {
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-graphite);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.diet-report-grid tbody tr:last-child th,
+.diet-report-grid tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* One dot per meal. Ochre, like the hours it stands for — but the *readable*
+   ochre, and that is a contrast fix rather than a preference: --color-ochre on
+   a white cell is 1.94:1, and this dot is the only thing telling a sighted
+   reader that a meal fell in this slot, which WCAG 1.4.11 wants at 3:1.
+   --color-ochre-text is 5.36:1 there. (A screen reader was never the problem:
+   every dot carries the meal's own kind as its label.) Inline-block with an
+   explicit size because the element holds nothing but that label. */
+.diet-report-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0 2px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ochre-text);
+  vertical-align: middle;
+}
+
+/* Zestawienie tygodnia — one block per day */
+
+.diet-report-days-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.diet-report-day h3 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 0 0 6px;
+}
+
+/* Quieter and italic, so it reads as the app speaking rather than as the
+   patient's own words — the same treatment DietJournals gives a meal saved
+   without a description. */
+.diet-report-day-empty {
+  font-size: 14px;
+  font-style: italic;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.diet-report-day-facts {
+  margin: 0;
+  border-left: 2px solid var(--color-divider);
+  padding-left: 14px;
+}
+
+.diet-report-day-facts dt {
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-sage-hover);
+  margin-top: 10px;
+}
+
+.diet-report-day-facts dt:first-child {
+  margin-top: 0;
+}
+
+.diet-report-day-facts dd {
+  margin: 4px 0 0;
+}
+
+.diet-report-meals,
+.diet-report-facts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diet-report-meal {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+/* Ochre, per §15: "godziny posiłków" is one of the three things the module
+   marks in its own colour. --color-ochre-text and deliberately not
+   --color-caution, whose own definition is wording that carries a consequence:
+   an hour is not a warning, and this module does not tell anybody a late
+   dinner is something to answer for. Same hex, so nothing moves visually.
+   Fixed width so the descriptions line up down the card even when one meal has
+   no hour. */
+.diet-report-meal-time {
+  flex-shrink: 0;
+  min-width: 76px;
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-ochre-text);
+}
+
+.diet-report-meal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.diet-report-meal-kind {
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-graphite);
+}
+
+.diet-report-meal-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite);
+}
+
+.diet-report-meal-text-empty,
+.diet-report-fact-empty {
+  font-size: 14px;
+  font-style: italic;
+  color: var(--color-graphite-muted);
+}
+
+.diet-report-fact {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite);
+}
+
+.diet-report-fact-label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-graphite-muted);
+}
+
+.diet-report-fact-aside {
+  color: var(--color-graphite-muted);
+}
+
+/* Not found */
+
+.diet-report-not-found {
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 0 auto;
+}
+
+/* An inline link in a line of text, so the 44px target comes from a stretched
+   ::after rather than from real height — giving it a box would push the page
+   around it. The same technique .auth-link-button and .journals-back use. */
+.diet-report-back-link {
+  position: relative;
+  display: inline-block;
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-sage);
+  margin: 0 auto;
+}
+
+.diet-report-back-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  min-height: 44px;
+  transform: translateY(-50%);
+}
+
+/* The closing note */
+
+.diet-report-footnote {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  background: var(--color-surface-quiet);
+  border-radius: var(--radius-tile);
+  padding: 14px 18px;
+  margin: 0 auto;
+}

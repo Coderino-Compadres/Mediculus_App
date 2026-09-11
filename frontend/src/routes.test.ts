@@ -5,6 +5,7 @@ import {
   PLACEHOLDER_ROUTES,
   ROUTES,
   ROUTE_TITLES,
+  dietReportDetailPath,
   journalDetailPath,
   reportDetailPath,
   routeTitle,
@@ -92,6 +93,10 @@ describe('the path builders', () => {
     expect(techniqueDetailPath('tipp')).toBe('/techniques/tipp')
   })
 
+  it('fill in a diet week, whose id names its first day rather than a Monday', () => {
+    expect(dietReportDetailPath('week-2026-09-01')).toBe('/diet/reports/week-2026-09-01')
+  })
+
   it('fill in both params of a specialist reading one patient', () => {
     expect(specialistPatientReportsPath('p-1')).toBe('/specialist/patients/p-1/reports')
     expect(specialistPatientReportPath('p-1', 'week-2026-08-03'))
@@ -109,6 +114,7 @@ describe('the path builders', () => {
     const built = [
       journalDetailPath('a'),
       reportDetailPath('week-2026-08-03'),
+      dietReportDetailPath('week-2026-09-01'),
       techniqueDetailPath('tipp'),
       specialistPatientReportsPath('p'),
       specialistPatientReportPath('p', 'w'),
@@ -121,6 +127,9 @@ describe('the path builders', () => {
   it('build paths their own route pattern still matches', () => {
     expect(matchPath(ROUTES.journalDetail, journalDetailPath('abc-123'))).not.toBeNull()
     expect(matchPath(ROUTES.reportDetail, reportDetailPath('week-2026-08-03'))).not.toBeNull()
+    expect(
+      matchPath(ROUTES.dietReportDetail, dietReportDetailPath('week-2026-09-01')),
+    ).not.toBeNull()
     expect(matchPath(ROUTES.techniqueDetail, techniqueDetailPath('tipp'))).not.toBeNull()
     expect(
       matchPath(ROUTES.specialistPatientReport, specialistPatientReportPath('p-1', 'w-1')),
