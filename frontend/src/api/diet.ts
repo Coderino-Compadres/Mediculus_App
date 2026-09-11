@@ -60,7 +60,6 @@ import { apiRequest } from './client'
 import { toIsoDate } from '../utils/days'
 import { WATER } from '../utils/drinks'
 import { buildDietReports, findDietReport } from '../utils/dietReport'
-import type { DrinkName } from '../utils/drinks'
 import type { DietReportSource, DietWeeklyReport } from '../types/dietReport'
 import type {
   DietActivityDay,

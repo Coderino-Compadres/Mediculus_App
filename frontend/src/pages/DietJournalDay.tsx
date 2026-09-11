@@ -84,12 +84,25 @@ function MealRow({ meal }: { meal: DietMeal }) {
 
 function DietJournalDay() {
   const { date = '' } = useParams<{ date: string }>()
-  const [day, setDay] = useState<DietDayRecord | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  /** Told apart from a failure: a 404 is an answer, not a fault, and it must
-   *  not offer "Spróbuj ponownie" — the day will not appear on a retry. */
-  const [missing, setMissing] = useState(false)
+  /**
+   * One piece of state rather than four.
+   *
+   * The four were `day`/`loading`/`loadError`/`missing`, and the effect below
+   * had to reset three of them on its way in — three `setState` calls in a
+   * row, which is a cascade of renders and what `react(set-state-in-effect)`
+   * warns about. As one value the reset *is* the load: there is no moment at
+   * which the screen holds yesterday's error next to today's date.
+   *
+   * `missing` is its own status rather than an error string, because a 404 is
+   * an answer and not a fault: it must not offer "Spróbuj ponownie", since
+   * the day will not appear on a retry.
+   */
+  const [state, setState] = useState<
+    | { status: 'loading' }
+    | { status: 'ready'; day: DietDayRecord }
+    | { status: 'missing' }
+    | { status: 'failed'; message: string }
+  >({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
 
   /** Whether this is today, which is the only day the module lets anybody
@@ -101,33 +114,37 @@ function DietJournalDay() {
   // `async` effect body.
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setMissing(false)
-    setLoadError(null)
 
     fetchDietJournalDay(date)
-      .then((loaded) => {
-        if (!cancelled) setDay(loaded)
+      .then((day) => {
+        if (!cancelled) setState({ status: 'ready', day })
       })
       .catch((cause: unknown) => {
         if (cancelled) return
         if (cause instanceof ApiError && cause.status === 404) {
-          setMissing(true)
+          setState({ status: 'missing' })
           return
         }
         // The server's own sentence when it gave one: every refusal a patient
         // can actually reach here is a gate (an unlinked minor, withdrawn
         // consents), and each arrives saying what to do about it.
-        setLoadError((cause instanceof ApiError && cause.message) || LOAD_ERROR)
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
+        setState({
+          status: 'failed',
+          message: (cause instanceof ApiError && cause.message) || LOAD_ERROR,
+        })
       })
 
     return () => {
       cancelled = true
     }
   }, [date, attempt])
+
+  /** Back to 'loading' *and* re-runs the effect: one state, so the retry
+   *  cannot leave the old error on screen beside the new request. */
+  function retry() {
+    setState({ status: 'loading' })
+    setAttempt((n) => n + 1)
+  }
 
   return (
     <div className="diet-day-page">
@@ -141,12 +158,14 @@ function DietJournalDay() {
         </Link>
         <div className="diet-day-header-titles">
           <p className="diet-day-module-label">DIETETYKA I PSYCHODIETETYKA</p>
-          <h1>{day ? dayLabel(day.date) : 'Dzienniczek dnia'}</h1>
+          <h1>
+            {state.status === 'ready' ? dayLabel(state.day.date) : 'Dzienniczek dnia'}
+          </h1>
         </div>
         <HeaderMenu />
       </header>
 
-      {loading && (
+      {state.status === 'loading' && (
         <p className="diet-day-status" role="status" aria-busy="true">
           Wczytywanie dzienniczka…
         </p>
@@ -154,16 +173,16 @@ function DietJournalDay() {
 
       {/* A failure is said as one. Rendering the empty state here would tell a
           patient the day is empty when it is only unreachable. */}
-      {!loading && loadError && (
+      {state.status === 'failed' && (
         <LoadError
           className="diet-day-status diet-day-status-error"
-          message={loadError}
-          onRetry={() => setAttempt((n) => n + 1)}
+          message={state.message}
+          onRetry={retry}
         />
       )}
 
       {/* No retry: the day will not appear on a second attempt. */}
-      {!loading && !loadError && missing && (
+      {state.status === 'missing' && (
         <section className="diet-day-empty">
           <h2>Pusty dzień</h2>
           <p>{NOT_FOUND}</p>
@@ -173,9 +192,9 @@ function DietJournalDay() {
         </section>
       )}
 
-      {!loading && !loadError && !missing && day && (
+      {state.status === 'ready' && (
         <>
-          <p className="diet-day-count">{pluralMeals(day.meals.length)}</p>
+          <p className="diet-day-count">{pluralMeals(state.day.meals.length)}</p>
 
           {isToday ? (
             /* Today is editable, but not here — its meals are on the home
@@ -198,7 +217,7 @@ function DietJournalDay() {
               Posiłki tego dnia
             </h2>
             <ul className="diet-day-meals">
-              {day.meals.map((meal) => (
+              {state.day.meals.map((meal) => (
                 <MealRow key={meal.id} meal={meal} />
               ))}
             </ul>
