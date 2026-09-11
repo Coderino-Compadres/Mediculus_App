@@ -134,8 +134,8 @@ export interface DietDay {
    */
   mealCount: number
   /**
-   * Today's meals, in the order the history renders a day — houred first and
-   * by hour, then the unhoured ones.
+   * Today's meals, in the order the history renders a day — newest first,
+   * the unhoured ones last.
    *
    * The home screen used to get a count alone, on the argument that it renders
    * whether the day has started and the meals live a screen away in the

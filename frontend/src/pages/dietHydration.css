@@ -83,7 +83,11 @@
 .hydration-date {
   font-size: 14px;
   color: var(--color-graphite-muted);
-  margin: 0;
+  /* `margin-block`, never the `margin` shorthand: `.hydration-page > *`
+     centres every child with `margin-left/right: auto` at the same
+     specificity, so a shorthand here wins on source order and throws the date
+     against the left edge of the window. It did — found in manual testing. */
+  margin-block: 0;
 }
 
 /* Status */

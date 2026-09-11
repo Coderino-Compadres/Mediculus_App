@@ -664,6 +664,13 @@ class TodayMealsPayloadTests(DietTestCase):
     """The home screen's day now carries the meals, not only a count."""
 
     def test_the_day_lists_todays_meals_in_the_history_s_own_order(self):
+        """Newest first, exactly as `load_history` renders a day.
+
+        Not a preference: today is the one day drawn on *both* the home screen
+        and the history, one screen apart, and it used to come out ascending
+        here and descending there. Which order a day happened in is a fact
+        about the day rather than a property of the screen.
+        """
         self.meal(kind='Kolacja', at='19:00', text='Kanapka.')
         self.meal(kind=None, at=None, text='Bez godziny.')
         self.meal(kind='Śniadanie', at='08:00', text='Owsianka.')
@@ -672,7 +679,23 @@ class TodayMealsPayloadTests(DietTestCase):
 
         self.assertEqual(
             [m['description'] for m in body['meals']],
-            ['Owsianka.', 'Kanapka.', 'Bez godziny.'],
+            ['Kanapka.', 'Owsianka.', 'Bez godziny.'],
+        )
+
+    def test_the_home_screen_and_the_history_agree_about_today(self):
+        """The regression itself, pinned across the two endpoints."""
+        self.meal(kind='Kolacja', at='19:00', text='Kanapka.')
+        self.meal(kind='Śniadanie', at='08:00', text='Owsianka.')
+        self.meal(kind=None, at=None, text='Bez godziny.')
+
+        day = self.client.get(self.day_url()).json()
+        history = self.client.get(self.history_url()).json()
+        today_in_history = next(
+            d for d in history if d['date'] == self.today.isoformat())
+
+        self.assertEqual(
+            [m['description'] for m in day['meals']],
+            [m['description'] for m in today_in_history['meals']],
         )
 
     def test_it_holds_no_other_day(self):

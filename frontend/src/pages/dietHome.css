@@ -230,13 +230,18 @@
   margin: 0 0 16px;
 }
 
-/* The confirmation after an edit, on arrival back from the form. */
+/* The confirmation after an edit, on arrival back from the form.
+   `margin-bottom` alone, never the `margin` shorthand: `.diet-page > *`
+   centres every child with `margin-left/right: auto` at the same specificity,
+   so a shorthand here wins on source order and throws the notice against the
+   left edge of the window. Found in manual testing, and the same fragility
+   CLAUDE.md records for `.panel-empty` under `.journals-page > *`. */
 .diet-saved-notice {
   background: var(--color-surface-quiet);
   border-radius: var(--radius-card);
   color: var(--color-graphite);
   font-size: 14px;
-  margin: 0 0 16px;
+  margin-bottom: 16px;
   padding: 12px 16px;
 }
 

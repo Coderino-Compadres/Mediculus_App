@@ -262,13 +262,21 @@ def streak_days(id_medical, today):
 def today_meals(id_medical, today):
     """Today's meals, in the order the history renders a day.
 
-    Houred meals first and by hour, then the unhoured ones — `load_history`'s
-    own ordering, shared rather than restated so the home screen and the
-    history cannot disagree about what order a day happened in.
+    NEWEST FIRST, which is `load_history`'s ordering and not a second opinion
+    about it. This docstring used to claim they were shared while the query
+    said `asc` against the history's `desc` — so the *same* day, today, was
+    drawn one way on the home screen and the other way in "Dzienniczki
+    żywieniowe", one screen apart. Found by reading both in a browser, which
+    is the only place the two are visible at once.
+
+    Sharing it rather than picking per screen is the point: which order a day
+    happened in is a fact about the day, not a property of the screen showing
+    it. It also puts the meal just written at the top, next to the "Edytuj"
+    that corrects it.
     """
     return list(
         DietMeal.objects.filter(id_medical=id_medical, entry_date=today)
-        .order_by(F('eaten_at').asc(nulls_last=True), 'created_at')
+        .order_by(F('eaten_at').desc(nulls_last=True), '-created_at')
     )
 
 
