@@ -6,7 +6,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { fetchDietHistory } from '../api/diet'
 import { fromIsoDate } from '../utils/days'
-import { pluralMeals } from '../utils/meals'
+import { mealHeading, pluralMeals } from '../utils/meals'
 import { usePagination } from '../hooks/usePagination'
 import type { DietJournalDay, DietMeal } from '../types/diet'
 import { ROUTES } from '../routes'
@@ -85,17 +85,6 @@ function dayLabel(iso: string): string {
     day: 'numeric',
     month: 'long',
   })
-}
-
-/**
- * "Przekąska · 16:20", or whichever half the patient answered.
- *
- * A meal that says neither is still a meal — it is described by its text, and
- * the row leads with that instead. Nothing here reads "Nieznany posiłek": the
- * app does not label an answer somebody chose not to give.
- */
-function mealHeading(meal: DietMeal): string | null {
-  return [meal.kind, meal.time].filter(Boolean).join(' · ') || null
 }
 
 function MealRow({ meal }: { meal: DietMeal }) {

@@ -56,6 +56,12 @@ urlpatterns = [
     # ordering rule the diary follows.
     path('diet/today/', views.DietDayView.as_view(), name='diet-today'),
     path('diet/meals/', views.DietMealHistoryView.as_view(), name='diet-meals'),
+    # Correcting or dropping today's meal. Declared after the bare history, the
+    # same ordering `diary/today/` needs before `diary/<uuid:...>/`.
+    path(
+        'diet/meals/<uuid:id_meal>/',
+        views.DietMealView.as_view(), name='diet-meal',
+    ),
     # §08's second half, "Suplementy i leki".
     path('diet/supplements/', views.SupplementsView.as_view(), name='diet-supplements'),
     path(

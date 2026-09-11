@@ -22,6 +22,8 @@
  *   GET    /api/diet/today/                          → `fetchDietDay`
  *   GET    /api/diet/meals/                           → `fetchDietHistory`
  *   POST   /api/diet/meals/                           → `createMeal`
+ *   PUT    /api/diet/meals/<id>/                      → `updateMeal`
+ *   DELETE /api/diet/meals/<id>/                      → `deleteMeal`
  *   GET    /api/diet/hydration/                       → `fetchHydration`
  *   POST   /api/diet/hydration/                       → `recordDrink`
  *   DELETE /api/diet/hydration/<id>/                  → `removeDrink`
@@ -90,6 +92,7 @@ export function emptyDietDay(today: Date = new Date()): DietDay {
     date: toIsoDate(today),
     streakDays: 0,
     mealCount: 0,
+    meals: [],
   }
 }
 
@@ -103,6 +106,12 @@ interface DietDayPayload {
   date: string
   streak_days: number
   meal_count: number
+  /** Optional on the wire, not in the type the screens read. A backend a
+   *  release behind this file sends a day with no `meals` key, and throwing on
+   *  it would take the whole screen down to show a count of zero — strictly
+   *  worse than the count the server did send, next to an empty list. Same
+   *  judgement as `needsConsents` failing open in `api/auth.ts`. */
+  meals?: DietMealPayload[]
 }
 
 /** As `core.meals.serialize_meal` sends it. */
@@ -118,14 +127,26 @@ interface DietJournalDayPayload {
   meals: DietMealPayload[]
 }
 
-/** Today's meal count and the food diary's own streak. */
-export async function fetchDietDay(): Promise<DietDay> {
-  const payload = await apiRequest<DietDayPayload>('/api/diet/today/')
+/**
+ * One day, mapped once.
+ *
+ * Four callers now — the read and the three writes that answer with the
+ * rebuilt day — and the shape gained a field the moment today's meals became
+ * editable. Four copies of that mapping would be four chances for one of them
+ * to keep sending a day with no meals in it.
+ */
+function toDietDay(payload: DietDayPayload): DietDay {
   return {
     date: payload.date,
     streakDays: payload.streak_days,
     mealCount: payload.meal_count,
+    meals: (payload.meals ?? []).map(toMeal),
   }
+}
+
+/** Today's meals, their count, and the food diary's own streak. */
+export async function fetchDietDay(): Promise<DietDay> {
+  return toDietDay(await apiRequest<DietDayPayload>('/api/diet/today/'))
 }
 
 /**
@@ -258,14 +279,58 @@ export async function createMeal(input: DietMealInput): Promise<DietMealSaved> {
       },
     },
   )
-  return {
-    meal: toMeal(payload.meal),
-    day: {
-      date: payload.day.date,
-      streakDays: payload.day.streak_days,
-      mealCount: payload.day.meal_count,
+  return { meal: toMeal(payload.meal), day: toDietDay(payload.day) }
+}
+
+/**
+ * Correct today's meal — PUT, so it **replaces** rather than merges.
+ *
+ * The form submits its whole state, the same rule as the diary's own entry and
+ * the supplement form: a field cleared on screen is an answer taken back, not
+ * one left alone. Sending only what changed would make clearing the hour
+ * impossible from the only form that writes it.
+ *
+ * The day is not sent here either, and on an edit that matters more than on a
+ * create: the server refuses to move a meal between days, so a browser that
+ * tried would be silently ignored rather than told.
+ *
+ * ONLY TODAY'S MEAL. An older one answers 403 with the server's own sentence
+ * (`meals.MEAL_NOT_TODAY`) rather than a 404 — it is on the history screen in
+ * front of the patient, so "no such thing" would be the wrong answer. Screens
+ * render that message rather than a generic one.
+ */
+export async function updateMeal(
+  id: string,
+  input: DietMealInput,
+): Promise<DietMealSaved> {
+  const payload = await apiRequest<{ meal: DietMealPayload; day: DietDayPayload }>(
+    `/api/diet/meals/${id}/`,
+    {
+      method: 'PUT',
+      body: {
+        kind: input.kind || null,
+        time: input.time || null,
+        description: input.description.trim(),
+      },
     },
-  }
+  )
+  return { meal: toMeal(payload.meal), day: toDietDay(payload.day) }
+}
+
+/**
+ * Drop today's meal, and answer with the day it left behind.
+ *
+ * The rebuilt day rather than nothing, because three things on the home screen
+ * move when one meal goes: the list, the count and the streak — a day emptied
+ * of its last meal breaks the run. Recomputing that in the browser is how one
+ * day ends up with two versions of itself.
+ */
+export async function deleteMeal(id: string): Promise<DietDay> {
+  const payload = await apiRequest<{ day: DietDayPayload }>(
+    `/api/diet/meals/${id}/`,
+    { method: 'DELETE' },
+  )
+  return toDietDay(payload.day)
 }
 
 export async function fetchHydration(): Promise<HydrationDay> {
@@ -327,7 +392,10 @@ interface SupplementPayload {
   name: string
   dose: string | null
   frequency: string | null
-  hour: string | null
+  /** Optional on the wire for the reason `DietDayPayload.meals` is: a backend
+   *  a release behind this file sends no such key, and an empty list is a
+   *  better answer than a screen that throws. */
+  hours?: string[]
   start_date: string | null
   end_date: string | null
   reminder_enabled: boolean
@@ -340,7 +408,7 @@ function toSupplement(payload: SupplementPayload): Supplement {
     name: payload.name,
     dose: payload.dose,
     frequency: payload.frequency,
-    hour: payload.hour,
+    hours: payload.hours ?? [],
     startDate: payload.start_date,
     endDate: payload.end_date,
     reminderEnabled: payload.reminder_enabled,
@@ -364,7 +432,11 @@ function toPayload(input: SupplementInput): Record<string, unknown> {
     name: input.name.trim(),
     dose: text(input.dose),
     frequency: text(input.frequency),
-    hour: text(input.hour),
+    // Blanks dropped rather than sent: the form keeps an empty row while
+    // somebody is still typing into it, and '' is not a time. Sorting and
+    // de-duplicating is the server's job (`validate_hours`), so this sends
+    // what was typed.
+    hours: input.hours.map((hour) => hour.trim()).filter((hour) => hour !== ''),
     start_date: text(input.startDate),
     end_date: text(input.endDate),
     reminder_enabled: input.reminderEnabled,

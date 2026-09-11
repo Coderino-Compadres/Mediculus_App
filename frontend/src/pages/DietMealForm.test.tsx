@@ -19,20 +19,44 @@ import { ApiError } from '../api/client'
  */
 
 const createMeal = vi.fn()
-vi.mock('../api/diet', () => ({ createMeal: (...args: unknown[]) => createMeal(...args) }))
+const updateMeal = vi.fn()
+const fetchDietDay = vi.fn()
+vi.mock('../api/diet', () => ({
+  createMeal: (...args: unknown[]) => createMeal(...args),
+  updateMeal: (...args: unknown[]) => updateMeal(...args),
+  fetchDietDay: () => fetchDietDay(),
+}))
 
 const navigate = vi.fn()
+/** Which URL the form is on. `renderWithProviders` mounts the component
+ *  directly rather than through a `<Route path>`, so `useParams` has nothing
+ *  to read — it is steered here, the same way `useNavigate` already is. */
+let params: { id?: string } = {}
 vi.mock('react-router-dom', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router-dom')>()),
   useNavigate: () => navigate,
+  useParams: () => params,
 }))
 
+const SAVED_DAY = {
+  date: '2026-09-10', streakDays: 1, mealCount: 1,
+  meals: [{ id: 'm1', kind: 'Obiad', time: '13:30', description: '' }],
+}
+
 beforeEach(() => {
+  params = {}
   createMeal.mockReset()
   createMeal.mockResolvedValue({
     meal: { id: 'm1', kind: 'Obiad', time: '13:30', description: '' },
-    day: { date: '2026-09-10', streakDays: 1, mealCount: 1 },
+    day: SAVED_DAY,
   })
+  updateMeal.mockReset()
+  updateMeal.mockResolvedValue({
+    meal: { id: 'm1', kind: 'Obiad', time: '13:30', description: '' },
+    day: SAVED_DAY,
+  })
+  fetchDietDay.mockReset()
+  fetchDietDay.mockResolvedValue(SAVED_DAY)
   navigate.mockReset()
 })
 
@@ -202,5 +226,130 @@ describe('what this screen refuses to show', () => {
   it('judges nothing about the meal', () => {
     render()
     expect(document.body.textContent).not.toMatch(/zdrow|niezdrow|dobry wybór|za dużo|ocen/i)
+  })
+})
+
+describe('the same form, correcting one of today\'s meals', () => {
+  /**
+   * ONE COMPONENT FOR BOTH, because the rules about what a meal may hold —
+   * six kinds, an optional hour, a description that may be empty, nothing
+   * required — belong in one place. A second form would be a second set of
+   * them, free to disagree with the first.
+   */
+  const MEAL: { id: string; kind: string | null; time: string | null; description: string } = {
+    id: 'm1', kind: 'Kolacja', time: '19:30', description: 'Naleśniki.',
+  }
+
+  function renderEdit(meals = [MEAL]) {
+    params = { id: 'm1' }
+    fetchDietDay.mockResolvedValue({
+      date: '2026-09-10', streakDays: 1, mealCount: meals.length, meals,
+    })
+    return render()
+  }
+
+  it('says it is an edit rather than an addition', async () => {
+    renderEdit()
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Edycja posiłku' }),
+    ).toBeInTheDocument()
+  })
+
+  it('fills the form from the meal rather than from now', async () => {
+    /** The hour pre-filled with the current time is right when adding and
+     *  wrong when correcting: it would silently rewrite the hour of any meal
+     *  somebody opened to fix a typo in its description. */
+    renderEdit()
+
+    expect(await screen.findByLabelText(/Godzina posiłku/)).toHaveValue('19:30')
+    expect(screen.getByLabelText(/Opis posiłku/)).toHaveValue('Naleśniki.')
+    expect(screen.getByRole('button', { name: 'Kolacja' })).toHaveAttribute(
+      'aria-pressed', 'true',
+    )
+  })
+
+  it('shows an unanswered hour as an empty box, not as this moment', async () => {
+    renderEdit([{ ...MEAL, time: null, kind: null }])
+
+    expect(await screen.findByLabelText(/Godzina posiłku/)).toHaveValue('')
+  })
+
+  it('puts the whole form back, so a cleared field is an answer taken back', async () => {
+    renderEdit()
+    await screen.findByDisplayValue('Naleśniki.')
+
+    await userEvent.clear(screen.getByLabelText(/Opis posiłku/))
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz zmiany' }))
+
+    await waitFor(() =>
+      expect(updateMeal).toHaveBeenCalledWith('m1', {
+        kind: 'Kolacja', time: '19:30', description: '',
+      }),
+    )
+    expect(createMeal).not.toHaveBeenCalled()
+  })
+
+  it('returns to the home screen, which is where the meal is listed', async () => {
+    renderEdit()
+    await screen.findByDisplayValue('Naleśniki.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz zmiany' }))
+
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith(ROUTES.diet, {
+        state: { savedMeal: true },
+      }),
+    )
+  })
+
+  it('draws no form at all when the meal is not today\'s', async () => {
+    /** A form that can only fail is worse than a sentence saying why. The id
+     *  is looked up among today's meals, so a miss means archived or somebody
+     *  else's — from here the same fact. */
+    renderEdit([])
+
+    expect(await screen.findByText(/tylko dzisiejsze wpisy/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Zapisz zmiany' })).toBeNull()
+    expect(screen.queryByLabelText(/Opis posiłku/)).toBeNull()
+  })
+
+  it('reports a failed load rather than drawing an empty meal over it', async () => {
+    params = { id: 'm1' }
+    fetchDietDay.mockRejectedValue(new ApiError(403, 'Najpierw udziel zgód.'))
+
+    render()
+
+    expect(await screen.findByText('Najpierw udziel zgód.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Zapisz zmiany' })).toBeNull()
+  })
+
+  it('asks for no day, on an edit either', async () => {
+    /** A meal cannot be moved between days — the server refuses, so a browser
+     *  that tried would be ignored rather than told. */
+    renderEdit()
+    await screen.findByDisplayValue('Naleśniki.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz zmiany' }))
+
+    await waitFor(() => expect(updateMeal).toHaveBeenCalled())
+    expect(Object.keys(updateMeal.mock.calls[0][1]).sort()).toEqual(
+      ['description', 'kind', 'time'],
+    )
+  })
+
+  it('adding still says "Dodawanie" and posts', async () => {
+    /** The other half of one component: the add path is unchanged. */
+    render()
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Dodawanie posiłku' }),
+    ).toBeInTheDocument()
+    expect(fetchDietDay).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz posiłek' }))
+
+    await waitFor(() => expect(createMeal).toHaveBeenCalled())
+    expect(updateMeal).not.toHaveBeenCalled()
   })
 })

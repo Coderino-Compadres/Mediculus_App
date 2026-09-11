@@ -126,11 +126,27 @@ export interface DietDay {
    */
   streakDays: number
   /**
-   * How many meals today holds. A count rather than the meals themselves,
-   * because this screen never renders a meal — it renders whether the day has
-   * started. The list of meals belongs to "Historia dzienniczków żywieniowych".
+   * How many meals today holds.
+   *
+   * Kept alongside `meals` rather than derived from its length: it is what the
+   * greeting line renders, it travels from the server, and two places counting
+   * one day is how they end up disagreeing.
    */
   mealCount: number
+  /**
+   * Today's meals, in the order the history renders a day — houred first and
+   * by hour, then the unhoured ones.
+   *
+   * The home screen used to get a count alone, on the argument that it renders
+   * whether the day has started and the meals live a screen away in the
+   * history. That stopped being true when today's meals became **editable**:
+   * correcting a mistyped meal is something somebody does about today, on the
+   * screen they are already on, and a home screen that knew only "three" could
+   * offer no way to reach the one that is wrong.
+   *
+   * Only today. Every other day is still the history's.
+   */
+  meals: DietMeal[]
 }
 
 /**
@@ -337,13 +353,32 @@ export interface Supplement {
   dose: string | null
   /** 'raz dziennie', 'wg zaleceń lekarza' — free text, not a vocabulary. */
   frequency: string | null
-  /** 'HH:MM', or null for a preparation taken at no fixed hour. */
-  hour: string | null
+  /**
+   * The hours it is taken at, 'HH:MM' each, in the order of a day.
+   *
+   * A LIST, because a preparation can be taken more than once a day — a
+   * probiotic at 06:45 and again at 12:00 is one position on this list with
+   * two hours on its row, not two positions sharing a name. Empty means no
+   * fixed hour, which is what the single nullable `hour` used to mean.
+   *
+   * Sorted and de-duplicated by the server, so nothing here has to.
+   */
+  hours: string[]
   /** 'YYYY-MM-DD'. */
   startDate: string | null
   /** 'YYYY-MM-DD', or null for "bezterminowo". */
   endDate: string | null
   reminderEnabled: boolean
+  /**
+   * Whether it was ticked off **today** — one tick for the whole day, even on
+   * a preparation taken several times.
+   *
+   * That is deliberate rather than an oversight: a tick is a fact about a day
+   * (`uq_supplement_intake_day`), and making each dose tickable separately
+   * would mean the intake table learning about hours *and* a decision about
+   * what an untaken dose means — which is the one thing §08 says this module
+   * must not record.
+   */
   takenToday: boolean
 }
 
@@ -356,7 +391,9 @@ export interface SupplementInput {
   name: string
   dose: string | null
   frequency: string | null
-  hour: string | null
+  /** Zero or more 'HH:MM'. PUT replaces them, so an hour left out is an hour
+   *  taken off — the same rule the rest of this form follows. */
+  hours: string[]
   startDate: string | null
   endDate: string | null
   reminderEnabled: boolean

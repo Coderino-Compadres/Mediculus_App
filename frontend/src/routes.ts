@@ -46,6 +46,12 @@ export const ROUTES = {
    *  action, and until §04 was built it pointed at a PlaceholderPage, which is
    *  why the home screen and the history's empty state both already lead here. */
   dietMeal: '/diet/meal',
+  /** Correcting one of today's meals — pages/DietMealForm.tsx again, in edit
+   *  mode. Its own URL rather than an inline form on the home screen, so the
+   *  rules about what a meal may hold have one definition; §04's form already
+   *  carries them. Only today's meals can be reached: the backend refuses an
+   *  older one, and no screen offers the link. */
+  dietMealEdit: '/diet/meal/:id',
   /** "Historia dzienniczków żywieniowych" (§07) — pages/DietJournals.tsx. */
   dietJournals: '/diet/journals',
   /** "Nawodnienie" — the first half of §08 of the mockups.
@@ -93,6 +99,10 @@ export function specialistTechniqueEditPath(id: number | string): string {
   return ROUTES.specialistTechniqueEdit.replace(':id', String(id))
 }
 
+export function dietMealEditPath(id: string): string {
+  return ROUTES.dietMealEdit.replace(':id', id)
+}
+
 export interface PlaceholderRouteDef {
   path: string
   title: string
@@ -137,6 +147,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',
   [ROUTES.diet]: 'Dietetyka i psychodietetyka',
   [ROUTES.dietMeal]: 'Dodawanie posiłku',
+  [ROUTES.dietMealEdit]: 'Edycja posiłku',
   [ROUTES.dietJournals]: 'Dzienniczki żywieniowe',
   [ROUTES.dietHydration]: 'Nawodnienie',
   [ROUTES.dietSupplements]: 'Suplementy i leki',

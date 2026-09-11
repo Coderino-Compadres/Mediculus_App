@@ -11,7 +11,7 @@ from core.routers import MEDICAL_MODELS, CoreDatabaseRouter
 
 MEDICAL = [models.Diary, models.MoodScale, models.Technique, models.Raport,
            models.Hydration, models.DietMeal, models.Supplement,
-           models.SupplementIntake]
+           models.SupplementHour, models.SupplementIntake]
 USER_SIDE = [models.User, models.UserRole, models.Specjalist,
              models.Patient, models.ParentChild]
 

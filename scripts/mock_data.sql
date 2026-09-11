@@ -436,11 +436,26 @@ ON CONFLICT (id_hydration) DO NOTHING;
 -- says rather than substituting something vaguer -- a screen reviewed against
 -- the mockup should show the mockup's list.
 -- ----------------------------
-INSERT INTO supplement (id_supplement, id_medical, name, dose, frequency, hour, start_date, end_date, reminder_enabled) VALUES
-    ('f3000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000005', 'Witamina D3', '2000 IU', 'raz dziennie',                  '08:00', CURRENT_DATE - 180, NULL,                TRUE),
-    ('f3000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000005', 'Magnez',      '200 mg',  'raz dziennie',                  '21:00', CURRENT_DATE - 99,  CURRENT_DATE + 7,    TRUE),
-    ('f3000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000005', 'Sertralina',  '50 mg',   'raz dziennie, wg zaleceń lekarza', '08:00', CURRENT_DATE - 190, NULL,                FALSE)
+INSERT INTO supplement (id_supplement, id_medical, name, dose, frequency, start_date, end_date, reminder_enabled) VALUES
+    ('f3000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000005', 'Witamina D3', '2000 IU', 'raz dziennie',                  CURRENT_DATE - 180, NULL,                TRUE),
+    ('f3000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000005', 'Magnez',      '200 mg',  'raz dziennie',                  CURRENT_DATE - 99,  CURRENT_DATE + 7,    TRUE),
+    ('f3000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000005', 'Sertralina',  '50 mg',   'raz dziennie, wg zaleceń lekarza', CURRENT_DATE - 190, NULL,                FALSE),
+    -- Twice a day: one position on the list, two hours on its row. Seeded so
+    -- the case supplement_hour exists for is visible without typing it.
+    ('f3000000-0000-0000-0000-000000000004', 'c0000000-0000-0000-0000-000000000005', 'Probiotyk',   NULL,      'dwa razy dziennie, na czczo',   CURRENT_DATE - 45,  NULL,                TRUE)
 ON CONFLICT (id_supplement) DO NOTHING;
+
+-- ----------------------------
+-- SUPPLEMENT_HOUR
+-- The hours each preparation is taken at. Zero rows would be "no fixed hour".
+-- ----------------------------
+INSERT INTO supplement_hour (id_supplement_hour, id_supplement, hour) VALUES
+    ('f5000000-0000-0000-0000-000000000001', 'f3000000-0000-0000-0000-000000000001', '08:00'),
+    ('f5000000-0000-0000-0000-000000000002', 'f3000000-0000-0000-0000-000000000002', '21:00'),
+    ('f5000000-0000-0000-0000-000000000003', 'f3000000-0000-0000-0000-000000000003', '08:00'),
+    ('f5000000-0000-0000-0000-000000000004', 'f3000000-0000-0000-0000-000000000004', '06:45'),
+    ('f5000000-0000-0000-0000-000000000005', 'f3000000-0000-0000-0000-000000000004', '12:00')
+ON CONFLICT (id_supplement_hour) DO NOTHING;
 
 -- ----------------------------
 -- SUPPLEMENT_INTAKE

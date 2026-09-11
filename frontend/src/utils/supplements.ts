@@ -93,3 +93,17 @@ export function pluralItems(count: number): string {
   if (last >= 2 && last <= 4 && (teens < 12 || teens > 14)) return 'pozycje'
   return 'pozycji'
 }
+
+/**
+ * How many hours one preparation may carry, mirroring
+ * `core.supplements.MAX_HOURS_PER_SUPPLEMENT`.
+ *
+ * A backstop rather than a product rule — nothing is taken twelve times a day
+ * — and it is duplicated here only so the form can stop offering another box
+ * instead of letting the save come back a 400 about a field the patient
+ * cannot see. The server still enforces it; this number going stale would
+ * cost a confusing refusal, which is why `test_supplements_api.py` parses
+ * this file and compares the two, the same guard `test_meals.py` puts on the
+ * meal kinds.
+ */
+export const MAX_HOURS_PER_SUPPLEMENT = 12

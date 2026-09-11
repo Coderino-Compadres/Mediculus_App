@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
-import { createMeal } from '../api/diet'
+import { createMeal, fetchDietDay, updateMeal } from '../api/diet'
 import { ApiError } from '../api/client'
 import { MEAL_KINDS } from '../utils/meals'
 import { ROUTES } from '../routes'
@@ -61,6 +61,18 @@ const DESCRIPTION_HINT =
 const NOTHING_REQUIRED = 'Nic tu nie jest wymagane. Niepełny wpis jest lepszy niż żaden.'
 
 const SAVE_ERROR = 'Nie udało się zapisać posiłku.'
+const LOAD_ERROR = 'Nie udało się wczytać posiłku.'
+
+/**
+ * Why an edit can find nothing to edit.
+ *
+ * The form reads today's meals and looks the id up among them, so a miss means
+ * the meal is not today's — archived, or somebody else's, which from here are
+ * the same fact: not yours to correct now. Said plainly rather than as a bare
+ * "404", and it offers the thing that still works.
+ */
+const NOT_TODAYS_MEAL =
+  'Tego posiłku nie można już poprawić — edytować można tylko dzisiejsze wpisy.'
 
 /** 'HH:MM' now, in the reader's own clock — the same shape the column holds. */
 function nowHour(now: Date = new Date()): string {
@@ -69,12 +81,64 @@ function nowHour(now: Date = new Date()): string {
 
 function DietMealForm() {
   const navigate = useNavigate()
+  /** Present on `/diet/meal/:id`, absent on `/diet/meal`. One component for
+   *  both, because the rules about what a meal may hold — six kinds, an
+   *  optional hour, a description that may be empty — belong in one place. A
+   *  second form would be a second set of them, free to disagree. */
+  const { id } = useParams<{ id: string }>()
+  const editing = id !== undefined
 
   const [kind, setKind] = useState<string | null>(null)
-  const [time, setTime] = useState(() => nowHour())
+  // Pre-filled with now when adding, and with the meal's own hour when
+  // editing — where an unanswered hour is an empty box, not this moment.
+  const [time, setTime] = useState(() => (id === undefined ? nowHour() : ''))
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(editing)
+  /** Set when there is nothing to edit, which hides the form: a form over a
+   *  meal that cannot be saved is a form that can only fail. */
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  /**
+   * Fill the form from today's meals.
+   *
+   * `GET /api/diet/today/` rather than an endpoint naming the meal: only
+   * today's meals are editable, and today's meals are exactly what that
+   * payload carries. An id that is not among them is not this patient's
+   * today, which is the whole of what this screen needs to know — so the
+   * module needs no `GET /api/diet/meals/<id>/` and gains no way to ask
+   * whether somebody else's row exists.
+   */
+  useEffect(() => {
+    if (id === undefined) return
+    let cancelled = false
+
+    fetchDietDay()
+      .then((day) => {
+        if (cancelled) return
+        const meal = day.meals.find((candidate) => candidate.id === id)
+        if (meal === undefined) {
+          setLoadError(NOT_TODAYS_MEAL)
+          return
+        }
+        setKind(meal.kind)
+        setTime(meal.time ?? '')
+        setDescription(meal.description)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setLoadError(cause instanceof ApiError ? cause.message : LOAD_ERROR)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [id])
 
   function toggleKind(chosen: string) {
     // Pressing the chosen chip again takes the answer back: with no required
@@ -89,11 +153,20 @@ function DietMealForm() {
     setError(null)
     const input: DietMealInput = { kind, time: time || null, description }
     try {
-      await createMeal(input)
-      // Straight to the history, which is where the meal now is — and it says
-      // so by showing it, rather than this screen claiming a save and staying
-      // put. `state` is what makes the arrival say something happened.
-      navigate(ROUTES.dietJournals, { state: { savedMeal: true } })
+      if (id === undefined) {
+        await createMeal(input)
+        // Straight to the history, which is where the meal now is — and it
+        // says so by showing it, rather than this screen claiming a save and
+        // staying put. `state` is what makes the arrival say something
+        // happened.
+        navigate(ROUTES.dietJournals, { state: { savedMeal: true } })
+      } else {
+        await updateMeal(id, input)
+        // Back to the home screen, which is where the edit was started from
+        // and where today's meals are listed — so the correction is visible
+        // on arrival rather than asserted here.
+        navigate(ROUTES.diet, { state: { savedMeal: true } })
+      }
     } catch (cause) {
       // The server's own sentence when it has one: every refusal a patient can
       // actually reach here is a gate (an unlinked minor, withdrawn consents),
@@ -115,11 +188,30 @@ function DietMealForm() {
         </Link>
         <div className="diet-meal-header-titles">
           <p className="diet-meal-module-label">DIETETYKA I PSYCHODIETETYKA</p>
-          <h1>Dodawanie posiłku</h1>
+          <h1>{editing ? 'Edycja posiłku' : 'Dodawanie posiłku'}</h1>
         </div>
         <HeaderMenu />
       </header>
 
+      {loading && (
+        <p className="diet-meal-status" role="status" aria-busy="true">
+          Wczytywanie posiłku…
+        </p>
+      )}
+
+      {/* The form is not drawn at all when there is nothing to save it into:
+          a form that can only fail is worse than a sentence saying why. */}
+      {loadError !== null && (
+        <div className="diet-meal-status diet-meal-status-error" role="alert">
+          <p>{loadError}</p>
+          <Link className="diet-meal-status-link" to={ROUTES.diet}>
+            Wróć do strony głównej
+          </Link>
+        </div>
+      )}
+
+      {!loading && loadError === null && (
+        <>
       <p className="diet-meal-intro">{NOTHING_REQUIRED}</p>
 
       <section className="diet-meal-card" aria-labelledby="meal-kind-heading">
@@ -161,7 +253,9 @@ function DietMealForm() {
           />
         </div>
         <p className="diet-meal-hint">
-          Wpisana jest bieżąca godzina — możesz ją zmienić albo wyczyścić.
+          {editing
+            ? 'Możesz zmienić godzinę albo ją wyczyścić.'
+            : 'Wpisana jest bieżąca godzina — możesz ją zmienić albo wyczyścić.'}
         </p>
       </section>
 
@@ -204,12 +298,18 @@ function DietMealForm() {
           disabled={saving}
           onClick={() => void save()}
         >
-          {saving ? 'Zapisywanie…' : 'Zapisz posiłek'}
+          {saving
+            ? 'Zapisywanie…'
+            : editing
+              ? 'Zapisz zmiany'
+              : 'Zapisz posiłek'}
         </button>
         <Link className="diet-meal-cancel" to={ROUTES.diet}>
           Anuluj
         </Link>
       </div>
+        </>
+      )}
     </div>
   )
 }

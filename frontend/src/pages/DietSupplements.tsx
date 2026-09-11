@@ -12,7 +12,13 @@ import {
 } from '../api/diet'
 import { ApiError } from '../api/client'
 import { PAGE_SIZE, usePagination } from '../hooks/usePagination'
-import { doseLabel, periodLabel, pluralItems, takenCount } from '../utils/supplements'
+import {
+  MAX_HOURS_PER_SUPPLEMENT,
+  doseLabel,
+  periodLabel,
+  pluralItems,
+  takenCount,
+} from '../utils/supplements'
 import type { Supplement, SupplementInput } from '../types/diet'
 import { ROUTES } from '../routes'
 import './dietSupplements.css'
@@ -94,7 +100,9 @@ const EMPTY_INPUT: SupplementInput = {
   name: '',
   dose: '',
   frequency: '',
-  hour: '',
+  // One empty row, so the form opens with a box to type an hour into rather
+  // than with a button that has to be found first.
+  hours: [''],
   startDate: '',
   endDate: '',
   reminderEnabled: true,
@@ -107,7 +115,10 @@ function toInput(supplement: Supplement): SupplementInput {
     name: supplement.name,
     dose: supplement.dose ?? '',
     frequency: supplement.frequency ?? '',
-    hour: supplement.hour ?? '',
+    // An empty row when there are none, for the same reason as above — a
+    // preparation with no fixed hour is still edited on a form that offers
+    // one. The blank is dropped on the way out (`toPayload`).
+    hours: supplement.hours.length > 0 ? [...supplement.hours] : [''],
     startDate: supplement.startDate ?? '',
     endDate: supplement.endDate ?? '',
     reminderEnabled: supplement.reminderEnabled,
@@ -121,7 +132,7 @@ const FIELD_BY_COLUMN: Record<string, keyof SupplementInput> = {
   name: 'name',
   dose: 'dose',
   frequency: 'frequency',
-  hour: 'hour',
+  hours: 'hours',
   start_date: 'startDate',
   end_date: 'endDate',
   reminder_enabled: 'reminderEnabled',
@@ -237,7 +248,20 @@ function SupplementRow({
           )}
         </div>
       </div>
-      {supplement.hour && <span className="supplement-hour">{supplement.hour}</span>}
+      {/* Every hour the preparation is taken at, on the one row it belongs
+          to — the case this list exists for is a probiotic at 06:45 and again
+          at 12:00, which is one position and two badges, never two positions
+          sharing a name. Nothing counts them: "2 ×" next to a medicine would
+          be the module scoring a regimen. */}
+      {supplement.hours.length > 0 && (
+        <span className="supplement-hours">
+          {supplement.hours.map((hour) => (
+            <span key={hour} className="supplement-hour">
+              {hour}
+            </span>
+          ))}
+        </span>
+      )}
     </li>
   )
 }
@@ -271,6 +295,32 @@ function SupplementForm({
 
   function set<K extends keyof SupplementInput>(key: K, value: SupplementInput[K]) {
     setInput((current) => ({ ...current, [key]: value }))
+  }
+
+  /** One hour changed, by position. */
+  function setHour(index: number, value: string) {
+    setInput((current) => ({
+      ...current,
+      hours: current.hours.map((hour, at) => (at === index ? value : hour)),
+    }))
+  }
+
+  function addHour() {
+    setInput((current) => ({ ...current, hours: [...current.hours, ''] }))
+  }
+
+  /**
+   * Take one hour off the form.
+   *
+   * The last one is emptied rather than removed, so the field never
+   * disappears: a preparation with no fixed hour is an ordinary answer, and
+   * the way to say it has to stay visible. Blanks are dropped on the way out.
+   */
+  function removeHour(index: number) {
+    setInput((current) => {
+      const left = current.hours.filter((_, at) => at !== index)
+      return { ...current, hours: left.length > 0 ? left : [''] }
+    })
   }
 
   return (
@@ -321,16 +371,57 @@ function SupplementForm({
         </div>
       </div>
 
+      {/* SEVERAL HOURS FOR ONE PREPARATION, which is what this whole field
+          exists for: a probiotic taken at 06:45 and again at 12:00 is one
+          position on the list. Before it, the only way to write that was two
+          preparations with the same name.
+
+          A fieldset, because these inputs are one answer — without it a
+          screen reader announces three unrelated "Godzina" boxes. Each is
+          numbered in its own label for the same reason. */}
+      <fieldset className="supplement-field supplement-hours-field">
+        <legend>Godziny</legend>
+        {input.hours.map((hour, index) => (
+          <div className="supplement-hour-row" key={index}>
+            <label
+              className="visually-hidden"
+              htmlFor={`supplement-hour-${index}`}
+            >
+              Godzina {index + 1}
+            </label>
+            <input
+              id={`supplement-hour-${index}`}
+              type="time"
+              value={hour}
+              onChange={(event) => setHour(index, event.target.value)}
+            />
+            <button
+              type="button"
+              className="supplement-hour-remove"
+              onClick={() => removeHour(index)}
+              aria-label={`Usuń godzinę ${index + 1}`}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="supplement-hour-add"
+          onClick={addHour}
+          disabled={input.hours.length >= MAX_HOURS_PER_SUPPLEMENT}
+        >
+          + Dodaj godzinę
+        </button>
+        {/* Said rather than only enforced, like the end date below: no hour
+            at all is a complete answer, not a gap. */}
+        <span className="supplement-field-hint">
+          Jeśli bierzesz coś kilka razy dziennie, dodaj kolejne godziny.
+          Możesz też nie podawać żadnej.
+        </span>
+      </fieldset>
+
       <div className="supplement-field-row">
-        <div className="supplement-field">
-          <label htmlFor="supplement-hour">Godzina</label>
-          <input
-            id="supplement-hour"
-            type="time"
-            value={input.hour ?? ''}
-            onChange={(event) => set('hour', event.target.value)}
-          />
-        </div>
         <div className="supplement-field">
           <label htmlFor="supplement-start">Od kiedy</label>
           <input

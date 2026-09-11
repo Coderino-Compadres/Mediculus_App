@@ -22,6 +22,7 @@ rule out. `NothingIsAVerdictTests` sweeps for one.
 """
 
 import datetime
+import uuid
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -70,6 +71,12 @@ class DietTestCase(TestCase):
     def history_url(self):
         return reverse('core:diet-meals')
 
+    def meal_url(self, meal):
+        return reverse(
+            'core:diet-meal',
+            args=[meal.id_meal if hasattr(meal, 'id_meal') else meal],
+        )
+
     def meal(self, patient=None, on=None, kind='Obiad', at='13:00', text='Zupa.'):
         return DietMeal.objects.create(
             id_medical=(patient or self.patient).id_medical,
@@ -113,7 +120,10 @@ class TodayTests(DietTestCase):
         """A patient who has never opened the module, not an error."""
         body = self.client.get(self.day_url()).json()
 
-        self.assertEqual(sorted(body), ['date', 'meal_count', 'streak_days'])
+        self.assertEqual(
+            sorted(body), ['date', 'meal_count', 'meals', 'streak_days'])
+        self.assertEqual(body['meals'], [])
+        self.assertEqual(body['meal_count'], 0)
 
 
 class StreakTests(DietTestCase):
@@ -429,7 +439,7 @@ class VerbTests(DietTestCase):
                 self.assertEqual(response.status_code, 405)
 
     def test_the_history_takes_a_post_and_nothing_else(self):
-        """A meal can be written. Correcting or removing one is the next gap."""
+        """Correcting one is a verb on the meal's own URL, not on the list."""
         for method in ('put', 'patch', 'delete'):
             with self.subTest(method=method):
                 response = getattr(self.client, method)(
@@ -438,6 +448,19 @@ class VerbTests(DietTestCase):
 
         self.assertEqual(
             self.client.post(self.history_url(), {}, format='json').status_code, 201)
+
+    def test_the_meal_url_takes_put_and_delete_but_not_post(self):
+        meal = self.meal()
+
+        self.assertEqual(
+            self.client.post(self.meal_url(meal), {}, format='json').status_code,
+            405,
+        )
+        self.assertEqual(
+            self.client.put(self.meal_url(meal), {}, format='json').status_code,
+            200,
+        )
+        self.assertEqual(self.client.delete(self.meal_url(meal)).status_code, 200)
 
 
 class AccessTests(DietTestCase):
@@ -481,3 +504,199 @@ class VocabularyTests(TestCase):
     def test_the_history_cap_is_a_backstop_rather_than_a_page_size(self):
         """Well above any real diary — hitting it means paginating for real."""
         self.assertGreaterEqual(MAX_HISTORY_MEALS, 500)
+
+
+class EditTests(DietTestCase):
+    """PUT /api/diet/meals/<id>/ — correcting today's meal.
+
+    The gap the supplement list never had: until this endpoint a meal was
+    write-once, so a description typed into the wrong meal or an hour out by
+    one stayed that way, on a screen whose whole premise is that writing
+    something down should be easy.
+    """
+
+    def test_it_replaces_the_three_things_a_meal_holds(self):
+        meal = self.meal(kind='Obiad', at='13:00', text='Zupa.')
+
+        body = self.client.put(
+            self.meal_url(meal),
+            {'kind': 'Kolacja', 'time': '19:30', 'description': 'Naleśniki.'},
+            format='json',
+        ).json()
+
+        meal.refresh_from_db()
+        self.assertEqual(meal.kind, 'Kolacja')
+        self.assertEqual(meal.eaten_at, datetime.time(19, 30))
+        self.assertEqual(meal.description, 'Naleśniki.')
+        self.assertEqual(body['meal']['kind'], 'Kolacja')
+
+    def test_put_replaces_rather_than_merges(self):
+        """The form submits its whole state, so a field left out is an answer
+        taken back — the same rule as /api/diary/today/. A merge would make
+        clearing the hour impossible from the only form that writes it."""
+        meal = self.meal(kind='Obiad', at='13:00', text='Zupa.')
+
+        self.client.put(self.meal_url(meal), {}, format='json')
+
+        meal.refresh_from_db()
+        self.assertIsNone(meal.kind)
+        self.assertIsNone(meal.eaten_at)
+        self.assertEqual(meal.description, '')
+
+    def test_an_edit_cannot_move_a_meal_to_another_day(self):
+        """Which day a meal belongs to is the one thing about it nobody typed."""
+        meal = self.meal()
+
+        self.client.put(
+            self.meal_url(meal),
+            {'description': 'Zupa.', 'entry_date': str(self.days_ago(3)),
+             'date': str(self.days_ago(3))},
+            format='json',
+        )
+
+        meal.refresh_from_db()
+        self.assertEqual(meal.entry_date, self.today)
+
+    def test_a_kind_outside_the_vocabulary_is_refused(self):
+        """`0009`'s lesson holds on the edit too: never silently dropped."""
+        meal = self.meal()
+
+        response = self.client.put(
+            self.meal_url(meal), {'kind': 'Podjadanie'}, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        meal.refresh_from_db()
+        self.assertEqual(meal.kind, 'Obiad')
+
+    def test_it_answers_with_the_row_and_the_rebuilt_day(self):
+        meal = self.meal()
+
+        body = self.client.put(
+            self.meal_url(meal), {'description': 'Inna zupa.'}, format='json',
+        ).json()
+
+        self.assertEqual(body['meal']['description'], 'Inna zupa.')
+        self.assertEqual(body['day']['meal_count'], 1)
+        self.assertEqual(
+            [m['description'] for m in body['day']['meals']], ['Inna zupa.'])
+
+    def test_an_older_meal_is_refused_with_a_sentence_rather_than_a_404(self):
+        """It is on the history screen in front of them: "no such thing" about
+        a row somebody is looking at is a worse answer than "that day is
+        closed"."""
+        meal = self.meal(on=self.days_ago(2))
+
+        response = self.client.put(
+            self.meal_url(meal), {'description': 'Poprawka.'}, format='json')
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn('dzisiejsze', str(response.json()).lower())
+        meal.refresh_from_db()
+        self.assertEqual(meal.description, 'Zupa.')
+
+    def test_somebody_else_s_meal_is_a_plain_404_on_both_verbs(self):
+        """A 403 would confirm the row exists — the /api/diary/<id>/ rule."""
+        other = self.meal(patient=self.make_patient(email='inny@example.com'))
+
+        self.assertEqual(
+            self.client.put(
+                self.meal_url(other), {'description': 'x'}, format='json',
+            ).status_code,
+            404,
+        )
+        self.assertEqual(self.client.delete(self.meal_url(other)).status_code, 404)
+        self.assertTrue(DietMeal.objects.filter(pk=other.pk).exists())
+
+    def test_an_unknown_id_is_a_404(self):
+        self.assertEqual(
+            self.client.put(
+                self.meal_url(uuid.uuid4()), {}, format='json').status_code,
+            404,
+        )
+
+
+class DeleteTests(DietTestCase):
+    def test_it_removes_the_meal_and_answers_with_the_day(self):
+        meal = self.meal()
+        self.meal(kind='Kolacja', at='19:00', text='Kanapka.')
+
+        body = self.client.delete(self.meal_url(meal)).json()
+
+        self.assertFalse(DietMeal.objects.filter(pk=meal.pk).exists())
+        self.assertEqual(body['day']['meal_count'], 1)
+        self.assertEqual(
+            [m['description'] for m in body['day']['meals']], ['Kanapka.'])
+
+    def test_an_older_meal_cannot_be_removed(self):
+        meal = self.meal(on=self.days_ago(1))
+
+        response = self.client.delete(self.meal_url(meal))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(DietMeal.objects.filter(pk=meal.pk).exists())
+
+    def test_removing_the_last_meal_leaves_an_ordinary_empty_day(self):
+        """Not an error and not a gap — the state the home screen invites."""
+        meal = self.meal()
+
+        body = self.client.delete(self.meal_url(meal)).json()
+
+        self.assertEqual(body['day']['meal_count'], 0)
+        self.assertEqual(body['day']['meals'], [])
+
+    def test_it_frees_a_slot_under_the_per_day_backstop(self):
+        """What DAY_IS_FULL tells somebody to do has to actually work."""
+        meals = [self.meal(text=f'{n}') for n in range(MAX_MEALS_PER_DAY)]
+        self.assertEqual(
+            self.client.post(self.history_url(), {}, format='json').status_code,
+            400,
+        )
+
+        self.client.delete(self.meal_url(meals[0]))
+
+        self.assertEqual(
+            self.client.post(self.history_url(), {}, format='json').status_code,
+            201,
+        )
+
+
+class TodayMealsPayloadTests(DietTestCase):
+    """The home screen's day now carries the meals, not only a count."""
+
+    def test_the_day_lists_todays_meals_in_the_history_s_own_order(self):
+        self.meal(kind='Kolacja', at='19:00', text='Kanapka.')
+        self.meal(kind=None, at=None, text='Bez godziny.')
+        self.meal(kind='Śniadanie', at='08:00', text='Owsianka.')
+
+        body = self.client.get(self.day_url()).json()
+
+        self.assertEqual(
+            [m['description'] for m in body['meals']],
+            ['Owsianka.', 'Kanapka.', 'Bez godziny.'],
+        )
+
+    def test_it_holds_no_other_day(self):
+        self.meal(text='Dzisiejszy.')
+        self.meal(on=self.days_ago(1), text='Wczorajszy.')
+
+        body = self.client.get(self.day_url()).json()
+
+        self.assertEqual([m['description'] for m in body['meals']], ['Dzisiejszy.'])
+
+    def test_the_count_still_agrees_with_the_list(self):
+        """Both travel rather than one being derived in the browser, so this
+        is the thing that has to stay true."""
+        for n in range(3):
+            self.meal(text=str(n))
+
+        body = self.client.get(self.day_url()).json()
+
+        self.assertEqual(body['meal_count'], len(body['meals']))
+
+    def test_no_meal_on_the_day_carries_a_quantity(self):
+        self.meal()
+
+        body = self.client.get(self.day_url()).json()
+
+        for meal in body['meals']:
+            self.assertEqual(set(meal), {'id', 'kind', 'time', 'description'})

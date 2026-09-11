@@ -50,7 +50,7 @@ from core.drinks import BOTTLE_ML, GLASS_ML, OTHER_DRINKS, WATER
 from core.meals import streak_days as diet_streak_days
 from core.supplements import MAX_SUPPLEMENTS
 from core.models import (Diary, DietMeal, Hydration, MoodScale, Patient,
-                         Supplement, SupplementIntake, User)
+                         Supplement, SupplementHour, SupplementIntake, User)
 
 #: The week the entries land in: the most recent one that has ended, i.e. the one
 #: the newest report covers. Anything written into the current week would be
@@ -153,9 +153,10 @@ WATER_ML_BY_DAY = (1150, 1750, 500, 1000, 0, 1250, 750)
 #: end date is the doctor's call, which goes in `frequency` because there is no
 #: column for it and `frequency` is free text.
 SUPPLEMENT_SHAPES = (
-    ('Witamina D3', '2000 IU', 'raz dziennie', '08:00', 180, None, True),
-    ('Magnez', '200 mg', 'raz dziennie', '21:00', 99, -7, True),
-    ('Sertralina', '50 mg', 'raz dziennie, wg zaleceń lekarza', '08:00', 190, None, False),
+    ('Witamina D3', '2000 IU', 'raz dziennie', ('08:00',), 180, None, True),
+    ('Magnez', '200 mg', 'raz dziennie', ('21:00',), 99, -7, True),
+    ('Sertralina', '50 mg', 'raz dziennie, wg zaleceń lekarza', ('08:00',),
+     190, None, False),
 )
 
 #: Further rows, used only when `--supplements` asks for more than the artboard
@@ -168,18 +169,26 @@ SUPPLEMENT_SHAPES = (
 #: it. Two carry no dose and one no hour, because `name` is the only required
 #: column and a seed where every row is complete hides that branch.
 EXTRA_SUPPLEMENT_SHAPES = (
-    ('Omega-3', '1000 mg', 'raz dziennie', '13:00', 140, None, True),
-    ('Żelazo', '30 mg', 'co drugi dzień', '07:30', 60, -30, True),
-    ('Witamina B12', '1000 µg', 'raz w tygodniu', '09:00', 210, None, False),
-    ('Probiotyk', None, 'raz dziennie, na czczo', '06:45', 45, None, True),
-    ('Kwas foliowy', '400 µg', 'raz dziennie', '08:15', 120, None, False),
-    ('Cynk', '15 mg', 'raz dziennie', '20:30', 75, None, True),
-    ('Melatonina', '1 mg', 'wieczorem, w razie potrzeby', '22:30', 30, None, True),
-    ('Wapń', '500 mg', 'dwa razy dziennie', '12:00', 95, None, False),
-    ('Witamina C', '500 mg', 'raz dziennie', None, 150, None, False),
-    ('Selen', None, 'wg zaleceń', '11:30', 20, None, False),
-    ('Potas', '300 mg', 'raz dziennie', '18:00', 55, None, True),
-    ('Koenzym Q10', '100 mg', 'raz dziennie', '10:00', 35, None, False),
+    ('Omega-3', '1000 mg', 'raz dziennie', ('13:00',), 140, None, True),
+    ('Żelazo', '30 mg', 'co drugi dzień', ('07:30',), 60, -30, True),
+    ('Witamina B12', '1000 µg', 'raz w tygodniu', ('09:00',), 210, None, False),
+    # Twice a day, which is the case the hours table exists for: one position
+    # on the list, two badges on its row. Seeded so the state is reachable
+    # without typing it.
+    ('Probiotyk', None, 'dwa razy dziennie, na czczo', ('06:45', '12:00'),
+     45, None, True),
+    ('Kwas foliowy', '400 µg', 'raz dziennie', ('08:15',), 120, None, False),
+    ('Cynk', '15 mg', 'raz dziennie', ('20:30',), 75, None, True),
+    ('Melatonina', '1 mg', 'wieczorem, w razie potrzeby', ('22:30',),
+     30, None, True),
+    # Three, so the row is not only ever one badge or two.
+    ('Wapń', '500 mg', 'trzy razy dziennie', ('08:00', '14:00', '20:00'),
+     95, None, False),
+    # No hour at all — "no fixed hour", which is what zero rows means.
+    ('Witamina C', '500 mg', 'raz dziennie', (), 150, None, False),
+    ('Selen', None, 'wg zaleceń', ('11:30',), 20, None, False),
+    ('Potas', '300 mg', 'raz dziennie', ('18:00',), 55, None, True),
+    ('Koenzym Q10', '100 mg', 'raz dziennie', ('10:00',), 35, None, False),
 )
 
 #: Every preparation the seed can write, artboard first.
@@ -543,11 +552,10 @@ class Command(BaseCommand):
         untouched — so a longer list does not read as a fuller one.
         """
         for index, shape in enumerate(ALL_SUPPLEMENT_SHAPES[:count]):
-            name, dose, frequency, hour, started, ends_in, reminder = shape
+            name, dose, frequency, hours, started, ends_in, reminder = shape
             supplement = Supplement.objects.create(
                 id_medical=id_medical,
                 name=name, dose=dose, frequency=frequency,
-                hour=datetime.time.fromisoformat(hour) if hour else None,
                 start_date=today - datetime.timedelta(days=started),
                 end_date=(
                     today - datetime.timedelta(days=ends_in)
@@ -555,6 +563,15 @@ class Command(BaseCommand):
                 ),
                 reminder_enabled=reminder,
             )
+            # Zero, one or several — a preparation taken twice a day is one
+            # position on the list with two hours on its row.
+            SupplementHour.objects.bulk_create([
+                SupplementHour(
+                    supplement=supplement,
+                    hour=datetime.time.fromisoformat(hour),
+                )
+                for hour in hours
+            ])
             # One in each three left untouched today, and everything ticked
             # for the two days before -- so the table is not only ever today.
             if index % 3 != 1:

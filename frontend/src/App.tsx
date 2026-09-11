@@ -402,6 +402,19 @@ function App() {
               </RequireAuth>
             }
           />
+          {/* The same form, correcting one of today's meals. Declared after
+              the bare path so `/diet/meal` is not read as an id — the ordering
+              `diary/today/` needs on the backend, for the same reason. Which
+              meals are reachable is the server's call, not this route's: it
+              refuses anything but today. */}
+          <Route
+            path={ROUTES.dietMealEdit}
+            element={
+              <RequireAuth>
+                <DietMealForm />
+              </RequireAuth>
+            }
+          />
           {/* Nawodnienie. RequireAuth's defaults again: the endpoint behind it
               is behind `_require_patient`, so a guardian or a specialist would
               meet a 403 the screen could only word as "coś poszło nie tak". */}
