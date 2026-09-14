@@ -170,7 +170,7 @@ def build_hydration_day(id_medical, today):
         Hydration.objects.filter(id_medical=id_medical, entry_date=today)
         .order_by('-created_at', '-id_hydration')
     )
-    water_ml = sum(e.amount_ml or 0 for e in entries if e.drink == WATER)
+    water_ml = sum(e.amount_ml or 0 for e in entries)
 
     return {
         'date': today.isoformat(),
