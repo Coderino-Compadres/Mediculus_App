@@ -50,6 +50,7 @@ from core.drinks import BOTTLE_ML, GLASS_ML, OTHER_DRINKS, WATER
 from core.meals import streak_days as diet_streak_days
 from core.supplements import MAX_SUPPLEMENTS
 from core.models import (Diary, DietActivity, DietActivityDay, DietMeal,
+                         DietMealEmotion,
                          DietSleep, Hydration, MoodScale, Patient, Supplement,
                          SupplementHour, SupplementIntake, User)
 
@@ -115,33 +116,47 @@ MEAL_DAYS = 16
 #: rule makes possible — a meal with no kind and one with no hour — so the
 #: history screen's own branches are reachable from a seeded database rather
 #: than only from a hand-written row.
+#:
+#: THE FOURTH ITEM IS WHAT WAS FELT at the meal: pairs of an emotion from
+#: `core.emotions.EMOTIONS` and its 0-10 rating, where **None is a chip picked
+#: and left unrated** — the state `diet_meal_emotion.intensity` is nullable for,
+#: and one a seeded demo has to contain, or the screens' unrated branch is only
+#: ever reachable by hand. Several meals carry no emotion at all, which is the
+#: ordinary case §05 allows and the third branch.
+#:
+#: The emotions are deliberately mixed rather than uniformly bleak: this is a
+#: demo of a food diary, not a portrait of a patient, and a seed where every
+#: meal is 'Wstyd' would put a verdict on the module's own screens.
 MEAL_SHAPES = (
-    (('Śniadanie', '08:10', 'Owsianka z bananem.'),
-     ('Obiad', '13:30', 'Zupa i kanapka, przy biurku.'),
-     ('Przekąska', '16:20', 'Garść orzechów.')),
-    (('Śniadanie', '07:50', 'Jajecznica.'),
-     ('Obiad', '14:00', 'Makaron z warzywami.'),
-     ('Kolacja', '19:30', 'Kanapki przed telewizorem.')),
-    (('Śniadanie', '09:00', 'Kawa i drożdżówka, w biegu.'),
-     ('Obiad', '13:15', 'Ryż z kurczakiem.')),
-    ((None, '22:10', 'Podjadanie wieczorem — wpis demonstracyjny.'),
-     ('Kolacja', None, 'Zupa z torebki, nie pamiętam o której.')),
-    (('Śniadanie', '08:30', 'Kanapki z serem, w spokoju.'),
-     ('Przekąska', '11:00', 'Jabłko.'),
-     ('Obiad', '13:45', 'Pierogi u rodziców.'),
-     ('Kolacja', '20:00', 'Sałatka.')),
-    (('Obiad', '12:40', 'Zamówione na mieście, w pośpiechu.'),
-     ('Kolacja', '18:50', 'Naleśniki.')),
-    (('Śniadanie', '07:30', 'Jogurt z musli.'),
-     ('Obiad', '14:20', 'Gulasz z kaszą.'),
-     ('Przekąska', '17:00', 'Herbatniki przy pracy.'),
-     ('Kolacja', '21:10', 'Kanapka, późno.')),
-    (('Śniadanie', '10:15', 'Późne śniadanie, weekend.'),
-     ('Obiad', '15:00', 'Pizza ze znajomymi.')),
-    (('Śniadanie', '08:00', 'Chleb z awokado.'),
-     ('Obiad', '13:00', 'Zupa krem i pieczywo.'),
-     ('Kolacja', '19:00', 'Ryba z warzywami.')),
-    ((None, None, 'Wpis demonstracyjny bez szczegółów.'),),
+    (('Śniadanie', '08:10', 'Owsianka z bananem.', (('Spokój', 6),)),
+     ('Obiad', '13:30', 'Zupa i kanapka, przy biurku.', (('Stres', 7),)),
+     ('Przekąska', '16:20', 'Garść orzechów.', (('Frustracja', None),))),
+    (('Śniadanie', '07:50', 'Jajecznica.', ()),
+     ('Obiad', '14:00', 'Makaron z warzywami.', (('Radość', 5),)),
+     ('Kolacja', '19:30', 'Kanapki przed telewizorem.',
+      (('Smutek', 4), ('Spokój', 3)))),
+    (('Śniadanie', '09:00', 'Kawa i drożdżówka, w biegu.', (('Stres', 8),)),
+     ('Obiad', '13:15', 'Ryż z kurczakiem.', ())),
+    ((None, '22:10', 'Podjadanie wieczorem — wpis demonstracyjny.',
+      (('Poczucie winy', 6), ('Bezradność', None))),
+     ('Kolacja', None, 'Zupa z torebki, nie pamiętam o której.', ())),
+    (('Śniadanie', '08:30', 'Kanapki z serem, w spokoju.', (('Spokój', 8),)),
+     ('Przekąska', '11:00', 'Jabłko.', ()),
+     ('Obiad', '13:45', 'Pierogi u rodziców.', (('Radość', 7),)),
+     ('Kolacja', '20:00', 'Sałatka.', (('Spokój', 5),))),
+    (('Obiad', '12:40', 'Zamówione na mieście, w pośpiechu.', (('Lęk', 3),)),
+     ('Kolacja', '18:50', 'Naleśniki.', (('Radość', 6),))),
+    (('Śniadanie', '07:30', 'Jogurt z musli.', ()),
+     ('Obiad', '14:20', 'Gulasz z kaszą.', (('Spokój', 4),)),
+     ('Przekąska', '17:00', 'Herbatniki przy pracy.',
+      (('Frustracja', 5), ('Wstyd', None))),
+     ('Kolacja', '21:10', 'Kanapka, późno.', (('Złość', 2),))),
+    (('Śniadanie', '10:15', 'Późne śniadanie, weekend.', (('Spokój', 9),)),
+     ('Obiad', '15:00', 'Pizza ze znajomymi.', (('Radość', 9),))),
+    (('Śniadanie', '08:00', 'Chleb z awokado.', (('Spokój', 6),)),
+     ('Obiad', '13:00', 'Zupa krem i pieczywo.', ()),
+     ('Kolacja', '19:00', 'Ryba z warzywami.', (('Radość', 4),))),
+    ((None, None, 'Wpis demonstracyjny bez szczegółów.', ()),),
 )
 
 #: Water per day, in millilitres, today first. Some days under the goal and some
@@ -604,14 +619,22 @@ class Command(BaseCommand):
             # somebody looking at the demo actually meets it.
             if offset == 4:
                 continue
-            for kind, hour, text in MEAL_SHAPES[offset % len(MEAL_SHAPES)]:
-                DietMeal.objects.create(
+            for kind, hour, text, feelings in MEAL_SHAPES[offset % len(MEAL_SHAPES)]:
+                meal = DietMeal.objects.create(
                     id_medical=id_medical,
                     entry_date=day,
                     kind=kind,
                     eaten_at=datetime.time.fromisoformat(hour) if hour else None,
                     description=text,
                 )
+                # `intensity` straight from the shape, None included: a chip
+                # picked and left unrated is a state the screens render
+                # differently, so a seed that turned it into a 0 would hide the
+                # branch it exists to show.
+                DietMealEmotion.objects.bulk_create([
+                    DietMealEmotion(meal=meal, emotion=name, intensity=rating)
+                    for name, rating in feelings
+                ])
                 written += 1
         return written
 

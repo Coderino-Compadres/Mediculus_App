@@ -1,3 +1,4 @@
+import type { EmotionEntry } from './diaryEntry'
 import type { FeelingAfter } from '../utils/activity'
 import type { SleepQuality, WakeFeeling } from '../utils/sleep'
 
@@ -173,6 +174,26 @@ export interface DietMeal {
   /** What the patient typed. '' when they saved a meal without describing it,
    *  which the mockups explicitly allow ("niepełny wpis też jest wpisem"). */
   description: string
+  /**
+   * What was felt at this meal — §04's picker, and the half the food diary was
+   * missing. It could say what was eaten and when, and nothing about what was
+   * around it, which is the part the module is actually for ("nie liczy
+   * jedzenia — opisuje je i to, co dzieje się wokół niego").
+   *
+   * `EmotionEntry` from the psychotherapy diary's own types rather than a
+   * shape of this module's: the ten names and the 0-10 scale are one
+   * vocabulary across the app (`utils/emotions.ts`, `core/emotions.py`), so
+   * 'Lęk' at supper and 'Lęk' in the evening's entry are one word.
+   *
+   * IT IS NOT A MEASUREMENT OF THE MEAL. A number on this list rates a feeling
+   * the patient named, not the food — the module still counts nothing, and
+   * `DietMealForm.test.tsx` sweeps for anything that would.
+   *
+   * Empty for a meal saved without naming one, which §05 allows like every
+   * other unanswered question here. Server-ordered by the vocabulary, so the
+   * chips read back in the order the picker draws them.
+   */
+  emotions: EmotionEntry[]
 }
 
 
@@ -203,6 +224,21 @@ export interface DietMealInput {
   time: string | null
   /** '' and null both mean "left empty"; the mapping sends one of them. */
   description: string
+  /**
+   * The emotions picked on the form, each with its slider value or `null`.
+   *
+   * `null` IS THE POINT OF THE FIELD BEING A LIST OF PAIRS: a chip picked with
+   * the slider untouched is not a 0, and `diet_meal_emotion.intensity` is
+   * nullable so that it need not become one. The psychotherapy form has to
+   * send 0 there (`mood_scale` keeps one nullable column per emotion, where
+   * NULL already means "never picked"), and its own serializer asks for this
+   * schema before the diet module repeats the compromise — CLAUDE.md states
+   * the rule that follows: an untouched slider is null, not 0.
+   *
+   * An empty list is an ordinary answer, and on a PUT it is how every emotion
+   * is taken back: the write replaces rather than merges.
+   */
+  emotions: EmotionEntry[]
 }
 
 /** What the write answers with: the row, and the day it moved.

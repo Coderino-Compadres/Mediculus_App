@@ -32,10 +32,12 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
+from core.emotions import EMOTIONS
 from core.meals import (
     MAX_HISTORY_MEALS, MAX_MEALS_PER_DAY, MEAL_KINDS, streak_days,
 )
-from core.models import DietMeal, Patient, Specjalist, User, UserRole
+from core.meals import load_history as load_meal_history
+from core.models import DietMeal, DietMealEmotion, Patient, Specjalist, User, UserRole
 
 PASSWORD = 'TajneHaslo123'
 
@@ -245,7 +247,10 @@ class HistoryTests(DietTestCase):
         day = self.client.get(self.history_url()).json()[0]
 
         self.assertEqual(sorted(day), ['date', 'meals'])
-        self.assertEqual(sorted(day['meals'][0]), ['description', 'id', 'kind', 'time'])
+        self.assertEqual(
+            sorted(day['meals'][0]),
+            ['description', 'emotions', 'id', 'kind', 'time'],
+        )
 
 
 class NothingIsAVerdictTests(DietTestCase):
@@ -621,6 +626,274 @@ class EditTests(DietTestCase):
         )
 
 
+class MealEmotionTests(DietTestCase):
+    """The emotions picked at a meal — §04's picker, §05's "emocje przy jedzeniu".
+
+    The half the food diary was missing. It could say what was eaten and when;
+    it could say nothing about what was felt around it, which is the part the
+    module is actually for ("nie liczy jedzenia — opisuje je i to, co dzieje
+    się wokół niego").
+
+    THE SAME TEN NAMES AND THE SAME 0-10 SCALE as the psychotherapy form, which
+    is the property most worth pinning here: a second vocabulary would make
+    'Lęk' at supper a different word from 'Lęk' in the evening's entry, and
+    §05's report section reads both.
+    """
+
+    def post(self, **body):
+        return self.client.post(self.history_url(), body, format='json')
+
+    def emotions_of(self, meal):
+        """Stored emotions as `{name: intensity}` — the rows, not the payload."""
+        return {row.emotion: row.intensity for row in meal.emotions.all()}
+
+    def test_a_meal_carries_the_emotions_picked_at_it(self):
+        response = self.post(
+            kind='Obiad',
+            emotions=[
+                {'emotion': 'Lęk', 'intensity': 7},
+                {'emotion': 'Spokój', 'intensity': 3},
+            ],
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            self.emotions_of(DietMeal.objects.get()), {'Lęk': 7, 'Spokój': 3})
+
+    def test_a_picked_chip_nobody_rated_is_null_rather_than_zero(self):
+        """CLAUDE.md's rule, and the whole reason this is a table.
+
+        The diary cannot express it: a NULL in `mood_scale` already means the
+        chip was never picked, so its form sends a 0 for an untouched slider —
+        a number nobody chose, which then reads as "wcale". Here the row
+        records the picking and the column records only the rating.
+        """
+        self.post(emotions=[{'emotion': 'Wstyd'}])
+
+        self.assertEqual(self.emotions_of(DietMeal.objects.get()), {'Wstyd': None})
+
+    def test_a_zero_is_kept_as_a_zero(self):
+        """The other half of the same distinction: 0 is an answer somebody gave."""
+        self.post(emotions=[{'emotion': 'Złość', 'intensity': 0}])
+
+        self.assertEqual(self.emotions_of(DietMeal.objects.get()), {'Złość': 0})
+
+    def test_every_emotion_the_picker_offers_is_accepted(self):
+        for emotion in EMOTIONS:
+            with self.subTest(emotion=emotion):
+                response = self.post(
+                    emotions=[{'emotion': emotion, 'intensity': 5}])
+                self.assertEqual(response.status_code, 201)
+
+    def test_a_meal_without_emotions_is_an_ordinary_meal(self):
+        """§05 again: nothing on this form blocks a save."""
+        response = self.post(kind='Przekąska', description='Jabłko.')
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self.emotions_of(DietMeal.objects.get()), {})
+        self.assertEqual(response.json()['meal']['emotions'], [])
+
+    def test_an_emotion_outside_the_vocabulary_is_refused_not_dropped(self):
+        """`0009`'s lesson, the same as `kind`: never silently thrown away."""
+        response = self.post(emotions=[{'emotion': 'Zmęczenie', 'intensity': 4}])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(DietMeal.objects.exists())
+
+    def test_an_intensity_off_the_scale_is_refused(self):
+        for intensity in (-1, 11):
+            with self.subTest(intensity=intensity):
+                response = self.post(
+                    emotions=[{'emotion': 'Stres', 'intensity': intensity}])
+                self.assertEqual(response.status_code, 400)
+
+        self.assertFalse(DietMeal.objects.exists())
+
+    def test_the_same_emotion_twice_is_refused(self):
+        """Two rows for 'Lęk' would have no meaning — `diary`'s rule, and what
+        `uq_diet_meal_emotion` enforces. Caught here so a double-submitted chip
+        is a sentence rather than an IntegrityError."""
+        response = self.post(emotions=[
+            {'emotion': 'Lęk', 'intensity': 2},
+            {'emotion': 'Lęk', 'intensity': 8},
+        ])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(DietMeal.objects.exists())
+
+    def test_they_come_back_in_the_order_the_picker_draws_them(self):
+        """The vocabulary's order, not the order they were tapped in.
+
+        `bulk_create` stamps one `created_at` on all of them, so insertion
+        order is not even a tiebreak — a fixed order is the only one that can
+        be the same answer twice.
+        """
+        self.post(emotions=[
+            {'emotion': 'Spokój', 'intensity': 4},
+            {'emotion': 'Radość', 'intensity': 6},
+            {'emotion': 'Lęk', 'intensity': 1},
+        ])
+
+        payload = self.client.get(self.day_url()).json()['meals'][0]
+
+        self.assertEqual(
+            [rating['emotion'] for rating in payload['emotions']],
+            ['Radość', 'Lęk', 'Spokój'],
+        )
+
+    def test_the_payload_keeps_an_unrated_chip_unrated(self):
+        """All the way to the browser: `null`, never a 0 it would render."""
+        self.post(emotions=[{'emotion': 'Frustracja'}])
+
+        payload = self.client.get(self.day_url()).json()['meals'][0]
+
+        self.assertEqual(
+            payload['emotions'], [{'emotion': 'Frustracja', 'intensity': None}])
+
+    def test_the_history_carries_them_too(self):
+        """The screen a patient looks back on, not only today's."""
+        self.post(kind='Kolacja', emotions=[{'emotion': 'Smutek', 'intensity': 9}])
+
+        day = self.client.get(self.history_url()).json()[0]
+
+        self.assertEqual(
+            day['meals'][0]['emotions'],
+            [{'emotion': 'Smutek', 'intensity': 9}],
+        )
+
+    def test_the_day_detail_carries_them_too(self):
+        self.post(emotions=[{'emotion': 'Wstyd', 'intensity': 2}])
+
+        body = self.client.get(self.day_detail_url(self.today)).json()
+
+        self.assertEqual(
+            body['meals'][0]['emotions'],
+            [{'emotion': 'Wstyd', 'intensity': 2}],
+        )
+
+    def test_an_edit_replaces_them_rather_than_merging(self):
+        """A chip left out of the body is one the patient un-picked."""
+        meal = self.meal()
+        self.client.put(
+            self.meal_url(meal),
+            {'emotions': [
+                {'emotion': 'Lęk', 'intensity': 7},
+                {'emotion': 'Stres', 'intensity': 5},
+            ]},
+            format='json',
+        )
+
+        self.client.put(
+            self.meal_url(meal),
+            {'emotions': [{'emotion': 'Spokój', 'intensity': 8}]},
+            format='json',
+        )
+
+        self.assertEqual(self.emotions_of(meal), {'Spokój': 8})
+
+    def test_the_edit_answers_with_the_emotions_it_just_wrote(self):
+        """Not with the ones the meal had when it was loaded.
+
+        `find` prefetches `emotions` so a day of meals is one extra query, and
+        the write then replaces those rows underneath the prefetched cache. The
+        payload is built from the same instance, so without invalidating that
+        cache a PUT confirms the old chips and the screen redraws them — the
+        patient's correction accepted, stored and reported as not having
+        happened.
+        """
+        meal = self.meal()
+        self.client.put(
+            self.meal_url(meal),
+            {'emotions': [{'emotion': 'Lęk', 'intensity': 7}]},
+            format='json',
+        )
+
+        body = self.client.put(
+            self.meal_url(meal),
+            {'emotions': [{'emotion': 'Spokój', 'intensity': 2}]},
+            format='json',
+        ).json()
+
+        self.assertEqual(
+            body['meal']['emotions'],
+            [{'emotion': 'Spokój', 'intensity': 2}],
+        )
+        self.assertEqual(
+            body['day']['meals'][0]['emotions'],
+            [{'emotion': 'Spokój', 'intensity': 2}],
+        )
+
+    def test_an_edit_can_take_every_emotion_back(self):
+        meal = self.meal()
+        self.client.put(
+            self.meal_url(meal),
+            {'emotions': [{'emotion': 'Lęk', 'intensity': 7}]},
+            format='json',
+        )
+
+        body = self.client.put(self.meal_url(meal), {}, format='json').json()
+
+        self.assertEqual(self.emotions_of(meal), {})
+        self.assertEqual(body['meal']['emotions'], [])
+
+    def test_a_refused_edit_leaves_the_emotions_untouched(self):
+        """The delete-then-write happens in one transaction, so a 400 costs
+        nothing — the state before the request is the state after it."""
+        meal = self.meal()
+        self.client.put(
+            self.meal_url(meal),
+            {'emotions': [{'emotion': 'Lęk', 'intensity': 7}]},
+            format='json',
+        )
+
+        response = self.client.put(
+            self.meal_url(meal),
+            {'kind': 'Drugie danie', 'emotions': []},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.emotions_of(meal), {'Lęk': 7})
+
+    def test_deleting_a_meal_takes_its_emotions_with_it(self):
+        """CASCADE, and the reason it is a real foreign key: an emotion has no
+        meaning without the meal it was felt at."""
+        meal = self.meal()
+        self.client.put(
+            self.meal_url(meal),
+            {'emotions': [{'emotion': 'Lęk', 'intensity': 7}]},
+            format='json',
+        )
+
+        self.client.delete(self.meal_url(meal))
+
+        self.assertFalse(DietMealEmotion.objects.exists())
+
+    def test_another_patient_s_meal_gains_nothing(self):
+        """The emotions travel on the meal, so the meal's own filter is the
+        whole of the access rule — but it has to actually hold."""
+        other = self.make_patient('inny@example.com')
+        meal = self.meal(patient=other)
+
+        response = self.client.put(
+            self.meal_url(meal),
+            {'emotions': [{'emotion': 'Lęk', 'intensity': 7}]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(DietMealEmotion.objects.exists())
+
+    def test_a_day_of_meals_does_not_cost_a_query_per_meal(self):
+        """`_with_emotions` prefetches, which is what keeps the history — up to
+        MAX_HISTORY_MEALS rows — from becoming a thousand round trips."""
+        for hour in ('08:00', '13:00', '16:00', '19:00'):
+            self.post(time=hour, emotions=[{'emotion': 'Spokój', 'intensity': 5}])
+
+        with self.assertNumQueries(2, using='medical'):
+            list(load_meal_history(self.patient.id_medical))
+
+
 class DeleteTests(DietTestCase):
     def test_it_removes_the_meal_and_answers_with_the_day(self):
         meal = self.meal()
@@ -728,7 +1001,8 @@ class TodayMealsPayloadTests(DietTestCase):
         body = self.client.get(self.day_url()).json()
 
         for meal in body['meals']:
-            self.assertEqual(set(meal), {'id', 'kind', 'time', 'description'})
+            self.assertEqual(
+                set(meal), {'id', 'kind', 'time', 'description', 'emotions'})
 
 
 class JournalDayTests(DietTestCase):
@@ -828,7 +1102,8 @@ class JournalDayTests(DietTestCase):
         body = self.client.get(self.day_detail_url(self.today)).json()
 
         for meal in body['meals']:
-            self.assertEqual(set(meal), {'id', 'kind', 'time', 'description'})
+            self.assertEqual(
+                set(meal), {'id', 'kind', 'time', 'description', 'emotions'})
 
     def test_a_guardian_is_refused_rather_than_shown_a_day(self):
         guardian = self.make_user(email='opiekun@example.com', role='rodzic')

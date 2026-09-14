@@ -10,7 +10,8 @@ from core import models
 from core.routers import MEDICAL_MODELS, CoreDatabaseRouter
 
 MEDICAL = [models.Diary, models.MoodScale, models.Technique, models.Raport,
-           models.Hydration, models.DietMeal, models.Supplement,
+           models.Hydration, models.DietMeal, models.DietMealEmotion,
+           models.Supplement,
            models.SupplementHour, models.SupplementIntake,
            models.DietActivity, models.DietActivityDay, models.DietSleep]
 USER_SIDE = [models.User, models.UserRole, models.Specjalist,

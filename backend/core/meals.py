@@ -39,10 +39,16 @@ screen renders it as one instead of as something that failed to load.
 import datetime
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Prefetch
 from rest_framework import serializers
 
-from .models import DietMeal
+# One 0-10 scale across the app rather than one per module: the diet module's
+# emotion sliders are the psychotherapy form's sliders, so the bounds are
+# imported rather than restated. `core/diary.py` imports nothing from here, so
+# this is a one-way dependency.
+from .diary import MAX_LEVEL, MIN_LEVEL
+from .emotions import EMOTIONS
+from .models import DietMeal, DietMealEmotion
 
 #: The six categories §04 names, in the order it draws them.
 #:
@@ -101,6 +107,30 @@ MEAL_NOT_TODAY = (
 )
 
 
+class MealEmotionSerializer(serializers.Serializer):
+    """One emotion chip the patient picked at a meal, and the number on it.
+
+    THE SAME TEN NAMES AND THE SAME 0-10 SCALE as `diary.EmotionRatingSerializer`
+    — §04's form is the psychotherapy form's picker, which is what the client
+    asked for, and a second vocabulary would make 'Lęk' at supper a different
+    word from 'Lęk' in the evening's entry.
+
+    `intensity` IS OPTIONAL HERE AND IS NOT THERE, which is the one difference
+    and the reason `diet_meal_emotion` is a table rather than nine columns. In
+    the diary a NULL already means *the chip was never picked*, so a picked but
+    unrated chip has nowhere to live and the form sends 0 for one — that
+    serializer says so, names the cost, and closes by asking for exactly this
+    schema change "before the diet module's four 0-10 sliders repeat it". Here
+    the row records the picking, so NULL is free to mean what CLAUDE.md says an
+    untouched slider means, and nothing has to invent a number nobody chose.
+    """
+
+    emotion = serializers.ChoiceField(choices=EMOTIONS)
+    intensity = serializers.IntegerField(
+        min_value=MIN_LEVEL, max_value=MAX_LEVEL, required=False, allow_null=True,
+    )
+
+
 class MealSerializer(serializers.Serializer):
     """What §04's "Dodawanie posiłku" form sends.
 
@@ -141,6 +171,25 @@ class MealSerializer(serializers.Serializer):
     # as storage.
     description = serializers.CharField(
         max_length=2000, required=False, allow_blank=True, allow_null=True)
+    # What was felt at this meal — §04's picker, the psychotherapy form's ten
+    # chips with their 0-10 sliders. Optional like everything else here: a meal
+    # eaten without naming an emotion is an ordinary row, not an unfinished one.
+    #
+    # An empty list and an absent key are the same answer, and on PUT they are
+    # also how every emotion is taken back — see `update`.
+    emotions = MealEmotionSerializer(many=True, required=False)
+
+    def validate_emotions(self, value):
+        """One rating per emotion — two rows for 'Lęk' would have no meaning.
+
+        The same rule `diary.validate_emotions` states, and here it is also
+        what `uq_diet_meal_emotion` enforces: caught in the serializer so a
+        double-submitted chip is a sentence rather than an IntegrityError.
+        """
+        names = [rating['emotion'] for rating in value]
+        if len(names) != len(set(names)):
+            raise serializers.ValidationError('Każda emocja może wystąpić tylko raz.')
+        return value
 
     def create(self, validated_data):
         id_medical = self.context['id_medical']
@@ -158,7 +207,7 @@ class MealSerializer(serializers.Serializer):
                 # request-level refusal in this API — `firstMessage` in
                 # src/api/client.ts reads a list's first entry.
                 raise serializers.ValidationError({'detail': [DAY_IS_FULL]})
-            return DietMeal.objects.create(
+            meal = DietMeal.objects.create(
                 id_medical=id_medical,
                 entry_date=today,
                 kind=(validated_data.get('kind') or None),
@@ -168,6 +217,11 @@ class MealSerializer(serializers.Serializer):
                 # left empty.
                 description=(validated_data.get('description') or '').strip(),
             )
+            # Inside the same transaction as the meal: a meal written without
+            # the emotions the patient picked is a record missing the half §05
+            # is about, and half a save is worse than none.
+            _write_emotions(meal, validated_data.get('emotions') or [])
+            return meal
 
     def update(self, instance, validated_data):
         """PUT **replaces**, the same rule as `/api/diary/today/`.
@@ -182,15 +236,50 @@ class MealSerializer(serializers.Serializer):
         and a form that could change it would be a way into an archived day
         through the back door.
 
+        The emotions follow the same rule, and there it matters most: an
+        emotion left out of the body is one the patient un-picked on the form,
+        so they are replaced rather than merged. One transaction, because the
+        replacement is a delete followed by a write — the shape
+        `supplements._write_hours` has, and for the same reason: a failure
+        between the two would leave a meal holding no emotions at all.
+
         No `MAX_MEALS_PER_DAY` check: this writes no new row, so the count that
         bound is about cannot go up here.
         """
-        instance.kind = validated_data.get('kind') or None
-        instance.eaten_at = validated_data.get('time')
-        instance.description = (validated_data.get('description') or '').strip()
-        instance.save(
-            update_fields=['kind', 'eaten_at', 'description', 'updated_at'])
+        with transaction.atomic(using='medical'):
+            instance.kind = validated_data.get('kind') or None
+            instance.eaten_at = validated_data.get('time')
+            instance.description = (validated_data.get('description') or '').strip()
+            instance.save(
+                update_fields=['kind', 'eaten_at', 'description', 'updated_at'])
+            _write_emotions(instance, validated_data.get('emotions') or [])
         return instance
+
+
+def _write_emotions(meal, emotions):
+    """Replace a meal's emotions with exactly these.
+
+    Delete-then-write rather than a diff, the same choice
+    `supplements._write_hours` makes and for the same reasons: there are at
+    most ten rows (the vocabulary is ten names and each may appear once),
+    nothing refers to one by id, and a diff would be more code for a saving
+    nobody can measure.
+
+    Stored in the order given, which is the order the chips were picked. What
+    reads them back sorts by the vocabulary instead (`_serialize_emotions`), so
+    nothing depends on this order — it is simply not worth a column.
+    """
+    meal.emotions.all().delete()
+    DietMealEmotion.objects.bulk_create([
+        DietMealEmotion(
+            meal=meal,
+            emotion=rating['emotion'],
+            # `.get`, not `[...]`: the key is optional and its absence is the
+            # answer "picked, not rated" — which is a NULL here and not a 0.
+            intensity=rating.get('intensity'),
+        )
+        for rating in emotions
+    ])
 
 
 def serialize_meal(meal):
@@ -201,6 +290,15 @@ def serialize_meal(meal):
     precision nobody entered. NULL stays NULL — an hour left blank is an answer
     not given, not a midnight to render.
 
+    `emotions` is a list rather than a map, because it carries an order and a
+    map would not: `_serialize_emotions` sorts by the vocabulary, so the chips
+    come back in the order the picker draws them no matter which order they
+    were tapped in.
+
+    It relies on `emotions` being prefetched — every query in this module does
+    it (`_with_emotions`), which is what keeps a day of six meals one extra
+    query rather than six.
+
     There is no photo on this shape yet, and its absence is the module's largest
     open question rather than an oversight — see the module docstring.
     """
@@ -209,7 +307,47 @@ def serialize_meal(meal):
         'kind': meal.kind or None,
         'time': meal.eaten_at.strftime('%H:%M') if meal.eaten_at else None,
         'description': meal.description or '',
+        'emotions': _serialize_emotions(meal),
     }
+
+
+def _serialize_emotions(meal):
+    """This meal's emotions, in the order the picker draws the chips.
+
+    The vocabulary's own order (`emotions.EMOTIONS`) rather than the order they
+    were picked or stored in, for the reason `diary._read_ratings` reads its
+    columns in a fixed order: the answer to "what did this meal hold" must not
+    depend on how the rows came back. `bulk_create` stamps one `created_at` on
+    all of them, so insertion order is not even a tiebreak.
+
+    `intensity` stays None when it is None. A chip picked and left unrated is
+    not a zero, and this is the shape that has to keep saying so all the way to
+    `frontend/src/types/diet.ts`.
+    """
+    order = {name: index for index, name in enumerate(EMOTIONS)}
+    rows = sorted(
+        meal.emotions.all(),
+        # An emotion outside the vocabulary cannot be written through the API
+        # and would only come from a hand-edited row; it sorts last rather than
+        # raising, because a strange value is not a reason to fail a whole day.
+        key=lambda row: (order.get(row.emotion, len(order)), row.emotion),
+    )
+    return [
+        {'emotion': row.emotion, 'intensity': row.intensity} for row in rows
+    ]
+
+
+def _with_emotions(queryset):
+    """The same queryset, carrying each meal's emotions.
+
+    One `Prefetch` in one place rather than four `prefetch_related` calls free
+    to drift: every read in this module goes through `serialize_meal`, and that
+    function reads `meal.emotions`. Without this a day of six meals is seven
+    queries, and the history's thousand-row cap would be a thousand.
+    """
+    return queryset.prefetch_related(
+        Prefetch('emotions', queryset=DietMealEmotion.objects.all()),
+    )
 
 
 def first_entry_date(id_medical):
@@ -296,7 +434,7 @@ def load_day(id_medical, day):
     plain 404. That also means a *future* date and a date before the patient
     started both answer the same way, which is what they are.
     """
-    meals = (
+    meals = _with_emotions(
         DietMeal.objects
         .filter(id_medical=id_medical, entry_date=day)
         # `load_history`'s ordering inside a day, restated rather than shared
@@ -325,10 +463,10 @@ def today_meals(id_medical, today):
     it. It also puts the meal just written at the top, next to the "Edytuj"
     that corrects it.
     """
-    return list(
+    return list(_with_emotions(
         DietMeal.objects.filter(id_medical=id_medical, entry_date=today)
         .order_by(F('eaten_at').desc(nulls_last=True), '-created_at')
-    )
+    ))
 
 
 def build_diet_day(id_medical, today):
@@ -377,9 +515,9 @@ def find(id_medical, id_meal):
     thing" about a row somebody is looking at is a worse answer than saying it
     is archived. The view checks the day and refuses with `MEAL_NOT_TODAY`.
     """
-    return DietMeal.objects.filter(
+    return _with_emotions(DietMeal.objects.filter(
         id_medical=id_medical, id_meal=id_meal,
-    ).first()
+    )).first()
 
 
 def load_history(id_medical):
@@ -398,7 +536,7 @@ def load_history(id_medical):
     `/api/diary/today/` gives the psychotherapy diary. Correcting or removing a
     meal written today is the next thing this module needs and does not have.
     """
-    meals = (
+    meals = _with_emotions(
         DietMeal.objects
         .filter(id_medical=id_medical)
         .order_by(
@@ -409,8 +547,10 @@ def load_history(id_medical):
             # that do rather than above them.
             F('eaten_at').desc(nulls_last=True),
             '-created_at',
-        )[:MAX_HISTORY_MEALS]
-    )
+        )
+    # Sliced last: the prefetch has to be attached to the queryset before the
+    # slice, and the cap is on the meals rather than on anything about them.
+    )[:MAX_HISTORY_MEALS]
 
     days = []
     # One pass, relying on the ordering above: the rows arrive grouped by day

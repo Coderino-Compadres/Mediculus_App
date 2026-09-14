@@ -82,11 +82,39 @@ describe('the intensity sliders', () => {
     expect(onIntensityChange).toHaveBeenCalledWith('Lęk', 9)
   })
 
-  it('draws a null intensity as 0 rather than crashing', () => {
+  it('says a null intensity is unrated rather than calling it a 0', () => {
+    /** The slider has no empty position, so it sits at 0 — but the reading
+     *  beside it must not claim one. The two are different answers, and the
+     *  diet module's form can store both: `diet_meal_emotion.intensity` is
+     *  nullable, so a chip picked with the slider untouched stays unrated all
+     *  the way to the database. */
     renderSelector([{ emotion: 'Wstyd', intensity: null }])
 
     expect(screen.getByLabelText('Natężenie: Wstyd')).toHaveValue('0')
-    expect(screen.getByText('0/10')).toBeInTheDocument()
+    expect(screen.getByText('nie podano')).toBeInTheDocument()
+    expect(screen.queryByText('0/10')).not.toBeInTheDocument()
+  })
+
+  it('moving the slider is what turns an unrated chip into a rated one', () => {
+    const { onIntensityChange } = renderSelector([{ emotion: 'Wstyd', intensity: null }])
+
+    fireEvent.change(screen.getByLabelText('Natężenie: Wstyd'), {
+      target: { value: '3' },
+    })
+
+    expect(onIntensityChange).toHaveBeenCalledWith('Wstyd', 3)
+  })
+})
+
+describe('an unrated chip and a threshold', () => {
+  it('is not flagged, because there is no number to compare', () => {
+    /** `intensity ?? 0` would have read an unanswered question as a low answer
+     *  — and on a threshold of 0 it would have flagged it as a high one. */
+    renderSelector([{ emotion: STRES, intensity: null }], { [STRES]: 0 })
+
+    expect(screen.getByText('nie podano'))
+      .not.toHaveClass('emotion-intensity-value-alert')
+    expect(screen.queryByText(/wysokie/)).not.toBeInTheDocument()
   })
 })
 

@@ -515,6 +515,68 @@ class DietMeal(models.Model):
         return f'{self.entry_date} {self.kind or "posiłek"}'
 
 
+class DietMealEmotion(models.Model):
+    """One emotion the patient picked next to a meal, and the number on it.
+
+    §05 of `Makiety modułu dietetycznego` asks what a report would summarise as
+    "najczęstsze emocje przy jedzeniu", and `core/diet_reports.py` names that
+    section among the ones it cannot build because "none of those columns
+    exists". This is that column — the same ten names the psychotherapy diary
+    uses (`core.emotions.EMOTIONS`), rated on the same 0-10 scale, so an emotion
+    means one thing across the app rather than one thing per module.
+
+    A ROW PER EMOTION, unlike the diary's nine `mood_scale` columns. Those
+    columns predate this table and their shape is what forced the diary's known
+    compromise: NULL there means *the chip was never picked*, so a picked but
+    unrated chip had nowhere to live and the form sends a 0 for one — a number
+    nobody chose, which then drags that emotion's weekly average down (see
+    `diary.EmotionRatingSerializer`). Here the row itself records the picking
+    and `intensity` records only the rating, so the two facts are stored apart
+    and NULL is free to mean what CLAUDE.md says an untouched slider means.
+
+    `intensity` IS THEREFORE NULLABLE. The chip was chosen, the slider was not
+    moved: that is an ordinary answer on a form where §05 says no field blocks a
+    save, and it is not a zero. Nothing in this module averages these numbers
+    yet, and the distinction is stored now precisely so that whatever does will
+    not have to guess.
+
+    `meal` is a real foreign key with CASCADE, like `SupplementHour.supplement`
+    and for the same reason: both tables live in medical_db, so Postgres can
+    enforce it, and an emotion belongs to the meal it was felt at. Deleting a
+    meal takes its emotions with it, which is what a deleted meal's emotions
+    should be: gone.
+    """
+
+    id_meal_emotion = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False)
+    meal = models.ForeignKey(
+        DietMeal, on_delete=models.CASCADE, db_column='id_meal',
+        related_name='emotions',
+    )
+    # One of core.emotions.EMOTIONS, the Polish name as written. TextField with
+    # the serializer constraining the value, the same arrangement `kind` above
+    # has.
+    emotion = models.TextField()
+    # 0-10, or NULL for a chip picked and left unrated -- see above.
+    intensity = models.SmallIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'diet_meal_emotion'
+        constraints = [
+            # The same emotion twice on one meal is a double-submitted form, not
+            # a second feeling -- the same choice `uq_supplement_hour` makes,
+            # and the rule `diary.validate_emotions` enforces in the serializer.
+            models.UniqueConstraint(
+                fields=['meal', 'emotion'], name='uq_diet_meal_emotion',
+            ),
+        ]
+
+    def __str__(self):
+        intensity = '-' if self.intensity is None else self.intensity
+        return f'{self.emotion} {intensity}'
+
+
 class Supplement(models.Model):
     """One preparation the patient takes — "Suplementy i leki", mockups §08.
 

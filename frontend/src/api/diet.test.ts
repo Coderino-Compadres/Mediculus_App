@@ -197,7 +197,9 @@ describe('the food diary', () => {
       date: '2026-09-09',
       streakDays: 4,
       mealCount: 3,
-      meals: [{ id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' }],
+      meals: [{
+        id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.', emotions: [],
+      }],
     })
     expect(apiRequest).toHaveBeenCalledWith('/api/diet/today/')
   })
@@ -243,8 +245,11 @@ describe('the food diary', () => {
       {
         date: '2026-09-09',
         meals: [
-          { id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' },
-          { id: 'm2', kind: null, time: null, description: '' },
+          {
+            id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.',
+            emotions: [],
+          },
+          { id: 'm2', kind: null, time: null, description: '', emotions: [] },
         ],
       },
     ])
@@ -267,7 +272,84 @@ describe('the food diary', () => {
     const [day] = await fetchDietHistory()
 
     expect(Object.keys(day.meals[0]).sort())
-      .toEqual(['description', 'id', 'kind', 'time'])
+      .toEqual(['description', 'emotions', 'id', 'kind', 'time'])
+  })
+})
+
+describe('the emotions on a meal', () => {
+  /** What either write answers with. Its content does not matter here — these
+   *  tests are about what goes *out* — but a write has to resolve to something
+   *  the mapping can read. */
+  const WRITTEN = {
+    meal: {
+      id: 'm1', kind: null, time: null, description: '', emotions: [],
+    },
+    day: { date: '2026-09-11', streak_days: 1, meal_count: 1, meals: [] },
+  }
+
+  it('maps them, keeping an unrated chip unrated', async () => {
+    /** `null` is not a 0 — the column is nullable precisely so the distinction
+     *  survives the round trip, and a 0 invented here would read as "wcale". */
+    apiRequest.mockResolvedValue([{
+      date: '2026-09-09',
+      meals: [{
+        id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.',
+        emotions: [
+          { emotion: 'Lęk', intensity: 7 },
+          { emotion: 'Spokój', intensity: null },
+        ],
+      }],
+    }])
+
+    const [day] = await fetchDietHistory()
+
+    expect(day.meals[0].emotions).toEqual([
+      { emotion: 'Lęk', intensity: 7 },
+      { emotion: 'Spokój', intensity: null },
+    ])
+  })
+
+  it('answers with an empty list when the key is missing', async () => {
+    /** A backend a release behind sends a meal with no `emotions`. Throwing on
+     *  it would take a whole day of the diary down rather than draw the meal
+     *  without chips — the same judgement `DietDayPayload.meals` makes. */
+    apiRequest.mockResolvedValue([{
+      date: '2026-09-09',
+      meals: [{ id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' }],
+    }])
+
+    const [day] = await fetchDietHistory()
+
+    expect(day.meals[0].emotions).toEqual([])
+  })
+
+  it('omits the intensity of an unrated chip rather than sending a null', async () => {
+    /** Absent and null mean the same thing to the serializer, and leaving the
+     *  key out is the shape that says "unanswered" without a key at all. What
+     *  must never go out is a 0 for a slider nobody moved. */
+    apiRequest.mockResolvedValue(WRITTEN)
+
+    await createMeal({
+      kind: null, time: null, description: '',
+      emotions: [
+        { emotion: 'Lęk', intensity: null },
+        { emotion: 'Stres', intensity: 0 },
+      ],
+    })
+
+    expect(apiRequest.mock.calls[0][1].body).toMatchObject({
+      emotions: [{ emotion: 'Lęk' }, { emotion: 'Stres', intensity: 0 }],
+    })
+  })
+
+  it('sends the list on an edit too, so every chip can be taken back', async () => {
+    apiRequest.mockResolvedValue(WRITTEN)
+
+    await updateMeal('m1', {
+      kind: null, time: null, description: '', emotions: [],
+    })
+
+    expect(apiRequest.mock.calls[0][1].body).toMatchObject({ emotions: [] })
   })
 })
 
@@ -283,11 +365,11 @@ describe('createMeal', () => {
   it('posts the three fields a meal holds and nothing else', async () => {
     apiRequest.mockResolvedValue(SAVED)
 
-    await createMeal({ kind: 'Obiad', time: '13:30', description: 'Zupa.' })
+    await createMeal({ kind: 'Obiad', time: '13:30', description: 'Zupa.', emotions: [] })
 
     expect(apiRequest).toHaveBeenCalledWith('/api/diet/meals/', {
       method: 'POST',
-      body: { kind: 'Obiad', time: '13:30', description: 'Zupa.' },
+      body: { kind: 'Obiad', time: '13:30', description: 'Zupa.', emotions: [] },
     })
   })
 
@@ -295,19 +377,20 @@ describe('createMeal', () => {
     /** A form that only shows today must not be able to write into the archive. */
     apiRequest.mockResolvedValue(SAVED)
 
-    await createMeal({ kind: null, time: null, description: '' })
+    await createMeal({ kind: null, time: null, description: '', emotions: [] })
 
     const body = apiRequest.mock.calls[0][1].body as Record<string, unknown>
-    expect(Object.keys(body).sort()).toEqual(['description', 'kind', 'time'])
+    expect(Object.keys(body).sort()).toEqual(
+      ['description', 'emotions', 'kind', 'time'])
   })
 
   it('turns a blank answer into null, so "unanswered" has one representation', async () => {
     apiRequest.mockResolvedValue(SAVED)
 
-    await createMeal({ kind: '', time: '', description: '   ' })
+    await createMeal({ kind: '', time: '', description: '   ', emotions: [] })
 
     expect(apiRequest.mock.calls[0][1].body).toEqual({
-      kind: null, time: null, description: '',
+      kind: null, time: null, description: '', emotions: [],
     })
   })
 
@@ -316,14 +399,16 @@ describe('createMeal', () => {
      *  day ends up with two versions of itself. */
     apiRequest.mockResolvedValue(SAVED)
 
-    const saved = await createMeal({ kind: 'Obiad', time: '13:30', description: 'Zupa.' })
+    const saved = await createMeal({ kind: 'Obiad', time: '13:30', description: 'Zupa.', emotions: [] })
 
     expect(saved.meal).toEqual({
-      id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.',
+      id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.', emotions: [],
     })
     expect(saved.day).toEqual({
       date: '2026-09-11', streakDays: 4, mealCount: 3,
-      meals: [{ id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.' }],
+      meals: [{
+        id: 'm1', kind: 'Obiad', time: '13:30', description: 'Zupa.', emotions: [],
+      }],
     })
   })
 
@@ -333,7 +418,7 @@ describe('createMeal', () => {
       day: { date: '2026-09-11', streak_days: 0, meal_count: 0, meals: [] },
     })
 
-    const saved = await createMeal({ kind: null, time: null, description: '' })
+    const saved = await createMeal({ kind: null, time: null, description: '', emotions: [] })
 
     expect(saved.day.streakDays).toBe(0)
     expect(saved.day.mealCount).toBe(0)
@@ -932,7 +1017,7 @@ describe('fetchDietReports', () => {
     const [report] = await fetchDietReports()
 
     expect(Object.keys(report.mealGrid.rows[0].cells[0].meals[0]).sort())
-      .toEqual(['description', 'id', 'kind', 'time'])
+      .toEqual(['description', 'emotions', 'id', 'kind', 'time'])
   })
 
   it('answers with nothing for a diary younger than a week', async () => {
@@ -1000,11 +1085,13 @@ describe('updateMeal and deleteMeal — correcting today', () => {
      *  screen is an answer taken back rather than one left alone. */
     apiRequest.mockResolvedValue({ meal: DAY.meals[0], day: DAY })
 
-    await updateMeal('m1', { kind: 'Kolacja', time: '19:30', description: 'Zupa.' })
+    await updateMeal('m1', {
+      kind: 'Kolacja', time: '19:30', description: 'Zupa.', emotions: [],
+    })
 
     expect(apiRequest).toHaveBeenCalledWith('/api/diet/meals/m1/', {
       method: 'PUT',
-      body: { kind: 'Kolacja', time: '19:30', description: 'Zupa.' },
+      body: { kind: 'Kolacja', time: '19:30', description: 'Zupa.', emotions: [] },
     })
   })
 
@@ -1013,17 +1100,20 @@ describe('updateMeal and deleteMeal — correcting today', () => {
      *  that tried would be silently ignored rather than told. */
     apiRequest.mockResolvedValue({ meal: DAY.meals[0], day: DAY })
 
-    await updateMeal('m1', { kind: null, time: null, description: '' })
+    await updateMeal('m1', {
+      kind: null, time: null, description: '', emotions: [],
+    })
 
     const body = apiRequest.mock.calls[0][1].body as Record<string, unknown>
-    expect(Object.keys(body).sort()).toEqual(['description', 'kind', 'time'])
+    expect(Object.keys(body).sort()).toEqual(
+      ['description', 'emotions', 'kind', 'time'])
   })
 
   it('maps back the row and the rebuilt day', async () => {
     apiRequest.mockResolvedValue({ meal: DAY.meals[0], day: DAY })
 
     const saved = await updateMeal('m1', {
-      kind: 'Kolacja', time: '19:30', description: 'Zupa.',
+      kind: 'Kolacja', time: '19:30', description: 'Zupa.', emotions: [],
     })
 
     expect(saved.meal.id).toBe('m1')

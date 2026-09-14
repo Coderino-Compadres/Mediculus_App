@@ -1,7 +1,23 @@
 import { EMOTION_COLORS, type EmotionName } from '../utils/emotions'
 import type { EmotionEntry } from '../types/diaryEntry'
+import './emotionSelector.css'
 
 const EMOTION_NAMES = Object.keys(EMOTION_COLORS) as EmotionName[]
+
+/** What a chip reads when it was picked and the slider was never moved.
+ *
+ *  Not "0/10", because those are two different answers and one of this
+ *  component's two callers can store both: `diet_meal_emotion.intensity` is
+ *  nullable, so the diet form sends null for an untouched slider (CLAUDE.md's
+ *  rule) rather than a number nobody chose. The psychotherapy form cannot —
+ *  `mood_scale` has no room for the distinction — so it sends 0 on picking and
+ *  never reaches this string.
+ *
+ *  "nie podano" rather than the more natural "bez oceny", because the diet
+ *  form's own sweep refuses the stem `ocen` anywhere on the screen: that module
+ *  must never look like it is *judging* a meal, and a guard that has to reason
+ *  about which noun a word belongs to is a guard that stops holding. */
+const UNRATED = 'nie podano'
 
 interface EmotionSelectorProps {
   selected: EmotionEntry[]
@@ -46,18 +62,27 @@ function EmotionSelector({
       {selected.map((entry) => {
         const color = EMOTION_COLORS[entry.emotion]
         const threshold = alertThresholds?.[entry.emotion]
-        const isAlert = threshold !== undefined && (entry.intensity ?? 0) >= threshold
+        // `entry.intensity ?? 0` would have flagged an *unrated* chip on a
+        // threshold of 0, and read an unanswered question as a low answer.
+        // Nothing is compared until there is a number to compare.
+        const isAlert =
+          threshold !== undefined && entry.intensity !== null && entry.intensity >= threshold
+        const unrated = entry.intensity === null
         return (
           <div className="emotion-intensity" key={entry.emotion}>
             <div className="emotion-intensity-header">
               <span style={{ color }}>{entry.emotion}</span>
               <span
                 className={
-                  isAlert ? 'emotion-intensity-value emotion-intensity-value-alert' : 'emotion-intensity-value'
+                  isAlert
+                    ? 'emotion-intensity-value emotion-intensity-value-alert'
+                    : unrated
+                      ? 'emotion-intensity-value emotion-intensity-unrated'
+                      : 'emotion-intensity-value'
                 }
                 style={isAlert ? undefined : { color }}
               >
-                {entry.intensity ?? 0}/10
+                {unrated ? UNRATED : `${entry.intensity}/10`}
                 {/* WCAG 1.4.1. The alert used to be `color: var(--color-error)`
                     and nothing else, so a reader who cannot tell the red from
                     the emotion's own hue — or who is using a screen reader —
@@ -72,6 +97,18 @@ function EmotionSelector({
               min={0}
               max={10}
               step={1}
+              // The slider has no empty position, so an unrated chip renders at
+              // 0 — but moving it is what *makes* it a number, and until then
+              // the reading beside it says so rather than claiming a number.
+              //
+              // ONE CONSEQUENCE, AND IT IS ACCEPTED: a rating of exactly 0 on a
+              // chip that is still unrated cannot be given in a single tap,
+              // because a range input fires nothing when its value does not
+              // change. Nudging the slider and coming back records it. Worth
+              // the trade — "picked, and it was not strong at all" is what
+              // an unrated chip already reads as, while a 0 written by the form
+              // itself is the answer nobody gave that the diary's `mood_scale`
+              // is stuck with.
               value={entry.intensity ?? 0}
               onChange={(event) => onIntensityChange(entry.emotion, Number(event.target.value))}
               className="emotion-intensity-input"

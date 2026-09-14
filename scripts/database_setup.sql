@@ -447,6 +447,58 @@ CREATE TABLE IF NOT EXISTS diet_meal (
 );
 
 -- ----------------------------
+-- DIET_MEAL_EMOTION
+-- The emotions felt at one meal, and the 0-10 number on each (mockups §04/§05).
+--
+-- This is the half the food diary was missing. It could say what was eaten and
+-- when; it could say nothing about what was felt around it, which is the part
+-- the module is actually for ("nie liczy jedzenia -- opisuje je i to, co dzieje
+-- się wokół niego"). §05's "najczęstsze emocje przy jedzeniu" reads this table.
+--
+-- THE SAME TEN EMOTIONS AS THE PSYCHOTHERAPY DIARY (core/emotions.py), on the
+-- same 0-10 scale, rather than a second vocabulary for this module: 'Lęk' at
+-- supper and 'Lęk' in the evening's diary entry are one word, not two that
+-- happen to be spelled alike. Unconstrained here, with the same caveat as
+-- diet_meal.kind -- the API serializer is the only thing refusing an unknown
+-- value.
+--
+-- A ROW PER EMOTION, which is where this parts company with diary's nine
+-- mood_scale columns. A NULL in one of those means the chip was never picked,
+-- so a chip picked and left unrated has nowhere to live there and the form
+-- sends a 0 nobody chose. Here the row records the picking and intensity
+-- records only the rating, so intensity is free to be NULL for an untouched
+-- slider -- the rule CLAUDE.md states and mood_scale cannot express.
+--
+-- id_meal IS A REAL FOREIGN KEY, unlike every id_medical in this database:
+-- both ends live in medical_db, the same exception supplement_hour and
+-- supplement_intake are. An emotion has no meaning without its meal, so
+-- deleting the meal takes it along. There is no id_medical column for the same
+-- reason supplement_hour has none -- the patient is reachable through the meal,
+-- and a copy here would be a second answer to whose emotion it is.
+--
+-- Mirrors core/migrations/0020_diet_meal_emotion.py.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS diet_meal_emotion (
+    id_meal_emotion UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    id_meal UUID NOT NULL
+        REFERENCES diet_meal (id_meal) ON DELETE CASCADE,
+
+    -- One of core.emotions.EMOTIONS, the Polish name as written.
+    emotion TEXT NOT NULL,
+
+    -- 0-10, or NULL for a chip picked and left unrated.
+    intensity SMALLINT,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    -- The same emotion twice on one meal is a double-submitted form, not a
+    -- second feeling. Its btree also serves the only query this table has --
+    -- every emotion of one meal -- so there is no separate index on id_meal.
+    CONSTRAINT uq_diet_meal_emotion UNIQUE (id_meal, emotion)
+);
+
+-- ----------------------------
 -- SUPPLEMENT
 -- "Suplementy i leki" (mockups §08): a list with a dose, a frequency, an hour
 -- and start/end dates. Only `name` is required -- somebody who knows they take

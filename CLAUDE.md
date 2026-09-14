@@ -21,6 +21,7 @@ This file provides critical guidance when working with code in this repository[c
 ## 3. Core Modules & Business Logic
 * **Reports**: Generated dynamically once a week from diary entries; never stored in the database[cite: 1]. Psychotherapy weeks run Monday-Sunday[cite: 1].
 * **Diet Module**: Strictly qualitative (no calorie counting, no food measuring)[cite: 1]. Diet weeks count from the patient's first entry (not Monday) and use `patient.diet_week_start` as the anchor[cite: 1].
+* **Meal Emotions**: Adding a meal offers the psychotherapy form's own picker — the same ten `core/emotions.py` names on the same 0-10 sliders — stored a row per chip in `diet_meal_emotion`. Unlike the diary's `mood_scale` columns, `intensity` is nullable: the row records that a chip was picked and the column records only the rating, so an untouched slider stays NULL instead of becoming a 0 nobody chose. A number here rates a feeling, never the food.
 * **Techniques**: Specialist-created techniques have no draft state; they are published to all patients immediately upon saving[cite: 1]. Slugs are derived automatically and immutable[cite: 1].
 * **Timezones**: The `settings.TIME_ZONE` is `Europe/Warsaw`, which dictates calendar day boundaries for entries regardless of UTC storage[cite: 1].
 

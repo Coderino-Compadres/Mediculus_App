@@ -155,52 +155,10 @@
   }
 }
 
-/* Emotion chips + intensity */
-
-.emotion-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.emotion-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  /* 33px -> 44px. To główny formularz aplikacji, wypełniany codziennie
-     na telefonie, i dziesięć sąsiadujących celów w jednym wierszu. */
-  min-height: 44px;
-  font-family: var(--font-body);
-  font-weight: var(--font-weight-semibold);
-  font-size: 13px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1.5px solid;
-  background: #fff;
-  cursor: pointer;
-}
-
-.emotion-chip-selected {
-  color: #fff !important;
-}
-
-.emotion-intensity {
-  margin-top: 16px;
-}
-
-.emotion-intensity-header {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-body);
-  font-weight: var(--font-weight-semibold);
-  font-size: 13px;
-  margin-bottom: 6px;
-}
-
-.emotion-intensity-input {
-  width: 100%;
-}
+/* Emotion chips + intensity used to be here. They moved to
+   `components/emotionSelector.css` when the diet module's "Dodawanie posiłku"
+   gained the same picker: a shared component drawing from one page's
+   stylesheet is styled on that page and bare everywhere else. */
 
 /* Level sliders */
 
@@ -239,9 +197,9 @@
 
 /* The word that carries the alert without the colour (WCAG 1.4.1). Smaller than
    the number it follows, because it qualifies it rather than competing with it —
-   but not hidden, which is the whole point. */
-.level-slider-flag,
-.emotion-intensity-flag {
+   but not hidden, which is the whole point. `.emotion-intensity-flag` matches it
+   from `components/emotionSelector.css`. */
+.level-slider-flag {
   font-size: 12px;
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
@@ -509,6 +467,4 @@
   color: var(--color-error);
 }
 
-.emotion-intensity-value-alert {
-  color: var(--color-error);
-}
+

@@ -56,15 +56,16 @@ const WEEK_START = '2026-08-26'
 
 const BREAKFAST: DietMeal = {
   id: 'm-1', kind: 'Śniadanie', time: '07:30', description: 'Owsianka z jabłkiem.',
+  emotions: [],
 }
 // After 22:00, and saved without a description — two states the module allows
 // and the screen has to render calmly.
 const LATE_SNACK: DietMeal = {
-  id: 'm-2', kind: 'Przekąska', time: '23:40', description: '',
+  id: 'm-2', kind: 'Przekąska', time: '23:40', description: '', emotions: [],
 }
 // Neither a kind nor an hour: §05's "żadne pole nie blokuje zapisu".
 const UNNAMED: DietMeal = {
-  id: 'm-3', kind: null, time: null, description: 'Coś na szybko.',
+  id: 'm-3', kind: null, time: null, description: 'Coś na szybko.', emotions: [],
 }
 
 /** The week's seven days, in its own order, starting on the Wednesday. */
