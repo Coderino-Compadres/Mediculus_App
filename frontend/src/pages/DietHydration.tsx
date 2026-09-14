@@ -65,7 +65,7 @@ import './dietHydration.css'
 /** Said once, above the chips, rather than left to be inferred from a counter
  *  that does not move — an unexplained non-response reads as a fault. */
 const OTHER_DRINKS_NOTE =
-  'Zapisujemy je osobno i nie przeliczamy na wodę — to zostaje decyzją specjalisty.'
+  'Inne napoje wliczają się w dzienny licznik szklanek.'
 
 const LOAD_ERROR = 'Nie udało się wczytać nawodnienia.'
 
@@ -139,7 +139,7 @@ function TodayCard({
   return (
     <section className="hydration-card" aria-labelledby="hydration-today-heading">
       <div className="hydration-card-head">
-        <h2 id="hydration-today-heading">Dzisiaj wypite</h2>
+        <h2 id="hydration-today-heading">Wypite szklanki (250 ml):</h2>
         <p className="hydration-goal">
           cel: {day.targetGlasses} {pluralGlasses(day.targetGlasses)}
         </p>

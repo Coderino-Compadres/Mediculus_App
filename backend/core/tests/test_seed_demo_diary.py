@@ -26,14 +26,16 @@ from django.utils import timezone
 
 from core.drinks import WATER
 from core.drinks import OTHER_DRINKS
-from core.management.commands.seed_demo_diary import (ALL_SUPPLEMENT_SHAPES,
+from core.management.commands.seed_demo_diary import (ACTIVITY_SHAPES,
+                                                      ALL_SUPPLEMENT_SHAPES,
                                                       DIET_DAYS, MEAL_DAYS,
                                                       SUPPLEMENT_SHAPES,
                                                       WATER_ML_BY_DAY,
                                                       last_completed_week_start)
 from core.supplements import MAX_SUPPLEMENTS
 from core.meals import streak_days
-from core.models import (Diary, DietMeal, Hydration, Patient, Supplement,
+from core.models import (Diary, DietActivity, DietActivityDay, DietMeal,
+                         DietSleep, Hydration, Patient, Supplement,
                          SupplementIntake, User, UserRole)
 
 #: `PAGE_SIZE` read out of the frontend, the same cross-language guard
@@ -503,3 +505,157 @@ class OtherDrinksTests(SeedDemoDiaryTests):
         self.seed()
 
         self.assertEqual(self.water_on(self.today), WATER_ML_BY_DAY[0])
+
+
+class ActivityAndSleepTests(SeedDemoDiaryTests):
+    """§09's two diaries, which the weekly report lists day by day.
+
+    They are seeded over the *meal* window rather than the seven-day one, and
+    that is the property worth pinning: unlike hydration, these two are
+    reachable further back than a week, because §10's report shows them. A seed
+    bounded by `DIET_DAYS` would leave every report older than the running week
+    with two empty sections.
+    """
+
+    def activities(self):
+        return DietActivity.objects.filter(id_medical=self.patient.id_medical)
+
+    def nights(self):
+        return DietSleep.objects.filter(id_medical=self.patient.id_medical)
+
+    def test_both_diaries_reach_as_far_back_as_the_meals(self):
+        self.seed()
+
+        oldest_meal = self.meals().order_by('entry_date').first().entry_date
+        oldest_night = self.nights().order_by('entry_date').first().entry_date
+
+        # Within a day of each other: the meal run has a gap in it, the §09 one
+        # does not, so the two need not start on the same date.
+        self.assertLessEqual((oldest_night - oldest_meal).days, 1)
+        self.assertGreater((self.today - oldest_night).days, DIET_DAYS)
+
+    def test_not_every_day_holds_an_activity(self):
+        """Most people do not move every day, and a seed that said otherwise
+        would make the screen read as a target — the one thing §09 must not
+        do."""
+        self.seed()
+
+        days_with_activity = self.activities().values('entry_date').distinct().count()
+
+        self.assertGreater(days_with_activity, 0)
+        self.assertLess(days_with_activity, MEAL_DAYS)
+
+    def test_a_day_carries_a_step_count_with_no_activity_on_it(self):
+        """The state `diet_activity_day` exists for: a number belonging to the
+        day rather than to any walk in it."""
+        self.seed()
+
+        with_steps = set(
+            DietActivityDay.objects
+            .filter(id_medical=self.patient.id_medical)
+            .values_list('entry_date', flat=True)
+        )
+        with_activity = set(self.activities().values_list('entry_date', flat=True))
+
+        self.assertTrue(with_steps - with_activity)
+
+    def test_a_day_carries_an_activity_with_no_step_count(self):
+        """The other way round, which is the commoner one: null is not zero."""
+        self.seed()
+
+        with_steps = set(
+            DietActivityDay.objects
+            .filter(id_medical=self.patient.id_medical)
+            .values_list('entry_date', flat=True)
+        )
+        with_activity = set(self.activities().values_list('entry_date', flat=True))
+
+        self.assertTrue(with_activity - with_steps)
+
+    def test_one_night_is_left_undescribed(self):
+        """So the report's "nie wpisano" branch is reachable from a seed rather
+        than only from a hand-written row."""
+        self.seed()
+
+        self.assertLess(self.nights().count(), MEAL_DAYS)
+
+    def test_no_night_is_stamped_with_a_length(self):
+        """The length is derived from the two hours, in one place. A seed that
+        stored one would be seeding a column that does not exist."""
+        self.seed()
+
+        for night in self.nights():
+            self.assertFalse(hasattr(night, 'duration_minutes'))
+
+    def test_nothing_seeded_measures_an_activity(self):
+        """No calories, no intensity, no pace — §09's scope, in the fixture."""
+        for shape in ACTIVITY_SHAPES:
+            for _, kind, minutes, feeling in shape['activities']:
+                self.assertIsInstance(minutes, int)
+                self.assertIn(feeling, ('worse', 'neutral', 'better'))
+                for measure in ('kcal', 'kalor', 'tętno', 'puls'):
+                    self.assertNotIn(measure, (kind or '').lower())
+
+    def test_running_twice_does_not_double_a_day(self):
+        self.seed()
+        first = (self.activities().count(), self.nights().count())
+
+        self.seed()
+
+        self.assertEqual((self.activities().count(), self.nights().count()), first)
+
+    def test_no_diet_skips_them_too(self):
+        self.seed('--no-diet')
+
+        self.assertFalse(self.activities().exists())
+        self.assertFalse(self.nights().exists())
+        self.assertFalse(
+            DietActivityDay.objects.filter(id_medical=self.patient.id_medical).exists())
+
+    def test_the_week_anchor_is_left_for_the_api_to_latch(self):
+        """The seed writes rows, not the anchor.
+
+        `patient.diet_week_start` is filled by `core/diet_reports.py` on the
+        first request, from the earliest row — which is the path a real account
+        takes. A seed that set it would be seeding a value the app derives, and
+        the two could then disagree.
+        """
+        self.seed()
+        self.patient.refresh_from_db()
+
+        self.assertIsNone(self.patient.diet_week_start)
+
+
+class ReportsAreVisibleTests(SeedDemoDiaryTests):
+    """The point of seeding §09 at all: §10 has something to show.
+
+    A report only exists for a week that has *ended*, so this is the same
+    property `seed_demo_diary` was written for on the psychotherapy side — a
+    screen that cannot be reached by using the app for five minutes.
+    """
+
+    def test_the_seed_yields_more_than_one_completed_week(self):
+        from core.diet_reports import build_diet_reports, latch_week_start
+
+        self.seed()
+        self.patient.refresh_from_db()
+        reports = build_diet_reports(
+            self.patient.id_medical, latch_week_start(self.patient), self.today,
+        )
+
+        self.assertGreater(len(reports), 1)
+
+    def test_a_report_carries_all_four_diaries(self):
+        from core.diet_reports import build_diet_reports, latch_week_start
+
+        self.seed()
+        self.patient.refresh_from_db()
+        reports = build_diet_reports(
+            self.patient.id_medical, latch_week_start(self.patient), self.today,
+        )
+        days = [day for report in reports for day in report['days']]
+
+        self.assertTrue(any(day['meals'] for day in days))
+        self.assertTrue(any(day['hydration'] for day in days))
+        self.assertTrue(any(day['activity'] for day in days))
+        self.assertTrue(any(day['sleep'] for day in days))

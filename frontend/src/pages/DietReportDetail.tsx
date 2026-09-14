@@ -1,9 +1,9 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
-import { useCurrentDay } from '../hooks/useCurrentDay'
-import { loadDietReport } from '../api/diet'
-import { fromIsoDate } from '../utils/days'
+import LoadError from '../components/LoadError'
+import { ApiError } from '../api/client'
+import { fetchDietReport } from '../api/diet'
 import { dietDayLabel, dietShortDayLabel } from '../utils/dietWeeks'
 import { mealSlotLabel } from '../utils/dietReport'
 import { formatGlasses, pluralGlasses, weekdayLabel } from '../utils/drinks'
@@ -261,15 +261,82 @@ function DaySummary({ day }: { day: DietReportDay }) {
   )
 }
 
+const LOAD_ERROR = 'Nie udało się wczytać raportu.'
+
 function DietReportDetail() {
   const { id } = useParams<{ id: string }>()
-  /* Live, like the list: a report opened before midnight stays the report it
-     was, but the screen must not hold a stale day to derive it from. */
-  const currentDay = useCurrentDay()
-  const report = useMemo(
-    () => (id ? loadDietReport(id, fromIsoDate(currentDay)) : null),
-    [id, currentDay],
-  )
+  const [report, setReport] = useState<DietWeeklyReport | null>(null)
+  /** Initialised from whether there is anything to load, rather than set to
+   *  false inside the effect: a route with no `:id` never fetches, and starting
+   *  it true would render a loading line that resolves to nothing on the first
+   *  pass. (The router always supplies one; the branch exists for the type.) */
+  const [loading, setLoading] = useState(Boolean(id))
+  /** Null while the report simply is not there — which is a 404 and a different
+   *  statement from a failure. See the two branches below. */
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+
+    fetchDietReport(id)
+      .then((loaded) => {
+        if (cancelled) return
+        setReport(loaded)
+        setLoadError(null)
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return
+        /* **A 404 IS NOT A FAILURE AND MUST NOT OFFER A RETRY.** A week nobody
+           wrote in and a typed-in address answer the same way, and a second
+           attempt answers the same — so it is reported as an absence, with a
+           way back rather than a way to try again. Anything else (offline, a
+           gate, a 500) is a failure and does offer one. */
+        if (cause instanceof ApiError && cause.status === 404) {
+          setReport(null)
+          setLoadError(null)
+          return
+        }
+        setLoadError(
+          (cause instanceof ApiError && cause.formMessage) || LOAD_ERROR,
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [id, attempt])
+
+  if (loading) {
+    return (
+      <div className="diet-report-page">
+        <p className="diet-report-not-found">Wczytywanie raportu…</p>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="diet-report-page">
+        <LoadError
+          className="diet-report-not-found"
+          message={loadError}
+          onRetry={() => {
+            setLoading(true)
+            setLoadError(null)
+            setAttempt((n) => n + 1)
+          }}
+        />
+        <Link className="diet-report-back-link" to={ROUTES.dietReports}>
+          ← Wróć do raportów
+        </Link>
+      </div>
+    )
+  }
 
   if (!report) {
     /* The same answer the psychotherapy detail gives, and worded the same way:

@@ -7,9 +7,9 @@
  * the two are compared. On the backend the same rule is expressed by there
  * being exactly one writable diary URL (`/api/diary/today/`, which can only
  * ever address today) — so a past entry is not refused, it is unreachable. The
- * diet module has no backend yet; when it gets one, it should be shaped the
- * same way, and this helper stays as what the screen uses to draw the
- * difference.
+ * diet module is shaped the same way now: `/api/diet/activity/` and
+ * `/api/diet/sleep/` address today and this morning and nothing else, and this
+ * helper stays as what the screen uses to draw the difference.
  *
  * WHY IT MATTERS ON A SCREEN THAT ONLY EVER SHOWS TODAY. A page computes "now"
  * once, when it mounts. A phone left open overnight is therefore holding a form
@@ -28,11 +28,11 @@
  * foreground.
  *
  * AND A LOCK IS NOT A SUBSTITUTE FOR A CORRECT STAMP. Whatever this returns, the
- * date written *onto* an entry has to be taken from the clock at the moment of
- * saving rather than copied off the day object on screen — see
- * `newActivityEntry` in api/diet.ts. A refused save is a control that
- * misbehaved; a row filed under the wrong day is bad data in a document a
- * specialist reads.
+ * date written *onto* an entry must not be copied off the day object on screen.
+ * It is the server's clock that stamps one now — no diet write sends a date at
+ * all — which is the strongest form of that rule: a refused save is a control
+ * that misbehaved, while a row filed under the wrong day is bad data in a
+ * document a specialist reads.
  *
  * THE WORDING IS BORROWED, DELIBERATELY. Both strings below are the ones the
  * psychotherapy module already says about the same rule — the badge from
@@ -64,20 +64,17 @@ export const READ_ONLY_BADGE = 'Tylko odczyt'
  * What a form that can still be changed says about its deadline. From
  * pages/DiaryEntry.tsx, where `dateLabel` is "piątek, 14 sierpnia".
  *
- * `stored` IS WHETHER THERE IS SOMEWHERE FOR THE ENTRY TO BE KEPT, and it
- * exists because the second sentence is a promise rather than a description of
- * the rule. The rule is that today is editable and a past day is not, which
- * holds on a screen with no backend just as well; "Później zostanie zapisany na
- * stałe" additionally claims the entry survives, which on /diet/activity-sleep
- * is false — nothing there reaches an endpoint and a reload loses it. Rendered
- * anyway, it sat one line under the note admitting exactly that, so the screen
- * contradicted itself in two consecutive paragraphs.
- *
- * It defaults to true because every *other* screen this helper is for does
- * store what it collects. Pass false only while a screen genuinely keeps
- * nothing, and drop the argument in the commit that gives it an endpoint.
+ * IT USED TO TAKE A `stored` FLAG, and the flag is gone with the thing it
+ * described. The second sentence is a promise rather than a description of the
+ * rule: "Później zostanie zapisany na stałe" claims the entry survives, and on
+ * /diet/activity-sleep that was false — nothing there reached an endpoint and a
+ * reload lost it, so the sentence sat one line under the note admitting exactly
+ * that. §09 has its two endpoints now (`0018`), every screen this helper serves
+ * keeps what it collects, and the promise is true everywhere it is made.
  */
-export function dayLockNotice(dateLabel: string, stored = true): string {
-  const deadline = `Ten wpis możesz edytować do końca dzisiejszego dnia (${dateLabel}).`
-  return stored ? `${deadline} Później zostanie zapisany na stałe.` : deadline
+export function dayLockNotice(dateLabel: string): string {
+  return (
+    `Ten wpis możesz edytować do końca dzisiejszego dnia (${dateLabel}). ` +
+    'Później zostanie zapisany na stałe.'
+  )
 }

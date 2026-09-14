@@ -59,8 +59,13 @@
 import { apiRequest } from './client'
 import { toIsoDate } from '../utils/days'
 import { WATER } from '../utils/drinks'
-import { buildDietReports, findDietReport } from '../utils/dietReport'
-import type { DietReportSource, DietWeeklyReport } from '../types/dietReport'
+import type { FeelingAfter } from '../utils/activity'
+import type { SleepQuality, WakeFeeling } from '../utils/sleep'
+import type {
+  DietMealSlot,
+  DietReportDay,
+  DietWeeklyReport,
+} from '../types/dietReport'
 import type {
   DietActivityDay,
   DietActivityEntry,
@@ -252,6 +257,17 @@ function toEntry(payload: HydrationEntryPayload): HydrationEntry {
   }
 }
 
+/** One day's water figure — a column of the seven-day chart, and the same shape
+ *  a weekly report carries for a day. Named rather than inlined because both
+ *  read it: two copies would be two answers about how much water Tuesday held. */
+function toDayTotal(day: HydrationDayTotalPayload): HydrationDayTotal {
+  return {
+    date: day.date,
+    waterMl: day.water_ml,
+    glasses: day.glasses,
+  }
+}
+
 function toDay(payload: HydrationDayPayload): HydrationDay {
   return {
     date: payload.date,
@@ -265,13 +281,7 @@ function toDay(payload: HydrationDayPayload): HydrationDay {
     glasses: payload.glasses,
     progress: payload.progress,
     entries: payload.entries.map(toEntry),
-    week: payload.week.map(
-      (day): HydrationDayTotal => ({
-        date: day.date,
-        waterMl: day.water_ml,
-        glasses: day.glasses,
-      }),
-    ),
+    week: payload.week.map(toDayTotal),
   }
 }
 
@@ -539,88 +549,92 @@ export async function setSupplementTaken(
   return payload.map(toSupplement)
 }
 
+
 /* ------------------------------------------------------------------ *
  *  Aktywność i sen (§09)
  *
- *  Same terms as everything above: there is no `/api/diet/activity/` and no
- *  `/api/diet/sleep/` either, so these are the "empty" producers plus, for the
- *  first time in this file, a pair of *sample* producers.
+ *  Real now. Until this endpoint existed both panels held their entries in
+ *  component state and a reload lost them, which is why this section used to
+ *  carry "empty" producers plus a pair of *sample* ones and the screen carried
+ *  three separate pieces of wording admitting that nothing was stored. The
+ *  samples are gone with the pretence; the empty producers stay, because they
+ *  are what a panel draws while its first request is in flight.
  *
- *  WHY SAMPLES ARE ALLOWED HERE AND NOT ON THE HOME SCREEN. The rule this file
- *  opens with — never copy the mockup's figures onto a screen a patient sees —
- *  is about what the app *claims*. `emptyActivityDay` and `emptySleepNight` are
- *  still what the screens call, so a patient is shown nothing that was not
- *  written by them. `sampleActivityDay`/`sampleSleepNight` are not wired to
- *  anything: they exist so the filled state can be looked at and tested, and
- *  every value in them is dated relative to the day they are asked for rather
- *  than frozen, so they never quietly become stale demo data.
- *
- *  HOW TO SEE THE FILLED STATE. In `loadActivityDay`/`loadSleepNight` below,
- *  swap the `empty…` call for the `sample…` one. That is the whole change, and
- *  it is deliberately in this file rather than in the screens — when the real
- *  endpoints arrive, these two functions become `fetch` calls and nothing on
- *  either screen moves. Passing the sample an earlier date (e.g.
- *  `sampleActivityDay(new Date(Date.now() - 864e5))`) shows the third state:
- *  a day that has ended, which both panels render read-only.
+ *  BOTH ENDPOINTS ADDRESS TODAY AND NOTHING ELSE — no date travels in either
+ *  direction on a write. That is what makes §09's "a day is locked once it is
+ *  over" structural rather than a permission somebody can forget.
  * ------------------------------------------------------------------ */
 
-/**
- * Ids for entries that exist only in the browser.
- *
- * A counter rather than `crypto.randomUUID()`: the id's only job today is to be
- * a stable React key, the real one will come from the database, and the prefix
- * says out loud that nothing here has been persisted. Also works in every test
- * environment without a crypto stub.
- */
-let localEntries = 0
+const ACTIVITY_URL = '/api/diet/activity/'
+const SLEEP_URL = '/api/diet/sleep/'
 
-export function nextLocalActivityId(): string {
-  localEntries += 1
-  return `local-activity-${localEntries}`
+interface ActivityEntryPayload {
+  id: string
+  date: string
+  time: string
+  kind: string | null
+  kind_other: string
+  duration_minutes: number | null
+  feeling_after: FeelingAfter | null
 }
 
-/** 'HH:MM' in the reader's own clock — when an entry is being written. */
-export function localTime(now: Date = new Date()): string {
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+interface ActivityDayPayload {
+  date: string
+  /** Optional for the reason `DietDayPayload.meals` is: a backend a release
+   *  behind this file sends no such key, and an empty list is a better answer
+   *  than a panel that throws. */
+  entries?: ActivityEntryPayload[]
+  steps: number | null
 }
 
-/** What the add-form has collected: an entry minus the two stamps below. */
-export type ActivityAnswers = Pick<
-  DietActivityEntry,
-  'kind' | 'kindOther' | 'durationMinutes' | 'feelingAfter'
->
+interface SleepNightPayload {
+  date: string
+  fell_asleep_at: string | null
+  woke_up_at: string | null
+  quality: SleepQuality | null
+  awakenings: number
+  wake_feeling: WakeFeeling | null
+}
 
-/**
- * An entry, stamped with the moment it is being written.
- *
- * **THE DATE IS READ FROM THE CLOCK HERE, AT SAVE TIME, AND NOWHERE ELSE.** It
- * used to be copied off the day object the screen had loaded, whose `date` was
- * fixed when the route mounted — so an activity saved at 00:10 was filed under
- * the previous day. That is the worst class of defect this module can have: not
- * a control that misbehaves, which the next tap corrects, but a row that goes
- * into the database attributed to a day it did not happen on, and then feeds a
- * specialist's reading of the week. The day lock is what stops the save; this is
- * what makes the save correct even if the lock is ever wrong again.
- *
- * A function in the data layer rather than three lines in the panel, because the
- * stamp is the part worth testing on its own — a component test can watch a
- * button and a list, but it cannot see which day a row was filed under.
- *
- * `now` is injectable for exactly that test; production never passes it.
- */
-export function newActivityEntry(
-  answers: ActivityAnswers,
-  now: Date = new Date(),
-): DietActivityEntry {
+function toActivityEntry(payload: ActivityEntryPayload): DietActivityEntry {
   return {
-    id: nextLocalActivityId(),
-    date: toIsoDate(now),
-    time: localTime(now),
-    ...answers,
+    id: payload.id,
+    date: payload.date,
+    time: payload.time,
+    kind: payload.kind,
+    // '' rather than null, which is what the type declares: the chip and its
+    // free text are two controls and one answer, and the form needs a string
+    // to put in the input.
+    kindOther: payload.kind_other ?? '',
+    durationMinutes: payload.duration_minutes,
+    feelingAfter: payload.feeling_after,
   }
 }
 
-/** A day nothing has been written to: no activities, no step count. */
+function toActivityDay(payload: ActivityDayPayload): DietActivityDay {
+  return {
+    date: payload.date,
+    entries: (payload.entries ?? []).map(toActivityEntry),
+    steps: payload.steps,
+  }
+}
+
+function toSleepNight(payload: SleepNightPayload): DietSleepNight {
+  return {
+    date: payload.date,
+    fellAsleepAt: payload.fell_asleep_at,
+    wokeUpAt: payload.woke_up_at,
+    quality: payload.quality,
+    awakenings: payload.awakenings,
+    wakeFeeling: payload.wake_feeling,
+  }
+}
+
+/** A day nothing has been written to: no activities, no step count.
+ *
+ *  What a panel draws while its first request is in flight, so it has a shape
+ *  rather than a branch on null — and deliberately *not* what it settles on
+ *  when a request fails, which is reported as a failure. */
 export function emptyActivityDay(today: Date = new Date()): DietActivityDay {
   return { date: toIsoDate(today), entries: [], steps: null }
 }
@@ -634,6 +648,9 @@ export function emptyActivityDay(today: Date = new Date()): DietActivityDay {
  * control's floor, and the answer for an unbroken night — while every other
  * field starts null, which is what "not answered" looks like everywhere else in
  * this app.
+ *
+ * It is also exactly what the server answers for a morning nobody has touched,
+ * so the loading shape and the loaded one are the same object.
  */
 export function emptySleepNight(today: Date = new Date()): DietSleepNight {
   return {
@@ -646,104 +663,200 @@ export function emptySleepNight(today: Date = new Date()): DietSleepNight {
   }
 }
 
-/** A day with something on it. Not wired to a screen — see the note above. */
-export function sampleActivityDay(today: Date = new Date()): DietActivityDay {
-  const date = toIsoDate(today)
-  return {
-    date,
-    steps: 6400,
-    entries: [
-      {
-        id: 'sample-activity-2',
-        date,
-        time: '18:00',
-        kind: 'Spacer',
-        kindOther: '',
-        durationMinutes: 35,
-        feelingAfter: 'better',
-      },
-      {
-        id: 'sample-activity-1',
-        date,
-        time: '07:00',
-        kind: 'Joga',
-        kindOther: '',
-        durationMinutes: 25,
-        feelingAfter: 'neutral',
-      },
-    ],
-  }
-}
+/** What the form has collected: an entry minus the two stamps the server adds. */
+export type ActivityAnswers = Pick<
+  DietActivityEntry,
+  'kind' | 'kindOther' | 'durationMinutes' | 'feelingAfter'
+>
 
-/** A night with something on it, crossing midnight as most nights do. */
-export function sampleSleepNight(today: Date = new Date()): DietSleepNight {
-  return {
-    date: toIsoDate(today),
-    fellAsleepAt: '23:40',
-    wokeUpAt: '06:50',
-    quality: 3,
-    awakenings: 1,
-    wakeFeeling: 'heavy',
-  }
+/** Today's activities and step count. */
+export async function fetchActivityDay(): Promise<DietActivityDay> {
+  return toActivityDay(await apiRequest<ActivityDayPayload>(ACTIVITY_URL))
 }
 
 /**
- * What the activity screen reads.
+ * Write one activity, and get the whole rebuilt day back.
  *
- * The one line to change when `GET /api/diet/activity/` exists, and the one to
- * change to look at the filled state today.
+ * **NO DATE AND NO HOUR TRAVEL.** Both are stamped from the server's clock,
+ * which is a change from what this file used to do and a deliberate one: the
+ * stamp used to be read from the browser at save time, and before that copied
+ * off a day object fixed when the route mounted — which filed an activity saved
+ * at 00:10 under the previous day. One clock decides, and it is the same one
+ * that decides which day every other row in this module belongs to.
+ *
+ * A blank answer is sent as `null` rather than `''`, the rule `toPayload` above
+ * follows: the server normalises both, and two representations of "not
+ * answered" on the wire is one more than the column has.
  */
-export function loadActivityDay(today: Date = new Date()): DietActivityDay {
-  return emptyActivityDay(today)
+export async function createActivity(
+  answers: ActivityAnswers,
+): Promise<DietActivityDay> {
+  const typed = answers.kindOther.trim()
+  return toActivityDay(
+    await apiRequest<ActivityDayPayload>(ACTIVITY_URL, {
+      method: 'POST',
+      body: {
+        kind: answers.kind,
+        kind_other: typed === '' ? null : typed,
+        duration_minutes: answers.durationMinutes,
+        feeling_after: answers.feelingAfter,
+      },
+    }),
+  )
 }
 
-/** The same for the sleep screen. */
-export function loadSleepNight(today: Date = new Date()): DietSleepNight {
-  return emptySleepNight(today)
+/** Take one of today's activities back. Answers with the rebuilt day. */
+export async function deleteActivity(id: string): Promise<DietActivityDay> {
+  return toActivityDay(
+    await apiRequest<ActivityDayPayload>(`${ACTIVITY_URL}${id}/`, {
+      method: 'DELETE',
+    }),
+  )
+}
+
+/**
+ * Set the day's step count, or clear it.
+ *
+ * `null` clears it, which deletes the row on the server: a row *means* a count
+ * was typed, so "nobody typed one" is an absent row and "no steps taken" is a
+ * row holding 0. The panel sends null for an emptied input for exactly that
+ * reason.
+ */
+export async function setSteps(steps: number | null): Promise<DietActivityDay> {
+  return toActivityDay(
+    await apiRequest<ActivityDayPayload>(`${ACTIVITY_URL}steps/`, {
+      method: 'PUT',
+      body: { steps },
+    }),
+  )
+}
+
+/** The night that ended this morning — an empty shape when nobody answered. */
+export async function fetchSleepNight(): Promise<DietSleepNight> {
+  return toSleepNight(await apiRequest<SleepNightPayload>(SLEEP_URL))
+}
+
+/**
+ * Write the night.
+ *
+ * PUT replaces rather than merges, which is the server's rule and this layer
+ * sends the whole form to match it: an hour left out is an answer taken back,
+ * not one left unchanged. The date is the server's own, so nothing here sends
+ * one — only this morning's night is writable.
+ */
+export async function saveSleepNight(
+  night: DietSleepNight,
+): Promise<DietSleepNight> {
+  return toSleepNight(
+    await apiRequest<SleepNightPayload>(SLEEP_URL, {
+      method: 'PUT',
+      body: {
+        fell_asleep_at: night.fellAsleepAt,
+        woke_up_at: night.wokeUpAt,
+        quality: night.quality,
+        awakenings: night.awakenings,
+        wake_feeling: night.wakeFeeling,
+      },
+    }),
+  )
 }
 
 /* ------------------------------------------------------------------ *
  *  Raporty tygodniowe (§10)
  *
- *  Same terms again: there is no `/api/diet/reports/`. A report is derived in
- *  the browser from the four diaries — which is how the psychotherapy module
- *  started too, and worth knowing why that one moved: deriving in the browser
- *  meant one document per browser, and the "has this week ended" cutoff was
- *  read on the client clock while the dates came from Europe/Warsaw. Both
- *  arguments apply here the moment a specialist can read one of these, so
- *  `utils/dietReport.ts` and `utils/dietWeeks.ts` are written as pure functions
- *  over plain data — a backend port is a transcription, not a rewrite.
+ *  Derived on the server now (`core/diet_reports.py`), which is the same move
+ *  the psychotherapy module made and for the same two reasons: the "has this
+ *  week ended" cutoff is read on one clock rather than on each browser's, and
+ *  there is one document rather than one per reader.
+ *
+ *  **A WEEK HERE IS NOT A MONDAY.** Seven days counted from the patient's first
+ *  entry — the client's own rule — and the day it starts on is stored server-
+ *  side (`patient.diet_week_start`) so a week id cannot renumber itself. That
+ *  is why nothing in this file computes a week any more: `utils/dietWeeks.ts`
+ *  keeps only the labels.
  * ------------------------------------------------------------------ */
 
-/** A diary nobody has written in: no reports, and that is a true answer rather
- *  than a placeholder — exactly what `emptyDietDay` is for the home screen. */
-export function emptyDietReportSource(): DietReportSource {
-  return { meals: [], hydration: [], activity: [], sleep: [] }
+const DIET_REPORTS_URL = '/api/diet/reports/'
+
+interface ReportMealCellPayload {
+  slot: DietMealSlot
+  meals: DietMealPayload[]
+}
+
+interface ReportMealRowPayload {
+  date: string
+  cells: ReportMealCellPayload[]
+}
+
+interface ReportMealGridPayload {
+  slots: DietMealSlot[]
+  rows: ReportMealRowPayload[]
+}
+
+interface ReportDayPayload {
+  date: string
+  meals: DietMealPayload[]
+  hydration: HydrationDayTotalPayload | null
+  sleep: SleepNightPayload | null
+  activity: ActivityDayPayload | null
+  empty: boolean
+}
+
+interface ReportPayload {
+  id: string
+  week_start: string
+  week_end: string
+  range_label: string
+  days: ReportDayPayload[]
+  days_with_entry: number
+  meal_grid: ReportMealGridPayload
+}
+
+function toReportDay(payload: ReportDayPayload): DietReportDay {
+  return {
+    date: payload.date,
+    meals: payload.meals.map(toMeal),
+    hydration: payload.hydration ? toDayTotal(payload.hydration) : null,
+    sleep: payload.sleep ? toSleepNight(payload.sleep) : null,
+    activity: payload.activity ? toActivityDay(payload.activity) : null,
+    empty: payload.empty,
+  }
+}
+
+function toReport(payload: ReportPayload): DietWeeklyReport {
+  return {
+    id: payload.id,
+    weekStart: payload.week_start,
+    weekEnd: payload.week_end,
+    rangeLabel: payload.range_label,
+    days: payload.days.map(toReportDay),
+    daysWithEntry: payload.days_with_entry,
+    mealGrid: {
+      slots: payload.meal_grid.slots,
+      rows: payload.meal_grid.rows.map((row) => ({
+        date: row.date,
+        cells: row.cells.map((cell) => ({
+          slot: cell.slot,
+          meals: cell.meals.map(toMeal),
+        })),
+      })),
+    },
+  }
+}
+
+/** Every report the four diaries support, newest first. */
+export async function fetchDietReports(): Promise<DietWeeklyReport[]> {
+  const payload = await apiRequest<ReportPayload[]>(DIET_REPORTS_URL)
+  return payload.map(toReport)
 }
 
 /**
- * What the report screens read.
+ * One report by its week id.
  *
- * **TO SEE THE SCREENS FILLED IN**, swap the one call below for
- * `sampleDietReportSource(today)` and add its import from
- * `./dietReportSamples`. That is the whole change, and it is deliberately in
- * this file rather than in the screens: when `GET /api/diet/reports/` exists
- * these two functions become requests and nothing on either screen moves.
- *
- * `today` is an argument rather than a clock read, because a week closes at
- * midnight and the list has to gain its new row without a reload — the screens
- * pass what `hooks/useCurrentDay.ts` gives them. See utils/dayLock.ts for what
- * this module already got wrong by freezing that value once.
+ * A week nobody wrote in and a typed-in address answer the same way — a 404 —
+ * because neither tells the patient anything they can act on. The screen words
+ * that as "nie znaleziono takiego raportu" rather than as a failure.
  */
-export function loadDietReports(today: Date = new Date()): DietWeeklyReport[] {
-  return buildDietReports(emptyDietReportSource(), toIsoDate(today))
-}
-
-/** One report by its week id, or null when no week with entries carries it —
- *  a typed-in address and a week nobody wrote in answer the same way. */
-export function loadDietReport(
-  id: string,
-  today: Date = new Date(),
-): DietWeeklyReport | null {
-  return findDietReport(loadDietReports(today), id)
+export async function fetchDietReport(id: string): Promise<DietWeeklyReport> {
+  return toReport(await apiRequest<ReportPayload>(`${DIET_REPORTS_URL}${id}/`))
 }

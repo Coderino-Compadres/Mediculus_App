@@ -212,6 +212,24 @@ def serialize_meal(meal):
     }
 
 
+def first_entry_date(id_medical):
+    """The earliest day this patient wrote a meal on, or None.
+
+    An exact `MIN` rather than the tail of `load_history`, and the distinction
+    is load-bearing: that list is capped at `MAX_HISTORY_MEALS`, so reading the
+    oldest day off it would quietly move the answer once a patient passed the
+    cap. `core/diet_reports.py` latches the week anchor from this, and an anchor
+    that moves renumbers every report the patient has.
+    """
+    return (
+        DietMeal.objects
+        .filter(id_medical=id_medical)
+        .order_by('entry_date')
+        .values_list('entry_date', flat=True)
+        .first()
+    )
+
+
 def count_meals(id_medical):
     """How many meals this patient has written, all time.
 

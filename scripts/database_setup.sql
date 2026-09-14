@@ -191,6 +191,18 @@ ALTER TABLE patient
     ADD COLUMN IF NOT EXISTS id_specjalist_pending UUID,
     ADD COLUMN IF NOT EXISTS specjalist_accepted_at TIMESTAMPTZ;
 
+-- Where this patient's *diet* weeks are counted from: the day of their first
+-- entry in that module, and rarely a Monday. The two modules count weeks
+-- differently on the client's own instruction -- the psychotherapy report runs
+-- Monday to Sunday, the diet one runs seven days from the first entry -- so
+-- this column has no counterpart on the psychotherapy side and must not grow
+-- one. Stored rather than derived, because a derived anchor renumbers every
+-- report the moment the oldest entry changes. NULL means "not latched yet";
+-- the API fills it once and never moves it.
+-- Mirrors core/migrations/0019_diet_week_start.py.
+ALTER TABLE patient
+    ADD COLUMN IF NOT EXISTS diet_week_start DATE;
+
 -- The FK belongs with the column above; on a database that predates it the
 -- CREATE TABLE never ran, so add it here too. DO block because Postgres has no
 -- ADD CONSTRAINT IF NOT EXISTS.
@@ -536,6 +548,135 @@ CREATE TABLE IF NOT EXISTS supplement_intake (
 
     CONSTRAINT uq_supplement_intake_day UNIQUE (id_supplement, entry_date)
 );
+
+-- ----------------------------
+-- DIET_ACTIVITY
+-- One activity somebody wrote down (mockups §09). A day is the group of them,
+-- the same shape diet_meal has -- except for the step count, which belongs to
+-- the day and lives in diet_activity_day below.
+--
+-- §09 asks three questions and this module answers no others: what it was, how
+-- long it lasted, how the person felt afterwards. There is deliberately no
+-- calorie column, no intensity, no pace and no heart rate -- the module records
+-- what somebody chose to note, not what a device measured.
+--
+-- Nothing but the hour is NOT NULL (§05, "żadne pole nie blokuje zapisu"), and
+-- the hour is not typed: it is stamped from the server's clock.
+-- Mirrors core/migrations/0018_diet_activity_sleep.py.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS diet_activity (
+    id_activity UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Logical relation:
+    -- diet_activity.id_medical -> user_db.patient.id_medical
+    -- Not a foreign key, for the same reason diary.id_medical is not one.
+    id_medical UUID NOT NULL,
+
+    -- The calendar day this activity belongs to, in settings.TIME_ZONE.
+    entry_date DATE NOT NULL,
+
+    -- 'HH:MM', stamped from the clock rather than typed.
+    logged_at TIME NOT NULL,
+
+    -- One of core.activity.ACTIVITY_KINDS, or 'Inne' with the free text in
+    -- kind_other. NULL is an activity saved without saying what it was.
+    kind TEXT,
+    kind_other TEXT,
+
+    -- Minutes. NULL is the question left unanswered, which is not a zero.
+    duration_minutes INTEGER,
+
+    -- One of core.activity.FEELING_AFTER: how the person felt *after*, not how
+    -- hard it was.
+    feeling_after TEXT,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_diet_activity_day
+    ON diet_activity (id_medical, entry_date);
+
+-- ----------------------------
+-- DIET_ACTIVITY_DAY
+-- The step count for one day -- the one thing a day holds that an entry cannot.
+--
+-- This is the table the food diary deliberately does NOT have: a day of meals
+-- has nothing of its own to store, while a step count is one number belonging
+-- to the day and to no activity in it.
+--
+-- A ROW MEANS THE COUNT WAS TYPED. steps is NOT NULL and clearing the field
+-- deletes the row, so "nobody typed one" is an absent row and "no steps taken"
+-- is a row holding 0 -- two different claims a nullable column could not have
+-- told apart.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS diet_activity_day (
+    id_activity_day UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Logical relation:
+    -- diet_activity_day.id_medical -> user_db.patient.id_medical
+    id_medical UUID NOT NULL,
+
+    entry_date DATE NOT NULL,
+
+    steps INTEGER NOT NULL,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    -- One count per day, rather than a history of edits to one.
+    CONSTRAINT uq_diet_activity_day UNIQUE (id_medical, entry_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_diet_activity_day_patient
+    ON diet_activity_day (id_medical);
+
+-- ----------------------------
+-- DIET_SLEEP
+-- One night of the sleep diary (mockups §09).
+--
+-- entry_date IS THE MORNING THE NIGHT ENDED ON: a row filled in on Friday
+-- describes the night from Thursday to Friday. Nothing in the data itself says
+-- so -- 23:40 and 06:50 read equally well as either day -- and the two answers
+-- put one night in two different weekly reports, so the convention is recorded
+-- here, on the model and on the frontend's own type.
+--
+-- The LENGTH of the night is deliberately not a column: it is the distance
+-- between the two hours, wrapping midnight, and one place computes it.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS diet_sleep (
+    id_sleep UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Logical relation:
+    -- diet_sleep.id_medical -> user_db.patient.id_medical
+    id_medical UUID NOT NULL,
+
+    -- The morning the night ended on -- see above.
+    entry_date DATE NOT NULL,
+
+    -- 'HH:MM' in the patient's own clock. woke_up_at earlier than
+    -- fell_asleep_at is the ordinary case, not an error: the night crosses
+    -- midnight.
+    fell_asleep_at TIME,
+    woke_up_at TIME,
+
+    -- 1-5, or NULL when the question went unanswered.
+    quality SMALLINT,
+
+    awakenings INTEGER NOT NULL DEFAULT 0,
+
+    -- One of core.sleep.WAKE_FEELINGS.
+    wake_feeling TEXT,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    -- One night per morning: a second save is an edit, not a second night.
+    CONSTRAINT uq_diet_sleep_night UNIQUE (id_medical, entry_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_diet_sleep_patient
+    ON diet_sleep (id_medical);
 
 -- ----------------------------
 -- RAPORT

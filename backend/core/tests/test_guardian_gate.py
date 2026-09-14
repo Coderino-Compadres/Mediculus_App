@@ -87,7 +87,7 @@ class GateTestCase(TestCase):
 
 
 def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None,
-                  meal_id=None):
+                  meal_id=None, activity_id=None):
     """Every URL that reads or writes clinical data, with the verbs it accepts.
 
     Built as a list rather than checked endpoint by endpoint so that adding a
@@ -151,6 +151,23 @@ def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None,
         ('delete', reverse(
             'core:diet-supplement-intake',
             args=[supplement_id or uuid.uuid4()]), 404),
+        # §09's two diaries. Same gate and the same reason: an activity and a
+        # night logged against a named account are health data.
+        ('get', reverse('core:diet-activity'), 200),
+        # An empty body is a valid activity (§05, literally), like a meal.
+        ('post', reverse('core:diet-activity'), 201),
+        # 400: the request is specifically "set the step count", so a body
+        # naming nothing is the endpoint running and refusing on its merits.
+        ('put', reverse('core:diet-activity-steps'), 400),
+        ('delete', reverse(
+            'core:diet-activity-entry', args=[activity_id or uuid.uuid4()]), 404),
+        ('get', reverse('core:diet-sleep'), 200),
+        ('put', reverse('core:diet-sleep'), 200),
+        # §10's reports. A patient with no diet entries has none, which is an
+        # empty list rather than a refusal; the detail names a week nobody
+        # wrote in, which is the endpoint running.
+        ('get', reverse('core:diet-report-list'), 200),
+        ('get', reverse('core:diet-report-detail', args=['week-2026-01-05']), 404),
     ]
 
 
