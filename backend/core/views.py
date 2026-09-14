@@ -35,6 +35,9 @@ from .hydration import (HydrationEntrySerializer, add_entry as add_hydration,
 from . import meals as meal_rules
 from .meals import build_diet_day, load_history as load_meal_history
 from . import supplements as supplement_rules
+from . import activity as activity_rules
+from . import sleep as sleep_rules
+from .diet_reports import build_diet_reports, find_diet_report, latch_week_start
 from .guardian import (STATUS_ACCEPTED, accept_invitation, accepted_children,
                        cancel_invitation, guardian_status, pending_invitations,
                        reject_invitation)
@@ -1153,6 +1156,232 @@ class SupplementIntakeView(APIView):
         return Response(supplement_rules.list_supplements(
             patient.id_medical, today,
         ))
+
+
+ACTIVITY_REFUSAL = (
+    'Dzienniczek aktywności jest dostępny tylko dla konta pacjenta.'
+)
+
+SLEEP_REFUSAL = 'Dzienniczek snu jest dostępny tylko dla konta pacjenta.'
+
+ACTIVITY_NOT_FOUND = 'Nie znaleziono tej aktywności.'
+
+DIET_REPORT_REFUSAL = (
+    'Raporty dietetyczne są dostępne tylko dla konta pacjenta.'
+)
+
+DIET_REPORT_NOT_FOUND = 'Nie znaleziono raportu dla tego tygodnia.'
+
+
+class DietActivityView(APIView):
+    """GET/POST /api/diet/activity/ — today's activities, and one more.
+
+    §09's first half. Clinical data like everything else under
+    `_require_patient`: a guardian and a specialist are refused rather than
+    handed an empty day, and an unlinked minor is refused too.
+
+    **TODAY AND TODAY ALONE.** No URL names an older day, which is what makes
+    §09's "a day is locked once it is over" structural rather than a permission
+    somebody can forget — the same shape `/api/diary/today/` and
+    `/api/diet/hydration/` give their own diaries. The day comes from the
+    server's clock, so a date in the body reaches nothing.
+
+    POST answers with the **whole rebuilt day** rather than the row it wrote,
+    the choice every write in this module makes: the list is ordered and the
+    step count sits beside it, so rebuilding either in the browser is how one
+    day ends up with two versions of itself.
+
+    Not throttled, deliberately, for the reason the other diet writes are not:
+    what is worth protecting is the table, `MAX_ACTIVITIES_PER_DAY` bounds it,
+    and a rate cap would be reachable by somebody recording a real afternoon.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, ACTIVITY_REFUSAL)
+        return Response(activity_rules.build_activity_day(
+            patient.id_medical, timezone.localdate(),
+        ))
+
+    def post(self, request):
+        patient = _require_patient(request, ACTIVITY_REFUSAL)
+        now = timezone.localtime()
+        serializer = activity_rules.ActivitySerializer(
+            data=request.data,
+            context={
+                'id_medical': patient.id_medical,
+                'today': now.date(),
+                # Stamped here rather than in the serializer so the date and the
+                # hour come from one reading of the clock: taken separately, a
+                # request landing on midnight could be filed under one day with
+                # the other day's hour on it.
+                'now': now.time().replace(second=0, microsecond=0),
+            },
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            activity_rules.build_activity_day(patient.id_medical, now.date()),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class DietActivityEntryView(APIView):
+    """DELETE /api/diet/activity/<id>/ — take one activity back.
+
+    The only activity URL carrying an id, so the only one where a caller can
+    name a row that is not theirs: `activity.find` filters on the session's
+    `id_medical` alongside the id, so somebody else's entry answers exactly like
+    a nonexistent one — 404, the same convention as `/api/diary/<id>/`.
+
+    **AN OLDER DAY IS REFUSED WITH A SENTENCE, NOT A 404**, which is the reading
+    `DietMealView` settled on and the reason is the same: §09's list shows only
+    today, but a report shows every day, so an entry from Tuesday is a row the
+    patient can be looking at. "No such thing" about a row somebody is reading
+    would be the worse answer. `hydration.remove_entry` answers 404 because that
+    screen never shows an older serving at all.
+
+    There is no PUT. An activity holds three answers and the row is one line on
+    a list; correcting one means deleting it and writing it again, which is two
+    taps rather than a form. If that turns out to be wrong, the form to add one
+    is already the form to edit one.
+    """
+
+    def delete(self, request, id_activity):
+        patient = _require_patient(request, ACTIVITY_REFUSAL)
+        entry = activity_rules.find(patient.id_medical, id_activity)
+        if entry is None:
+            raise NotFound(ACTIVITY_NOT_FOUND)
+        if entry.entry_date != timezone.localdate():
+            raise PermissionDenied(activity_rules.ENTRY_NOT_TODAY)
+        entry.delete()
+        return Response(activity_rules.build_activity_day(
+            patient.id_medical, timezone.localdate(),
+        ))
+
+
+class DietActivityStepsView(APIView):
+    """PUT /api/diet/activity/steps/ — the day's step count.
+
+    Its own URL rather than a field on the day, because it is written on its own:
+    §09 puts the count in a box with no save button beside the activity form's,
+    so the two are separate acts and a shared endpoint would make each save the
+    other's state.
+
+    Declared **before** `activity/<uuid>/` in `urls.py`, the same ordering rule
+    `diary/today/` needs — otherwise 'steps' is read as an id.
+
+    `null` clears the count, which deletes the row: a row in `diet_activity_day`
+    means a count was typed, so "nobody typed one" is an absent row and "no
+    steps taken" is a row holding 0. Two different claims, and the module is
+    only ever entitled to make the one it was told.
+    """
+
+    def put(self, request):
+        patient = _require_patient(request, ACTIVITY_REFUSAL)
+        serializer = activity_rules.StepsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        today = timezone.localdate()
+        activity_rules.set_steps(
+            patient.id_medical, today, serializer.validated_data['steps'],
+        )
+        return Response(activity_rules.build_activity_day(patient.id_medical, today))
+
+
+class DietSleepView(APIView):
+    """GET/PUT /api/diet/sleep/ — the night that ended this morning.
+
+    §09's second half, and the URL addresses **this morning** and nothing else,
+    for the reason the activity endpoint addresses today: no URL names an older
+    night, so "a night whose morning has passed cannot be rewritten" is
+    structural.
+
+    WHICH NIGHT: the one that ended on today's date. A row saved on Friday
+    describes the night from Thursday to Friday. Nothing in the data says so, so
+    `core/sleep.py` and `models.DietSleep` both write the convention down.
+
+    PUT replaces rather than merges, the rule every form in this app follows:
+    the panel submits its whole state, so an hour left out is an answer taken
+    back rather than one left unchanged.
+
+    GET on a morning nobody has answered for is an empty night rather than a
+    404: the panel starts from exactly that shape, and an untouched night and
+    one saved with every field blank are the same thing in truth.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, SLEEP_REFUSAL)
+        return Response(sleep_rules.build_sleep_night(
+            patient.id_medical, timezone.localdate(),
+        ))
+
+    def put(self, request):
+        patient = _require_patient(request, SLEEP_REFUSAL)
+        serializer = sleep_rules.SleepSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        today = timezone.localdate()
+        night = serializer.save_night(patient.id_medical, today)
+        return Response(sleep_rules.serialize_night(night, today))
+
+
+class DietReportListView(APIView):
+    """GET /api/diet/reports/ — every weekly report the diet diaries support.
+
+    Read-only by construction, like the psychotherapy list it mirrors: a report
+    is generated, not written, so there is no verb here but GET and no id in the
+    URL naming somebody else's week. The session resolves to one `id_medical`
+    and `core/diet_reports.py` never sees anything else.
+
+    **A WEEK HERE IS NOT A MONDAY.** Seven days from the patient's first entry —
+    the client's own rule, and `patient.diet_week_start` is where that day is
+    kept. `latch_week_start` fills it on first use and nothing moves it
+    afterwards, which is what stops every week id renumbering when the oldest
+    entry changes.
+
+    Newest first, and the week in progress is absent. Empty is the normal answer
+    for a diary younger than a week.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, DIET_REPORT_REFUSAL)
+        return Response(_diet_reports(patient))
+
+
+class DietReportDetailView(APIView):
+    """GET /api/diet/reports/<week-id>/ — one weekly report.
+
+    The only diet-report URL carrying an id, so the only one where a caller can
+    name a week that is not theirs — and it cannot, because the reports are
+    built from the session's own `id_medical` before the id is matched against
+    them. A week nobody has entries for answers 404, exactly like a malformed id
+    and exactly like somebody else's week would: the same convention as
+    `/api/diary/<id>/`.
+
+    Building every report to return one is the honest cost of deriving them —
+    the same cost `ReportDetailView` pays, and for less reason here, since this
+    module compares nothing between weeks. What it buys is one definition of
+    which weeks exist.
+    """
+
+    def get(self, request, report_id):
+        patient = _require_patient(request, DIET_REPORT_REFUSAL)
+        report = find_diet_report(_diet_reports(patient), report_id)
+        if report is None:
+            raise NotFound(DIET_REPORT_NOT_FOUND)
+        return Response(report)
+
+
+def _diet_reports(patient):
+    """Every diet report for one patient, newest first.
+
+    The two views share it because the detail one has to build the whole list
+    anyway, and because latching the week anchor is a thing that must happen in
+    exactly one place — a second copy could latch a different day.
+    """
+    return build_diet_reports(
+        patient.id_medical,
+        latch_week_start(patient),
+        timezone.localdate(),
+    )
 
 
 #: Refusal for an account with no `specjalist` row, worded for the whole panel.

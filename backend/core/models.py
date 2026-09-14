@@ -111,6 +111,29 @@ class Patient(models.Model):
     )
     specjalist_accepted_at = models.DateTimeField(null=True, blank=True)
     is_child = models.BooleanField(null=True, blank=True)
+    # Where this patient's *diet* weeks are counted from -- the day of their
+    # first entry in that module, and rarely a Monday.
+    #
+    # THE DIET MODULE COUNTS WEEKS DIFFERENTLY FROM THE PSYCHOTHERAPY ONE, which
+    # is the client's rule and is written on her own artboards: "jeśli
+    # dzienniczki są rozpoczęte od wtorku, to do następnego wtorku". So a week
+    # here runs from this date, seven days at a time, while `core/reports.py`
+    # goes on counting Mondays. The two disagreeing is deliberate; do not
+    # "unify" them.
+    #
+    # IT IS STORED RATHER THAN DERIVED, and that is the whole point of the
+    # column. Derived per request -- a MIN over the diaries, which is what the
+    # browser did while there was no endpoint -- every week boundary, and
+    # therefore every week *id*, is a function of whatever history happens to be
+    # in hand: one older meal turns 'week-2026-08-27' into 'week-2026-08-26' and
+    # renumbers every report the patient has. Bookmarks break, and once a
+    # specialist can open one, so does the identity of a document two people are
+    # discussing.
+    #
+    # NULL means the patient has no diet entry yet. `core/diet_reports.py`
+    # latches it on first use, from an exact MIN over the four diaries, and
+    # nothing ever moves it afterwards.
+    diet_week_start = models.DateField(null=True, blank=True)
 
     class Meta:
         db_table = 'patient'
@@ -643,3 +666,171 @@ class SupplementIntake(models.Model):
 
     def __str__(self):
         return f'{self.supplement_id} {self.entry_date}'
+
+
+class DietActivity(models.Model):
+    """One activity somebody wrote down — "Aktywność i sen", mockups §09.
+
+    A row per activity, grouped into a day the way `diet_meal` is: the screen
+    shows "Zapisane dzisiaj" as a list, and a day is the group rather than a
+    row of its own. The exception is the step count, which is a fact about the
+    day and has nowhere to live on an entry — see `DietActivityDay`.
+
+    WHAT IS NOT HERE, and will not be: calories burnt, intensity, pace, heart
+    rate, a target and a streak. The module records what a patient chose to
+    note, not what a device measured — synchronising with a watch is outside
+    the project's scope, so there is nothing here only one could fill in. What
+    is left is §09's own three questions: what it was, how long it lasted, and
+    how the person felt afterwards.
+
+    `kind` and `kind_other` are two controls and one answer, the same shape
+    `diary.situation_place` has for the entry form's chip and its "Inne" box —
+    except that this module keeps them in two columns rather than collapsing
+    them on the way in, because "Inne" here is a *chip the patient chose* and
+    the text beside it is what they typed under it. `core.activity.kind_label`
+    is the one place they are read together.
+
+    NOTHING BUT THE HOUR IS REQUIRED, which is §05's rule ("Żadne pole nie
+    blokuje zapisu") in the schema: an activity saved with nothing but a time is
+    an ordinary row. The hour is NOT NULL because nobody types it — it is
+    stamped from the clock when the entry is written, the way `created_at` is,
+    and it is what the row is headed with.
+
+    `id_medical` is the same logical, application-level reference the rest of
+    medical_db uses: Postgres enforces nothing across the two databases.
+    """
+
+    id_activity = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id_medical = models.UUIDField(db_index=True)
+    # The calendar day this activity belongs to, in settings.TIME_ZONE.
+    entry_date = models.DateField()
+    # 'HH:MM', when the entry was written -- stamped from the clock, never
+    # typed, which is why this is the one column on the row that is NOT NULL.
+    logged_at = models.TimeField()
+    # One of core.activity.ACTIVITY_KINDS, or ACTIVITY_KIND_OTHER with the free
+    # text in `kind_other`. NULL is an activity saved without saying what it
+    # was. TextField like every other text column on these tables; the
+    # serializer constrains the value.
+    kind = models.TextField(null=True, blank=True)
+    # What was typed under "Inne". NULL whenever `kind` is not that chip, so
+    # "not answered" has one representation rather than two.
+    kind_other = models.TextField(null=True, blank=True)
+    # Minutes, as §09's stepper moves in fives. NULL is the question left
+    # unanswered -- and it is not a zero, which is why the control starts at 30
+    # and stores nothing until it is touched.
+    duration_minutes = models.IntegerField(null=True, blank=True)
+    # One of core.activity.FEELING_AFTER. How the person felt *after*, not how
+    # hard it was.
+    feeling_after = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'diet_activity'
+        indexes = [
+            models.Index(
+                fields=['id_medical', 'entry_date'], name='idx_diet_activity_day',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.entry_date} {self.kind or "aktywność"}'
+
+
+class DietActivityDay(models.Model):
+    """The step count for one day — the one thing a day holds that an entry cannot.
+
+    A TABLE THE FOOD DIARY DELIBERATELY DOES NOT HAVE, and the difference is the
+    reason this one exists. `DietMeal`'s docstring rules out a `diet_day` table
+    because "a day has nothing of its own to store that is not derivable from
+    its meals". A step count is exactly that: one number copied off a phone
+    once, attached to no walk in particular and derivable from nothing.
+
+    A ROW MEANS THE COUNT WAS TYPED, so `steps` is NOT NULL and clearing the
+    field deletes the row — the same shape `supplement_intake` gives a tick.
+    That is what keeps "nobody typed a step count" and "this person took no
+    steps" apart: the first is an absent row, the second is a row holding 0.
+    Storing a nullable `steps` would have made a row mean nothing at all.
+
+    UNIQUE (id_medical, entry_date), so a day has one count rather than a
+    history of edits to one.
+    """
+
+    id_activity_day = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False)
+    id_medical = models.UUIDField(db_index=True)
+    entry_date = models.DateField()
+    # Typed by hand, whenever the patient feels like it. No target and no
+    # history: §09 draws a number and nothing beside it.
+    steps = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'diet_activity_day'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['id_medical', 'entry_date'], name='uq_diet_activity_day',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.entry_date} {self.steps}'
+
+
+class DietSleep(models.Model):
+    """One night of the sleep diary — the other half of §09.
+
+    WHICH NIGHT: the one that *ended* on the morning of `entry_date`. A row
+    filled in on Friday describes the night from Thursday to Friday and carries
+    Friday's date. **Nothing in the data itself says so** — 23:40 and 06:50 read
+    equally well as either day, and the two answers put one night in two
+    different weeks — so the rule is stated here, at the column, and repeated at
+    `frontend/src/types/diet.ts`'s own field. Changing it silently moves nights
+    between weekly reports.
+
+    UNIQUE (id_medical, entry_date): one night per morning. The form replaces
+    rather than appends, so a second save is an edit and not a second night.
+
+    THE LENGTH OF THE NIGHT IS NOT STORED. It is the distance between the two
+    hours, wrapping midnight, and `frontend/src/utils/sleep.ts` is the one place
+    that arithmetic lives. A column would be a second answer free to disagree
+    with the two hours beside it.
+
+    `awakenings` is NOT NULL with a default of 0 and is the one field in this
+    module that cannot say "not answered": the stepper starts at 0 and has no
+    empty state, so a night whose hours were filled in while it was never
+    touched is indistinguishable from an unbroken night somebody recorded. The
+    screens handle that by not printing the row at zero rather than by claiming
+    either reading — see `pages/DietReportDetail.tsx`, which carries the TODO
+    for making it nullable properly.
+    """
+
+    id_sleep = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id_medical = models.UUIDField(db_index=True)
+    # The morning the night ended on, in settings.TIME_ZONE -- see the docstring.
+    entry_date = models.DateField()
+    # 'HH:MM' in the patient's own clock. NULL is unanswered; `woke_up_at`
+    # earlier than `fell_asleep_at` is the ordinary case, not an error, because
+    # the night crosses midnight.
+    fell_asleep_at = models.TimeField(null=True, blank=True)
+    woke_up_at = models.TimeField(null=True, blank=True)
+    # 1-5, or NULL when the question went unanswered. A number rather than a
+    # named grade: this module describes rather than grades.
+    quality = models.SmallIntegerField(null=True, blank=True)
+    awakenings = models.IntegerField(default=0)
+    # One of core.sleep.WAKE_FEELINGS.
+    wake_feeling = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'diet_sleep'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['id_medical', 'entry_date'], name='uq_diet_sleep_night',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.entry_date}'

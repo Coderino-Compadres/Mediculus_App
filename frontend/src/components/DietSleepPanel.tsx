@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import LoadError from './LoadError'
 import Stepper from './Stepper'
-import { loadSleepNight } from '../api/diet'
+import { ApiError } from '../api/client'
+import { emptySleepNight, fetchSleepNight, saveSleepNight } from '../api/diet'
 import { useCurrentDay } from '../hooks/useCurrentDay'
 import { fromIsoDate } from '../utils/days'
 import {
@@ -33,6 +35,9 @@ import type { DietSleepNight } from '../types/diet'
  * screen, not to a card on the form that collects it.
  */
 
+const LOAD_ERROR = 'Nie udało się wczytać wpisu o nocy.'
+const SAVE_ERROR = 'Nie udało się zapisać wpisu o nocy.'
+
 function DietSleepPanel({ today }: { today: Date }) {
   /**
    * What has been written down, and what is on the form.
@@ -43,9 +48,44 @@ function DietSleepPanel({ today }: { today: Date }) {
    * pages/DiaryEntry.tsx does it, so the confirmation clears again the moment
    * anything is edited.
    */
-  const [stored, setStored] = useState<DietSleepNight>(() => loadSleepNight(today))
+  const [stored, setStored] = useState<DietSleepNight>(() => emptySleepNight(today))
   const [draft, setDraft] = useState<DietSleepNight>(stored)
   const [saved, setSaved] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  /** A failed *write*, which is a different statement from a failed load: the
+   *  form still holds what was typed, and only the save did not happen. */
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+
+  // The house pattern: a promise chain with a `cancelled` flag rather than an
+  // `async` effect body. The server answers an empty shape for a morning nobody
+  // has touched, so the loading shape and the loaded one are the same object.
+  useEffect(() => {
+    let cancelled = false
+
+    fetchSleepNight()
+      .then((loaded) => {
+        if (cancelled) return
+        setStored(loaded)
+        setDraft(loaded)
+        setLoadError(null)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setLoadError(
+            (cause instanceof ApiError && cause.formMessage) || LOAD_ERROR,
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [attempt])
 
   /**
    * The same day lock as the activity panel and as pages/Journals.tsx — see
@@ -74,6 +114,7 @@ function DietSleepPanel({ today }: { today: Date }) {
   function edit(change: Partial<DietSleepNight>) {
     setDraft((current) => ({ ...current, ...change }))
     setSaved(false)
+    setSaveError(null)
   }
 
   /** '' from an emptied time input is "unanswered", not midnight. */
@@ -81,20 +122,34 @@ function DietSleepPanel({ today }: { today: Date }) {
     edit({ [field]: typed === '' ? null : typed })
   }
 
+  /**
+   * Write the night, and settle the form on what the server holds.
+   *
+   * PUT replaces rather than merges — the whole draft travels — so a cleared
+   * hour is an answer taken back rather than one left unchanged. The date is
+   * the server's own, so nothing here sends one.
+   */
   function saveNight() {
-    // Nothing leaves the browser: there is no `PUT /api/diet/sleep/`. When
-    // there is, this becomes one call in api/diet.ts and this panel does not
-    // move.
-    setStored(draft)
-    setSaved(true)
+    setSaveError(null)
+    saveSleepNight(draft)
+      .then((written) => {
+        setStored(written)
+        setDraft(written)
+        setSaved(true)
+      })
+      .catch((cause: unknown) => {
+        /* The form keeps what was typed — losing a night somebody just
+           described because the network dropped would be the worse failure. */
+        setSaveError(
+          (cause instanceof ApiError && cause.formMessage) || SAVE_ERROR,
+        )
+      })
   }
 
   return (
     <div className="diet-as-panel">
       {editable ? (
-        /* `stored: false` — the deadline is true here, the promise that the
-           entry is then kept for good is not. See utils/dayLock.ts. */
-        <p className="diet-as-lock">{dayLockNotice(dateLabel, false)}</p>
+        <p className="diet-as-lock">{dayLockNotice(dateLabel)}</p>
       ) : (
         /* Which night is locked, named on the badge's own row. The header says
            which night it is *now*; a locked panel is showing an earlier one, and
@@ -103,6 +158,22 @@ function DietSleepPanel({ today }: { today: Date }) {
           <span className="diet-as-readonly-badge">{READ_ONLY_BADGE}</span>{' '}
           {nightLabel(fromIsoDate(stored.date))}
         </p>
+      )}
+
+      {/* **A FAILED LOAD IS NEVER DRAWN AS AN UNANSWERED NIGHT.** An empty form
+          over a night somebody described would invite them to write it again,
+          and the save that followed would replace the real answers with
+          whatever the blank form held. */}
+      {!loading && loadError && (
+        <LoadError
+          className="diet-as-status diet-as-status-error"
+          message={loadError}
+          onRetry={() => {
+            setLoading(true)
+            setLoadError(null)
+            setAttempt((n) => n + 1)
+          }}
+        />
       )}
 
       {/* The one line on these two screens that has to address the reader in
@@ -250,13 +321,20 @@ function DietSleepPanel({ today }: { today: Date }) {
           Zapisz sen
         </button>
 
-        {/* Says where the entry went, because `role="status"` is announced on
-            its own: a screen reader hears this sentence without the note at the
-            top of the page, and a bare "Zapisano." would then be the one thing
-            on the screen actively claiming a save that did not happen. */}
-        {saved && (
+        {/* It used to read "Zapisano — na razie tylko na tej karcie", because
+            nothing was stored and `role="status"` is announced on its own, so a
+            bare "Zapisano." would have been the one thing on the screen
+            actively claiming a save that did not happen. The night is kept now,
+            so the qualification is gone with the thing it qualified. */}
+        {saved && !saveError && (
           <p className="diet-as-saved" role="status">
-            Zapisano — na razie tylko na tej karcie.
+            Zapisano.
+          </p>
+        )}
+
+        {saveError && (
+          <p className="diet-as-status diet-as-status-error" role="alert">
+            {saveError}
           </p>
         )}
       </section>

@@ -49,8 +49,9 @@ from core.diary import MOOD_LABELS
 from core.drinks import BOTTLE_ML, GLASS_ML, OTHER_DRINKS, WATER
 from core.meals import streak_days as diet_streak_days
 from core.supplements import MAX_SUPPLEMENTS
-from core.models import (Diary, DietMeal, Hydration, MoodScale, Patient,
-                         Supplement, SupplementHour, SupplementIntake, User)
+from core.models import (Diary, DietActivity, DietActivityDay, DietMeal,
+                         DietSleep, Hydration, MoodScale, Patient, Supplement,
+                         SupplementHour, SupplementIntake, User)
 
 #: The week the entries land in: the most recent one that has ended, i.e. the one
 #: the newest report covers. Anything written into the current week would be
@@ -193,6 +194,59 @@ EXTRA_SUPPLEMENT_SHAPES = (
 
 #: Every preparation the seed can write, artboard first.
 ALL_SUPPLEMENT_SHAPES = SUPPLEMENT_SHAPES + EXTRA_SUPPLEMENT_SHAPES
+
+#: One day of §09, by the day's position in the run: what was done, the step
+#: count, and the night that ended that morning.
+#:
+#: DELIBERATELY RAGGED. Two of the six days hold no activity at all, because
+#: most people do not move every day and a seed that said otherwise would make
+#: the screen read as a target — which is the one thing §09 must not do. One day
+#: carries a step count and nothing else, which is the state `diet_activity_day`
+#: exists for (a number belonging to the day rather than to any walk in it), and
+#: one night is left undescribed so the report's "nie wpisano" branch is
+#: reachable without hand-writing a row.
+#:
+#: Nothing here is measured: no calories, no intensity, no pace. The tuples are
+#: (hour, kind, minutes, feeling after) and (asleep, woke, quality, awakenings,
+#: waking feeling) — exactly the columns, and no others.
+ACTIVITY_SHAPES = (
+    {
+        'activities': (('07:10', 'Joga', 25, 'better'),),
+        'steps': 6400,
+        'night': ('23:20', '06:45', 4, 0, 'rested'),
+    },
+    {
+        'activities': (('18:30', 'Spacer', 45, 'better'),),
+        'steps': 9100,
+        'night': ('00:15', '07:30', 2, 2, 'heavy'),
+    },
+    {
+        # A day nobody moved on. The step count still says what the day was.
+        'activities': (),
+        'steps': 3200,
+        'night': ('22:50', '06:20', 5, 0, 'calm'),
+    },
+    {
+        'activities': (
+            ('08:00', 'Rower', 40, 'neutral'),
+            ('20:15', 'Spacer', 20, 'better'),
+        ),
+        'steps': None,
+        'night': ('23:55', '05:50', 2, 1, 'tense'),
+    },
+    {
+        'activities': (('17:45', 'Basen', 60, 'better'),),
+        'steps': 7300,
+        # A night nobody answered for -- an ordinary gap, and the branch the
+        # report renders as "nie wpisano".
+        'night': None,
+    },
+    {
+        'activities': (),
+        'steps': None,
+        'night': ('23:10', '07:10', 3, 1, 'rested'),
+    },
+)
 
 
 def last_completed_week_start(today):
@@ -415,11 +469,19 @@ class Command(BaseCommand):
         return patient
 
     def _seed_diet(self, email, patient, scale):
-        """Meals, water and a supplement list, ending today.
+        """Meals, water, a supplement list, activities and nights — ending today.
 
         Ending **today**, unlike the diary half above: every diet screen shows
         today or the last seven days, so rows in last week would leave all of
-        them looking empty. There is no diet report to be a week behind for.
+        them looking empty.
+
+        THE WEEKLY REPORT (§10) IS THE ONE THAT LOOKS FURTHER BACK, and it is
+        fed by the same rows rather than by a window of its own: a diet week is
+        seven days from the patient's first entry, so `MEAL_DAYS` of history
+        yields two completed weeks and the list has something in it. Nothing
+        here writes `patient.diet_week_start` — `core/diet_reports.py` latches
+        it from the earliest row on the first request, which is the path a real
+        account takes too.
 
         Idempotent, and by replacement rather than by window: every diet row
         the patient has is deleted first, so a second run neither doubles a day
@@ -452,22 +514,84 @@ class Command(BaseCommand):
                 id_medical=patient.id_medical).delete()[0]
             Hydration.objects.filter(id_medical=patient.id_medical).delete()
             Supplement.objects.filter(id_medical=patient.id_medical).delete()
+            DietActivity.objects.filter(id_medical=patient.id_medical).delete()
+            DietActivityDay.objects.filter(id_medical=patient.id_medical).delete()
+            DietSleep.objects.filter(id_medical=patient.id_medical).delete()
 
             meals = self._seed_meals(patient.id_medical, today, meal_days)
             servings = self._seed_water(patient.id_medical, today, water_days)
             self._seed_supplements(
                 patient.id_medical, today, scale['supplements'])
+            moves, nights = self._seed_activity_and_sleep(
+                patient.id_medical, today, meal_days)
 
         self.stdout.write(
             f'{email}: dietetyka — {meals} posiłków w {meal_days} dniach, '
-            f'{servings} wpisów nawodnienia z {water_days} dni i '
-            f"{scale['supplements']} pozycji na liście leków"
+            f'{servings} wpisów nawodnienia z {water_days} dni, '
+            f"{scale['supplements']} pozycji na liście leków, "
+            f'{moves} aktywności i {nights} nocy'
             + (f' (usunięto {removed} poprzednich posiłków)' if removed else '')
         )
         self.stdout.write(
             f'  → seria w dzienniczku żywieniowym: '
             f'{diet_streak_days(patient.id_medical, today)}'
         )
+
+    def _seed_activity_and_sleep(self, id_medical, today, days):
+        """§09's two diaries, over the same window the meals cover.
+
+        The same window rather than `DIET_DAYS`, because unlike hydration these
+        two *are* reachable further back: the weekly report lists them day by
+        day, so a run as long as the meals' is what makes a report look like a
+        week somebody lived rather than one they only ate in.
+
+        SHAPED RATHER THAN UNIFORM, like the meals: not every day has an
+        activity (most people do not move every day, and a seed that said
+        otherwise would make the screen read as a target), one day carries a
+        step count and no activity at all — the state `diet_activity_day`
+        exists for — and one night is left undescribed, so the report's "nie
+        wpisano" branch is reachable from a seed.
+
+        Returns how many of each were written, so the caller reports rather than
+        restates the arithmetic.
+        """
+        moves = 0
+        nights = 0
+        for offset in range(days):
+            day = today - datetime.timedelta(days=offset)
+            shape = ACTIVITY_SHAPES[offset % len(ACTIVITY_SHAPES)]
+
+            for hour, kind, minutes, feeling in shape['activities']:
+                DietActivity.objects.create(
+                    id_medical=id_medical,
+                    entry_date=day,
+                    logged_at=datetime.time.fromisoformat(hour),
+                    kind=kind,
+                    duration_minutes=minutes,
+                    feeling_after=feeling,
+                )
+                moves += 1
+
+            if shape['steps'] is not None:
+                DietActivityDay.objects.create(
+                    id_medical=id_medical, entry_date=day, steps=shape['steps'],
+                )
+
+            night = shape['night']
+            if night is not None:
+                asleep, woke, quality, awakenings, feeling = night
+                DietSleep.objects.create(
+                    id_medical=id_medical,
+                    entry_date=day,
+                    fell_asleep_at=datetime.time.fromisoformat(asleep),
+                    woke_up_at=datetime.time.fromisoformat(woke),
+                    quality=quality,
+                    awakenings=awakenings,
+                    wake_feeling=feeling,
+                )
+                nights += 1
+
+        return moves, nights
 
     def _seed_meals(self, id_medical, today, meal_days):
         written = 0

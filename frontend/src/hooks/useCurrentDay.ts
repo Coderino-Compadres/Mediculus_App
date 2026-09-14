@@ -23,8 +23,10 @@ import { toIsoDate } from '../utils/days'
  * A minute's granularity is deliberate: the lock decides which *day* an entry
  * belongs to, and being up to a minute late in noticing a boundary that arrives
  * once a day is not worth a second's polling. What must never be a minute late
- * is the date written onto an entry, and that is not this hook's job — it is
- * taken from the clock at the moment of saving (see `newActivityEntry`).
+ * is the date written *onto* an entry, and that is not this hook's job — nor
+ * the browser's at all any more: every diet write takes its day from the
+ * server's clock and sends none, which is why nothing here can put a row under
+ * the wrong date however stale this value gets.
  */
 const RECHECK_MS = 60_000
 

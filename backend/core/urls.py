@@ -80,6 +80,32 @@ urlpatterns = [
         'diet/supplements/<uuid:id_supplement>/intake/',
         views.SupplementIntakeView.as_view(), name='diet-supplement-intake',
     ),
+    # §09, "Aktywność i sen". Both address today and nothing else, the shape
+    # `diary/today/` and `diet/hydration/` already have: no URL names an older
+    # day, so "a day is locked once it is over" is structural rather than a
+    # permission somebody can forget.
+    path('diet/activity/', views.DietActivityView.as_view(), name='diet-activity'),
+    # Before the '<uuid>' route, so 'steps' is never read as an id -- the same
+    # ordering rule 'diary/today/' needs.
+    path(
+        'diet/activity/steps/',
+        views.DietActivityStepsView.as_view(), name='diet-activity-steps',
+    ),
+    path(
+        'diet/activity/<uuid:id_activity>/',
+        views.DietActivityEntryView.as_view(), name='diet-activity-entry',
+    ),
+    path('diet/sleep/', views.DietSleepView.as_view(), name='diet-sleep'),
+    # §10's weekly reports. Their own prefix rather than /reports/, which is the
+    # psychotherapy module's: the two count a week differently (Monday-to-Sunday
+    # there, seven days from the first entry here), so one list holding both
+    # would be one list with two meanings of the word.
+    path('diet/reports/', views.DietReportListView.as_view(), name='diet-report-list'),
+    # 'week-2026-09-01' -- a slug, matching the psychotherapy route's shape.
+    path(
+        'diet/reports/<slug:report_id>/',
+        views.DietReportDetailView.as_view(), name='diet-report-detail',
+    ),
     path('reports/', views.ReportListView.as_view(), name='report-list'),
     # 'week-2026-08-03' — a slug, so it can never swallow the trailing segment
     # of the PDF route below.

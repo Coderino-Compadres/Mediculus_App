@@ -139,12 +139,16 @@ def serialize_entry(entry):
     }
 
 
-def _glasses(water_ml):
+def glasses_for(water_ml):
     """Millilitres as glasses, to one decimal.
 
     One decimal rather than a whole number because "Własna ilość" exists: 400 ml
     is 1,6 glasses and rounding it to 2 would report back more than was entered.
     The screen drops a trailing ",0" itself.
+
+    Public because `core/diet_reports.py` renders the same figure for a day
+    inside a weekly report: a report and the hydration screen must not be able
+    to disagree about how much water Tuesday held.
     """
     return round(water_ml / GLASS_ML, 1)
 
@@ -183,13 +187,69 @@ def build_hydration_day(id_medical, today):
         # screen holding its own 40 and finding out by a 400.
         'max_drink_name': MAX_DRINK_NAME,
         'water_ml': water_ml,
-        'glasses': _glasses(water_ml),
+        'glasses': glasses_for(water_ml),
         # Capped for the bar and uncapped in `glasses`: past the goal the bar is
         # simply full, and the day still says what it was.
         'progress': min(1.0, round(water_ml / (DAILY_TARGET_GLASSES * GLASS_ML), 3)),
         'entries': [serialize_entry(e) for e in entries],
         'week': _week(id_medical, today),
     }
+
+
+def water_by_day(id_medical, start, end):
+    """Water per calendar day over a range, as `{date: millilitres}`.
+
+    **ONE OF THE TWO PLACES IN THIS MODULE THAT COMPUTE THE WATER FIGURE**, and
+    therefore one of the two that carry the client's "nie przeliczamy na wodę"
+    rule: the `drink=WATER` filter below is the whole of it. Nothing else may
+    sum `amount_ml` — see the module docstring, and
+    `test_hydration_api.WaterIsTheOnlyOneCountedTests`, which is written with
+    litre-sized amounts of tea so a bug that added them would be unmissable
+    rather than a rounding.
+
+    Days with no water are **absent** rather than zero, unlike `_week` below.
+    The chart needs seven columns and a missing key would shift its labels; a
+    weekly report needs to tell "nobody wrote it down" from "drank nothing", and
+    an absent key is how it does. `core/diet_reports.py` is the caller.
+
+    Aggregated in the database rather than by loading the rows: a report spans
+    every completed week the patient has, which is a year of servings for an
+    account a year old.
+    """
+    return {
+        row['entry_date']: row['total'] or 0
+        for row in (
+            Hydration.objects
+            .filter(
+                id_medical=id_medical, drink=WATER,
+                entry_date__gte=start, entry_date__lte=end,
+            )
+            .values('entry_date')
+            .annotate(total=Sum('amount_ml'))
+        )
+    }
+
+
+def first_entry_date(id_medical):
+    """The earliest day this patient recorded any serving on, or None.
+
+    **Any drink, not water alone**, which is the one place this module counts a
+    cup of tea: the question is when the patient started keeping this diary, and
+    somebody whose first act was to log a coffee started then. That also matches
+    `firstEntryDate` in `utils/dietReport.ts`, which filters on `waterMl > 0`
+    only because the seven-day chart is the one shape it has — see
+    `core/diet_reports.py`, which latches the week anchor from this.
+
+    An exact `MIN` rather than a scan, for the reason that module gives: the
+    anchor must not depend on how much history happens to be in hand.
+    """
+    return (
+        Hydration.objects
+        .filter(id_medical=id_medical)
+        .order_by('entry_date')
+        .values_list('entry_date', flat=True)
+        .first()
+    )
 
 
 def _week(id_medical, today):
@@ -201,18 +261,7 @@ def _week(id_medical, today):
     converted, and a chart that added them would be doing exactly that.
     """
     start = _week_start(today)
-    totals = {
-        row['entry_date']: row['total']
-        for row in (
-            Hydration.objects
-            .filter(
-                id_medical=id_medical, drink=WATER,
-                entry_date__gte=start, entry_date__lte=today,
-            )
-            .values('entry_date')
-            .annotate(total=Sum('amount_ml'))
-        )
-    }
+    totals = water_by_day(id_medical, start, today)
     days = []
     for offset in range(WEEK_DAYS):
         day = start + datetime.timedelta(days=offset)
@@ -220,7 +269,7 @@ def _week(id_medical, today):
         days.append({
             'date': day.isoformat(),
             'water_ml': water_ml,
-            'glasses': _glasses(water_ml),
+            'glasses': glasses_for(water_ml),
         })
     return days
 

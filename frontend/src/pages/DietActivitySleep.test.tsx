@@ -13,14 +13,28 @@ vi.mock('../api/diet', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/diet')>()
   return {
     ...actual,
-    loadActivityDay: vi.fn(actual.loadActivityDay),
-    loadSleepNight: vi.fn(actual.loadSleepNight),
+    fetchActivityDay: vi.fn(),
+    createActivity: vi.fn(),
+    deleteActivity: vi.fn(),
+    setSteps: vi.fn(),
+    fetchSleepNight: vi.fn(),
+    saveSleepNight: vi.fn(),
   }
 })
-const { emptyActivityDay, emptySleepNight, loadActivityDay, loadSleepNight, sampleActivityDay } =
-  await import('../api/diet')
-const mockedActivity = vi.mocked(loadActivityDay)
-const mockedSleep = vi.mocked(loadSleepNight)
+const {
+  createActivity,
+  emptyActivityDay,
+  emptySleepNight,
+  fetchActivityDay,
+  fetchSleepNight,
+  saveSleepNight,
+  setSteps,
+} = await import('../api/diet')
+const mockedActivity = vi.mocked(fetchActivityDay)
+const mockedSleep = vi.mocked(fetchSleepNight)
+const mockedCreate = vi.mocked(createActivity)
+const mockedSteps = vi.mocked(setSteps)
+const mockedSaveNight = vi.mocked(saveSleepNight)
 
 /**
  * "Aktywność i sen" — §09 of the diet mockups, both halves.
@@ -40,9 +54,14 @@ const mockedSleep = vi.mocked(loadSleepNight)
  * ending. The sweep at the bottom is what keeps a copy edit from reintroducing
  * one.
  *
- * The data source is stubbed rather than used as-is: the real loaders answer
- * with an empty day until the module has a backend, so without the stub the
- * filled-state markup would never render and half of these would pass vacuously.
+ * The API is stubbed rather than hit: both panels read `/api/diet/activity/`
+ * and `/api/diet/sleep/` now, so without the stub the filled-state markup would
+ * never render and half of these would pass vacuously.
+ *
+ * **THE WRITES ARE STUBBED TOO, AND THEY ANSWER WITH THE WHOLE REBUILT DAY** —
+ * which is what the server does, and what the panels are written against. A
+ * stub that resolved to the row it wrote would let a panel that appends
+ * optimistically pass a test the real endpoint would fail.
  */
 
 const TODAY = toIsoDate(new Date())
@@ -80,9 +99,55 @@ function visiblePanel(): HTMLElement {
   return panel
 }
 
+/**
+ * A stand-in for the two endpoints, and it has to *behave* like them.
+ *
+ * **EVERY WRITE ANSWERS WITH THE WHOLE REBUILT COLLECTION**, which is the
+ * server's own contract and the thing these panels are written against: they
+ * redraw from the answer rather than appending what they sent. A stub that
+ * resolved to the written row alone — or to a fixed empty day — would pass a
+ * panel that appended optimistically, which is exactly the bug the contract
+ * exists to prevent (one day with two versions of itself).
+ *
+ * It also stamps the id and the hour, because the *server* does: no diet write
+ * sends a date or a time any more, so a stub that let the browser invent one
+ * would be testing a code path that no longer exists.
+ */
+let served: DietActivityDay
+let stamped = 0
+
 beforeEach(() => {
-  mockedActivity.mockImplementation(() => activityDay())
-  mockedSleep.mockImplementation(() => sleepNight())
+  served = activityDay()
+  stamped = 0
+
+  mockedActivity.mockImplementation(() => Promise.resolve(served))
+  mockedSleep.mockImplementation(() => Promise.resolve(sleepNight()))
+
+  mockedCreate.mockImplementation((answers) => {
+    stamped += 1
+    served = {
+      ...served,
+      // Newest first, the order the endpoint returns and every list in the app
+      // uses.
+      entries: [
+        {
+          id: `served-${stamped}`,
+          date: TODAY,
+          time: `1${stamped}:00`,
+          ...answers,
+        },
+        ...served.entries,
+      ],
+    }
+    return Promise.resolve(served)
+  })
+
+  mockedSteps.mockImplementation((steps) => {
+    served = { ...served, steps }
+    return Promise.resolve(served)
+  })
+
+  mockedSaveNight.mockImplementation((night) => Promise.resolve(night))
 })
 
 /** The day-lock cases move the clock; anything after them needs the real one
@@ -126,24 +191,49 @@ describe('the screen itself', () => {
     expect(screen.getByRole('banner')).toContainElement(back)
   })
 
-  it('says out loud that nothing here is stored yet', () => {
+  it('no longer admits that nothing is stored, because everything is', async () => {
     /**
-     * The screen is a form with two "Zapisz" buttons, a list headed "Zapisane
-     * dzisiaj" and a day-lock notice promising the entry "zostanie zapisany na
-     * stałe" — and there is no `/api/diet/activity/` or `/api/diet/sleep/`
-     * behind any of it, so a reload loses everything. A patient writing down a
-     * week of walks and finding them gone is the defect `0009` already was once
-     * (told the entry had saved "pora dnia", dropped it silently), so the
-     * screen has to admit it.
+     * THE REVERSE OF THE TEST THAT USED TO BE HERE. The screen carried three
+     * separate pieces of wording admitting that nothing it collected survived a
+     * reload: this note, the sleep panel's "Zapisano — na razie tylko na tej
+     * karcie", and a `stored: false` flag on `dayLockNotice` that dropped the
+     * promise "zostanie zapisany na stałe". All three were correct while §09
+     * had no backend, and all three are false now that it has one (migration
+     * 0018, `/api/diet/activity/` and `/api/diet/sleep/`).
      *
-     * Pinned on the consequence rather than on the sentence: reword it freely,
-     * but a patient must still be told the entries do not survive a reload.
-     * Delete this test in the commit that wires the endpoints.
+     * Pinned rather than simply deleted, because a stale disclaimer is its own
+     * defect: a patient told their entries will vanish stops writing them, and
+     * the sentence would outlive the condition by however long nobody
+     * rereads it.
      */
     const { container } = renderWithProviders(<DietActivitySleep />)
+    await screen.findByRole('heading', { level: 2, name: 'Aktywność dzisiaj' })
 
-    expect(container.textContent).toMatch(/nie zapisuje/)
-    expect(container.textContent).toMatch(/odświeżeniu/)
+    expect(container.textContent).not.toMatch(/nie zapisuje/)
+    expect(container.textContent).not.toMatch(/znikną po odświeżeniu/)
+    expect(container.textContent).not.toMatch(/tylko na tej karcie/)
+  })
+
+  it('promises the entry is kept, which is the day lock\'s own sentence', async () => {
+    /* `dayLockNotice` lost its `stored` flag with the thing it described — see
+       utils/dayLock.ts. Both panels now make the promise every other screen in
+       the app makes about the same rule, which is why this asserts on the one
+       a reader can see rather than on the document: both are mounted, so a bare
+       text query matches twice. */
+    renderWithProviders(<DietActivitySleep />)
+    await screen.findByRole('heading', { level: 2, name: 'Aktywność dzisiaj' })
+
+    expect(
+      within(visiblePanel()).getByText(/zostanie zapisany na stałe/),
+    ).toBeInTheDocument()
+  })
+
+  it('reads both diaries from the API rather than inventing them', async () => {
+    renderWithProviders(<DietActivitySleep />)
+    await screen.findByRole('heading', { level: 2, name: 'Aktywność dzisiaj' })
+
+    expect(mockedActivity).toHaveBeenCalled()
+    expect(mockedSleep).toHaveBeenCalled()
   })
 
   it('writes the day under the title, with a lowercase month', () => {
@@ -464,7 +554,12 @@ describe('the activity form', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent(`${24 * 60} min`)
     expect(plus).toHaveAttribute('aria-disabled', 'true')
-  })
+    /* Three hundred real taps, each a full event sequence and a re-render, is
+       genuinely slower than the 5 s default once the whole suite is running in
+       parallel — it timed out in a full run while passing on its own. The cap
+       is worth exercising by tapping rather than by setting state, so the
+       budget moves instead of the test. */
+  }, 20_000)
 
   it('records a deliberate 30 once the control has been moved off it and back', async () => {
     const user = userEvent.setup()
@@ -544,7 +639,7 @@ describe('the sleep form', () => {
   it('asks for two hours and computes the one value this module computes', async () => {
     const user = userEvent.setup()
     mockedSleep.mockImplementation(() =>
-      sleepNight({ fellAsleepAt: '23:40', wokeUpAt: '06:50' }),
+      Promise.resolve(sleepNight({ fellAsleepAt: '23:40', wokeUpAt: '06:50' })),
     )
     renderWithProviders(<DietActivitySleep />)
 
@@ -570,7 +665,7 @@ describe('the sleep form', () => {
 
   it('shows no length at all until both hours are there', async () => {
     const user = userEvent.setup()
-    mockedSleep.mockImplementation(() => sleepNight({ fellAsleepAt: '23:40' }))
+    mockedSleep.mockImplementation(() => Promise.resolve(sleepNight({ fellAsleepAt: '23:40' })))
     renderWithProviders(<DietActivitySleep />)
 
     await goToSleep(user)
@@ -584,7 +679,7 @@ describe('the sleep form', () => {
   it('asks for a correction when the two hours read the same', async () => {
     const user = userEvent.setup()
     mockedSleep.mockImplementation(() =>
-      sleepNight({ fellAsleepAt: '23:00', wokeUpAt: '23:00' }),
+      Promise.resolve(sleepNight({ fellAsleepAt: '23:00', wokeUpAt: '23:00' })),
     )
     renderWithProviders(<DietActivitySleep />)
 
@@ -598,7 +693,7 @@ describe('the sleep form', () => {
   it('words that correction calmly, and never as a failure', async () => {
     const user = userEvent.setup()
     mockedSleep.mockImplementation(() =>
-      sleepNight({ fellAsleepAt: '23:00', wokeUpAt: '23:00' }),
+      Promise.resolve(sleepNight({ fellAsleepAt: '23:00', wokeUpAt: '23:00' })),
     )
     renderWithProviders(<DietActivitySleep />)
 
@@ -611,7 +706,7 @@ describe('the sleep form', () => {
   it('still saves a night whose hours collide — no field blocks a save', async () => {
     const user = userEvent.setup()
     mockedSleep.mockImplementation(() =>
-      sleepNight({ fellAsleepAt: '23:00', wokeUpAt: '23:00' }),
+      Promise.resolve(sleepNight({ fellAsleepAt: '23:00', wokeUpAt: '23:00' })),
     )
     renderWithProviders(<DietActivitySleep />)
 
@@ -765,9 +860,16 @@ describe('the day lock', () => {
   it('stops calling a day that has ended "dzisiaj"', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date(2026, 8, 9, 23, 55))
+    /* Dated to the faked clock rather than left at `beforeEach`'s real one: the
+       day the *server* answered with is what the lock compares against, and a
+       fixture stamped with today's real date would be locked from the first
+       render, which is not the state this test is about. */
+    served = activityDay({ date: '2026-09-09' })
     renderWithProviders(<DietActivitySleep />)
 
-    expect(screen.getByRole('heading', { name: 'Zapisane dzisiaj' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Zapisane dzisiaj' }),
+    ).toBeInTheDocument()
 
     vi.setSystemTime(new Date(2026, 8, 10, 0, 10))
     await act(async () => {
@@ -801,11 +903,13 @@ describe('the day lock', () => {
     expect(within(sleep).queryByText(/obudziłaś lub obudziłeś/)).toBeNull()
   })
 
-  it('leaves today unlocked', () => {
-    mockedActivity.mockImplementation(() => sampleActivityDay(new Date()))
+  it('leaves today unlocked', async () => {
+    mockedActivity.mockImplementation(() =>
+      Promise.resolve(activityDay({ date: TODAY, steps: 6400 })),
+    )
     renderWithProviders(<DietActivitySleep />)
+    await screen.findByRole('heading', { level: 2, name: 'Aktywność dzisiaj' })
 
-    expect(mockedActivity.mock.results[0].value.date).toBe(TODAY)
     expect(screen.queryByText('Tylko odczyt')).toBeNull()
     expect(screen.getByRole('button', { name: 'Zapisz aktywność' })).toBeEnabled()
   })
@@ -881,17 +985,17 @@ describe('the activity list is paginated', () => {
     }))
 
   it('draws no control over an ordinary day', () => {
-    mockedActivity.mockImplementation(() => activityDay({ entries: entries(PAGE_SIZE) }))
+    served = activityDay({ entries: entries(PAGE_SIZE) })
     renderWithProviders(<DietActivitySleep />)
 
     expect(screen.queryByRole('navigation', { name: 'Paginacja' })).toBeNull()
   })
 
-  it('shows seven entries on a page and counts them as wpisy', () => {
-    mockedActivity.mockImplementation(() => activityDay({ entries: entries(20) }))
+  it('shows seven entries on a page and counts them as wpisy', async () => {
+    served = activityDay({ entries: entries(20) })
     renderWithProviders(<DietActivitySleep />)
 
-    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+    expect(await screen.findByText(/Strona 1 z 3/)).toBeInTheDocument()
     expect(screen.getByText(/1–7 z 20 wpisów/)).toBeInTheDocument()
     // "Spacer · 30 min" — the row composes the kind with the duration.
     expect(within(visiblePanel()).getAllByText(/^Spacer · /)).toHaveLength(PAGE_SIZE)
@@ -899,8 +1003,9 @@ describe('the activity list is paginated', () => {
 
   it('moves through the pages', async () => {
     const user = userEvent.setup()
-    mockedActivity.mockImplementation(() => activityDay({ entries: entries(20) }))
+    served = activityDay({ entries: entries(20) })
     renderWithProviders(<DietActivitySleep />)
+    await screen.findByText(/Strona 1 z 3/)
 
     await user.click(screen.getByRole('button', { name: /następna/i }))
 
@@ -913,8 +1018,9 @@ describe('the activity list is paginated', () => {
     // One `?page=` per screen: a second paginated list here would turn this
     // one's pages. The sleep panel is a form and a night, never a list.
     const user = userEvent.setup()
-    mockedActivity.mockImplementation(() => activityDay({ entries: entries(20) }))
+    served = activityDay({ entries: entries(20) })
     renderWithProviders(<DietActivitySleep />)
+    await screen.findByText(/Strona 1 z 3/)
     expect(screen.getAllByRole('navigation', { name: 'Paginacja' })).toHaveLength(1)
 
     await goToSleep(user)
@@ -924,8 +1030,13 @@ describe('the activity list is paginated', () => {
 
   it('goes back to page one when an activity is written, so it is on screen', async () => {
     const user = userEvent.setup()
-    mockedActivity.mockImplementation(() => activityDay({ entries: entries(20) }))
+    /* Seeded through the fake endpoint rather than by overriding the read, so
+       the write below lands in the same collection the panel is showing — the
+       server answers a write with the whole rebuilt day, and a stub whose read
+       and write disagreed would make this test pass for the wrong reason. */
+    served = activityDay({ entries: entries(20) })
     renderWithProviders(<DietActivitySleep />)
+    await screen.findByText(/Strona 1 z 3/)
     await user.click(screen.getByRole('button', { name: /następna/i }))
     expect(screen.getByText(/Strona 2 z 3/)).toBeInTheDocument()
 

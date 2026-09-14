@@ -1,7 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import LoadError from './LoadError'
 import Pagination from './Pagination'
 import Stepper from './Stepper'
-import { loadActivityDay, newActivityEntry } from '../api/diet'
+import { ApiError } from '../api/client'
+import {
+  createActivity,
+  emptyActivityDay,
+  fetchActivityDay,
+  setSteps as saveSteps,
+} from '../api/diet'
 import { useCurrentDay } from '../hooks/useCurrentDay'
 import { usePagination } from '../hooks/usePagination'
 import { fromIsoDate } from '../utils/days'
@@ -75,6 +82,10 @@ const EMPTY_DRAFT: ActivityDraft = {
  *  number. */
 const MAX_STEP_DIGITS = 6
 
+const LOAD_ERROR = 'Nie udało się wczytać aktywności.'
+const SAVE_ERROR = 'Nie udało się zapisać aktywności.'
+const STEPS_ERROR = 'Nie udało się zapisać liczby kroków.'
+
 function ActivityRow({ entry, editable }: { entry: DietActivityEntry; editable: boolean }) {
   const kind = activityKindLabel(entry.kind, entry.kindOther)
   const duration =
@@ -102,8 +113,17 @@ function ActivityRow({ entry, editable }: { entry: DietActivityEntry; editable: 
 }
 
 function DietActivityPanel({ today }: { today: Date }) {
-  const [day, setDay] = useState<DietActivityDay>(() => loadActivityDay(today))
+  /** What the server holds. `emptyActivityDay(today)` is the shape drawn while
+   *  the first request is in flight — not what the panel settles on if that
+   *  request fails, which is reported as a failure. */
+  const [day, setDay] = useState<DietActivityDay>(() => emptyActivityDay(today))
   const [draft, setDraft] = useState<ActivityDraft>(EMPTY_DRAFT)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  /** A failed *write*, which is a different statement from a failed load: the
+   *  panel still has its data, and only the last act did not happen. */
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   /**
    * Whether this day may still be written to.
@@ -134,6 +154,33 @@ function DietActivityPanel({ today }: { today: Date }) {
    */
   const pages = usePagination(day.entries)
 
+  // The house pattern: a promise chain with a `cancelled` flag rather than an
+  // `async` effect body.
+  useEffect(() => {
+    let cancelled = false
+
+    fetchActivityDay()
+      .then((loaded) => {
+        if (cancelled) return
+        setDay(loaded)
+        setLoadError(null)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) {
+          setLoadError(
+            (cause instanceof ApiError && cause.formMessage) || LOAD_ERROR,
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [attempt])
+
   /** Taken from the day being edited rather than from `today`, so the deadline
    *  in the notice cannot name a different day from the data under it. */
   const dateLabel = fromIsoDate(day.date).toLocaleDateString('pl-PL', {
@@ -153,40 +200,70 @@ function DietActivityPanel({ today }: { today: Date }) {
     }))
   }
 
+  /**
+   * **THE DATE AND THE HOUR ARE STAMPED BY THE SERVER**, and nothing here sends
+   * either.
+   *
+   * They used to be read from the browser's clock at save time, and before that
+   * copied off `day.date` — which was fixed when the route mounted, so an
+   * activity saved at 00:10 was filed under the previous day. That is the worst
+   * class of defect this module can have: not a control that misbehaves, which
+   * the next tap corrects, but a row entering the database attributed to a day
+   * it did not happen on, which then feeds a specialist's reading of the week.
+   * One clock decides now, and it is the same one that decides which day every
+   * other row in this module belongs to.
+   */
   function saveActivity() {
-    /**
-     * The date and the hour are stamped from the clock inside
-     * `newActivityEntry`, not copied off `day.date`.
-     *
-     * `day.date` was fixed when the route mounted, so an activity saved at 00:10
-     * used to be filed under the previous day — a row entering the database
-     * attributed to a day it did not happen on, which then feeds a specialist's
-     * reading of the week. The lock above is what stops such a save; this is
-     * what keeps the save correct even if the lock is ever wrong again.
-     */
-    const entry = newActivityEntry(draft)
-    // Newest first, the order every list in this app uses. Nothing is sent
-    // anywhere: when `POST /api/diet/activity/` exists, this is the one place
-    // that changes, and it changes in api/diet.ts rather than here.
-    setDay((current) => ({ ...current, entries: [entry, ...current.entries] }))
-    // Newest first, so what was just written is on page one.
-    pages.reset()
-    setDraft(EMPTY_DRAFT)
+    setSaveError(null)
+    createActivity(draft)
+      .then((written) => {
+        setDay(written)
+        // Newest first, so what was just written is on page one.
+        pages.reset()
+        setDraft(EMPTY_DRAFT)
+      })
+      .catch((cause: unknown) => {
+        /* The form is left as it was, so nothing typed is lost — and the
+           server's own sentence is preferred to ours, because every refusal a
+           patient can actually reach here is a gate arriving with a message
+           saying what to do about it. */
+        setSaveError(
+          (cause instanceof ApiError && cause.formMessage) || SAVE_ERROR,
+        )
+      })
   }
 
-  function setSteps(typed: string) {
+  /**
+   * The step count, written when the input loses focus.
+   *
+   * On blur rather than on every keystroke: the count is one number typed in
+   * one go, and a request per digit would write "6", "64", "640" and "6400" as
+   * four separate answers.
+   *
+   * '' is sent as null, not 0 — which deletes the row on the server. Nobody
+   * typing a count and somebody who took no steps are different claims, and
+   * only the first is one this screen can make.
+   */
+  function commitSteps() {
+    saveSteps(day.steps)
+      .then(setDay)
+      .catch((cause: unknown) => {
+        setSaveError(
+          (cause instanceof ApiError && cause.formMessage) || STEPS_ERROR,
+        )
+      })
+  }
+
+  function typeSteps(typed: string) {
     const digits = typed.replace(/\D/g, '').slice(0, MAX_STEP_DIGITS)
-    // '' is null, not 0: nobody typing a count and somebody who took no steps
-    // are different claims, and only the first is one this screen can make.
     setDay((current) => ({ ...current, steps: digits === '' ? null : Number(digits) }))
+    setSaveError(null)
   }
 
   return (
     <div className="diet-as-panel">
       {editable ? (
-        /* `stored: false` — the deadline is true here, the promise that the
-           entry is then kept for good is not. See utils/dayLock.ts. */
-        <p className="diet-as-lock">{dayLockNotice(dateLabel, false)}</p>
+        <p className="diet-as-lock">{dayLockNotice(dateLabel)}</p>
       ) : (
         /* The date is on the badge's row rather than left to the header, which
            says which day it is *now* — a locked panel is showing a different
@@ -195,6 +272,31 @@ function DietActivityPanel({ today }: { today: Date }) {
            the date says which day it applies to. */
         <p className="diet-as-lock">
           <span className="diet-as-readonly-badge">{READ_ONLY_BADGE}</span> {dateLabel}
+        </p>
+      )}
+
+      {/* **A FAILED LOAD IS NEVER DRAWN AS AN EMPTY DAY.** "Nic tu jeszcze nie
+          ma" about a day that holds three activities is the mistake
+          `Journals.tsx` is careful about, and it matters here because the panel
+          is a form: somebody would write the day again. */}
+      {!loading && loadError && (
+        <LoadError
+          className="diet-as-status diet-as-status-error"
+          message={loadError}
+          onRetry={() => {
+            setLoading(true)
+            setLoadError(null)
+            setAttempt((n) => n + 1)
+          }}
+        />
+      )}
+
+      {/* A failed *write* is a different statement: the day on screen is real,
+          and only the last act did not happen. Said next to the form rather
+          than over it, and it does not take the form away. */}
+      {saveError && (
+        <p className="diet-as-status diet-as-status-error" role="alert">
+          {saveError}
         </p>
       )}
 
@@ -327,7 +429,8 @@ function DietActivityPanel({ today }: { today: Date }) {
             value={day.steps === null ? '' : String(day.steps)}
             readOnly={!editable}
             aria-describedby="activity-steps-hint"
-            onChange={(event) => setSteps(event.target.value)}
+            onChange={(event) => typeSteps(event.target.value)}
+            onBlur={commitSteps}
           />
         </div>
         {/* The mockup's own words. Nothing next to this number compares it with

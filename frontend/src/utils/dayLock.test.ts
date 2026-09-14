@@ -34,24 +34,27 @@ describe('isEditableDay', () => {
 })
 
 describe('dayLockNotice', () => {
-  it('states the deadline and, by default, that the entry is then kept', () => {
+  it('states the deadline and that the entry is then kept', () => {
     const notice = dayLockNotice('piątek, 14 sierpnia')
 
     expect(notice).toContain('do końca dzisiejszego dnia (piątek, 14 sierpnia)')
     expect(notice).toContain('zapisany na stałe')
   })
 
-  it('drops the promise for a screen that stores nothing', () => {
+  it('makes that promise on every screen, because every screen now keeps it', () => {
     /**
-     * The deadline is a rule and holds either way; "zostanie zapisany na stałe"
-     * is a claim that the entry survives, which on /diet/activity-sleep is
-     * false — nothing there reaches an endpoint. Rendered anyway, it sat one
-     * line under the note admitting exactly that.
+     * There used to be a second argument here, and a test asserting that
+     * /diet/activity-sleep dropped the promise: "zostanie zapisany na stałe" is
+     * a claim that the entry survives, and on that screen it was false —
+     * nothing reached an endpoint and a reload lost it. §09 has its two
+     * endpoints now (migration 0018), so the claim is true wherever it is made
+     * and the flag that told the two cases apart is gone.
+     *
+     * Pinned rather than deleted, because the *next* screen built without a
+     * backend is where somebody would reach for the old flag: the answer is to
+     * give it one, not to word around it.
      */
-    const notice = dayLockNotice('czwartek, 10 września', false)
-
-    expect(notice).toContain('do końca dzisiejszego dnia (czwartek, 10 września)')
-    expect(notice).not.toContain('na stałe')
+    expect(dayLockNotice('czwartek, 10 września')).toContain('na stałe')
   })
 })
 

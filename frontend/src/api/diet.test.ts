@@ -1,20 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createActivity,
   createMeal,
   createSupplement,
+  deleteActivity,
   deleteMeal,
   deleteSupplement,
   emptyActivityDay,
   emptyDietDay,
   emptySleepNight,
+  fetchActivityDay,
   fetchDietDay,
   fetchDietHistory,
+  fetchDietReport,
+  fetchDietReports,
   fetchHydration,
+  fetchSleepNight,
   fetchSupplements,
-  localTime,
-  newActivityEntry,
   recordDrink,
   removeDrink,
+  saveSleepNight,
+  setSteps,
   setSupplementTaken,
   updateMeal,
   updateSupplement,
@@ -450,16 +456,20 @@ describe('suplementy i leki', () => {
 })
 
 /**
- * §09's own half of this layer is pure: `newActivityEntry` and `localTime`
- * reach no endpoint, because there is no `/api/diet/activity/` yet.
+ * §09 — "Aktywność i sen", which reaches a real endpoint now.
  *
- * `newActivityEntry` is the one worth testing on its own, and the reason is the
- * defect it exists to prevent: the date used to be copied off the day object the
- * screen had loaded, whose own date was fixed when the route mounted, so an
- * activity saved at 00:10 was filed under the previous day. That is invisible
- * from a component test — a test can watch a button and a list, but not which
- * day a row went into — which is exactly why the stamp was extracted to a
- * function with an injectable clock.
+ * **THE SUITES THAT USED TO SIT HERE ARE GONE, AND THEIR SUBJECT IS THE POINT.**
+ * `newActivityEntry` and `localTime` stamped an entry's date and hour in the
+ * browser, and they were worth a test of their own because of the defect they
+ * were extracted to prevent: the date had been copied off the day object the
+ * screen loaded, whose own date was fixed when the route mounted, so an activity
+ * saved at 00:10 was filed under the previous day.
+ *
+ * The server stamps both now and no write sends either, which is a stronger
+ * form of the same guarantee — one clock decides, and it is the clock that
+ * already decides which day every other row in this module belongs to. So what
+ * is pinned below is the *absence*: `createActivity` and `saveSleepNight` must
+ * put no date and no hour on the wire at all.
  */
 
 const ANSWERS: ActivityAnswers = {
@@ -469,54 +479,487 @@ const ANSWERS: ActivityAnswers = {
   feelingAfter: 'better',
 }
 
-describe('newActivityEntry', () => {
-  it('stamps the day from the clock at the moment of saving', () => {
-    // 00:10 on the 10th. Filed under the 10th, whatever day the screen was
-    // opened on.
-    const entry = newActivityEntry(ANSWERS, new Date(2026, 8, 10, 0, 10))
+const ACTIVITY_ENTRY_PAYLOAD = {
+  id: 'a1',
+  date: '2026-09-11',
+  time: '18:10',
+  kind: 'Spacer',
+  kind_other: '',
+  duration_minutes: 35,
+  feeling_after: 'better',
+}
 
-    expect(entry.date).toBe('2026-09-10')
-    expect(entry.time).toBe('00:10')
+const ACTIVITY_DAY_PAYLOAD = {
+  date: '2026-09-11',
+  entries: [ACTIVITY_ENTRY_PAYLOAD],
+  steps: 6400,
+}
+
+const SLEEP_PAYLOAD = {
+  date: '2026-09-11',
+  fell_asleep_at: '23:40',
+  woke_up_at: '06:50',
+  quality: 3,
+  awakenings: 1,
+  wake_feeling: 'heavy',
+}
+
+describe('fetchActivityDay', () => {
+  it('reads today from the module own URL', async () => {
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
+
+    await fetchActivityDay()
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/activity/')
   })
 
-  it('does not inherit the day a screen was opened on', () => {
-    /**
-     * The regression, stated directly. A form opened at 23:55 on the 9th holds
-     * a day whose `date` is '2026-09-09'; an entry saved from it fifteen minutes
-     * later belongs to the 10th. Nothing about the entry may come from that
-     * stale day object.
-     */
-    const openedOn = emptyActivityDay(new Date(2026, 8, 9, 23, 55))
-    const entry = newActivityEntry(ANSWERS, new Date(2026, 8, 10, 0, 10))
+  it('maps a row into the panel own names', async () => {
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
 
-    expect(openedOn.date).toBe('2026-09-09')
-    expect(entry.date).not.toBe(openedOn.date)
+    await expect(fetchActivityDay()).resolves.toEqual({
+      date: '2026-09-11',
+      steps: 6400,
+      entries: [{
+        id: 'a1',
+        date: '2026-09-11',
+        time: '18:10',
+        kind: 'Spacer',
+        kindOther: '',
+        durationMinutes: 35,
+        feelingAfter: 'better',
+      }],
+    })
   })
 
-  it('reads the real clock when nobody passes one', () => {
-    // Production never passes `now`; the argument is there for the tests above.
-    expect(newActivityEntry(ANSWERS).date).toBe(toIsoDate(new Date()))
+  it('keeps a null answer null rather than inventing one', async () => {
+    /** An activity saved with nothing but an hour is an ordinary row (§05), so
+     *  none of the three answers may be filled in on the way through. */
+    apiRequest.mockResolvedValue({
+      ...ACTIVITY_DAY_PAYLOAD,
+      steps: null,
+      entries: [{
+        ...ACTIVITY_ENTRY_PAYLOAD,
+        kind: null, duration_minutes: null, feeling_after: null,
+      }],
+    })
+
+    const day = await fetchActivityDay()
+
+    expect(day.steps).toBeNull()
+    expect(day.entries[0].kind).toBeNull()
+    expect(day.entries[0].durationMinutes).toBeNull()
+    expect(day.entries[0].feelingAfter).toBeNull()
   })
 
-  it('carries the answers through untouched', () => {
-    const entry = newActivityEntry(ANSWERS, new Date(2026, 8, 10, 7, 5))
+  it('keeps a zero step count, because that is a real answer', async () => {
+    /** A row holding 0 is "no steps taken"; an absent row is "nobody typed
+     *  one". The server tells them apart by deleting the row, and this layer
+     *  must not fold the first into the second. */
+    apiRequest.mockResolvedValue({ ...ACTIVITY_DAY_PAYLOAD, steps: 0 })
 
-    expect(entry).toMatchObject(ANSWERS)
+    expect((await fetchActivityDay()).steps).toBe(0)
   })
 
-  it('gives every entry its own id, marked as unpersisted', () => {
-    const first = newActivityEntry(ANSWERS)
-    const second = newActivityEntry(ANSWERS)
+  it('turns a missing kind_other into an empty string, not into null', async () => {
+    /** The type declares a string because the chip and its free text are one
+     *  answer and the form needs something to put in the input. */
+    const { kind_other: _dropped, ...withoutFreeText } = ACTIVITY_ENTRY_PAYLOAD
+    apiRequest.mockResolvedValue({
+      ...ACTIVITY_DAY_PAYLOAD, entries: [withoutFreeText],
+    })
 
-    expect(first.id).not.toBe(second.id)
-    // The prefix says out loud that nothing here has reached a database.
-    expect(first.id).toMatch(/^local-/)
+    expect((await fetchActivityDay()).entries[0].kindOther).toBe('')
+  })
+
+  it('survives a day with no entries key at all', async () => {
+    /** A backend a release behind this file. Throwing would take the panel down
+     *  — the same judgement `fetchDietDay` makes about a missing `meals`. */
+    apiRequest.mockResolvedValue({ date: '2026-09-11', steps: null })
+
+    expect((await fetchActivityDay()).entries).toEqual([])
   })
 })
 
-describe('localTime', () => {
-  it('pads both halves, so a row never reads "7:5"', () => {
-    expect(localTime(new Date(2026, 8, 10, 7, 5))).toBe('07:05')
+describe('createActivity', () => {
+  it('posts the three answers, snake_cased', async () => {
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
+
+    await createActivity(ANSWERS)
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/activity/', {
+      method: 'POST',
+      body: {
+        kind: 'Spacer',
+        kind_other: null,
+        duration_minutes: 35,
+        feeling_after: 'better',
+      },
+    })
+  })
+
+  it('sends no date and no hour, because the server stamps both', async () => {
+    /** THE REGRESSION THIS REPLACES. The browser used to stamp them, and before
+     *  that copied them off a day object fixed at mount — which filed an
+     *  activity saved at 00:10 under the previous day, in a document a
+     *  specialist reads. Nothing on the wire may name a day or a time. */
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
+
+    await createActivity(ANSWERS)
+
+    const body = apiRequest.mock.calls[0][1].body as Record<string, unknown>
+    expect(Object.keys(body).sort()).toEqual([
+      'duration_minutes', 'feeling_after', 'kind', 'kind_other',
+    ])
+  })
+
+  it('sends a blank free text as null, so "unanswered" has one representation', async () => {
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
+
+    await createActivity({ ...ANSWERS, kind: 'Inne', kindOther: '   ' })
+
+    expect(apiRequest.mock.calls[0][1].body).toMatchObject({ kind_other: null })
+  })
+
+  it('trims what was typed under "Inne"', async () => {
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
+
+    await createActivity({ ...ANSWERS, kind: 'Inne', kindOther: '  Nordic walking  ' })
+
+    expect(apiRequest.mock.calls[0][1].body).toMatchObject({
+      kind_other: 'Nordic walking',
+    })
+  })
+
+  it('sends an empty form as an empty form, which is a valid activity', async () => {
+    /** §05 taken literally on both sides: it records that somebody moved. */
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
+
+    await createActivity({
+      kind: null, kindOther: '', durationMinutes: null, feelingAfter: null,
+    })
+
+    expect(apiRequest.mock.calls[0][1].body).toEqual({
+      kind: null, kind_other: null, duration_minutes: null, feeling_after: null,
+    })
+  })
+
+  it('answers with the whole rebuilt day rather than the row it wrote', async () => {
+    /** The list and the step count sit together; rebuilding either here is how
+     *  one day ends up with two versions of itself. */
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
+
+    const day = await createActivity(ANSWERS)
+
+    expect(day.entries).toHaveLength(1)
+    expect(day.steps).toBe(6400)
+  })
+})
+
+describe('deleteActivity', () => {
+  it('deletes by id and answers with the day that is left', async () => {
+    apiRequest.mockResolvedValue({ date: '2026-09-11', entries: [], steps: null })
+
+    const day = await deleteActivity('a1')
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/activity/a1/', {
+      method: 'DELETE',
+    })
+    expect(day.entries).toEqual([])
+  })
+})
+
+describe('setSteps', () => {
+  it('puts the count to its own URL, which is not an activity id', async () => {
+    /** Declared before `activity/<uuid>/` on the server, so "steps" is never
+     *  read as an id. */
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
+
+    await setSteps(6400)
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/activity/steps/', {
+      method: 'PUT',
+      body: { steps: 6400 },
+    })
+  })
+
+  it('sends null to clear it, which deletes the row rather than storing a zero', async () => {
+    /** "Nobody typed a count" and "this person took no steps" are different
+     *  claims: the first is an absent row, the second a row holding 0. */
+    apiRequest.mockResolvedValue({ ...ACTIVITY_DAY_PAYLOAD, steps: null })
+
+    await setSteps(null)
+
+    expect(apiRequest.mock.calls[0][1].body).toEqual({ steps: null })
+  })
+
+  it('sends a zero as a zero', async () => {
+    apiRequest.mockResolvedValue({ ...ACTIVITY_DAY_PAYLOAD, steps: 0 })
+
+    await setSteps(0)
+
+    expect(apiRequest.mock.calls[0][1].body).toEqual({ steps: 0 })
+  })
+
+  it('answers with the rebuilt day, so the panel redraws from the server', async () => {
+    apiRequest.mockResolvedValue(ACTIVITY_DAY_PAYLOAD)
+
+    expect((await setSteps(6400)).steps).toBe(6400)
+  })
+})
+
+describe('fetchSleepNight', () => {
+  it('reads this morning night from the module own URL', async () => {
+    apiRequest.mockResolvedValue(SLEEP_PAYLOAD)
+
+    await fetchSleepNight()
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/sleep/')
+  })
+
+  it('maps every field into the panel own names', async () => {
+    apiRequest.mockResolvedValue(SLEEP_PAYLOAD)
+
+    await expect(fetchSleepNight()).resolves.toEqual({
+      date: '2026-09-11',
+      fellAsleepAt: '23:40',
+      wokeUpAt: '06:50',
+      quality: 3,
+      awakenings: 1,
+      wakeFeeling: 'heavy',
+    })
+  })
+
+  it('reads a morning nobody answered for as an empty night, not as an error', async () => {
+    /** The server sends this shape for an untouched morning, and it is exactly
+     *  what `emptySleepNight` produces — so the loading shape and the loaded one
+     *  are the same object. */
+    apiRequest.mockResolvedValue({
+      date: '2026-09-11', fell_asleep_at: null, woke_up_at: null,
+      quality: null, awakenings: 0, wake_feeling: null,
+    })
+
+    await expect(fetchSleepNight()).resolves.toEqual(emptySleepNight(new Date(2026, 8, 11)))
+  })
+})
+
+describe('saveSleepNight', () => {
+  const NIGHT = {
+    date: '2026-09-11',
+    fellAsleepAt: '23:40',
+    wokeUpAt: '06:50',
+    quality: 3 as const,
+    awakenings: 1,
+    wakeFeeling: 'heavy' as const,
+  }
+
+  it('puts the whole form, snake_cased', async () => {
+    /** PUT replaces rather than merges — the server rule — so the whole draft
+     *  travels and a cleared hour is an answer taken back. */
+    apiRequest.mockResolvedValue(SLEEP_PAYLOAD)
+
+    await saveSleepNight(NIGHT)
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/sleep/', {
+      method: 'PUT',
+      body: {
+        fell_asleep_at: '23:40',
+        woke_up_at: '06:50',
+        quality: 3,
+        awakenings: 1,
+        wake_feeling: 'heavy',
+      },
+    })
+  })
+
+  it('sends no date, because only this morning night is writable', async () => {
+    apiRequest.mockResolvedValue(SLEEP_PAYLOAD)
+
+    await saveSleepNight(NIGHT)
+
+    const body = apiRequest.mock.calls[0][1].body as Record<string, unknown>
+    expect(body).not.toHaveProperty('date')
+    expect(Object.keys(body).sort()).toEqual([
+      'awakenings', 'fell_asleep_at', 'quality', 'wake_feeling', 'woke_up_at',
+    ])
+  })
+
+  it('carries a cleared hour through as null rather than dropping the key', async () => {
+    /** Dropping it would make PUT behave as a merge on that one field, which is
+     *  precisely the thing the server rule rules out. */
+    apiRequest.mockResolvedValue({ ...SLEEP_PAYLOAD, fell_asleep_at: null })
+
+    await saveSleepNight({ ...NIGHT, fellAsleepAt: null })
+
+    expect(apiRequest.mock.calls[0][1].body).toMatchObject({ fell_asleep_at: null })
+  })
+
+  it('settles on what the server answers with', async () => {
+    apiRequest.mockResolvedValue(SLEEP_PAYLOAD)
+
+    expect((await saveSleepNight(NIGHT)).wakeFeeling).toBe('heavy')
+  })
+})
+
+/**
+ * §10 — the weekly report, derived on the server.
+ *
+ * The mapping is the whole of this layer job here: nothing is computed, no week
+ * is counted, and the range label arrives ready to render. `utils/dietWeeks.ts`
+ * used to count the weeks and `utils/dietReport.ts` used to build the document;
+ * both are `core/diet_reports.py` now, for the two reasons the psychotherapy
+ * module moved first — one clock, and one document rather than one per browser.
+ */
+
+const REPORT_MEAL = { id: 'm1', kind: 'Śniadanie', time: '07:30', description: 'Owsianka.' }
+
+const REPORT_PAYLOAD = {
+  id: 'week-2026-08-26',
+  week_start: '2026-08-26',
+  week_end: '2026-09-01',
+  range_label: '26 sierpnia – 1 września 2026',
+  days_with_entry: 1,
+  days: [
+    {
+      date: '2026-08-26',
+      meals: [REPORT_MEAL],
+      hydration: { date: '2026-08-26', water_ml: 500, glasses: 2 },
+      sleep: SLEEP_PAYLOAD,
+      activity: ACTIVITY_DAY_PAYLOAD,
+      empty: false,
+    },
+    {
+      date: '2026-08-27',
+      meals: [],
+      hydration: null,
+      sleep: null,
+      activity: null,
+      empty: true,
+    },
+  ],
+  meal_grid: {
+    slots: ['morning', 'noon', 'evening', 'night'],
+    rows: [
+      {
+        date: '2026-08-26',
+        cells: [
+          { slot: 'morning', meals: [REPORT_MEAL] },
+          { slot: 'noon', meals: [] },
+          { slot: 'evening', meals: [] },
+          { slot: 'night', meals: [] },
+        ],
+      },
+    ],
+  },
+}
+
+describe('fetchDietReports', () => {
+  it('reads the list from the module own URL', async () => {
+    apiRequest.mockResolvedValue([REPORT_PAYLOAD])
+
+    await fetchDietReports()
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/reports/')
+  })
+
+  it('maps the week into the screen own names', async () => {
+    apiRequest.mockResolvedValue([REPORT_PAYLOAD])
+
+    const [report] = await fetchDietReports()
+
+    expect(report.id).toBe('week-2026-08-26')
+    expect(report.weekStart).toBe('2026-08-26')
+    expect(report.weekEnd).toBe('2026-09-01')
+    expect(report.daysWithEntry).toBe(1)
+  })
+
+  it('takes the range label as it arrives rather than composing one', async () => {
+    /** Built by the same `format_week_range` the psychotherapy reports use, so
+     *  the two modules print a week identically. */
+    apiRequest.mockResolvedValue([REPORT_PAYLOAD])
+
+    const [report] = await fetchDietReports()
+
+    expect(report.rangeLabel).toBe('26 sierpnia – 1 września 2026')
+  })
+
+  it('maps every diary inside a day, and keeps an unanswered one null', async () => {
+    apiRequest.mockResolvedValue([REPORT_PAYLOAD])
+
+    const [report] = await fetchDietReports()
+    const [wednesday, thursday] = report.days
+
+    expect(wednesday.meals[0].description).toBe('Owsianka.')
+    expect(wednesday.hydration).toEqual({ date: '2026-08-26', waterMl: 500, glasses: 2 })
+    expect(wednesday.sleep?.fellAsleepAt).toBe('23:40')
+    expect(wednesday.activity?.steps).toBe(6400)
+    expect(wednesday.empty).toBe(false)
+
+    // "Nobody wrote it down" is null, and never a zero.
+    expect(thursday.hydration).toBeNull()
+    expect(thursday.sleep).toBeNull()
+    expect(thursday.activity).toBeNull()
+    expect(thursday.empty).toBe(true)
+  })
+
+  it('maps the meal grid without reordering its columns', async () => {
+    apiRequest.mockResolvedValue([REPORT_PAYLOAD])
+
+    const [report] = await fetchDietReports()
+
+    expect(report.mealGrid.slots).toEqual(['morning', 'noon', 'evening', 'night'])
+    expect(report.mealGrid.rows[0].date).toBe('2026-08-26')
+    expect(report.mealGrid.rows[0].cells[0].meals[0].kind).toBe('Śniadanie')
+    expect(report.mealGrid.rows[0].cells[1].meals).toEqual([])
+  })
+
+  it('carries no quantity onto a meal in a cell either', async () => {
+    /** The same sweep the history gets: §04 scope holds wherever a meal is
+     *  rendered, and a cell is one more place a portion could arrive. */
+    apiRequest.mockResolvedValue([{
+      ...REPORT_PAYLOAD,
+      meal_grid: {
+        slots: ['morning'],
+        rows: [{
+          date: '2026-08-26',
+          cells: [{
+            slot: 'morning',
+            meals: [{ ...REPORT_MEAL, calories: 420, portion: '300 g' }],
+          }],
+        }],
+      },
+    }])
+
+    const [report] = await fetchDietReports()
+
+    expect(Object.keys(report.mealGrid.rows[0].cells[0].meals[0]).sort())
+      .toEqual(['description', 'id', 'kind', 'time'])
+  })
+
+  it('answers with nothing for a diary younger than a week', async () => {
+    apiRequest.mockResolvedValue([])
+
+    await expect(fetchDietReports()).resolves.toEqual([])
+  })
+})
+
+describe('fetchDietReport', () => {
+  it('asks for one week by its id', async () => {
+    apiRequest.mockResolvedValue(REPORT_PAYLOAD)
+
+    await fetchDietReport('week-2026-08-26')
+
+    expect(apiRequest).toHaveBeenCalledWith('/api/diet/reports/week-2026-08-26/')
+  })
+
+  it('maps it exactly as the list maps a row', async () => {
+    /** One shape, so the list and the detail cannot disagree about a week. */
+    apiRequest.mockResolvedValue(REPORT_PAYLOAD)
+
+    const one = await fetchDietReport('week-2026-08-26')
+    apiRequest.mockResolvedValue([REPORT_PAYLOAD])
+    const [fromList] = await fetchDietReports()
+
+    expect(one).toEqual(fromList)
   })
 })
 

@@ -1,6 +1,5 @@
 import type {
   DietActivityDay,
-  DietJournalDay,
   DietMeal,
   DietSleepNight,
   HydrationDayTotal,
@@ -8,21 +7,27 @@ import type {
 import type { TimeOfDay } from '../utils/timeOfDay'
 
 /**
- * The diet module's weekly report — **a proposal, not a contract yet.**
+ * The diet module's weekly report — **the contract, now that one exists.**
  *
- * WHY THIS IS NOT IN types/diet.ts. That file opens by saying that every type
- * in it is what an endpoint actually answers with, and it earns the claim:
- * `hydration`, `diet_meal`, `supplement` and `supplement_intake` are real
- * tables. Nothing here is. There is no `/api/diet/reports/`, the report is
- * derived in the browser from the module's existing shapes, and the shape below
- * is this frontend's suggestion of what the endpoint should eventually answer
- * with. Keeping it in its own file is what stops that distinction being lost —
- * whoever wires the backend is looking at a proposal to argue with, not at a
- * description of something that exists.
+ * IT USED TO BE A PROPOSAL. This file opened by saying so at length: there was
+ * no `/api/diet/reports/`, the report was derived in the browser from the
+ * module's other shapes, and what follows was this frontend's suggestion of
+ * what an endpoint should eventually answer with. `core/diet_reports.py`
+ * answers with it now, snake_cased on the wire like every other payload, and
+ * `src/api/diet.ts` maps it back — so the proposal was taken up rather than
+ * argued with, and the shape below did not have to change.
+ *
+ * WHY IT IS STILL NOT IN types/diet.ts, which holds everything else the diet
+ * endpoints answer with: a report is derived rather than stored. There is no
+ * `diet_report` table and there is not meant to be one — a report is rebuilt
+ * from the four diaries on every request, the same way the psychotherapy ones
+ * are, so nothing a report says can disagree with the entries it came from.
+ * That distinction is worth a file boundary.
  *
  * WHAT IT IS BUILT FROM IS ONLY WHAT EXISTS. Meals (`DietMeal`: kind, hour,
  * description), the water figure per day (`HydrationDayTotal`), the activity
- * day and the sleep night. Nothing else is in the database.
+ * day and the sleep night — all four are real tables now, `diet_activity`,
+ * `diet_activity_day` and `diet_sleep` having arrived with migration 0018.
  *
  * TODO(§05): the mockup's own report has three more sections — najczęstsze
  * emocje przy jedzeniu, głód fizyczny wobec emocjonalnego, sytuacje jedzenia
@@ -130,23 +135,4 @@ export interface DietWeeklyReport {
    */
   daysWithEntry: number
   mealGrid: DietReportMealGrid
-}
-
-/**
- * What a report is built from — the four diaries, exactly as their own screens
- * already read them.
- *
- * ONE THING THIS CANNOT CARRY TODAY: the drinks that are not water. A serving
- * of tea is a `HydrationEntry` and those travel only for *today*
- * (`HydrationDay.entries`); the seven-day figures are `HydrationDayTotal`,
- * which is water and nothing else, by the client's rule that other drinks are
- * recorded and never converted. So a week can report water and cannot yet list
- * what else was drunk. That is a payload question for whoever writes
- * `/api/diet/reports/`, not something to approximate here.
- */
-export interface DietReportSource {
-  meals: DietJournalDay[]
-  hydration: HydrationDayTotal[]
-  activity: DietActivityDay[]
-  sleep: DietSleepNight[]
 }
