@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
 import DietMealForm from './DietMealForm'
 import { ROUTES } from '../routes'
+import type { EmotionEntry } from '../types/diaryEntry'
+import { EMOTION_COLORS } from '../utils/emotions'
 import { MEAL_KINDS } from '../utils/meals'
 import { ApiError } from '../api/client'
 
@@ -40,19 +42,28 @@ vi.mock('react-router-dom', async (importOriginal) => ({
 
 const SAVED_DAY = {
   date: '2026-09-10', streakDays: 1, mealCount: 1,
-  meals: [{ id: 'm1', kind: 'Obiad', time: '13:30', description: '' }],
+  meals: [{
+    id: 'm1', kind: 'Obiad', time: '13:30', description: '',
+    emotions: [] as EmotionEntry[],
+  }],
 }
 
 beforeEach(() => {
   params = {}
   createMeal.mockReset()
   createMeal.mockResolvedValue({
-    meal: { id: 'm1', kind: 'Obiad', time: '13:30', description: '' },
+    meal: {
+      id: 'm1', kind: 'Obiad', time: '13:30', description: '',
+      emotions: [] as EmotionEntry[],
+    },
     day: SAVED_DAY,
   })
   updateMeal.mockReset()
   updateMeal.mockResolvedValue({
-    meal: { id: 'm1', kind: 'Obiad', time: '13:30', description: '' },
+    meal: {
+      id: 'm1', kind: 'Obiad', time: '13:30', description: '',
+      emotions: [] as EmotionEntry[],
+    },
     day: SAVED_DAY,
   })
   fetchDietDay.mockReset()
@@ -103,7 +114,7 @@ describe('the form', () => {
 
     await waitFor(() => expect(createMeal).toHaveBeenCalledTimes(1))
     expect(createMeal.mock.calls[0][0]).toEqual({
-      kind: null, time: null, description: '',
+      kind: null, time: null, description: '', emotions: [],
     })
   })
 
@@ -149,7 +160,7 @@ describe('the form', () => {
 
     await waitFor(() => expect(createMeal).toHaveBeenCalled())
     expect(Object.keys(createMeal.mock.calls[0][0]).sort())
-      .toEqual(['description', 'kind', 'time'])
+      .toEqual(['description', 'emotions', 'kind', 'time'])
   })
 
   it('goes to the history once the meal is written, and says so there', async () => {
@@ -229,6 +240,116 @@ describe('what this screen refuses to show', () => {
   })
 })
 
+describe('the emotions picked at a meal', () => {
+  /**
+   * §04 puts the psychotherapy form's picker on this screen and §05 names the
+   * section a report would build from it ("najczęstsze emocje przy jedzeniu").
+   * It is literally the diary's `EmotionSelector`, so what these tests are
+   * about is not the widget — `EmotionSelector.test.tsx` owns that — but what
+   * this form *sends*, which is where the two modules deliberately differ.
+   */
+
+  it('offers the same ten emotions as the psychotherapy form', () => {
+    render()
+
+    for (const emotion of Object.keys(EMOTION_COLORS)) {
+      expect(screen.getByRole('button', { name: emotion })).toBeInTheDocument()
+    }
+  })
+
+  it('sends nothing for a meal where none were picked', async () => {
+    render()
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz posiłek' }))
+
+    await waitFor(() => expect(createMeal).toHaveBeenCalled())
+    expect(createMeal.mock.calls[0][0].emotions).toEqual([])
+  })
+
+  it('sends a picked chip with no rating as null, not as 0', async () => {
+    /** CLAUDE.md's rule, and the reason `diet_meal_emotion` is a table rather
+     *  than the diary's nine columns: there a picked-but-unrated chip has
+     *  nowhere to live, so that form sends a 0 nobody chose — one that reads
+     *  as "wcale" and drags the emotion's average down. */
+    render()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Lęk' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz posiłek' }))
+
+    await waitFor(() => expect(createMeal).toHaveBeenCalled())
+    expect(createMeal.mock.calls[0][0].emotions)
+      .toEqual([{ emotion: 'Lęk', intensity: null }])
+  })
+
+  it('sends the slider value once it has been moved', async () => {
+    render()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Lęk' }))
+    fireEvent.change(screen.getByLabelText('Natężenie: Lęk'), {
+      target: { value: '8' },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz posiłek' }))
+
+    await waitFor(() => expect(createMeal).toHaveBeenCalled())
+    expect(createMeal.mock.calls[0][0].emotions)
+      .toEqual([{ emotion: 'Lęk', intensity: 8 }])
+  })
+
+  it('keeps several at once, each with its own rating', async () => {
+    render()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Lęk' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Spokój' }))
+    fireEvent.change(screen.getByLabelText('Natężenie: Spokój'), {
+      target: { value: '4' },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz posiłek' }))
+
+    await waitFor(() => expect(createMeal).toHaveBeenCalled())
+    expect(createMeal.mock.calls[0][0].emotions).toEqual([
+      { emotion: 'Lęk', intensity: null },
+      { emotion: 'Spokój', intensity: 4 },
+    ])
+  })
+
+  it('lets a chip be pressed again to take it back', async () => {
+    /** Nothing is required, so "I would rather not say" has to be reachable
+     *  from the control itself — the same rule the kind chips follow. */
+    render()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Wstyd' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Wstyd' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz posiłek' }))
+
+    await waitFor(() => expect(createMeal).toHaveBeenCalled())
+    expect(createMeal.mock.calls[0][0].emotions).toEqual([])
+    expect(screen.queryByLabelText('Natężenie: Wstyd')).not.toBeInTheDocument()
+  })
+
+  it('flags nothing as high, unlike the psychotherapy form', async () => {
+    /** There the 'Stres' chip carries US-PT-13's alarm. Here a "· wysokie"
+     *  beside a meal would be the screen judging one, which is what §02/§05
+     *  build this module without. */
+    render()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Stres' }))
+    fireEvent.change(screen.getByLabelText('Natężenie: Stres'), {
+      target: { value: '10' },
+    })
+
+    expect(screen.queryByText(/wysokie/)).not.toBeInTheDocument()
+  })
+
+  it('rates a feeling and still measures nothing about the food', () => {
+    /** The one number this screen has. It is why the sweeps above stay true:
+     *  a 0-10 slider here is about the person, never about the portion. */
+    render()
+
+    expect(document.body.textContent)
+      .not.toMatch(/kalori|kcal|gram|waga|porcj|makro/i)
+    expect(document.querySelector('input[type="number"]')).toBeNull()
+  })
+})
+
 describe('the same form, correcting one of today\'s meals', () => {
   /**
    * ONE COMPONENT FOR BOTH, because the rules about what a meal may hold —
@@ -236,8 +357,15 @@ describe('the same form, correcting one of today\'s meals', () => {
    * required — belong in one place. A second form would be a second set of
    * them, free to disagree with the first.
    */
-  const MEAL: { id: string; kind: string | null; time: string | null; description: string } = {
+  const MEAL: {
+    id: string
+    kind: string | null
+    time: string | null
+    description: string
+    emotions: EmotionEntry[]
+  } = {
     id: 'm1', kind: 'Kolacja', time: '19:30', description: 'Naleśniki.',
+    emotions: [],
   }
 
   function renderEdit(meals = [MEAL]) {
@@ -284,10 +412,38 @@ describe('the same form, correcting one of today\'s meals', () => {
 
     await waitFor(() =>
       expect(updateMeal).toHaveBeenCalledWith('m1', {
-        kind: 'Kolacja', time: '19:30', description: '',
+        kind: 'Kolacja', time: '19:30', description: '', emotions: [],
       }),
     )
     expect(createMeal).not.toHaveBeenCalled()
+  })
+
+  it('fills the chips and their sliders from the meal', async () => {
+    renderEdit([{
+      ...MEAL,
+      emotions: [
+        { emotion: 'Lęk', intensity: 7 },
+        { emotion: 'Spokój', intensity: null },
+      ],
+    }])
+    await screen.findByDisplayValue('Naleśniki.')
+
+    expect(screen.getByRole('button', { name: 'Lęk' }))
+      .toHaveClass('emotion-chip-selected')
+    expect(screen.getByLabelText('Natężenie: Lęk')).toHaveValue('7')
+    // The unrated one comes back unrated rather than as a 7 or a 0.
+    expect(screen.getByText('nie podano')).toBeInTheDocument()
+  })
+
+  it('replaces them rather than merging, so an un-picked chip is taken back', async () => {
+    renderEdit([{ ...MEAL, emotions: [{ emotion: 'Lęk', intensity: 7 }] }])
+    await screen.findByDisplayValue('Naleśniki.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Lęk' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz zmiany' }))
+
+    await waitFor(() => expect(updateMeal).toHaveBeenCalled())
+    expect(updateMeal.mock.calls[0][1].emotions).toEqual([])
   })
 
   it('returns to the home screen, which is where the meal is listed', async () => {
@@ -334,7 +490,7 @@ describe('the same form, correcting one of today\'s meals', () => {
 
     await waitFor(() => expect(updateMeal).toHaveBeenCalled())
     expect(Object.keys(updateMeal.mock.calls[0][1]).sort()).toEqual(
-      ['description', 'kind', 'time'],
+      ['description', 'emotions', 'kind', 'time'],
     )
   })
 

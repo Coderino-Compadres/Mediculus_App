@@ -56,15 +56,18 @@ const WEEK_START = '2026-08-26'
 
 const BREAKFAST: DietMeal = {
   id: 'm-1', kind: 'Śniadanie', time: '07:30', description: 'Owsianka z jabłkiem.',
+  emotions: [{ emotion: 'Spokój', intensity: 6 }],
 }
 // After 22:00, and saved without a description — two states the module allows
-// and the screen has to render calmly.
+// and the screen has to render calmly. Its one emotion was picked and left
+// unrated, the other state `MealEmotions` has to render calmly too.
 const LATE_SNACK: DietMeal = {
   id: 'm-2', kind: 'Przekąska', time: '23:40', description: '',
+  emotions: [{ emotion: 'Wstyd', intensity: null }],
 }
 // Neither a kind nor an hour: §05's "żadne pole nie blokuje zapisu".
 const UNNAMED: DietMeal = {
-  id: 'm-3', kind: null, time: null, description: 'Coś na szybko.',
+  id: 'm-3', kind: null, time: null, description: 'Coś na szybko.', emotions: [],
 }
 
 /** The week's seven days, in its own order, starting on the Wednesday. */
@@ -328,6 +331,33 @@ describe('Zestawienie tygodnia', () => {
 
     expect(within(thursday).getByText('bez godziny')).toBeInTheDocument()
     expect(within(thursday).getByText('Coś na szybko.')).toBeInTheDocument()
+  })
+
+  it('lists what was felt at a meal, rated, beside it', async () => {
+    await renderReport()
+
+    const wednesday = day('środa, 26 sierpnia')
+
+    expect(within(wednesday).getByText('Spokój')).toBeInTheDocument()
+    expect(within(wednesday).getByText('6/10')).toBeInTheDocument()
+  })
+
+  it('names a chip picked and left unrated, with no number invented for it', async () => {
+    await renderReport()
+
+    const wednesday = day('środa, 26 sierpnia')
+    const chip = within(wednesday).getByText('Wstyd')
+
+    expect(chip).toBeInTheDocument()
+    expect(chip.parentElement).not.toHaveTextContent('/10')
+  })
+
+  it('draws no emotion chip for a meal nobody picked one on', async () => {
+    await renderReport()
+
+    const thursday = day('czwartek, 27 sierpnia')
+
+    expect(within(thursday).queryByText(/Spokój|Wstyd/)).toBeNull()
   })
 
   it('reports water the way the hydration screen counts it, and no further', async () => {

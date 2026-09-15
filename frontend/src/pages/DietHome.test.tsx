@@ -6,6 +6,7 @@ import DietHome from './DietHome'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
 import { ROUTES } from '../routes'
 import type { DietDay, HydrationDay } from '../types/diet'
+import type { EmotionEntry } from '../types/diaryEntry'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -356,6 +357,7 @@ describe("today's meals are on the screen and can be corrected", () => {
     kind: 'Obiad' as string | null,
     time: '13:30' as string | null,
     description: 'Zupa i kanapka.',
+    emotions: [] as EmotionEntry[],
     ...overrides,
   })
 
@@ -369,6 +371,40 @@ describe("today's meals are on the screen and can be corrected", () => {
 
     expect(await screen.findByText('Obiad · 13:30')).toBeInTheDocument()
     expect(screen.getByText('Zupa i kanapka.')).toBeInTheDocument()
+  })
+
+  it('carries the emotions picked at each meal', async () => {
+    /** §02's artboard draws an emotion beside a meal, and it is real now:
+     *  §04's form asks for it and `diet_meal_emotion` holds it. */
+    fetchDietDay.mockResolvedValue(dayWith(meal({
+      emotions: [
+        { emotion: 'Lęk', intensity: 7 },
+        { emotion: 'Spokój', intensity: null },
+      ],
+    })))
+
+    renderWithProviders(<DietHome />)
+
+    expect(await screen.findByText('Lęk')).toBeInTheDocument()
+    expect(screen.getByText('7/10')).toBeInTheDocument()
+    expect(screen.getByText('Spokój')).toBeInTheDocument()
+    expect(screen.queryByText('0/10')).not.toBeInTheDocument()
+  })
+
+  it('says nothing about them beyond what was picked', async () => {
+    /** The screen a patient opens every morning: no count of them, no
+     *  dominant one, no comparison with yesterday — §02's rule that "pusty
+     *  dzień nie jest brakiem" applies to a full one too. */
+    fetchDietDay.mockResolvedValue(dayWith(
+      meal({ emotions: [{ emotion: 'Wstyd', intensity: 9 }] }),
+      meal({ id: 'm2', emotions: [{ emotion: 'Lęk', intensity: 10 }] }),
+    ))
+
+    renderWithProviders(<DietHome />)
+
+    await screen.findByText('Wstyd')
+    expect(document.body.textContent)
+      .not.toMatch(/wysokie|dominując|najczęst|średni/i)
   })
 
   it('renders a meal that answered nothing as an ordinary row', async () => {

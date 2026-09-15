@@ -373,6 +373,37 @@ INSERT INTO diet_meal (id_meal, id_medical, entry_date, kind, eaten_at, descript
 ON CONFLICT (id_meal) DO NOTHING;
 
 -- ----------------------------
+-- DIET_MEAL_EMOTION
+-- What was felt at some of the meals above (mockups §04/§05).
+--
+-- Not on every meal, and that is the point: §05's rule is that no field blocks
+-- a save, so a meal with no emotion beside it is the ordinary case and the
+-- screens have to render it as one. The three states a seed has to contain are
+-- all here -- a rated chip, a chip picked and left UNRATED (intensity NULL,
+-- which is not a 0), and a meal with none at all.
+--
+-- The names are core.emotions.EMOTIONS, spelled exactly: the API refuses
+-- anything else, and a row seeded with a name outside the ten would render a
+-- chip with no colour.
+-- ----------------------------
+INSERT INTO diet_meal_emotion (id_meal, emotion, intensity) VALUES
+    -- Today: a calm breakfast, a stressful lunch, and a snack the patient
+    -- named an emotion for without rating it.
+    ('f1000000-0000-0000-0000-000000000001', 'Spokój',     6),
+    ('f1000000-0000-0000-0000-000000000002', 'Stres',      7),
+    ('f1000000-0000-0000-0000-000000000003', 'Frustracja', NULL),
+    ('f1000000-0000-0000-0000-000000000003', 'Wstyd',      4),
+
+    -- Yesterday: two on one meal, and one meal with none.
+    ('f1000000-0000-0000-0000-000000000011', 'Spokój',     5),
+    ('f1000000-0000-0000-0000-000000000014', 'Smutek',     4),
+    ('f1000000-0000-0000-0000-000000000014', 'Bezradność', NULL),
+
+    ('f1000000-0000-0000-0000-000000000021', 'Stres',      8),
+    ('f1000000-0000-0000-0000-000000000022', 'Radość',     5)
+ON CONFLICT (id_meal, emotion) DO NOTHING;
+
+-- ----------------------------
 -- HYDRATION
 -- A row per serving, so the seven-day chart is a GROUP BY over these and today
 -- is correctable serving by serving.

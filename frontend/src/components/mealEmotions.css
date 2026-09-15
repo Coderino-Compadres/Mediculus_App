@@ -1,0 +1,37 @@
+/* The read-only chips under a meal — see `MealEmotions.tsx`.
+ *
+ * Outlined rather than filled, unlike the picker's selected chips: these sit
+ * inside a list of meals and a row of ten solid colours would pull the eye off
+ * the meal they belong to. The emotion's own colour still carries the
+ * identity, on the border and on the text.
+ */
+
+.meal-emotions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meal-emotion {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid;
+  background: #fff;
+}
+
+/* Quieter than the name beside it: the emotion is what was answered, the
+   number only qualifies it — and it is absent altogether when the slider was
+   never moved. */
+.meal-emotion-intensity {
+  font-weight: var(--font-weight-regular);
+  opacity: 0.8;
+}

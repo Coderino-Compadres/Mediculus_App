@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import MealEmotions from '../components/MealEmotions'
 import LoadError from '../components/LoadError'
 import { ApiError } from '../api/client'
 import { fetchDietJournalDay } from '../api/diet'
@@ -78,6 +79,7 @@ function MealRow({ meal }: { meal: DietMeal }) {
       <p className={description ? 'diet-day-meal-text' : 'diet-day-meal-text-empty'}>
         {description || 'Zapisany bez opisu.'}
       </p>
+      <MealEmotions emotions={meal.emotions} />
     </li>
   )
 }

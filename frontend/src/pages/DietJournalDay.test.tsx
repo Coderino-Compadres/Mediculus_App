@@ -7,6 +7,7 @@ import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
 import { toIsoDate } from '../utils/days'
 import type { DietJournalDay as DietDayRecord } from '../types/diet'
+import type { EmotionEntry } from '../types/diaryEntry'
 
 /**
  * "Dzienniczek dnia" — one day of §07's history, opened out.
@@ -39,6 +40,7 @@ function meal(overrides: Partial<DietDayRecord['meals'][number]> = {}) {
     kind: 'Obiad' as string | null,
     time: '13:30' as string | null,
     description: 'Zupa i kanapka, przy biurku.',
+    emotions: [] as EmotionEntry[],
     ...overrides,
   }
 }
@@ -232,3 +234,34 @@ describe('what this screen refuses to show', () => {
     expect(within(document.body).queryAllByRole('img')).toEqual([])
   })
 })
+
+describe('the emotions picked at a meal', () => {
+  it('are listed under the meal, on the screen that shows a day at full length', async () => {
+    await renderDay(PAST, day({
+      meals: [meal({
+        emotions: [
+          { emotion: 'Lęk', intensity: 7 },
+          { emotion: 'Spokój', intensity: null },
+        ],
+      })],
+    }))
+
+    expect(screen.getByText('Lęk')).toBeInTheDocument()
+    expect(screen.getByText('7/10')).toBeInTheDocument()
+    // An unrated chip is shown as picked and carries no number at all.
+    expect(screen.getByText('Spokój')).toBeInTheDocument()
+    expect(screen.queryByText('0/10')).not.toBeInTheDocument()
+  })
+
+  it('add no verdict to an archived day', async () => {
+    /** §07's day is a record. Rendering the chips must not turn it into a
+     *  summary of how somebody felt about eating. */
+    await renderDay(PAST, day({
+      meals: [meal({ emotions: [{ emotion: 'Wstyd', intensity: 9 }] })],
+    }))
+
+    expect(document.body.textContent)
+      .not.toMatch(/wysokie|dominując|najczęst|średni/i)
+  })
+})
+

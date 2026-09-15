@@ -5,6 +5,7 @@ import { renderWithProviders } from '../test/render'
 import DietJournals from './DietJournals'
 import { ROUTES } from '../routes'
 import type { DietJournalDay } from '../types/diet'
+import type { EmotionEntry } from '../types/diaryEntry'
 
 vi.mock('../api/diet', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/diet')>()
@@ -53,6 +54,7 @@ function meal(overrides: Partial<DietJournalDay['meals'][number]> = {}) {
     kind: 'Przekąska',
     time: '16:20',
     description: 'Jogurt i garść orzechów, przy biurku.',
+    emotions: [] as EmotionEntry[],
     ...overrides,
   }
 }
@@ -301,5 +303,37 @@ describe('what this screen refuses to show', () => {
     for (const forbidden of [/dobry dzień/i, /zły dzień/i, /udany/i, /niezdrow/i]) {
       expect(screen.queryByText(forbidden)).toBeNull()
     }
+  })
+})
+
+describe('the emotions picked at a meal', () => {
+  it('are listed under the meal they belong to', async () => {
+    /** The other half of what §04 asks about a meal: what was eaten, and what
+     *  was felt around it. */
+    mockedHistory.mockResolvedValue([day({
+      meals: [meal({
+        emotions: [
+          { emotion: 'Lęk', intensity: 7 },
+          { emotion: 'Spokój', intensity: null },
+        ],
+      })],
+    })])
+
+    await renderJournals()
+
+    expect(screen.getByText('Lęk')).toBeInTheDocument()
+    expect(screen.getByText('7/10')).toBeInTheDocument()
+    // Unrated stays unrated on the way out, too.
+    expect(screen.getByText('Spokój')).toBeInTheDocument()
+    expect(screen.queryByText('0/10')).not.toBeInTheDocument()
+  })
+
+  it('leave a meal without them looking like an ordinary meal', async () => {
+    mockedHistory.mockResolvedValue([day({ meals: [meal({ emotions: [] })] })])
+
+    await renderJournals()
+
+    expect(screen.getByText(/Jogurt/)).toBeInTheDocument()
+    expect(screen.queryByText(/brak emocji/i)).not.toBeInTheDocument()
   })
 })

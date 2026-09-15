@@ -60,6 +60,7 @@ import { apiRequest } from './client'
 import { toIsoDate } from '../utils/days'
 import { WATER } from '../utils/drinks'
 import type { FeelingAfter } from '../utils/activity'
+import type { EmotionName } from '../utils/emotions'
 import type { SleepQuality, WakeFeeling } from '../utils/sleep'
 import type {
   DietMealSlot,
@@ -128,6 +129,19 @@ interface DietMealPayload {
   kind: string | null
   time: string | null
   description: string
+  /** Optional on the wire for the reason `DietDayPayload.meals` is: a backend a
+   *  release behind this file sends a meal with no `emotions` key, and throwing
+   *  on it would take a whole day of the diary down rather than draw the meal
+   *  without the chips it does not know about. */
+  emotions?: DietMealEmotionPayload[]
+}
+
+/** One chip, as `core.meals._serialize_emotions` sends it. */
+interface DietMealEmotionPayload {
+  emotion: string
+  /** `null` for a chip picked with the slider never moved — not a 0. The column
+   *  is nullable precisely so this distinction survives the round trip. */
+  intensity: number | null
 }
 
 interface DietJournalDayPayload {
@@ -165,13 +179,21 @@ export async function fetchDietDay(): Promise<DietDay> {
  * browser is how one meal ends up on two Tuesdays.
  */
 /** One meal, mapped once — the history reads it and so does the write's answer,
- *  and two copies of a four-field mapping are two copies free to drift. */
+ *  and two copies of a five-field mapping are two copies free to drift. */
 function toMeal(meal: DietMealPayload): DietMeal {
   return {
     id: meal.id,
     kind: meal.kind,
     time: meal.time,
     description: meal.description,
+    emotions: (meal.emotions ?? []).map((rating) => ({
+      // The server sends one of the ten (`core.emotions.EMOTIONS` is a
+      // ChoiceField), which is the same list `EmotionName` spells — asserted
+      // rather than validated here for the reason `api/diary.ts` does the
+      // same, and `emotions.test.ts` pins the two vocabularies together.
+      emotion: rating.emotion as EmotionName,
+      intensity: rating.intensity,
+    })),
   }
 }
 
@@ -285,6 +307,27 @@ function toDay(payload: HydrationDayPayload): HydrationDay {
   }
 }
 
+/**
+ * The picked chips, as the API reads them.
+ *
+ * `intensity` IS OMITTED RATHER THAN SENT AS NULL for a chip nobody rated. The
+ * field is optional on `MealEmotionSerializer`, absent and null mean the same
+ * thing there, and leaving it out is the shape that says "unanswered" without
+ * a key at all — the same choice `orNull` makes for the diary's text fields in
+ * reverse. What must never happen is a 0 going out for a slider nobody moved.
+ *
+ * Always sent, empty list included: the write replaces, so an emotion left out
+ * is one the patient un-picked, and omitting the key entirely would make
+ * clearing them impossible from the only form that writes them.
+ */
+function toEmotionsPayload(input: DietMealInput) {
+  return input.emotions.map((entry) =>
+    entry.intensity === null
+      ? { emotion: entry.emotion }
+      : { emotion: entry.emotion, intensity: entry.intensity },
+  )
+}
+
 /** Today's water, today's servings and the last seven days. */
 /**
  * Write one meal — §04's "Dodawanie posiłku".
@@ -312,6 +355,7 @@ export async function createMeal(input: DietMealInput): Promise<DietMealSaved> {
         kind: input.kind || null,
         time: input.time || null,
         description: input.description.trim(),
+        emotions: toEmotionsPayload(input),
       },
     },
   )
@@ -347,6 +391,7 @@ export async function updateMeal(
         kind: input.kind || null,
         time: input.time || null,
         description: input.description.trim(),
+        emotions: toEmotionsPayload(input),
       },
     },
   )

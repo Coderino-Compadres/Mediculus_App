@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import EmotionSelector from '../components/EmotionSelector'
 import HeaderMenu from '../components/HeaderMenu'
 import { createMeal, fetchDietDay, updateMeal } from '../api/diet'
 import { ApiError } from '../api/client'
 import { MEAL_KINDS } from '../utils/meals'
 import { ROUTES } from '../routes'
+import type { EmotionName } from '../utils/emotions'
+import type { EmotionEntry } from '../types/diaryEntry'
 import type { DietMealInput } from '../types/diet'
 import './dietMealForm.css'
 
@@ -18,6 +21,20 @@ import './dietMealForm.css'
  * be the first file this deployment ever stored. But `diet_meal` has no photo
  * column, so everything the schema can hold was writable all along. The photo
  * is still the open question; see `backend/core/meals.py`.
+ *
+ * IT ASKS WHAT WAS FELT, WHICH IS THE HALF THE DIARY WAS MISSING. §04 puts the
+ * psychotherapy form's emotion picker on this screen — the same ten chips, the
+ * same 0-10 sliders — and §05 names the section a report would build from it
+ * ("najczęstsze emocje przy jedzeniu"). Until it existed the module could say
+ * what was eaten and when and nothing about what was around it, which is the
+ * part it is actually for: "nie liczy jedzenia — opisuje je i to, co dzieje się
+ * wokół niego". `EmotionSelector` is literally the diary's component, not a
+ * copy of it, so the ten names and the scale cannot drift apart between the two
+ * modules.
+ *
+ * A NUMBER HERE RATES A FEELING, NEVER THE FOOD, and that distinction is the
+ * reason a 0-10 slider is allowed on a screen built around counting nothing.
+ * The sweeps below still hold: no portion, no weight, no calorie count.
  *
  * WHAT IS NOT ON THIS SCREEN, and will not be: a product search, a portion, a
  * weight, a calorie count, a macro split. §04 states that scope outright — the
@@ -51,6 +68,17 @@ const HOUR_LABEL = 'Godzina'
 const HOUR_FIELD_LABEL = 'Godzina posiłku'
 const DESCRIPTION_LABEL = 'Co to był za posiłek?'
 const DESCRIPTION_FIELD_LABEL = 'Opis posiłku'
+const EMOTIONS_LABEL = 'Co czułaś lub czułeś przy tym posiłku?'
+
+/** What the picker asks for, and what it deliberately does not.
+ *
+ *  It says the sliders are optional out loud, because they are the one control
+ *  on this screen that *looks* answered before it is touched: a range input has
+ *  no empty position and sits at 0. What the form sends for an untouched one is
+ *  null, and the reading beside it says "nie podano" until it moves. */
+const EMOTIONS_HINT =
+  'Zaznacz, co Ci towarzyszyło — możesz wybrać kilka emocji albo żadnej. ' +
+  'Suwak siły emocji jest opcjonalny.'
 
 /** What the box asks for, in §04's own terms: the meal and what was around it. */
 const DESCRIPTION_HINT =
@@ -93,6 +121,11 @@ function DietMealForm() {
   // editing — where an unanswered hour is an empty box, not this moment.
   const [time, setTime] = useState(() => (id === undefined ? nowHour() : ''))
   const [description, setDescription] = useState('')
+  /** The chips picked, each with its slider value or `null` for untouched.
+   *  Order is the order they were tapped in; the server sorts by the
+   *  vocabulary on the way back, so re-opening an edit redraws them in the
+   *  picker's own order rather than in this one. */
+  const [emotions, setEmotions] = useState<EmotionEntry[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(editing)
@@ -125,6 +158,7 @@ function DietMealForm() {
         setKind(meal.kind)
         setTime(meal.time ?? '')
         setDescription(meal.description)
+        setEmotions(meal.emotions)
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
@@ -147,11 +181,39 @@ function DietMealForm() {
     setKind((current) => (current === chosen ? null : chosen))
   }
 
+  function toggleEmotion(emotion: EmotionName) {
+    setEmotions((current) => {
+      const picked = current.some((entry) => entry.emotion === emotion)
+      return picked
+        ? current.filter((entry) => entry.emotion !== emotion)
+        // `null`, and deliberately unlike `pages/DiaryEntry.tsx`, which adds
+        // the same chip with a 0. That 0 is a workaround for a schema: the
+        // diary's `mood_scale` keeps one nullable column per emotion and NULL
+        // there already means "never picked", so a picked-but-unrated chip has
+        // nowhere to live and 0 is the least-bad stand-in — one that reads as
+        // "wcale" and drags that emotion's average down. `diet_meal_emotion`
+        // is a row per chip, so the picking and the rating are stored apart
+        // and this form can send what CLAUDE.md asks for: an untouched slider
+        // is null, not 0.
+        : [...current, { emotion, intensity: null }]
+    })
+  }
+
+  function setEmotionIntensity(emotion: EmotionName, intensity: number) {
+    setEmotions((current) =>
+      current.map((entry) =>
+        entry.emotion === emotion ? { ...entry, intensity } : entry,
+      ),
+    )
+  }
+
   async function save() {
     if (saving) return
     setSaving(true)
     setError(null)
-    const input: DietMealInput = { kind, time: time || null, description }
+    const input: DietMealInput = {
+      kind, time: time || null, description, emotions,
+    }
     try {
       if (id === undefined) {
         await createMeal(input)
@@ -280,6 +342,26 @@ function DietMealForm() {
         <p className="diet-meal-hint" id="meal-description-hint">
           {DESCRIPTION_HINT}
         </p>
+      </section>
+
+      {/* The diary's own picker, not a copy of it: one component means the ten
+          names, their colours and the 0-10 scale cannot come apart between the
+          two modules, and §05's report reads both. Last of the four questions
+          because it is the one that asks about the patient rather than about
+          the meal — what was eaten is easier to start with. */}
+      <section className="diet-meal-card" aria-labelledby="meal-emotions-heading">
+        <h2 id="meal-emotions-heading">{EMOTIONS_LABEL}</h2>
+        <EmotionSelector
+          selected={emotions}
+          onToggle={toggleEmotion}
+          onIntensityChange={setEmotionIntensity}
+          // No `alertThresholds`, unlike the diary's, and that is this module's
+          // rule rather than an omission: there the 'Stres' chip carries the
+          // confirmed alarm from US-PT-13, and here a "· wysokie" beside a meal
+          // would be the screen judging one — exactly what §02/§05 build this
+          // module without.
+        />
+        <p className="diet-meal-hint">{EMOTIONS_HINT}</p>
       </section>
 
       {error && (

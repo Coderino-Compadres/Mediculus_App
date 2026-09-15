@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import HeaderMenu from '../components/HeaderMenu'
+import MealEmotions from '../components/MealEmotions'
 import { deleteMeal, emptyDietDay, fetchDietDay, fetchHydration } from '../api/diet'
 import { ApiError } from '../api/client'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
@@ -131,6 +132,9 @@ function TodayMealRow({
         >
           {description || 'Zapisany bez opisu.'}
         </p>
+        {/* Inside the body rather than beside the actions: the chips belong to
+            the meal, not to the buttons that edit it. */}
+        <MealEmotions emotions={meal.emotions} />
       </div>
       <div className="diet-today-meal-actions">
         {confirming ? (
@@ -190,8 +194,10 @@ function TodayMealRow({
  * scroll, drag or Present from the browser extension), so what is below is
  * built from the module's own rules rather than from the designer's screen.
  * The mockup draws an axis of meals with hours, descriptions and an emotion
- * dot; the emotion dot in particular is **not** guessed at here, because no
- * column holds one. Replace this from §02 rather than extending it.
+ * dot. The emotion is real now — §04's form asks for it and
+ * `diet_meal_emotion` holds it — and this list renders the picked chips under
+ * each meal; what is still guessed at is the *axis*, so replace this layout
+ * from §02 rather than extending it.
  *
  * WHAT IT GAINED, and why it is no longer only a count: today's meals are
  * editable. A card that said "Dzisiaj zapisane: 3 posiłki" could offer no way

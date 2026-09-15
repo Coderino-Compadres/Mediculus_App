@@ -1,5 +1,6 @@
 MEDICAL_MODELS = {
     'diary', 'moodscale', 'technique', 'raport', 'hydration', 'dietmeal',
+    'dietmealemotion',
     'supplement', 'supplementhour', 'supplementintake',
     'dietactivity', 'dietactivityday', 'dietsleep',
 }

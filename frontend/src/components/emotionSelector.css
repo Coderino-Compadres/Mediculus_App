@@ -1,0 +1,83 @@
+/* The emotion picker's own styles — ten chips and a 0-10 slider under each.
+ *
+ * MOVED OUT OF `pages/diaryEntry.css`, which is where they were written when
+ * the psychotherapy entry form was the only screen with a picker on it. The
+ * diet module's "Dodawanie posiłku" asks the same question about a meal (§04,
+ * and §05's "emocje przy jedzeniu"), so the component now has two callers and a
+ * stylesheet belonging to one page's CSS would have drawn it on one of them —
+ * an unstyled row of ten buttons on the other.
+ *
+ * Imported by `EmotionSelector.tsx` itself rather than by either page, which is
+ * the convention the other shared components follow (`LoadError`, `Stepper`,
+ * `CrisisLines`): the component carries its own appearance, so a third caller
+ * gets it for free.
+ */
+
+.emotion-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.emotion-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 33px -> 44px. To główny formularz aplikacji, wypełniany codziennie
+     na telefonie, i dziesięć sąsiadujących celów w jednym wierszu. */
+  min-height: 44px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1.5px solid;
+  background: #fff;
+  cursor: pointer;
+}
+
+.emotion-chip-selected {
+  color: #fff !important;
+}
+
+.emotion-intensity {
+  margin-top: 16px;
+}
+
+.emotion-intensity-header {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.emotion-intensity-input {
+  width: 100%;
+}
+
+.emotion-intensity-value-alert {
+  color: var(--color-error);
+}
+
+/* The word that carries the alert without the colour (WCAG 1.4.1). Smaller than
+   the number it follows, because it qualifies it rather than competing with it —
+   but not hidden, which is the whole point. `.level-slider-flag` in
+   `pages/diaryEntry.css` matches it; the two are kept in step by eye, which is
+   the cost of LevelSlider still drawing from a page's stylesheet. */
+.emotion-intensity-flag {
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+/* A chip picked with the slider never moved. Rendered as a word rather than as
+   "0/10", because those are different answers and the diet form can store both
+   (`diet_meal_emotion.intensity` is nullable). Quieter than a number, since it
+   is the absence of one. */
+.emotion-intensity-unrated {
+  font-weight: var(--font-weight-regular);
+  opacity: 0.75;
+}

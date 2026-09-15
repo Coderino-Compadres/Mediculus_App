@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import HeaderMenu from '../components/HeaderMenu'
+import MealEmotions from '../components/MealEmotions'
 import LoadError from '../components/LoadError'
 import Pagination from '../components/Pagination'
 import { Link, useLocation } from 'react-router-dom'
@@ -103,6 +104,10 @@ function MealRow({ meal }: { meal: DietMeal }) {
       <p className={description ? 'diet-journal-meal-text' : 'diet-journal-meal-text-empty'}>
         {description || 'Zapisany bez opisu.'}
       </p>
+      {/* Under the description, because it is the other half of what §04 asks
+          about a meal — what was eaten, and what was felt around it. Renders
+          nothing when none were picked. */}
+      <MealEmotions emotions={meal.emotions} />
     </li>
   )
 }
