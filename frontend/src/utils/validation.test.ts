@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ADULT_AGE,
   ageFromDateOfBirth,
+  pluralYears,
   validateAccountType,
   validateConfirmPassword,
   validateConsent,
@@ -157,5 +158,34 @@ describe('ageFromDateOfBirth', () => {
     // core/serializers.py names the same boundary ADULT_AGE, and RODO art. 8
     // could move it to 16 -- the two have to move together.
     expect(ADULT_AGE).toBe(18)
+  })
+})
+
+describe('pluralYears', () => {
+  it('takes the singular for one', () => {
+    expect(pluralYears(1)).toBe('rok')
+  })
+
+  it('takes the 2-4 form, which a fixed "lat" gets wrong above 21', () => {
+    /** The bug this pins: the profile printed "32 lat" at every age ending in
+     *  2-4, which is a misdeclined sentence about the reader's own age. */
+    expect(pluralYears(2)).toBe('lata')
+    expect(pluralYears(4)).toBe('lata')
+    expect(pluralYears(22)).toBe('lata')
+    expect(pluralYears(32)).toBe('lata')
+    expect(pluralYears(44)).toBe('lata')
+  })
+
+  it('keeps the teens on the genitive, where Polish breaks the 2-4 rule', () => {
+    expect(pluralYears(12)).toBe('lat')
+    expect(pluralYears(13)).toBe('lat')
+    expect(pluralYears(14)).toBe('lat')
+  })
+
+  it('takes the genitive for everything else', () => {
+    expect(pluralYears(5)).toBe('lat')
+    expect(pluralYears(11)).toBe('lat')
+    expect(pluralYears(18)).toBe('lat')
+    expect(pluralYears(25)).toBe('lat')
   })
 })

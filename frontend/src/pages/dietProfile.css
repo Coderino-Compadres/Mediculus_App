@@ -1,0 +1,600 @@
+/* "Profil" — the diet module's own (§13).
+ *
+ * Its own stylesheet on the same terms as dietReports.css, dietSupplements.css
+ * and dietActivitySleep.css: the module dresses itself from styles/theme.css
+ * rather than wearing another screen's class names. In particular it does
+ * **not** import pages/profile.css — that file is the psychotherapy profile's,
+ * and the pieces the two screens genuinely share (the consent register, the
+ * account forms, the confirmation screens) carry their own styling in
+ * components/profileForms.css, which the components import themselves.
+ *
+ * TWO CONVENTIONS ON ONE SCREEN, DELIBERATELY. Everything with a
+ * `diet-profile-` prefix below is this module's: own classes, own sheet, hints
+ * as their own element, chips in ochre — the DietSupplements pattern. The
+ * account sections are `auth-*` and `profile-*` and are left exactly as they
+ * are on /profile, because they are the same form for the same account and a
+ * patient crossing between the modules must not find the password field
+ * changing shape on the way. The seam is the point: what differs between the
+ * modules looks like the module, what is shared looks shared. See the same
+ * note in pages/DietProfile.tsx.
+ *
+ * Colour roles, unchanged from the rest of the module: ochre marks a *state*
+ * (a picked chip, the module's nadtytuł), sage marks an *action* (the save
+ * button), lavender is the page. Nothing on the health half is red. There are
+ * three things it can say about a submit and they are three different colours
+ * on purpose:
+ *
+ *   - a value that cannot be read (`.diet-profile-field-notice`) — ochre, and
+ *     a request to check rather than a fault. Never blocks the save;
+ *   - the backend not being there yet (`.diet-profile-pending`) — lavender and
+ *     neutral, because nothing failed and nothing succeeded;
+ *   - a load or a save that actually failed (`.diet-profile-health-error`) —
+ *     ochre, the colour this module already gives a consequence to weigh
+ *     (`.supplement-danger-button`, `.diet-as-late`). Red is the psychotherapy
+ *     side's ink for an error and stays reserved here for signing out and
+ *     withdrawing a consent.
+ *
+ * The third of those is not decoration. CLAUDE.md's rule — a failed load is
+ * never drawn as an empty one — costs more on this screen than on a list:
+ * blank health fields say "you have not filled anything in", which is a
+ * statement about the reader rather than about the request. So a failed load
+ * replaces the fields instead of standing beside them, and a failed save is
+ * said out loud rather than leaving the button quietly re-enabled.
+ *
+ * NOTHING ON THIS SCREEN IS DRAWN AS A SCORE. No bar between the two masses,
+ * no ring, no percentage, no colour that depends on a value. That is a styling
+ * rule as much as a markup one — a progress bar is a stylesheet away from
+ * existing, and §13 rules it out by name and says why. */
+
+.diet-profile-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-profile-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header — the module's shape: back arrow, nadtytuł and title, menu. */
+
+.diet-profile-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+}
+
+.diet-profile-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-profile-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* A link rather than a button — it only goes somewhere, so it keeps
+   middle-click, cmd-click and "copy link address". 44px, per WCAG 2.5.8. */
+.diet-profile-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-graphite);
+  text-decoration: none;
+  background: var(--color-surface);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.diet-profile-back:hover {
+  color: var(--color-sage-hover);
+  text-decoration: none;
+}
+
+.diet-profile-back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* The health form.
+ *
+ * Its children are cards, the same as the page's own children, so it carries
+ * the page's 16px rather than a rhythm of its own — a card inside the form and
+ * a card outside it must not sit at different distances from their neighbours.
+ * Without this the form is a single flex child and `.diet-profile-page`'s gap,
+ * which only reaches direct children, leaves the three health cards flush
+ * against each other. The DietSupplements pattern (`.supplement-form`). */
+.diet-profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* One card's worth of fields, under the heading and the lead.
+ *
+ * 14px, the module's field rhythm (`.supplement-form`), and the reason it is a
+ * wrapper rather than a gap on `.diet-profile-card` is that the heading and the
+ * lead carry their own margins — a gap on the card would add to them. Elements
+ * that sit directly in here have their own margins zeroed below, so the spacing
+ * has one source. */
+.diet-profile-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Cards */
+
+.diet-profile-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.diet-profile-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 4px;
+}
+
+/* A card's own lead, under its heading. */
+.diet-profile-card-lead {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 0 16px;
+}
+
+/* Identity — the same shape as /profile's: circle on the left, name and role
+   on the right. The avatar itself is the shared component, styled by
+   components/profileForms.css; only the box around it is this module's. */
+
+.diet-profile-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.diet-profile-identity-text {
+  min-width: 0;
+}
+
+.diet-profile-identity-text h2 {
+  font-size: 20px;
+  margin: 0 0 4px;
+  /* A long address in the heading slot (an account with no name) wraps rather
+     than pushing the card sideways. */
+  overflow-wrap: anywhere;
+}
+
+.diet-profile-identity-email {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.diet-profile-identity-role {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--color-sage-hover);
+  margin: 6px 0 0;
+}
+
+/* Fields */
+
+.diet-profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Two fields side by side — height beside nothing, mass beside target mass.
+   A plain two-column grid and nothing between the cells: no arrow, no "→", no
+   separator that would read as one value becoming the other. They wrap to one
+   column below 420px rather than shrinking, so neither ever looks like the
+   smaller half of a pair. */
+.diet-profile-field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.diet-profile-field label {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-graphite);
+}
+
+.diet-profile-field input,
+.diet-profile-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.diet-profile-field textarea {
+  min-height: 72px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.diet-profile-field input:focus-visible,
+.diet-profile-field textarea:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+/* The unit and the "you may leave this empty" sentences. Their own element
+   rather than a placeholder, so they stay readable once something is typed —
+   the DietSupplements convention. */
+.diet-profile-hint {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+/* A value that cannot be read as a measurement. Ochre and not red: this is a
+   request to check something, not a fault — see the header. */
+.diet-profile-field-notice {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-caution);
+}
+
+.diet-profile-field input[aria-invalid='true'] {
+  border-color: var(--color-ochre-edge);
+}
+
+/* The age row — read-only, so it is text rather than a field. Nothing about it
+   invites editing: no box, no border, no caret. */
+.diet-profile-readonly-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.diet-profile-readonly-label {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-graphite);
+}
+
+.diet-profile-readonly-value {
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-graphite);
+  text-align: right;
+}
+
+/* Chips — the module's own, matching dietActivitySleep.css. */
+
+.diet-profile-group {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.diet-profile-group legend {
+  padding: 0;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  color: var(--color-graphite);
+}
+
+.diet-profile-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.diet-profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 16px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.diet-profile-chip:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+/* The chosen answer. Ochre fill AND a heavier edge AND the tick rendered in
+   the markup: three signals, because colour alone fails WCAG 1.4.1 and fails
+   anybody reading this in daylight on a phone. */
+.diet-profile-chip[aria-pressed='true'] {
+  background: var(--color-ochre-soft);
+  border-color: var(--color-ochre-edge);
+  color: var(--color-graphite);
+}
+
+.diet-profile-chip-tick {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--color-caution);
+}
+
+/* The hand-written conditions, listed under the chips. */
+.diet-profile-own-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  /* No margin: `.diet-profile-stack` sets the distance to the chips above. */
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diet-profile-own-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px 6px 16px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite);
+  background: var(--color-ochre-soft);
+  border: 1.5px solid var(--color-ochre-edge);
+  border-radius: var(--radius-pill);
+}
+
+.diet-profile-own-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--color-graphite-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.diet-profile-own-remove:hover {
+  color: var(--color-graphite);
+}
+
+.diet-profile-own-remove:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* "+ Dodaj własną" — a labelled field and a button, not a bare placeholder. */
+.diet-profile-own-add {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.diet-profile-own-add .diet-profile-field {
+  flex-grow: 1;
+}
+
+.diet-profile-own-button {
+  min-height: 44px;
+  flex-shrink: 0;
+  padding: 10px 16px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-sage);
+  background: var(--color-surface);
+  border: 1.5px dashed var(--color-border-strong);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.diet-profile-own-button:hover:not(:disabled) {
+  border-color: var(--color-sage);
+}
+
+.diet-profile-own-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Saving */
+
+.diet-profile-save {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-surface);
+  background: var(--color-sage);
+  border: none;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.diet-profile-save:hover:not(:disabled) {
+  background: var(--color-sage-hover);
+}
+
+.diet-profile-save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* "This will work once the backend is connected." Deliberately neutral — not a
+   success, because nothing was saved, and not an error, because nothing
+   failed. Lavender, like the same notice on /profile. */
+.diet-profile-pending {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite);
+  background: var(--color-lavender);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-tile);
+  padding: 14px 16px;
+  margin: 12px 0 0;
+}
+
+/* A load or a save that actually failed.
+ *
+ * OCHRE AND NOT RED, and the distinction is the one theme.css draws under
+ * --color-caution: a consequence to weigh rather than a fault. Nothing the
+ * reader did caused this and nothing about their own body is wrong — the
+ * request did not get through — so it is said in the ink this module already
+ * uses for "this is worth knowing" (`.supplement-danger-button`), not in the
+ * red that on /profile means a form was filled in badly.
+ *
+ * On the surface rather than on a tinted panel: --color-caution reads 5.36:1
+ * on white and 4.50:1 on --color-ochre-soft, and 4.50 is the AA floor itself
+ * rather than a margin above it. The ochre is carried by the border, which is
+ * decoration, so nothing legible depends on it — WCAG 1.4.1 is answered by the
+ * wording and by role="alert", not by the colour. */
+.diet-profile-health-error {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-caution);
+  background: var(--color-surface);
+  border: 1px solid var(--color-ochre-edge);
+  border-radius: var(--radius-tile);
+  padding: 14px 16px;
+}
+
+.diet-profile-health-error p {
+  margin: 0;
+}
+
+/* The save's failure sits under the button, where the pending notice sits. */
+.diet-profile-save-error {
+  margin-top: 12px;
+}
+
+/* The specialist card */
+
+.diet-profile-care-name {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.diet-profile-care-detail {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}
+
+.diet-profile-care-empty,
+.diet-profile-note {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.diet-profile-loading {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+  margin: 0;
+}
+
+.diet-profile-error {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-error);
+  background: var(--color-error-bg);
+  border-radius: var(--radius-tile);
+  padding: 14px 16px;
+}
+
+.diet-profile-error p {
+  margin: 0 0 8px;
+}
+
+/* Sign-out. Not red, and that is this app's own rule rather than an oversight:
+   red means an error here, and leaving is not one. §15 of the mockups asks for
+   red on this button; pages/profile.css makes the same choice the other way,
+   and the two profiles must not disagree about what leaving looks like. Noted
+   for the client rather than settled here. */
+.diet-profile-signout {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.diet-profile-signout:hover {
+  background: rgba(var(--shadow-tint), 0.06);
+}

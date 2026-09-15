@@ -88,6 +88,22 @@ export const ROUTES = {
    *  different windows, and nothing here touches `/analysis`. See
    *  pages/DietAnalysis.tsx for what §11 asks for that cannot be drawn yet. */
   dietAnalysis: '/diet/analysis',
+  /** "Profil zdrowotny" (§13) — pages/DietProfile.tsx.
+   *
+   *  ITS OWN ROUTE RATHER THAN A REUSE OF `/profile`, and the reason is the
+   *  same shape as `dietReports` above without being the same reason. Both
+   *  mockup sets say the profile is shared between the modules, and the team
+   *  decided otherwise: two screens, one set of account data. The middle of
+   *  this screen (mass, height, conditions, the way somebody eats) has no
+   *  business on a psychotherapy profile, and `/profile`'s middle — the diary
+   *  counters, the "Terapeuta" row — has none here.
+   *
+   *  What is NOT duplicated is everything the two genuinely share: identity,
+   *  the consent register, the e-mail and password forms and signing out are
+   *  the same components on both screens, not a copy (see
+   *  components/profileForms.css). A second implementation of "withdraw a
+   *  consent" is a second thing that can be wrong about a right. */
+  dietProfile: '/diet/profile',
 } as const
 
 /** Fills in ROUTES.journalDetail's `:id` param — use instead of building the path by hand. */
@@ -200,6 +216,14 @@ export const ROUTE_TITLES: Record<string, string> = {
      lists picked by route, and a patient inside "DIETETYKA I PSYCHODIETETYKA"
      reading "Analiza" is reading the right word. */
   [ROUTES.dietAnalysis]: 'Analiza',
+  /* The same word as the psychotherapy screen, for the third time in this map
+     and for the same reason "Raporty" and "Analiza" are repeated above: the
+     titles are keyed by path, the two menus are separate lists picked by
+     route, and a patient inside "DIETETYKA I PSYCHODIETETYKA" reading "Profil"
+     is reading the right word. The artboard calls the screen "Profil
+     zdrowotny"; the menu entry it draws says "Profil", and this key is what
+     both the menu and the document title read. */
+  [ROUTES.dietProfile]: 'Profil',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',

@@ -2,6 +2,11 @@ import type { FormEvent } from 'react'
 import FormField from './FormField'
 import { useAuthForm } from '../hooks/useAuthForm'
 import { validateEmail } from '../utils/validation'
+// `.auth-form` and friends. This form is rendered on both modules' profiles
+// and has to look the same on each — it is the same form for the same
+// account — so it carries its own stylesheet instead of relying on the
+// screen to know about it.
+import './auth.css'
 
 /**
  * "Zmień adres e-mail".

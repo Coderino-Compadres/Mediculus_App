@@ -319,10 +319,23 @@ describe('inside the diet module', () => {
     expect(screen.queryByRole('link', { name: 'Dzienniczki' })).toBeNull()
   })
 
-  it('keeps the profile, because one account has one profile', async () => {
+  it('offers the module\'s own profile, not the psychotherapy one', async () => {
+    /** Both entries are called "Profil" and both are the profile — but they are
+     *  two screens, the same way "Raporty" and "Analiza" above are. The account
+     *  half (identity, consents, e-mail, password) is genuinely shared and is
+     *  the same components on both; the health half belongs to this module
+     *  alone.
+     *
+     *  This used to point at /profile, and that was the bug: /profile is not
+     *  under /diet, so `isDietRoute` said no, the menu swapped itself back to
+     *  PATIENT_ITEMS, the screen's nadtytuł read PSYCHOTERAPIA and it has no
+     *  back arrow — a patient who opened their profile from here lost the
+     *  module they were standing in. */
     await openAt(ROUTES.diet)
 
-    expect(screen.getByRole('link', { name: 'Profil' })).toHaveAttribute('href', ROUTES.profile)
+    expect(screen.getByRole('link', { name: 'Profil' })).toHaveAttribute(
+      'href', ROUTES.dietProfile,
+    )
   })
 
   it('still signs out', async () => {

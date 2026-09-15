@@ -1,4 +1,13 @@
 import { useId, useState, type ReactNode } from 'react'
+// `.profile-card` for the shell.
+import './profileForms.css'
+// And the fold itself, which is the entry form's (.diary-entry-collapse-*).
+// Those rules stay where they are: pages/DiaryEntry.tsx renders the same
+// classes in its own markup, so they belong to neither file alone and moving
+// them would be a bigger change than this one is allowed to be. Importing
+// the sheet that defines what this component draws is the honest version of
+// what used to happen by accident, via whichever screen mounted it.
+import '../pages/diaryEntry.css'
 
 /**
  * A card whose body folds away behind its own heading.

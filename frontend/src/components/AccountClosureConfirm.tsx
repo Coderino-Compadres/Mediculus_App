@@ -7,6 +7,13 @@ import { useAuthForm } from '../hooks/useAuthForm'
 import { useSignOut } from '../hooks/useSignOut'
 import { validatePassword } from '../utils/validation'
 import type { AccountClosureReason } from '../types/profile'
+// The consequence lists, the pending notice and the filled confirming
+// button; `.journal-detail-card` for the sections; `auth-*` for the password
+// form. All three named here so this screen is dressed wherever it is opened
+// from.
+import './profileForms.css'
+import '../pages/journalDetail.css'
+import './auth.css'
 
 /**
  * The confirmation for the three ways out: deleting the account, and withdrawing
@@ -65,10 +72,44 @@ const COPY: Record<AccountClosureReason, Copy> = {
  * Written out rather than summarised as "wszystkie dane": the point of the screen
  * is that the person knows what they are agreeing to lose, and "wszystkie" is a
  * word everyone reads as slightly less than it says.
+ *
+ * IT COVERS BOTH MODULES, because there is one account and one deletion. The
+ * list used to name the psychotherapy diary and its reports and stop there —
+ * which was complete when it was written and had quietly stopped being so five
+ * tables later: meals, hydration, supplements and their intakes, activity and
+ * sleep all belong to the same person and all go with the account. An omission
+ * on *this* screen is not incompleteness, it is a false statement: this is the
+ * one place in the app where somebody is told what will happen to their health
+ * data, and they decide on the strength of it.
+ *
+ * ONE LIST, NEVER A PER-MODULE VARIANT. Confirmed by the team on the backend's
+ * side: **deleting the account from anywhere deletes everything**, the
+ * psychotherapy data and the diet data together, and the scope does not depend
+ * on which profile the screen was opened from. So this array is not to be
+ * split in two, not to be filtered by route, and not to be keyed on
+ * `moduleLabel` — that prop exists to say *where the reader is standing*, and
+ * it is the only thing about this screen that may differ between the two
+ * entry points. Wording the consequences to match the door somebody came
+ * through would describe a deletion narrower than the one that happens, on the
+ * screen where they consent to it.
+ *
+ * `DietProfile.test.tsx` renders this screen from /profile and from
+ * /diet/profile and asserts the two lists are identical item for item, so the
+ * split cannot be reintroduced quietly.
+ *
+ * TODO(§13): the health profile — height, mass, target mass, activity level,
+ * allergies, intolerances, eating preferences and conditions — joins this list
+ * the day it gets a table. It has none yet (see src/api/healthProfile.ts), so
+ * naming it here would promise the deletion of something that is not stored;
+ * the entry goes in with the migration, not before it.
  */
 const REMOVED_ITEMS = [
   'wpisy w dzienniczku wraz z ocenami nastroju, emocji, napięcia i energii',
   'raporty tygodniowe wygenerowane z tych wpisów, razem z ich wersjami PDF',
+  'wpisy w dzienniczku żywieniowym: posiłki wraz z opisami, godzinami i emocjami przy jedzeniu',
+  'zapisane nawodnienie, sen i aktywność fizyczna',
+  'lista suplementów i leków razem z odhaczeniami przyjęcia',
+  'raporty tygodniowe z części dietetycznej i psychodietetycznej',
   'dane konta: imię, nazwisko, adres e-mail, data urodzenia',
   'powiązanie ze specjalistą prowadzącym i jego wgląd w Twoje dane',
 ]
@@ -78,8 +119,32 @@ const REMOVED_ITEMS = [
 //: reusing "Co zostanie usunięte" would have been a false statement on a screen
 //: whose whole job is to be precise about consequences — which is exactly what
 //: it was until the outcome changed.
+//:
+//: IT COVERS BOTH MODULES, ON THE SAME REASONING AS REMOVED_ITEMS ABOVE, and
+//: for a reason that is structural rather than editorial: there is one account
+//: and one gate. `HasActiveConsents` (core/permissions.py) refuses every
+//: endpoint behind it, and both modules are behind it — so withdrawing a
+//: consent stops the whole app, not the half the reader happens to be standing
+//: in.
+//:
+//: The first line used to read "dzienniczek, raporty i analiza przestają się
+//: otwierać". Every one of those three words now names a screen in *each*
+//: module — /journals and /diet/journals, /reports and /diet/reports,
+//: /analysis and /diet/analysis — so a patient reading it recognised her own
+//: half of the app and had no reason to think the other half was included.
+//: Ambiguity on a consequences screen is not a smaller problem than an
+//: omission: both leave somebody consenting to something other than what
+//: happens. The two halves are therefore named the way the app's own menu
+//: names them ("część psychoterapeutyczna", "część dietetyczna i
+//: psychodietetyczna").
+//:
+//: ONE LIST, NEVER A PER-MODULE VARIANT — the same rule as REMOVED_ITEMS, and
+//: not to be split, filtered by route or keyed on `moduleLabel`.
+//: `DietProfile.test.tsx` opens this screen from both profiles and asserts the
+//: two lists are identical item for item.
 const LOCKED_ITEMS = [
-  'dzienniczek, raporty i analiza przestają się otwierać',
+  'część psychoterapeutyczna przestaje się otwierać: dzienniczek emocji, raporty tygodniowe i analiza',
+  'część dietetyczna i psychodietetyczna również: dzienniczek żywieniowy, nawodnienie, suplementy i leki, sen i aktywność, raporty i analiza',
   'specjalista prowadzący przestaje widzieć nowe dane',
   'wszystko, co już zapisałaś lub zapisałeś, zostaje nietknięte',
   'zgodę możesz przywrócić w każdej chwili i konto wróci do stanu sprzed wycofania',
@@ -88,9 +153,14 @@ const LOCKED_ITEMS = [
 function AccountClosureConfirm({
   reason,
   onBack,
+  moduleLabel,
 }: {
   reason: AccountClosureReason
   onBack: () => void
+  /** Which module the reader came from — forwarded to ProfileConfirmLayout,
+   *  which defaults it to the psychotherapy one. Both profiles open this
+   *  screen and it has to say where it is being opened. */
+  moduleLabel?: string
 }) {
   const copy = COPY[reason]
   const { setUser } = useAuth()
@@ -165,7 +235,12 @@ function AccountClosureConfirm({
   // been deleted that their data was untouched.
   if (pendingNotice !== null) {
     return (
-      <ProfileConfirmLayout title={copy.title} lead={copy.lead} onBack={onBack}>
+      <ProfileConfirmLayout
+        title={copy.title}
+        lead={copy.lead}
+        onBack={onBack}
+        moduleLabel={moduleLabel}
+      >
         <section className="journal-detail-card">
           <p className="profile-pending-notice" role="status">
             {pendingNotice}
@@ -189,7 +264,12 @@ function AccountClosureConfirm({
   if (closed) return null
 
   return (
-    <ProfileConfirmLayout title={copy.title} lead={copy.lead} onBack={onBack}>
+    <ProfileConfirmLayout
+        title={copy.title}
+        lead={copy.lead}
+        onBack={onBack}
+        moduleLabel={moduleLabel}
+      >
       {/* Two lists, and which one shows is the whole difference between the
           two decisions this screen serves. Deletion removes things; withdrawal
           stops the processing and removes nothing. */}
