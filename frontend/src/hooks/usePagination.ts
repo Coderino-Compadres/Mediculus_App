@@ -51,7 +51,11 @@ export interface Pagination<T> {
  * clamped rather than trusted: `?page=99` on a three-page list shows page three,
  * and `?page=abc` shows the first.
  */
-export function usePagination<T>(items: T[], pageSize: number = PAGE_SIZE): Pagination<T> {
+export function usePagination<T>(
+  items: T[],
+  pageSize: number = PAGE_SIZE,
+  { scrollToTop = true }: { scrollToTop?: boolean } = {},
+): Pagination<T> {
   const [params, setParams] = useSearchParams()
 
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize))
@@ -76,9 +80,18 @@ export function usePagination<T>(items: T[], pageSize: number = PAGE_SIZE): Pagi
       )
       // The rows changed under a viewport that is probably scrolled down.
       // RouteChange only watches the pathname, and this is a query change.
-      window.scrollTo(0, 0)
+      //
+      // **OFF FOR A LIST THAT IS NOT THE SCREEN.** The point of this line is to
+      // put the new rows where the reader can see them, and that is only the
+      // top of the page when the list *is* the page — which it is on every
+      // screen that paginates a whole archive. `pages/DietReportDetail.tsx`
+      // paginates one card among five, a long way down a weekly report: jumping
+      // to the header there hides the very rows that changed and makes the
+      // reader scroll back for each one. Leaving the viewport still is what
+      // shows them, because the rows redraw exactly where they were being read.
+      if (scrollToTop) window.scrollTo(0, 0)
     },
-    [setParams],
+    [setParams, scrollToTop],
   )
 
   const reset = useCallback(() => {

@@ -935,6 +935,14 @@ const REPORT_PAYLOAD = {
       },
     ],
   },
+  emotions: {
+    meals_with_emotion: 2,
+    rows: [
+      { emotion: 'Lęk', meals: 2, rated_meals: 2, avg_intensity: 6.5 },
+      // Picked twice and never rated — the state `intensity` is nullable for.
+      { emotion: 'Spokój', meals: 2, rated_meals: 0, avg_intensity: null },
+    ],
+  },
 }
 
 describe('fetchDietReports', () => {
@@ -1024,6 +1032,40 @@ describe('fetchDietReports', () => {
     apiRequest.mockResolvedValue([])
 
     await expect(fetchDietReports()).resolves.toEqual([])
+  })
+
+  it('maps the emotions ranking into the screen own names', async () => {
+    apiRequest.mockResolvedValue([REPORT_PAYLOAD])
+
+    const [report] = await fetchDietReports()
+
+    expect(report.emotions.mealsWithEmotion).toBe(2)
+    expect(report.emotions.rows).toEqual([
+      { emotion: 'Lęk', meals: 2, ratedMeals: 2, avgIntensity: 6.5 },
+      { emotion: 'Spokój', meals: 2, ratedMeals: 0, avgIntensity: null },
+    ])
+  })
+
+  it('keeps a missing average null rather than turning it into a zero', async () => {
+    /** A chip picked with the slider never moved has no intensity, and 0 is a
+     *  rating somebody could have given. The two must not collapse here. */
+    apiRequest.mockResolvedValue([REPORT_PAYLOAD])
+
+    const [report] = await fetchDietReports()
+
+    expect(report.emotions.rows[1].avgIntensity).toBeNull()
+  })
+
+  it('survives a server that does not send the section at all', async () => {
+    /** A browser on this release against a server one behind it. The section is
+     *  allowed to be empty anyway, so an absent key must not take out the whole
+     *  screen — the same defence the chips on a meal carry. */
+    const { emotions: _omitted, ...withoutEmotions } = REPORT_PAYLOAD
+    apiRequest.mockResolvedValue([withoutEmotions])
+
+    const [report] = await fetchDietReports()
+
+    expect(report.emotions).toEqual({ mealsWithEmotion: 0, rows: [] })
   })
 })
 

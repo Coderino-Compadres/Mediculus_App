@@ -34,7 +34,8 @@ from core.management.commands.seed_demo_diary import (ACTIVITY_SHAPES,
                                                       last_completed_week_start)
 from core.supplements import MAX_SUPPLEMENTS
 from core.meals import streak_days
-from core.models import (Diary, DietActivity, DietActivityDay, DietMeal,
+from core.models import (DietMealEmotion,
+                         Diary, DietActivity, DietActivityDay, DietMeal,
                          DietSleep, Hydration, Patient, Supplement,
                          SupplementIntake, User, UserRole)
 
@@ -659,3 +660,133 @@ class ReportsAreVisibleTests(SeedDemoDiaryTests):
         self.assertTrue(any(day['hydration'] for day in days))
         self.assertTrue(any(day['activity'] for day in days))
         self.assertTrue(any(day['sleep'] for day in days))
+
+    def test_the_completed_weeks_carry_emotions_at_meals(self):
+        """§05's "najczęstsze emocje przy jedzeniu" has to be *reachable*.
+
+        A report covers a week that has ended, so the chips on today's meals are
+        in no report yet. A seed that put emotions only on the last few days
+        would leave that section empty on every report the demo can open —
+        which is the state this suite exists to prevent for the four diaries and
+        now for this one too.
+        """
+        from core.diet_reports import build_diet_reports, latch_week_start
+
+        self.seed()
+        self.patient.refresh_from_db()
+        reports = build_diet_reports(
+            self.patient.id_medical, latch_week_start(self.patient), self.today,
+        )
+
+        for report in reports:
+            with self.subTest(week=report['id']):
+                self.assertTrue(report['emotions']['rows'])
+                self.assertGreater(report['emotions']['meals_with_emotion'], 0)
+
+    def test_a_chip_picked_and_left_unrated_reaches_a_report(self):
+        """The branch a seed is most likely to hide.
+
+        `intensity` is nullable so that pressing a chip without moving the
+        slider can mean "felt, and I did not say how strongly" — and both the
+        report and the analysis render that differently from a rating. Seeded
+        only with numbers, the screens' unrated half would be reachable by hand
+        and never by demo.
+        """
+        from core.diet_reports import build_diet_reports, latch_week_start
+
+        self.seed()
+        self.patient.refresh_from_db()
+        reports = build_diet_reports(
+            self.patient.id_medical, latch_week_start(self.patient), self.today,
+        )
+        rows = [row for report in reports for row in report['emotions']['rows']]
+
+        self.assertTrue(any(row['rated_meals'] < row['meals'] for row in rows))
+
+    def test_the_week_anchor_is_cleared_so_it_re_latches_onto_the_new_run(self):
+        """**THE SEED REPLACES EVERY DIET ROW, SO AN OLD ANCHOR IS STALE.**
+
+        `patient.diet_week_start` is written once and never moved, which is
+        right for a real account and wrong after a wholesale rewrite: the weeks
+        would be counted from a day that no longer holds an entry. Left alone,
+        a second run a few days after the first cuts the reports at boundaries
+        matching nothing in the data — and the symptom is a report list that
+        looks plausible and is wrong, which is the worst kind.
+        """
+        from core.diet_reports import latch_week_start
+
+        self.seed()
+        self.patient.refresh_from_db()
+        first_anchor = latch_week_start(self.patient)
+
+        # An anchor from an older run, pointing at a day this seed does not
+        # reach any more.
+        self.patient.diet_week_start = self.today - datetime.timedelta(days=90)
+        self.patient.save(update_fields=['diet_week_start'])
+
+        self.seed()
+        self.patient.refresh_from_db()
+
+        self.assertIsNone(self.patient.diet_week_start)
+        # And it re-latches onto the earliest row the fresh run actually wrote.
+        self.assertEqual(latch_week_start(self.patient), first_anchor)
+        self.assertEqual(
+            first_anchor,
+            self.meals().order_by('entry_date').first().entry_date,
+        )
+
+    def test_a_day_left_empty_is_empty_in_every_diary(self):
+        """**"brak wpisu" HAS TO BE REACHABLE FROM A SEED.**
+
+        Each diary skips days of its own, but on different days — so with four
+        of them running, the patient wrote *something* on all 120 days and the
+        report's empty-day line and unfilled day chip were never drawn. §02 is
+        explicit that a day without an entry "nie jest brakiem", and a demo that
+        cannot show one cannot show that.
+        """
+        from core.diet_reports import build_diet_reports, latch_week_start
+        from core.management.commands.seed_demo_diary import is_silent_day
+
+        self.seed('--meal-days', '40', '--water-days', '40')
+        self.patient.refresh_from_db()
+        reports = build_diet_reports(
+            self.patient.id_medical, latch_week_start(self.patient), self.today,
+        )
+        days = {day['date']: day for report in reports for day in report['days']}
+
+        silent = [
+            (self.today - datetime.timedelta(days=offset)).isoformat()
+            for offset in range(40) if is_silent_day(offset)
+        ]
+        reached = [date for date in silent if date in days]
+
+        self.assertTrue(reached, 'no silent day fell inside a completed week')
+        for date in reached:
+            with self.subTest(date=date):
+                self.assertTrue(days[date]['empty'])
+
+    def test_the_quiet_days_never_swallow_a_whole_week(self):
+        """A week nobody wrote in has no report at all — `build_diet_reports`
+        skips it — so a gap rule frequent enough to empty seven days in a row
+        would punch a hole in the archive rather than make a quiet week."""
+        from core.management.commands.seed_demo_diary import SILENT_DAY_INTERVAL
+
+        self.assertGreater(SILENT_DAY_INTERVAL, 7)
+
+    def test_the_line_about_removed_meals_counts_meals_and_not_chips(self):
+        """`.delete()` answers with a total across every model it cascaded into,
+        so the plain `[0]` reported meals *plus* their emotion chips — "581
+        posiłków" for a run that had written 320. A number in a line somebody
+        reads has to be the number it says it is."""
+        self.seed('--meal-days', '8')
+        written = self.meals().count()
+        self.assertGreater(
+            DietMealEmotion.objects.filter(meal__id_medical=self.patient.id_medical).count(),
+            0,
+            'the fixture needs chips for this to be able to fail',
+        )
+
+        output = io.StringIO()
+        call_command('seed_demo_diary', 'test@wp.pl=3', '--meal-days', '8', stdout=output)
+
+        self.assertIn(f'usunięto {written} poprzednich posiłków', output.getvalue())

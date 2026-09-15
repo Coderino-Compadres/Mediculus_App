@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitForElementToBeRemoved } from '@testing-library/react'
+import { screen, waitForElementToBeRemoved, within } from '@testing-library/react'
 import { renderWithProviders } from '../test/render'
 import DietAnalysis from './DietAnalysis'
 import { ROUTES } from '../routes'
@@ -10,6 +10,7 @@ import {
   mealDensityColor,
 } from '../utils/dietAnalysis'
 import { fromIsoDate } from '../utils/days'
+import { emotionTint, type EmotionName } from '../utils/emotions'
 import type { DietJournalDay } from '../types/diet'
 
 vi.mock('../api/diet', async (importOriginal) => {
@@ -49,6 +50,9 @@ function day(date: string, times: (string | null)[]): DietJournalDay {
       kind: null,
       time,
       description: 'kanapka',
+      // No chip picked, which is the ordinary meal these fixtures are about.
+      // The emotion charts have their own fixtures further down.
+      emotions: [],
     })),
   }
 }
@@ -492,6 +496,225 @@ describe('DietAnalysis — the grid and its threshold', () => {
   })
 })
 
+/** A day whose meals carry chips. `day()` above builds meals without any, which
+ *  is what every other fixture in this file wants. */
+function dayWithEmotions(
+  date: string,
+  meals: { time: string | null; kind: string | null; emotions: [string, number | null][] }[],
+): DietJournalDay {
+  return {
+    date,
+    meals: meals.map((entry, index) => ({
+      id: `${date}-${index}`,
+      kind: entry.kind,
+      time: entry.time,
+      description: 'kanapka',
+      emotions: entry.emotions.map(([emotion, intensity]) => ({
+        emotion: emotion as EmotionName,
+        intensity,
+      })),
+    })),
+  }
+}
+
+/** One calm breakfast and one ashamed midnight snack, yesterday. */
+function feltSomething(): DietJournalDay[] {
+  return [
+    dayWithEmotions(isoDaysAgo(1), [
+      { time: '08:00', kind: 'Śniadanie', emotions: [['Spokój', 6]] },
+      { time: '23:40', kind: 'Przekąska', emotions: [['Wstyd', null]] },
+    ]),
+  ]
+}
+
+/** The card a heading belongs to. The cards are plain sections, so there is no
+ *  role to query them by — the heading is what names them on screen. */
+function emotionCard(heading: string): HTMLElement {
+  const section = screen.getByRole('heading', { level: 2, name: heading }).closest('section')
+  if (section === null) throw new Error(`no card for ${heading}`)
+  return section
+}
+
+async function renderFelt(history: DietJournalDay[] = feltSomething()) {
+  mockedFetch.mockResolvedValue(history)
+  renderWithProviders(<DietAnalysis />, { route: ROUTES.dietAnalysis })
+  await screen.findByRole('heading', { level: 2, name: 'Najczęstsze emocje przy jedzeniu' })
+}
+
+describe('DietAnalysis — the emotion cards', () => {
+  /**
+   * §11's emotion charts, and the one part of this screen that counts anything.
+   *
+   * What makes them allowable is *what the number is about*: an intensity is a
+   * slider the patient moved herself, on §04's picker — the psychotherapy
+   * form's picker. The figures never describe the food, and the sweep further
+   * down this file is what keeps that true.
+   */
+
+  it('draws nothing at all when no meal in the window carries a chip', async () => {
+    /* Not an empty ranking and not a "brak emocji": §05's rule is that no field
+       blocks a save, so meals saved without an emotion are ordinary meals. */
+    mockedFetch.mockResolvedValue(consecutive(5, ['08:00']))
+    renderWithProviders(<DietAnalysis />, { route: ROUTES.dietAnalysis })
+
+    await screen.findByRole('heading', { level: 2, name: 'Pory posiłków' })
+
+    expect(screen.queryByText('Najczęstsze emocje przy jedzeniu')).toBeNull()
+    expect(screen.queryByText('Emocje a pora dnia')).toBeNull()
+    expect(screen.queryByText('Emocje w czasie')).toBeNull()
+  })
+
+  it('ranks the chips and counts meals rather than days', async () => {
+    await renderFelt()
+
+    const card = emotionCard('Najczęstsze emocje przy jedzeniu')
+
+    expect(within(card).getByText('Spokój')).toBeInTheDocument()
+    expect(within(card).getByText('Wstyd')).toBeInTheDocument()
+    expect(within(card).getAllByText(/1 posiłek/)).not.toHaveLength(0)
+    expect(within(card).queryByText(/1 dzień/)).toBeNull()
+  })
+
+  it('prints an average only for a chip that was rated', async () => {
+    await renderFelt()
+
+    const card = emotionCard('Najczęstsze emocje przy jedzeniu')
+
+    expect(within(card).getByText(/6,0 \/ 10/)).toBeInTheDocument()
+    // 'Wstyd' was picked with the slider never moved. "0,0 / 10" there would be
+    // a rating nobody gave.
+    expect(within(card).queryByText(/0,0 \/ 10/)).toBeNull()
+    expect(within(card).getByText(/Natężenie nie zostało ocenione/)).toBeInTheDocument()
+  })
+
+  it('says how many meals the ranking rests on', async () => {
+    await renderFelt()
+
+    expect(
+      within(emotionCard('Najczęstsze emocje przy jedzeniu')).getByText(/Z 2 posiłków/),
+    ).toBeInTheDocument()
+  })
+
+  it('crosses a feeling with the part of the day it came up in', async () => {
+    await renderFelt()
+
+    const card = emotionCard('Emocje a pora dnia')
+    const rows = within(card).getAllByRole('row')
+    // Header plus one row per emotion in the ranking.
+    expect(rows).toHaveLength(3)
+
+    const calm = within(card).getByRole('row', { name: /Spokój/ })
+    /* Morning first, then noon, evening, night — chronological, and the row
+       carries a cell for each. The fixture holds a breakfast and a midnight
+       snack and nothing in between, so the middle two columns hold no meal at
+       all and read as an absence, while 'night' held a meal that carried the
+       *other* chip and is therefore a measured zero. Three states, in one row. */
+    expect(within(calm).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      '1', '—brak posiłków', '—brak posiłków', '0',
+    ])
+  })
+
+  it('crosses a feeling with the kind of meal, and marks a kind the window has none of', async () => {
+    await renderFelt()
+
+    const card = emotionCard('Emocje a rodzaj posiłku')
+    const calm = within(card).getByRole('row', { name: /Spokój/ })
+    const cells = within(calm).getAllByRole('cell').map((cell) => cell.textContent)
+
+    // Śniadanie is where it happened; Przekąska held a meal and not this chip;
+    // the four kinds the window holds no meal of read as an absence instead.
+    expect(cells[0]).toBe('1')
+    expect(cells[5]).toBe('0')
+    expect(cells[1]).toBe('—brak posiłków')
+  })
+
+  it('tells a measured zero apart from a column with nothing in it', async () => {
+    /** The distinction the whole shape exists for, asserted in the DOM rather
+     *  than only in the sentence: a column holding meals but no chip is a
+     *  measurement, a column holding no meal at all is an absence. */
+    await renderFelt()
+
+    const card = emotionCard('Emocje a rodzaj posiłku')
+    const calm = within(card).getByRole('row', { name: /Spokój/ })
+    const cells = within(calm).getAllByRole('cell')
+
+    expect(cells[5]).not.toHaveClass('emotion-cross-cell-empty')
+    expect(cells[1]).toHaveClass('emotion-cross-cell-empty')
+    // And the empty one carries no tint, so it cannot read as a measured value.
+    expect(cells[1].style.backgroundColor).toBe('')
+  })
+
+  it('shades a cell against its own row and not against the table', async () => {
+    /** A row is one emotion, and the question it answers is "when does this come
+     *  up". Shaded against the whole table, the emotion with the most meals
+     *  would simply be the darkest row — the ranking restated in colour. */
+    await renderFelt([
+      dayWithEmotions(isoDaysAgo(1), [
+        { time: '08:00', kind: 'Śniadanie', emotions: [['Spokój', 5], ['Lęk', 5]] },
+        { time: '09:00', kind: 'Śniadanie', emotions: [['Spokój', 5]] },
+        { time: '19:00', kind: 'Kolacja', emotions: [['Spokój', 5]] },
+      ]),
+    ])
+
+    const card = emotionCard('Emocje a pora dnia')
+    const calm = within(card).getByRole('row', { name: /Spokój/ })
+    const fear = within(card).getByRole('row', { name: /Lęk/ })
+
+    // 'Spokój' came up twice in the morning out of a row whose biggest cell is
+    // two; 'Lęk' once out of a row whose biggest cell is one. Both are at the
+    // top of their own row, so both are at full strength — which is exactly
+    // what a table-wide denominator would get wrong.
+    const calmMorning = within(calm).getAllByRole('cell')[0].style.backgroundColor
+    const fearMorning = within(fear).getAllByRole('cell')[0].style.backgroundColor
+
+    expect(calmMorning).not.toBe('')
+    expect(fearMorning).not.toBe('')
+    expect(calmMorning).toBe(emotionTint('Spokój', 1))
+    expect(fearMorning).toBe(emotionTint('Lęk', 1))
+  })
+
+  it('cuts the window into weeks and says where each one falls', async () => {
+    await renderFelt()
+
+    const card = emotionCard('Emocje w czasie')
+
+    expect(within(card).getByRole('columnheader', { name: /Tyg\. 1/ })).toBeInTheDocument()
+    // The dates are on the heading, so a short last bucket cannot be read as a
+    // quiet week.
+    expect(within(card).getByText(/Tygodnie liczone są od pierwszego dnia okresu/))
+      .toBeInTheDocument()
+  })
+
+  it('says what the colour compares, and what it does not', async () => {
+    /** A grid of tints invites a comparison between rows that the shading does
+     *  not support, so the sentence has to be there. */
+    await renderFelt()
+
+    expect(
+      within(emotionCard('Emocje a pora dnia')).getByText(/Nie porównuje emocji między sobą/),
+    ).toBeInTheDocument()
+  })
+
+  it('says the numbers do not grade the food', async () => {
+    await renderFelt()
+
+    expect(
+      within(emotionCard('Najczęstsze emocje przy jedzeniu')).getByText(/nie ocenia jedzenia/),
+    ).toBeInTheDocument()
+  })
+
+  it('draws no conclusion from the emotion charts either', async () => {
+    /** §11: "wykres pokazuje, kiedy coś się działo, i nie dopisuje, co to
+     *  znaczy". A "najtrudniejsza pora jedzenia" would be exactly that. */
+    await renderFelt()
+
+    const text = readableText().toLowerCase()
+    for (const banned of ['najtrudniejsz', 'dominując', 'wynika', 'powinien', 'powinnaś']) {
+      expect(text, banned).not.toContain(banned)
+    }
+  })
+})
+
 describe('DietAnalysis — what this screen is not', () => {
   const fullScreen = async () => {
     mockedFetch.mockResolvedValue(threeWeeksWithoutSundays(['08:00', '19:30']))
@@ -629,6 +852,14 @@ describe('DietAnalysis — what this screen is not', () => {
     [
       'one day of history, so every count is singular',
       () => mockedFetch.mockResolvedValue(consecutive(1, ['08:00'])),
+    ],
+    [
+      // Without this the four emotion cards are never rendered while the sweep
+      // runs, and a "cel", a percentage or a bare feminine form could be
+      // written into any of them with every test in this file staying green.
+      // That is the exact hole the comment above this list describes.
+      'the emotion cards are showing',
+      () => mockedFetch.mockResolvedValue(feltSomething()),
     ],
   ]
 

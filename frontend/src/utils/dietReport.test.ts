@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MEAL_SLOT_UNSPECIFIED, mealSlotLabel } from './dietReport'
+import { MEAL_SLOT_UNSPECIFIED, emotionRatingNote, mealSlotLabel } from './dietReport'
 import { TIME_OF_DAY_LABELS, TIME_OF_DAY_VALUES } from './timeOfDay'
 
 /**
@@ -51,6 +51,65 @@ describe('mealSlotLabel', () => {
       for (const forbidden of ['kcal', 'kalor', 'suma', 'razem', 'cel', '%']) {
         expect(label.toLowerCase()).not.toContain(forbidden)
       }
+    }
+  })
+})
+
+/**
+ * The caveat under a row of "Najczęstsze emocje przy jedzeniu".
+ *
+ * **A CHIP CAN BE PICKED WITHOUT BEING RATED**, which is what
+ * `diet_meal_emotion.intensity` is nullable for, and this sentence is the only
+ * thing standing between that fact and a row that quietly overstates what it
+ * knows. A row reading "7 posiłków · śr. 6,5 / 10" may be averaging five
+ * numbers; unsaid, that is a precision nobody entered, shown to a patient and
+ * possibly read over her shoulder by her specialist.
+ */
+describe('emotionRatingNote', () => {
+  it('says nothing when every picking was also rated', () => {
+    // The common case. A note on every row would train the eye to skip the ones
+    // that carry a real caveat.
+    expect(emotionRatingNote({ meals: 4, ratedMeals: 4 })).toBeNull()
+    expect(emotionRatingNote({ meals: 1, ratedMeals: 1 })).toBeNull()
+  })
+
+  it('says how many meals the average actually rests on', () => {
+    const note = emotionRatingNote({ meals: 7, ratedMeals: 5 })
+
+    expect(note).toBe('Średnia z 5 posiłków; przy 2 posiłkach natężenie nie zostało ocenione.')
+  })
+
+  it('explains the missing average when nothing was rated at all', () => {
+    /* Without this the row looks like a bug — "why has this one no number?" —
+       rather than like the ordinary answer it is: §05's rule is that no field
+       blocks a save. */
+    expect(emotionRatingNote({ meals: 3, ratedMeals: 0 })).toBe(
+      'Natężenie nie zostało ocenione — emocja została tylko zaznaczona.',
+    )
+  })
+
+  it('declines "posiłek" for both prepositions it uses', () => {
+    /* "z … posiłków" is genitive and "przy … posiłkach" locative; `pluralMeals`'
+       nominative fits neither, which is why utils/meals.ts holds three forms.
+       One is singular and the other is not, and the two cases disagree about
+       where that boundary falls. */
+    expect(emotionRatingNote({ meals: 2, ratedMeals: 1 })).toBe(
+      'Średnia z 1 posiłku; przy 1 posiłku natężenie nie zostało ocenione.',
+    )
+    expect(emotionRatingNote({ meals: 6, ratedMeals: 2 })).toBe(
+      'Średnia z 2 posiłków; przy 4 posiłkach natężenie nie zostało ocenione.',
+    )
+  })
+
+  it('never calls the meal itself unrated', () => {
+    /* "bez oceny" next to a meal reads as a verdict withheld on the food, which
+       is exactly what this module is built not to pass. The word has to stay
+       attached to "natężenie". */
+    for (const row of [{ meals: 5, ratedMeals: 2 }, { meals: 5, ratedMeals: 0 }]) {
+      const note = emotionRatingNote(row)
+      // Case-insensitively: one of the two sentences opens with the word.
+      expect(note?.toLowerCase()).toContain('natężenie')
+      expect(note).not.toMatch(/ocena posiłku|nieoceniony|bez oceny posiłku/i)
     }
   })
 })

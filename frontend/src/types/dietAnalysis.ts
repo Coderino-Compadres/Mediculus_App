@@ -1,3 +1,4 @@
+import type { EmotionName } from '../utils/emotions'
 import type { TimeOfDay } from '../utils/timeOfDay'
 
 /**
@@ -25,6 +26,16 @@ import type { TimeOfDay } from '../utils/timeOfDay'
  * - **nothing is a fraction, a percentage or a score.** The same rule the weekly
  *   report is built under (`core/diet_reports.py`): every number here is a plain
  *   count of days.
+ *
+ * **THE EMOTIONS SECTIONS ARE THE ONE EXCEPTION TO "NOTHING IS A SCORE", AND
+ * THE LINE IS WHAT THE NUMBER IS ABOUT.** Every other figure on this screen is
+ * a count of days, because the module does not grade *food*. `DietEmotions`
+ * below counts meals and averages a 0-10 intensity — but that intensity is a
+ * slider the patient moved herself, on §04's picker, which is the psychotherapy
+ * form's picker with the same ten names. Her own answer read back is not this
+ * module scoring her eating, and nothing about what was eaten feeds it: the
+ * description is an input to no figure here, and the kind and the hour are used
+ * only to say *when* a feeling came up, never to judge the meal that carried it.
  *
  * WHAT IT IS BUILT FROM IS ONLY WHAT CAN BE FETCHED. `fetchDietHistory()` is the
  * one diet endpoint with history longer than a day, so meals are the only source
@@ -127,6 +138,121 @@ export interface DietSlotShare {
   days: number
 }
 
+/**
+ * One row of "Najczęstsze emocje przy jedzeniu" over the window.
+ *
+ * THE UNIT IS A MEAL, not a day — an emotion hangs off a meal here, and two
+ * difficult meals on one Tuesday are two things that happened. That is the one
+ * place the diet ranking differs from the psychotherapy one, and it is the same
+ * shape `DietReportEmotion` takes on a weekly report, deliberately: the two
+ * screens answer the same question over different stretches of time, and a
+ * patient crossing between them must not meet two different units.
+ *
+ * `avgIntensity` IS UNROUNDED HERE. The screen rounds it for display
+ * (`formatNumber(value, 1)`), the same convention `utils/analysis.ts` follows
+ * for every mean it computes in the browser. The weekly report's copy arrives
+ * already rounded because the server rounds it — those are two paths, each
+ * consistent inside itself, and nothing compares the two numbers.
+ */
+export interface DietEmotionShare {
+  emotion: EmotionName
+  /** Meals in the window this emotion was picked at. */
+  meals: number
+  /** How many of those carried a number on the slider. */
+  ratedMeals: number
+  /** Mean 0-10 intensity over the rated meals; null when none was rated — an
+   *  emotion picked and never rated is not an emotion rated zero. */
+  avgIntensity: number | null
+}
+
+/**
+ * One column of a crossing — a part of the day, a kind of meal, or a week.
+ *
+ * `meals` IS WHAT MAKES A ZERO READABLE. A cell of 0 means "meals happened in
+ * this column and none of them carried this emotion", which is a measurement —
+ * but only if the reader can tell it apart from "nothing happened in this
+ * column at all". So the column says how many meals fell in it, with or without
+ * an emotion, and a column at `meals: 0` is drawn as an absence rather than as
+ * a row of measured zeroes. The same three-state discipline `DietHeatmapCell`
+ * documents at length.
+ */
+export interface DietEmotionCrossColumn {
+  key: string
+  /** The heading: 'Rano', 'Kolacja', 'Tyg. 3'. */
+  label: string
+  /** A longer reading for the tooltip and the screen reader — a week's dates,
+   *  or nothing when the label already says everything. */
+  hint?: string
+  /** Meals in the window that fell in this column, emotion or not. */
+  meals: number
+}
+
+/** One cell: how many meals in this column carried this emotion. */
+export interface DietEmotionCrossCell {
+  column: string
+  meals: number
+}
+
+export interface DietEmotionCrossRow {
+  emotion: EmotionName
+  /** The row's own count across every column — the same figure the ranking
+   *  carries, kept here so the row can be read without the ranking. */
+  meals: number
+  /** One cell per column in `DietEmotionCross.columns`, in that order. */
+  cells: DietEmotionCrossCell[]
+}
+
+/**
+ * An emotion crossed with something else — when it came up, at which meals, in
+ * which week.
+ *
+ * ONE SHAPE FOR THREE QUESTIONS, and one component draws all three. §11 asks
+ * for the crossings separately, but they differ only in what the columns are,
+ * and three bespoke charts would be three places for the same misreading to be
+ * introduced independently.
+ *
+ * **THERE IS NO GRID-WIDE MAXIMUM HERE AND NOTHING SHOULD ADD ONE.** A cell is
+ * shaded against its own *row* — the largest cell of that emotion — because the
+ * question a row answers is "when does this feeling come up", and the columns
+ * are not comparable in size: a window holds far more suppers than midnight
+ * snacks, and far more meals in a full week than in the clipped one at the end.
+ * Shaded against the whole table, the emotions with the most meals would simply
+ * be the darkest rows, which is the ranking above restated as a colour rather
+ * than anything new. The count is printed in every cell either way, so the
+ * shade is never the only reading.
+ */
+export interface DietEmotionCross {
+  columns: DietEmotionCrossColumn[]
+  /** Only the emotions the window actually holds, in the ranking's order. */
+  rows: DietEmotionCrossRow[]
+}
+
+/**
+ * Everything the screen says about what was felt at meals.
+ *
+ * `mealsWithEmotion` is the denominator the caption needs: one meal may carry
+ * several chips, so the ranking's rows can add up to more than the meals behind
+ * them. It is there so a figure cannot be misread, which is the opposite of the
+ * "6 z 7 dni" regularity score §15 rules out.
+ */
+export interface DietEmotions {
+  /** Meals in the window carrying at least one chip. */
+  mealsWithEmotion: number
+  /** Most often picked first. Empty when the window holds no chip at all, and
+   *  then the screen draws none of these sections. */
+  ranking: DietEmotionShare[]
+  /** When in the day a feeling came up. Columns are the four parts of the day,
+   *  plus the meals saved without an hour when the window holds any. */
+  byTimeOfDay: DietEmotionCross
+  /** At which kind of meal. Columns are §04's six kinds, plus the meals saved
+   *  without a kind when the window holds any. */
+  byKind: DietEmotionCross
+  /** How it moved across the window. Columns are consecutive seven-day
+   *  buckets from the window's first day, so the last one may be shorter —
+   *  which is said in its hint rather than hidden by rescaling it. */
+  byWeek: DietEmotionCross
+}
+
 export interface DietAnalysis {
   window: DietAnalysisWindow
   heatmap: DietHeatmap
@@ -145,4 +271,6 @@ export interface DietAnalysis {
    * ordinary entry rather than a mistake, and the wording has to match that.
    */
   untimedMeals: number
+  /** What was felt at the window's meals — §11's three emotion charts. */
+  emotions: DietEmotions
 }

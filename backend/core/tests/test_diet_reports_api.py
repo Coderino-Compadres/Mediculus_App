@@ -34,8 +34,9 @@ from rest_framework.test import APIClient
 from core.authentication import SESSION_USER_KEY
 from core.diet_reports import MEAL_SLOT_UNSPECIFIED, meal_slot
 from core.drinks import GLASS_ML, WATER
-from core.models import (DietActivity, DietActivityDay, DietMeal, DietSleep,
-                         Hydration, Patient, Specjalist, User, UserRole)
+from core.models import (DietActivity, DietActivityDay, DietMeal,
+                         DietMealEmotion, DietSleep, Hydration, Patient,
+                         Specjalist, User, UserRole)
 from core.time_of_day import EVENING, MORNING, NIGHT, NOON
 
 PASSWORD = 'TajneHaslo123'
@@ -78,13 +79,24 @@ class DietReportTestCase(TestCase):
         return self.today - datetime.timedelta(days=count)
 
     def meal(self, day, hour='08:00', kind='Śniadanie', description='Owsianka.',
-             patient=None):
-        return DietMeal.objects.create(
+             patient=None, emotions=()):
+        """One meal. `emotions` takes (name, intensity) pairs, intensity nullable.
+
+        A pair rather than a mapping, because the two states the ranking turns
+        on are a *picked* chip and a *rated* one: `('Lęk', None)` is a chip
+        pressed with the slider never moved, which the column allows on purpose
+        (`meals.MealEmotionSerializer`) and which must never average as a 0.
+        """
+        meal = DietMeal.objects.create(
             id_medical=(patient or self.patient).id_medical,
             entry_date=day,
             eaten_at=datetime.time.fromisoformat(hour) if hour else None,
             kind=kind, description=description,
         )
+        for emotion, intensity in emotions:
+            DietMealEmotion.objects.create(
+                meal=meal, emotion=emotion, intensity=intensity)
+        return meal
 
     def water(self, day, amount_ml=GLASS_ML, drink=WATER, patient=None):
         return Hydration.objects.create(
@@ -506,6 +518,164 @@ class MealSlotTests(DietReportTestCase):
         self.assertEqual(set(cell), {'slot', 'meals'})
 
 
+class MealEmotionRankingTests(DietReportTestCase):
+    """"Najczęstsze emocje przy jedzeniu" — §05's section.
+
+    THE UNIT IS A MEAL, not a day: an emotion hangs off `diet_meal`, and two
+    difficult meals on one Tuesday are two things that happened.
+
+    AN UNRATED CHIP IS NOT A ZERO. `diet_meal_emotion.intensity` is nullable so
+    that pressing a chip and leaving the slider alone can mean "this was felt,
+    and I did not say how strongly". It counts towards how *often* the emotion
+    appeared and towards nothing else — an average that folded it in as 0 would
+    read somebody's silence back to them as calm.
+    """
+
+    def emotions(self, week=0):
+        return self.reports()[week]['emotions']
+
+    def rows(self, week=0):
+        return self.emotions(week)['rows']
+
+    def test_a_week_with_no_chip_has_an_empty_ranking(self):
+        """Not a row of zeroes and not a missing key: the section simply has
+        nothing in it, and the screen draws no card at all for that."""
+        self.meal(self.days_ago(10))
+
+        self.assertEqual(self.emotions(), {'meals_with_emotion': 0, 'rows': []})
+
+    def test_an_emotion_is_counted_once_per_meal_it_was_picked_at(self):
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Lęk', 5)])
+        self.meal(first, hour='13:00', emotions=[('Lęk', 8)])
+        self.meal(first + datetime.timedelta(days=1), emotions=[('Lęk', 2)])
+
+        self.assertEqual(self.rows(), [
+            {'emotion': 'Lęk', 'meals': 3, 'rated_meals': 3, 'avg_intensity': 5.0},
+        ])
+
+    def test_two_meals_on_one_day_are_two_and_not_one(self):
+        """The psychotherapy ranking counts days because its diary holds one
+        entry per day. This one must not, or a hard Tuesday of three meals
+        reads exactly like a Tuesday of one."""
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Złość', 4)])
+        self.meal(first, hour='19:00', emotions=[('Złość', 4)])
+
+        self.assertEqual(self.rows()[0]['meals'], 2)
+
+    def test_an_unrated_chip_counts_towards_how_often_and_not_towards_the_average(self):
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Wstyd', 8)])
+        self.meal(first, hour='13:00', emotions=[('Wstyd', None)])
+
+        row = self.rows()[0]
+
+        self.assertEqual(row['meals'], 2)
+        self.assertEqual(row['rated_meals'], 1)
+        # 8.0, not 4.0 — the unrated chip is silence, not a zero.
+        self.assertEqual(row['avg_intensity'], 8.0)
+
+    def test_an_emotion_nobody_rated_is_ranked_with_no_average(self):
+        """Being felt is what puts a row on the list; a rating is not required
+        for it (§05: no field blocks a save)."""
+        self.meal(self.days_ago(10), emotions=[('Spokój', None)])
+
+        self.assertEqual(self.rows(), [
+            {'emotion': 'Spokój', 'meals': 1, 'rated_meals': 0,
+             'avg_intensity': None},
+        ])
+
+    def test_the_ranking_runs_from_the_most_often_picked(self):
+        """Frequency, not intensity — the section is named for it. The
+        psychotherapy ranking deliberately does the opposite."""
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Lęk', 1), ('Radość', 10)])
+        self.meal(first, hour='13:00', emotions=[('Lęk', 1)])
+        self.meal(first, hour='19:00', emotions=[('Lęk', 1)])
+
+        self.assertEqual(
+            [row['emotion'] for row in self.rows()], ['Lęk', 'Radość'])
+
+    def test_emotions_picked_equally_often_break_the_tie_on_the_average(self):
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Smutek', 2), ('Frustracja', 9)])
+
+        self.assertEqual(
+            [row['emotion'] for row in self.rows()], ['Frustracja', 'Smutek'])
+
+    def test_an_unrated_emotion_sorts_below_an_equally_frequent_rated_one(self):
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Radość', None), ('Smutek', 0)])
+
+        # 'Smutek' averaging 0 still outranks a chip carrying no answer at all:
+        # a rated nought is a measurement and a NULL is not.
+        self.assertEqual(
+            [row['emotion'] for row in self.rows()], ['Smutek', 'Radość'])
+
+    def test_the_order_does_not_depend_on_which_row_came_back_first(self):
+        """Two requests for one week answer in one order, so a report a patient
+        and her specialist read side by side is the same document."""
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Wstyd', 5), ('Bezradność', 5), ('Lęk', 5)])
+
+        self.assertEqual(self.rows(), self.rows())
+        # The vocabulary's own order breaks a tie that is level on both numbers.
+        self.assertEqual(
+            [row['emotion'] for row in self.rows()],
+            ['Lęk', 'Wstyd', 'Bezradność'],
+        )
+
+    def test_meals_with_emotion_counts_meals_and_not_chips(self):
+        """A meal carrying three chips is one meal. Without that the caption
+        would claim more meals than the week holds."""
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Lęk', 5), ('Stres', 6), ('Wstyd', 1)])
+        self.meal(first, hour='13:00')
+
+        self.assertEqual(self.emotions()['meals_with_emotion'], 1)
+
+    def test_the_ranking_covers_the_week_it_belongs_to_and_no_other(self):
+        first = self.days_ago(21)
+        self.meal(first, emotions=[('Lęk', 5)])
+        self.meal(first + datetime.timedelta(days=7), emotions=[('Radość', 5)])
+
+        # Newest week first, so [0] is the second week.
+        self.assertEqual([row['emotion'] for row in self.rows(0)], ['Radość'])
+        self.assertEqual([row['emotion'] for row in self.rows(1)], ['Lęk'])
+
+    def test_another_patient_s_chips_are_not_in_this_ranking(self):
+        other = self.make_patient(email='inny@example.com')
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Lęk', 5)])
+        self.meal(first, emotions=[('Radość', 9)], patient=other)
+
+        self.assertEqual([row['emotion'] for row in self.rows()], ['Lęk'])
+
+    def test_the_average_rounds_the_way_every_other_average_in_the_app_does(self):
+        """One rounding rule across the two modules — `reports.average_rated`,
+        halves away from zero. Two rules would print the same 6,25 two ways."""
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Stres', 6)])
+        self.meal(first, hour='13:00', emotions=[('Stres', 7)])
+        self.meal(first, hour='16:00', emotions=[('Stres', 6)])
+        self.meal(first, hour='19:00', emotions=[('Stres', 6)])
+
+        # 25/4 = 6.25 → 6,3 rather than the 6,2 `round()` would give.
+        self.assertEqual(self.rows()[0]['avg_intensity'], 6.3)
+
+    def test_a_chip_is_also_still_listed_under_the_meal_that_felt_it(self):
+        """The ranking is a second reading of the same rows, never a
+        replacement: the day-by-day listing keeps its own chips."""
+        first = self.days_ago(10)
+        self.meal(first, emotions=[('Lęk', 5)])
+
+        day = self.reports()[0]['days'][0]
+
+        self.assertEqual(
+            day['meals'][0]['emotions'], [{'emotion': 'Lęk', 'intensity': 5}])
+
+
 class DetailTests(DietReportTestCase):
     def test_one_report_is_the_same_document_the_list_holds(self):
         first = self.days_ago(10)
@@ -587,9 +757,30 @@ class NothingIsAVerdictTests(DietReportTestCase):
         'delta', 'change', 'zmiana', 'trend', 'compare',
     )
 
+    #: The one key that is allowed to read like a score, named in full so the
+    #: exception cannot widen by accident.
+    #:
+    #: **WHAT THIS SWEEP IS ABOUT IS FOOD, AND `avg_intensity` IS NOT ABOUT
+    #: FOOD.** It is the mean of the 0-10 slider the patient moved herself on
+    #: §04's emotion picker — the psychotherapy form's own picker, the same ten
+    #: names, the same scale, and `reports._rank_emotions` sends the identically
+    #: named field for the identically shaped ranking. Her answer read back is
+    #: not this module scoring her eating, and §05 asks for the section by name
+    #: ("najczęstsze emocje przy jedzeniu"). Nothing about *what was eaten*
+    #: feeds it: the kind, the hour and the description are inputs to no figure
+    #: in that section.
+    #:
+    #: Everything the sweep was written to catch is still caught, including on
+    #: this section: a mean number of meals, a share of a week, a "trudny
+    #: tydzień" score, a comparison with the week before. If a second key ever
+    #: needs to be added here, that is the moment to check it against the same
+    #: question — is this number about a feeling somebody rated, or about their
+    #: food? — rather than to relax the list.
+    ALLOWED = frozenset({'avg_intensity'})
+
     def filled_report(self):
         first = self.days_ago(10)
-        self.meal(first, hour='08:00')
+        self.meal(first, hour='08:00', emotions=[('Lęk', 7), ('Spokój', None)])
         self.meal(first, hour=None)
         self.water(first, amount_ml=500)
         DietActivity.objects.create(
@@ -621,7 +812,7 @@ class NothingIsAVerdictTests(DietReportTestCase):
         keys = self.keys_of(self.filled_report())
 
         self.assertIn('days_with_entry', keys)
-        for key in keys:
+        for key in keys - self.ALLOWED:
             for forbidden in self.FORBIDDEN:
                 self.assertNotIn(
                     forbidden, key.lower(),
@@ -650,7 +841,11 @@ class NothingIsAVerdictTests(DietReportTestCase):
 
         self.assertEqual(set(report), {
             'id', 'week_start', 'week_end', 'range_label', 'days',
-            'days_with_entry', 'meal_grid',
+            'days_with_entry', 'meal_grid', 'emotions',
+        })
+        self.assertEqual(set(report['emotions']), {'meals_with_emotion', 'rows'})
+        self.assertEqual(set(report['emotions']['rows'][0]), {
+            'emotion', 'meals', 'rated_meals', 'avg_intensity',
         })
         self.assertEqual(set(report['days'][0]), {
             'date', 'meals', 'hydration', 'sleep', 'activity', 'empty',

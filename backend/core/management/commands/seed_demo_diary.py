@@ -31,6 +31,13 @@ seeding them into last week would leave every one of them empty. So the diet
 rows run from six days ago to today. `--no-diet` turns that half off for
 somebody who only wants the report.
 
+ONE RULE SILENCES ALL FOUR DIET DIARIES ON THE SAME DAYS (`is_silent_day`).
+Each of them skips days of its own, but on different days — so with four
+running, the patient turned out to have written something on every single day of
+the run and the weekly report's "brak wpisu" line was unreachable from a seeded
+database. An empty day is a real state of a real diary and §02 is explicit that
+it "nie jest brakiem"; the demo has to be able to show one.
+
 WHAT IT DOES NOT SEED, because nothing can read it back: a meal photo. That
 would be the first file this deployment ever stored, and where it lives, how
 long it is kept and which consent covers it are all unanswered — see
@@ -132,6 +139,14 @@ MEAL_SHAPES = (
      ('Obiad', '13:30', 'Zupa i kanapka, przy biurku.', (('Stres', 7),)),
      ('Przekąska', '16:20', 'Garść orzechów.', (('Frustracja', None),))),
     (('Śniadanie', '07:50', 'Jajecznica.', ()),
+     # The only 'Drugie śniadanie' in the run, and it deliberately carries no
+     # chip. §11's "emocje a rodzaj posiłku" has to be able to tell a column
+     # holding meals nobody named a feeling at (a measured zero) from one the
+     # window holds no meal of at all (an absence, drawn as a dash) — and with
+     # every kind either absent or annotated, only one of those two states
+     # would be reachable from a seed. 'Podwieczorek' stays absent, so the
+     # table shows both.
+     ('Drugie śniadanie', '10:30', 'Jogurt naturalny.', ()),
      ('Obiad', '14:00', 'Makaron z warzywami.', (('Radość', 5),)),
      ('Kolacja', '19:30', 'Kanapki przed telewizorem.',
       (('Smutek', 4), ('Spokój', 3)))),
@@ -158,6 +173,32 @@ MEAL_SHAPES = (
      ('Kolacja', '19:00', 'Ryba z warzywami.', (('Radość', 4),))),
     ((None, None, 'Wpis demonstracyjny bez szczegółów.', ()),),
 )
+
+#: Days the whole diet module stays silent on, as an offset from today.
+#:
+#: **"brak wpisu" HAS TO BE REACHABLE.** Each diary already skips days of its
+#: own — a day with no meal, a day nobody logged a walk on, a day at 0 ml — but
+#: those gaps fall on different days, so with four diaries running the patient
+#: turns out to have written *something* on every single day of the run. The
+#: weekly report then never draws its empty-day line and never draws an unfilled
+#: day chip, and §02's rule that an empty day "nie jest brakiem" is a rule the
+#: demo cannot show.
+#:
+#: Single days, never a whole week: a week nobody wrote in has no report at all
+#: (`core.diet_reports.build_diet_reports` skips it), which would read as a hole
+#: in the archive rather than as a quiet week. Every 23rd day is well inside
+#: that.
+#:
+#: The first one is deliberately close to today, so somebody opening the demo
+#: meets a quiet day on the history's first page rather than four pages in.
+SILENT_DAY_INTERVAL = 23
+SILENT_DAY_FIRST = 4
+
+
+def is_silent_day(offset):
+    """True for a day the whole diet module leaves empty. See SILENT_DAY_INTERVAL."""
+    return offset % SILENT_DAY_INTERVAL == SILENT_DAY_FIRST
+
 
 #: Water per day, in millilitres, today first. Some days under the goal and some
 #: over it, because the one thing §08 is explicit about is that the goal is "punkt
@@ -493,10 +534,25 @@ class Command(BaseCommand):
         THE WEEKLY REPORT (§10) IS THE ONE THAT LOOKS FURTHER BACK, and it is
         fed by the same rows rather than by a window of its own: a diet week is
         seven days from the patient's first entry, so `MEAL_DAYS` of history
-        yields two completed weeks and the list has something in it. Nothing
-        here writes `patient.diet_week_start` — `core/diet_reports.py` latches
-        it from the earliest row on the first request, which is the path a real
-        account takes too.
+        yields two completed weeks and the list has something in it. Those weeks
+        are what makes §05's "najczęstsze emocje przy jedzeniu" visible at all —
+        a report covers a week that has *ended*, so the chips on today's meals
+        are in no report yet, and only the ones further back are.
+
+        **`patient.diet_week_start` IS CLEARED, AND IT HAS TO BE.** The anchor is
+        written once and then never moved (`core/diet_reports.latch_week_start`)
+        — deliberately, because an anchor that drifted would renumber every
+        report a real patient has, and with it every bookmark. This command
+        deletes every diet row the patient has and writes a fresh run ending
+        today, so an anchor latched by an earlier run is stale *by
+        construction*: the weeks would be counted from a day that no longer
+        holds an entry, and the reports would be cut at boundaries matching
+        nothing in the seed. Clearing it lets the module re-latch from the
+        earliest row it just wrote, which is the path a new account takes too.
+
+        NULL rather than a date computed here, so the rule stays owned by the
+        one function that owns it and this command does not acquire a second
+        opinion about where a diet week starts.
 
         Idempotent, and by replacement rather than by window: every diet row
         the patient has is deleted first, so a second run neither doubles a day
@@ -525,8 +581,14 @@ class Command(BaseCommand):
             # one screen, which is exactly the state idempotence exists to
             # prevent. `test_a_smaller_run_clears_what_a_larger_one_left` is
             # that case.
+            # `.delete()` answers with a *total* across every model it touched,
+            # and deleting a meal cascades to its emotion chips — so the plain
+            # `[0]` counted 320 meals and 261 chips as "581 posiłków" in a line
+            # a person reads. The per-model breakdown is the second element;
+            # `.get` because a run with nothing to delete has no key for it.
             removed = DietMeal.objects.filter(
-                id_medical=patient.id_medical).delete()[0]
+                id_medical=patient.id_medical).delete()[1].get(
+                    DietMeal._meta.label, 0)
             Hydration.objects.filter(id_medical=patient.id_medical).delete()
             Supplement.objects.filter(id_medical=patient.id_medical).delete()
             DietActivity.objects.filter(id_medical=patient.id_medical).delete()
@@ -539,6 +601,14 @@ class Command(BaseCommand):
                 patient.id_medical, today, scale['supplements'])
             moves, nights = self._seed_activity_and_sleep(
                 patient.id_medical, today, meal_days)
+
+        # Outside the `medical` transaction on purpose: `patient` lives in the
+        # `default` database, and wrapping a write to one database in the
+        # other's atomic block buys nothing — the two cannot commit together
+        # anyway (CLAUDE.md: the join across them is logical only). Re-latching
+        # is idempotent and happens on the next read of /api/diet/reports/.
+        patient.diet_week_start = None
+        patient.save(update_fields=['diet_week_start'])
 
         self.stdout.write(
             f'{email}: dietetyka — {meals} posiłków w {meal_days} dniach, '
@@ -573,6 +643,10 @@ class Command(BaseCommand):
         moves = 0
         nights = 0
         for offset in range(days):
+            # The quiet days, shared with the meals and the water so that a day
+            # left empty is empty in all four diaries — see SILENT_DAY_INTERVAL.
+            if is_silent_day(offset):
+                continue
             day = today - datetime.timedelta(days=offset)
             shape = ACTIVITY_SHAPES[offset % len(ACTIVITY_SHAPES)]
 
@@ -612,12 +686,12 @@ class Command(BaseCommand):
         written = 0
         for offset in range(meal_days):
             day = today - datetime.timedelta(days=offset)
-            # One day in the run gets nothing, so the streak stops somewhere
-            # and the history screen has a gap in it — which every real diary
-            # has, and which a seed of identical days would hide. Kept inside
-            # the first week so the gap is on the history's first page, where
-            # somebody looking at the demo actually meets it.
-            if offset == 4:
+            # The quiet days, which every real diary has and a seed of
+            # identical days hides. It used to be `offset == 4` alone — one gap
+            # in the whole run, and only in the meals, so the other three
+            # diaries filled that day in and the report still had nothing
+            # empty to draw. `is_silent_day` is shared by all four.
+            if is_silent_day(offset):
                 continue
             for kind, hour, text, feelings in MEAL_SHAPES[offset % len(MEAL_SHAPES)]:
                 meal = DietMeal.objects.create(
@@ -656,6 +730,8 @@ class Command(BaseCommand):
         """
         written = 0
         for offset in range(water_days):
+            if is_silent_day(offset):
+                continue
             water_ml = WATER_ML_BY_DAY[offset % len(WATER_ML_BY_DAY)]
             day = today - datetime.timedelta(days=offset)
             left = water_ml

@@ -4,6 +4,7 @@ import type {
   DietSleepNight,
   HydrationDayTotal,
 } from './diet'
+import type { EmotionName } from '../utils/emotions'
 import type { TimeOfDay } from '../utils/timeOfDay'
 
 /**
@@ -29,16 +30,20 @@ import type { TimeOfDay } from '../utils/timeOfDay'
  * day and the sleep night — all four are real tables now, `diet_activity`,
  * `diet_activity_day` and `diet_sleep` having arrived with migration 0018.
  *
- * TODO(§05): the mockup's own report has three more sections — najczęstsze
- * emocje przy jedzeniu, głód fizyczny wobec emocjonalnego, sytuacje jedzenia
- * emocjonalnego. All three read the psychodietetic context of a meal, which is
- * §05 of the mockups: a 5-point mood, stress 0-10, two separate hunger scales,
- * emotions, the situation before the meal, fullness, satisfaction, the body's
- * reaction and free notes. **None of those columns exists** — not in
- * `DietMeal`, not in `diet_meal`, not in migration 0016 — and §04/§05's form
- * that would write them is not built. They join this shape together with that
- * form and its migration, and not before: a field invented here would be a
- * report claiming to summarise something nobody was ever asked.
+ * §05's "najczęstsze emocje przy jedzeniu" IS HERE NOW — `emotions` below. It
+ * was held back for years of this file's history for one reason, which is that
+ * `diet_meal` had no emotion to summarise; `diet_meal_emotion` and §04's picker
+ * closed that, so the section was built rather than re-argued.
+ *
+ * TODO(§05): the mockup's report has two more sections — głód fizyczny wobec
+ * emocjonalnego, and sytuacje jedzenia emocjonalnego. Both read a
+ * psychodietetic context of a meal that §05 describes (a 5-point mood, two
+ * separate hunger scales, the situation before the meal, fullness,
+ * satisfaction, the body's reaction) and that **no column holds**: not
+ * `DietMeal`, not `diet_meal`, not `diet_meal_emotion`, and §04's form asks for
+ * none of them. They join this shape together with those columns and the form
+ * that writes them, and not before: a field invented here would be a report
+ * claiming to summarise something nobody was ever asked.
  *
  * TODO(§10): "Zmiany od ostatniej wizyty" is deliberately absent as well. The
  * one pair of values the mockup says a report may compare is the two hungers
@@ -117,6 +122,60 @@ export interface DietReportDay {
   empty: boolean
 }
 
+/**
+ * One row of "Najczęstsze emocje przy jedzeniu".
+ *
+ * THE UNIT IS A MEAL, NOT A DAY, which is the one place this ranking differs
+ * from the psychotherapy report's (`ReportEmotion.days`). An emotion belongs to
+ * a meal here — the picker is on §04's meal form and `diet_meal_emotion` hangs
+ * off `diet_meal` — so two difficult meals on one Tuesday are two things that
+ * happened, and counting the Tuesday once would hide the second behind the
+ * first.
+ *
+ * **`meals` AND `ratedMeals` ARE TWO DIFFERENT QUESTIONS AND THE ROW NEEDS
+ * BOTH.** A chip can be pressed with the slider never moved — `intensity` is
+ * nullable precisely so it can be (see `DietMeal.emotions`) — and that is an
+ * answer to "was this felt" and a non-answer to "how strongly". So `meals`
+ * counts the picking, `ratedMeals` counts the rating, and `avgIntensity` is a
+ * mean over the second group only. Rendering the average as though it rested on
+ * `meals` would put a precision on the record that nobody entered, which is why
+ * the screen names the difference out loud whenever the two disagree.
+ */
+export interface DietReportEmotion {
+  emotion: EmotionName
+  /** Meals in the week this emotion was picked at. */
+  meals: number
+  /** How many of those carried a number on the slider. */
+  ratedMeals: number
+  /**
+   * Mean 0-10 intensity over the rated meals, or null when none was rated.
+   *
+   * Null rather than 0: an emotion picked three times and never rated is not
+   * an emotion rated zero three times, and this module has to keep saying so
+   * all the way to the screen.
+   */
+  avgIntensity: number | null
+}
+
+/** The whole section — the ranking and the one count its caption needs. */
+export interface DietReportEmotions {
+  /**
+   * Meals in the week carrying at least one chip.
+   *
+   * **A DENOMINATOR, NOT A SCORE.** The rows can add up to more than the meals
+   * behind them, because one meal may carry several chips, so a reader with
+   * only the rows cannot tell a week of three heavily-annotated meals from a
+   * week of twenty. That is the same reason `DietHeatmapCell.observedDays`
+   * travels, and it is the opposite of the "6 z 7 dni" regularity score §15
+   * rules out: it exists so a number cannot be misread, not so one can be
+   * awarded.
+   */
+  mealsWithEmotion: number
+  /** Most often picked first. Empty for a week nobody picked a chip in, which
+   *  is an ordinary week and draws no section at all. */
+  rows: DietReportEmotion[]
+}
+
 export interface DietWeeklyReport {
   /** 'week-2026-09-01', keyed on the week's first day — see utils/dietWeeks.ts. */
   id: string
@@ -135,4 +194,19 @@ export interface DietWeeklyReport {
    */
   daysWithEntry: number
   mealGrid: DietReportMealGrid
+  /**
+   * §05's "najczęstsze emocje przy jedzeniu", derived from the chips on the
+   * week's meals.
+   *
+   * **THE ONE PLACE THIS MODULE COUNTS AND AVERAGES, AND THE LINE IS WHAT THE
+   * NUMBER IS ABOUT.** Everything else here is a listing because the module
+   * does not score *food*. A figure in this section rates a feeling the patient
+   * put on a slider herself, in the app's one ten-name vocabulary and on the
+   * same 0-10 scale the psychotherapy diary uses, so it is her answer read back
+   * rather than a verdict on a meal. Nothing about what was eaten feeds it: the
+   * kind, the hour and the description are inputs to no number below. A section
+   * here that started describing the food would have crossed the line this
+   * paragraph draws.
+   */
+  emotions: DietReportEmotions
 }

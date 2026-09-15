@@ -175,56 +175,11 @@
   color: var(--color-graphite-muted);
 }
 
-/* Rankings (emotions, triggers) */
-
-.report-ranking {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.report-ranking-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.report-ranking-label {
-  font-family: var(--font-body);
-  font-weight: var(--font-weight-semibold);
-  font-size: 14px;
-  color: var(--color-graphite);
-}
-
-.report-ranking-count {
-  font-family: var(--font-body);
-  font-size: 13px;
-  color: var(--color-graphite-muted);
-  white-space: nowrap;
-}
-
-/* The second number on an emotion row. Lighter than the day count next to it:
-   how often is what the section ranks by, how strongly is the detail. It shares
-   the count's `white-space: nowrap`, so on a narrow phone the pair wraps below
-   the label as one block rather than splitting mid-figure. */
-.report-ranking-average {
-  color: var(--color-sage-hover);
-}
-
-.report-ranking-track {
-  width: 100%;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(var(--shadow-tint), 0.1);
-  overflow: hidden;
-}
-
-.report-ranking-fill {
-  height: 100%;
-  border-radius: 999px;
-}
+/* Rankings (emotions, triggers) now live in components/charts.css, which
+   `ReportRankingBars` imports itself: the diet module's weekly report draws the
+   same bars for "Najczęstsze emocje przy jedzeniu", and a screen should not
+   have to import another module's stylesheet to get at a shared component. The
+   same move `AnalysisBarChart` made. */
 
 /* Risky behaviour — ochre and quiet, matching the entry form's own treatment. */
 

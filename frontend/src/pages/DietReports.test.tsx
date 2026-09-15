@@ -51,6 +51,8 @@ function reportFixture(
     daysWithEntry: 3,
     days: [],
     mealGrid: { slots: [], rows: [] },
+    // The list screen draws no emotion at all -- the ranking is on the detail.
+    emotions: { mealsWithEmotion: 0, rows: [] },
     ...overrides,
   }
 }

@@ -116,6 +116,29 @@
   margin: 0 0 14px;
 }
 
+/* The line between a card's heading and its content: what the figures below
+   were counted out of. It sits above them because it is a denominator rather
+   than an afterthought — a reader who meets the bars first has already formed
+   an impression of how much evidence is behind them. */
+.diet-report-card-caption {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: -8px 0 16px;
+}
+
+/* And the line under it: what the figures mean, and what they are not. Same
+   register as the page's own footnote, which says the same thing about the
+   report as a whole. */
+.diet-report-card-note {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-graphite-muted);
+  margin: 18px 0 0;
+}
+
 /* Regularność wpisów — seven chips, in the week's own order */
 
 .diet-report-days {
@@ -232,15 +255,27 @@
 .diet-report-days-list {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 8px;
+}
+
+/* A rule between the days rather than only space, because the four diaries
+   inside one day are themselves separated by space now — without a line, the
+   eye cannot tell where Thursday ends and Friday begins. Not on the first,
+   which would read as a rule under the heading above it. */
+.diet-report-day + .diet-report-day {
+  border-top: 1px solid var(--color-divider);
+  padding-top: 18px;
 }
 
 .diet-report-day h3 {
   font-family: var(--font-heading);
   font-weight: var(--font-weight-semibold);
-  font-size: 15px;
+  /* A step up from the group labels under it (13px). The day is the unit this
+     card is a list of, and at 15px against a bold 13px it was barely the
+     louder of the two. */
+  font-size: 17px;
   color: var(--color-graphite);
-  margin: 0 0 6px;
+  margin: 0 0 10px;
 }
 
 /* Quieter and italic, so it reads as the app speaking rather than as the
@@ -253,25 +288,59 @@
   margin: 0;
 }
 
+/* The day's four diaries, side by side where there is room for them.
+ *
+ * **THE PROBLEM THIS SOLVES IS THAT THREE OF THE FOUR ARE TINY.** "Nawodnienie"
+ * is one line, "Aktywność" two, "Sen" five, and none of them is wider than
+ * about 340px — measured on a real seeded week against a 640px card. Stacked,
+ * a single day ran to some 550px of height with more than half the width empty,
+ * and seven of those made the section around 4000px long: a wall of short lines
+ * that reads as cramped precisely because it is so sparse.
+ *
+ * `auto-fit` with a 180px floor puts all three on one row inside the 640px card
+ * — three columns of about 195px — and collapses to one on a phone, so the
+ * narrow case is the same layout rather than a second one behind a media query.
+ *
+ * THE FLOOR IS 180 RATHER THAN 220 BECAUSE OF THE THIRD COLUMN. At 220 only two
+ * fit, which left "Aktywność" alone on a second row with the whole right half
+ * of the card empty beside it — tidier than the stack it replaced and still
+ * obviously unbalanced. Three short groups on one row is the shape the content
+ * actually has.
+ *
+ * **THE GRID CELLS ARE `<div>`s INSIDE THE `<dl>`, WHICH IS DELIBERATE AND
+ * VALID.** A `dt` and its `dd` are two separate grid items, so a bare `<dl>`
+ * would put a label in one column and its content in the next — the pairing
+ * would break the moment a day held an odd number of diaries. HTML allows a
+ * `div` to wrap a term-description group for exactly this, and it keeps the
+ * `dl` semantics the screen reader relies on.
+ */
 .diet-report-day-facts {
   margin: 0;
-  border-left: 2px solid var(--color-divider);
-  padding-left: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px 24px;
+  /* Otherwise a one-line "Nawodnienie" stretches to the height of the five-line
+     "Sen" beside it and its label floats in the middle of nothing. */
+  align-items: start;
+}
+
+/* Meals span the row. See the comment at the markup: a description somebody
+   typed as a sentence needs the width, and it is the one group that has it. */
+.diet-report-group-wide {
+  grid-column: 1 / -1;
 }
 
 .diet-report-day-facts dt {
   font-weight: var(--font-weight-semibold);
   font-size: 13px;
   color: var(--color-sage-hover);
-  margin-top: 10px;
-}
-
-.diet-report-day-facts dt:first-child {
-  margin-top: 0;
+  /* The rhythm inside a group is now the gap between groups, so the label sits
+     directly on top of what it names rather than carrying its own margin. */
+  margin: 0;
 }
 
 .diet-report-day-facts dd {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
 }
 
 .diet-report-meals,
@@ -342,7 +411,12 @@
   color: var(--color-graphite-muted);
 }
 
+/* A second line under the activity it belongs to, indented so it reads as a
+   continuation of that row rather than as a row of its own. */
 .diet-report-fact-aside {
+  display: block;
+  padding-left: 12px;
+  font-size: 13px;
   color: var(--color-graphite-muted);
 }
 

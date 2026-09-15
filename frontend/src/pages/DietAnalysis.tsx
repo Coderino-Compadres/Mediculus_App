@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AnalysisBarChart, { type BarRow } from '../components/AnalysisBarChart'
+import EmotionCrossTable from '../components/EmotionCrossTable'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import ReportRankingBars, { type RankingRow } from '../components/ReportRankingBars'
 import WeekdayTimeHeatmap, { type HeatmapReading } from '../components/WeekdayTimeHeatmap'
 import { ApiError } from '../api/client'
 import { fetchDietHistory } from '../api/diet'
@@ -13,12 +15,13 @@ import {
   MEAL_DENSITY_GRADIENT,
   buildDietAnalysis,
   mealDensityColor,
-  mealsGenitive,
   timesPlural,
 } from '../utils/dietAnalysis'
+import { emotionRatingNote } from '../utils/dietReport'
+import { EMOTION_COLORS } from '../utils/emotions'
 import { pluralDays } from '../utils/reports'
 import { TIME_OF_DAY_LABELS } from '../utils/timeOfDay'
-import { pluralMeals } from '../utils/meals'
+import { mealsGenitive, pluralMeals } from '../utils/meals'
 import type { DietAnalysis as DietAnalysisData } from '../types/dietAnalysis'
 import type { DietJournalDay } from '../types/diet'
 import { ROUTES } from '../routes'
@@ -50,11 +53,21 @@ import './dietAnalysis.css'
  * - **no fraction, percentage or progress bar.** Every number on this screen is
  *   a plain count of days, the same rule `core/diet_reports.py` is built under.
  *
- * WHAT IS MISSING IS MISSING FROM THE BACKEND, not from here. Three of §11's
- * four charts read the psychodietetic context of a meal (§05), whose columns do
- * not exist; sleep, activity and hydration have no endpoint reaching further
- * back than a day or a week. Both lists, with the names of the server-side
- * functions that already exist, are at the head of `utils/dietAnalysis.ts`.
+ * **THE EMOTION CARDS ARE THE ONE EXCEPTION TO THE THIRD RULE ABOVE, AND THE
+ * LINE IS WHAT THE NUMBER IS ABOUT.** They count meals and they average a 0-10
+ * intensity. That intensity is a slider the patient moved herself on §04's
+ * picker — the psychotherapy form's picker, the same ten names — so it is her
+ * answer read back rather than this screen grading her eating. Nothing about
+ * the food feeds it: the description is an input to no figure, and the kind and
+ * the hour are used only to say *when* a feeling came up. A card here that
+ * began describing the meals would have crossed the line.
+ *
+ * WHAT IS STILL MISSING IS MISSING FROM THE BACKEND, not from here. Two of
+ * §11's charts read a psychodietetic context of a meal that has no column at
+ * all (§05's two hunger scales, the situation before a meal); sleep, activity
+ * and hydration have no endpoint reaching further back than a day or a week.
+ * Both lists, with the names of the server-side functions that already exist,
+ * are at the head of `utils/dietAnalysis.ts`.
  */
 
 const LOAD_ERROR = 'Nie udało się wczytać Twojej analizy. Spróbuj ponownie.'
@@ -169,6 +182,133 @@ function slotBars(analysis: DietAnalysisData): BarRow[] {
     color: 'var(--color-ochre-text)',
     title: `${TIME_OF_DAY_LABELS[share.slot]}: ${share.days} ${pluralDays(share.days)} z posiłkiem o tej porze`,
   }))
+}
+
+/**
+ * The emotions ranking, as the shared bars read it.
+ *
+ * `measure` stays at its default 'count': the bar draws how *often* a feeling
+ * came up, which is what §11 asks this chart for. The same component draws the
+ * psychotherapy report's ranking against intensity, because that section is
+ * named for strength — `ReportRankingBars` carries the argument.
+ *
+ * The same rows the weekly report builds, deliberately: §10's card and this one
+ * ask one question over two stretches of time, and a patient crossing between
+ * them must not meet two units. `emotionRatingNote` is shared for the same
+ * reason.
+ */
+function emotionRows(analysis: DietAnalysisData): RankingRow[] {
+  return analysis.emotions.ranking.map((share) => ({
+    label: share.emotion,
+    count: share.meals,
+    // The app's one palette, the same colours the chips under each meal use.
+    color: EMOTION_COLORS[share.emotion],
+    average: share.avgIntensity,
+    note: emotionRatingNote(share),
+  }))
+}
+
+/**
+ * §11's three emotion charts — the ranking and the crossings under it.
+ *
+ * Renders nothing for a window holding no chip at all. An empty ranking, or a
+ * "brak emocji", would read as a question the patient failed to answer; §05's
+ * rule is that no field blocks a save, so meals saved without an emotion are
+ * ordinary meals and the screen simply has fewer cards. The same rule
+ * `MealEmotions` follows for one meal and `EmotionRanking` for a report.
+ *
+ * THE CROSSINGS ARE DRAWN ONLY WHEN THE RANKING IS, and they are not gated on
+ * anything further. That is a real decision and it differs from the heat map
+ * above, which hides itself below DIET_HEATMAP_MIN_DAYS: that map's squares are
+ * *shaded* and a shade is read as a claim about a habit even when it rests on
+ * one day, so it has to be withheld. Every cell here prints its own count, so a
+ * table drawn from three meals says "1", "1" and "1" and is read as exactly
+ * that. Withholding it would mean withholding the only record the patient has
+ * of what she wrote.
+ */
+function EmotionCards({ analysis }: { analysis: DietAnalysisData }) {
+  const { emotions } = analysis
+  if (emotions.ranking.length === 0) return null
+
+  const { mealsWithEmotion } = emotions
+
+  return (
+    <>
+      <section className="diet-analysis-card">
+        <h2>Najczęstsze emocje przy jedzeniu</h2>
+        {/* One meal may carry several chips, so the rows can add up to more than
+            the meals behind them. The count is said before the bars for the
+            reason the heat map's second number exists: a figure the reader
+            cannot place is a figure they will place wrongly. */}
+        <p className="diet-analysis-card-subtitle">
+          Z {mealsWithEmotion} {mealsGenitive(mealsWithEmotion)} z tego okresu, przy których
+          zapisałaś lub zapisałeś emocję
+        </p>
+        <ReportRankingBars
+          rows={emotionRows(analysis)}
+          // Unreachable: the card returns null above rather than drawing an
+          // empty ranking. Worded as the ordinary answer it would be anyway.
+          emptyText="W tym okresie nie ma posiłku z zapisaną emocją."
+          countLabel={pluralMeals}
+        />
+        <p className="diet-analysis-aside">
+          Liczba mówi, przy ilu posiłkach pojawiła się dana emocja. Średnia dotyczy natężenia,
+          które oceniłaś lub oceniłeś na suwaku — nie ocenia jedzenia.
+        </p>
+      </section>
+
+      <section className="diet-analysis-card">
+        <h2>Emocje a pora dnia</h2>
+        <p className="diet-analysis-card-subtitle">
+          Liczba posiłków z daną emocją według pory dnia
+        </p>
+        <EmotionCrossTable
+          cross={emotions.byTimeOfDay}
+          caption="Liczba posiłków z daną emocją, według pory dnia"
+        />
+        {/* The one sentence the colour needs, and it has to keep being said: a
+            grid of tints invites a comparison between rows that the shading
+            does not support. */}
+        <p className="diet-analysis-aside">
+          Kolor porównuje pory dnia w obrębie jednego wiersza — pokazuje, kiedy dana emocja
+          wracała najczęściej. Nie porównuje emocji między sobą; do tego jest wykres wyżej.
+        </p>
+      </section>
+
+      <section className="diet-analysis-card">
+        <h2>Emocje a rodzaj posiłku</h2>
+        <p className="diet-analysis-card-subtitle">
+          Liczba posiłków z daną emocją według rodzaju posiłku
+        </p>
+        <EmotionCrossTable
+          cross={emotions.byKind}
+          caption="Liczba posiłków z daną emocją, według rodzaju posiłku"
+        />
+        <p className="diet-analysis-aside">
+          Kreska oznacza rodzaj posiłku, którego w tym okresie nie ma — to nie to samo co zero.
+        </p>
+      </section>
+
+      <section className="diet-analysis-card">
+        <h2>Emocje w czasie</h2>
+        <p className="diet-analysis-card-subtitle">
+          Liczba posiłków z daną emocją w kolejnych tygodniach okresu
+        </p>
+        <EmotionCrossTable
+          cross={emotions.byWeek}
+          caption="Liczba posiłków z daną emocją, tydzień po tygodniu"
+        />
+        {/* Said plainly, because the last column is usually short (thirty days
+            is four sevens and two) and a column standing for two days would
+            otherwise read as a quiet week. */}
+        <p className="diet-analysis-aside">
+          Tygodnie liczone są od pierwszego dnia okresu, więc ostatni bywa krótszy — jego daty
+          są w podpowiedzi nagłówka. To nie są tygodnie z raportów, które liczą się od Twojego
+          pierwszego wpisu.
+        </p>
+      </section>
+    </>
+  )
 }
 
 /** The screen for somebody who has never saved a meal. Empty charts and a row of
@@ -357,6 +497,8 @@ function DietAnalysis() {
               </p>
             )}
           </section>
+
+          <EmotionCards analysis={analysis} />
 
           <section className="diet-analysis-note-banner">
             <span aria-hidden="true">ⓘ</span>

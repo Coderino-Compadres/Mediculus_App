@@ -65,6 +65,7 @@ import type { SleepQuality, WakeFeeling } from '../utils/sleep'
 import type {
   DietMealSlot,
   DietReportDay,
+  DietReportEmotions,
   DietWeeklyReport,
 } from '../types/dietReport'
 import type {
@@ -847,6 +848,20 @@ interface ReportDayPayload {
   empty: boolean
 }
 
+/** One row of "Najczęstsze emocje przy jedzeniu", as
+ *  `core.diet_reports._rank_meal_emotions` sends it. */
+interface ReportEmotionPayload {
+  emotion: string
+  meals: number
+  rated_meals: number
+  avg_intensity: number | null
+}
+
+interface ReportEmotionsPayload {
+  meals_with_emotion: number
+  rows: ReportEmotionPayload[]
+}
+
 interface ReportPayload {
   id: string
   week_start: string
@@ -855,6 +870,15 @@ interface ReportPayload {
   days: ReportDayPayload[]
   days_with_entry: number
   meal_grid: ReportMealGridPayload
+  /**
+   * Optional on the wire and nowhere else.
+   *
+   * The same defence `DietMealPayload.emotions` carries, for the same reason: a
+   * browser holding this release against a server one release behind it gets a
+   * report with no `emotions` key, and reading `.rows` off undefined would take
+   * out the whole screen over a section that is allowed to be empty anyway.
+   */
+  emotions?: ReportEmotionsPayload
 }
 
 function toReportDay(payload: ReportDayPayload): DietReportDay {
@@ -865,6 +889,24 @@ function toReportDay(payload: ReportDayPayload): DietReportDay {
     sleep: payload.sleep ? toSleepNight(payload.sleep) : null,
     activity: payload.activity ? toActivityDay(payload.activity) : null,
     empty: payload.empty,
+  }
+}
+
+function toReportEmotions(payload: ReportEmotionsPayload | undefined): DietReportEmotions {
+  return {
+    mealsWithEmotion: payload?.meals_with_emotion ?? 0,
+    rows: (payload?.rows ?? []).map((row) => ({
+      // One of the ten, the same assertion `toMeal` makes about the chips on a
+      // meal: the server writes them through a ChoiceField over
+      // `core.emotions.EMOTIONS`, and `emotions.test.ts` pins that list against
+      // `EmotionName` in both directions.
+      emotion: row.emotion as EmotionName,
+      meals: row.meals,
+      ratedMeals: row.rated_meals,
+      // Null stays null. A mean over nothing is not a zero, and the row renders
+      // as a count alone when it is missing.
+      avgIntensity: row.avg_intensity,
+    })),
   }
 }
 
@@ -886,6 +928,7 @@ function toReport(payload: ReportPayload): DietWeeklyReport {
         })),
       })),
     },
+    emotions: toReportEmotions(payload.emotions),
   }
 }
 
