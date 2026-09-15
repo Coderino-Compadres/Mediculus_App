@@ -83,6 +83,29 @@ ON CONFLICT (id_user) DO UPDATE SET
     id_specjalist = EXCLUDED.id_specjalist,
     specjalist_accepted_at = EXCLUDED.specjalist_accepted_at;
 
+-- The diet module's week anchor, cleared so it re-latches onto whatever the
+-- diet section of this file has seeded.
+--
+-- **A DIET WEEK IS COUNTED FROM THE PATIENT'S FIRST ENTRY, AND THE DAY IT
+-- STARTS ON IS STORED** (`patient.diet_week_start`, migration 0019). It is
+-- written once, on the first read of /api/diet/reports/, and then never moved —
+-- deliberately, because an anchor that drifted would renumber every report a
+-- real patient has, and with it every bookmark and every reference two people
+-- in a consulting room might make to one.
+--
+-- That is right for a real account and wrong for a seed. Everything in the diet
+-- section below is relative to CURRENT_DATE, so it moves forward every day; an
+-- anchor latched during an earlier run points at an absolute date the seed no
+-- longer reaches, and the reports come out cut at boundaries matching nothing
+-- in the data. The symptom is a report list that looks entirely plausible and
+-- is wrong, which is the worst kind to debug.
+--
+-- NULL rather than a date computed here: `core/diet_reports.latch_week_start`
+-- owns the rule, and a seed with a second opinion about where a week starts is
+-- how the two quietly disagree. `seed_demo_diary` clears it for the same reason.
+UPDATE patient SET diet_week_start = NULL
+WHERE id_medical = 'c0000000-0000-0000-0000-000000000005';
+
 -- accepted_at is set: this is an established family, not a pending request. A
 -- NULL here would mean the guardian has not answered yet, which would leave the
 -- seeded child's account blocked (see core/guardian.py).
@@ -308,6 +331,13 @@ WHERE NOT EXISTS (
 --     without a word of congratulation, which is the rule §08 states
 --   * the three preparations from §08's own artboard, with two of the three
 --     ticked off for today -- exactly the state it draws
+--   * meals going back 24 days, with emotions on some of them in every closed
+--     week -> §10's "Najczęstsze emocje przy jedzeniu" and §11's three emotion
+--     crossings have something to draw. This is the one part of the seed that
+--     is shaped for a screen showing *last* week rather than today: a report
+--     covers a week that has ended, so chips on today's meals appear in no
+--     report at all, and a seed that stopped at three days back left that
+--     section empty everywhere it can be opened.
 --
 -- NOTHING HERE COUNTS FOOD. There is no portion, no weight and no calorie
 -- column to seed: §04 states that scope outright ("nie liczy jedzenia --
@@ -369,8 +399,47 @@ INSERT INTO diet_meal (id_meal, id_medical, entry_date, kind, eaten_at, descript
     ('f1000000-0000-0000-0000-000000000151', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 15,               'Obiad',           '12:50', 'Pierogi, bardzo dużo.'),
     ('f1000000-0000-0000-0000-000000000181', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 18,               'Śniadanie',       '09:10', 'Omlet.'),
     ('f1000000-0000-0000-0000-000000000182', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 18,               'Kolacja',         '19:40', 'Kasza z warzywami.'),
-    ('f1000000-0000-0000-0000-000000000201', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 20,               'Obiad',           '13:20', 'Obiad w kantynie, nie pamiętam co.')
-ON CONFLICT (id_meal) DO NOTHING;
+    ('f1000000-0000-0000-0000-000000000201', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 20,               'Obiad',           '13:20', 'Obiad w kantynie, nie pamiętam co.'),
+
+    -- The oldest stretch, and it is here for the weekly report rather than for
+    -- the history screen.
+    --
+    -- **A DIET WEEK IS SEVEN DAYS FROM THE PATIENT'S FIRST ENTRY**, not a
+    -- Monday, and a report exists only once its week has *ended*. With the run
+    -- starting 20 days back that gave two closed weeks; starting it at 24 gives
+    -- three, and — because 25 days do not divide by seven — it also makes the
+    -- last bucket of §11's "Emocje w czasie" a short one, which is the state
+    -- that column's own caption exists to explain. Both are states a demo
+    -- cannot otherwise be walked into.
+    ('f1000000-0000-0000-0000-000000000211', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 21,               'Śniadanie',       '08:00', 'Płatki z mlekiem.'),
+    ('f1000000-0000-0000-0000-000000000212', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 21,               'Kolacja',         '19:20', 'Kanapki, sama w domu.'),
+    ('f1000000-0000-0000-0000-000000000221', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 22,               'Obiad',           '13:45', 'Coś na szybko między spotkaniami.'),
+    ('f1000000-0000-0000-0000-000000000241', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 24,               'Śniadanie',       '08:40', 'Chleb z twarożkiem.'),
+    ('f1000000-0000-0000-0000-000000000242', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 24,               'Obiad',           '13:10', 'Zupa z pracy.'),
+    -- After 22:00, so it lands in the "Noc" column — the bucket that wraps
+    -- midnight, and the module's deliberate departure from the artboard's own
+    -- bands. Without a row here the night column is empty in every closed week
+    -- and §11's map looks like it has three parts of the day.
+    ('f1000000-0000-0000-0000-000000000243', 'c0000000-0000-0000-0000-000000000005', CURRENT_DATE - 24,               'Kolacja',         '22:40', 'Jadłam późno, po powrocie.')
+-- DO UPDATE rather than DO NOTHING, unlike most of this file, and the reason is
+-- the dates rather than the columns.
+--
+-- **EVERY ROW HERE IS RELATIVE TO CURRENT_DATE, SO A RE-RUN HAS TO RE-ANCHOR
+-- IT.** Skipped, a database seeded three weeks ago keeps these meals at the
+-- absolute dates they got then — so they slide out of §02's today, out of §07's
+-- history, out of §11's rolling window, and the whole diet module goes quiet
+-- while the script reports success. Worse on a second run: the rows added since
+-- would land at today's reckoning next to rows from the old one, which is two
+-- different weeks' worth of data on one screen.
+--
+-- Re-running the seed is the way this file is meant to be used (the header says
+-- so of the diary half too), so it has to leave the same picture every time
+-- rather than only the first.
+ON CONFLICT (id_meal) DO UPDATE SET
+    entry_date = EXCLUDED.entry_date,
+    kind = EXCLUDED.kind,
+    eaten_at = EXCLUDED.eaten_at,
+    description = EXCLUDED.description;
 
 -- ----------------------------
 -- DIET_MEAL_EMOTION
@@ -385,23 +454,104 @@ ON CONFLICT (id_meal) DO NOTHING;
 -- The names are core.emotions.EMOTIONS, spelled exactly: the API refuses
 -- anything else, and a row seeded with a name outside the ten would render a
 -- chip with no colour.
+--
+-- **THE CHIPS HAVE TO REACH THE CLOSED WEEKS, NOT ONLY THE LAST FEW DAYS.**
+-- This block used to stop at CURRENT_DATE - 2, which lit up the meal rows on
+-- §02 and §07 and left §10's "Najczęstsze emocje przy jedzeniu" empty on every
+-- report the demo can open — a report covers a week that has *ended*, so the
+-- chips on today's meals are in no report at all. The spread below puts a
+-- ranking in each of the three closed weeks.
+--
+-- SHAPED SO EACH SCREEN'S AWKWARD CASE IS REACHABLE, rather than scattered:
+--   * one emotion clearly the most frequent          -> a ranking with an order
+--     ('Stres'), and two tied on count in week -10   to read, and the tie-break
+--     with different averages ('Spokój'/'Radość')    on the average visible
+--   * a chip picked and left UNRATED in every week   -> "Natężenie nie zostało
+--     ('Bezradność', 'Wstyd', 'Smutek')                 ocenione" on a row
+--   * chips on the meal with NO KIND and on the one  -> the "Bez rodzaju" and
+--     with NO HOUR                                      "Bez godziny" columns of
+--                                                       §11's crossings, which
+--                                                       are drawn only when such
+--                                                       a meal exists
+--   * meals with no chip at all, in every week       -> the ordinary case §05
+--                                                       allows, and the measured
+--                                                       zero in a crossing
+--
+-- Deliberately mixed rather than uniformly bleak: this is a demo of a food
+-- diary, not a portrait of a patient, and a seed where every meal is 'Wstyd'
+-- would put a verdict on the module's own screens. Nothing here is a judgement
+-- of the food — the number rates a feeling, which is the line §05's section is
+-- built on (see core/diet_reports._rank_meal_emotions).
 -- ----------------------------
 INSERT INTO diet_meal_emotion (id_meal, emotion, intensity) VALUES
+    -- === The running week (CURRENT_DATE - 3 .. today) ===
+    -- Visible on §02, §07 and §11, and in no report yet: its week has not ended.
+
     -- Today: a calm breakfast, a stressful lunch, and a snack the patient
     -- named an emotion for without rating it.
-    ('f1000000-0000-0000-0000-000000000001', 'Spokój',     6),
-    ('f1000000-0000-0000-0000-000000000002', 'Stres',      7),
+    ('f1000000-0000-0000-0000-000000000001', 'Spokój',        6),
+    ('f1000000-0000-0000-0000-000000000002', 'Stres',         7),
     ('f1000000-0000-0000-0000-000000000003', 'Frustracja', NULL),
-    ('f1000000-0000-0000-0000-000000000003', 'Wstyd',      4),
+    ('f1000000-0000-0000-0000-000000000003', 'Wstyd',         4),
 
-    -- Yesterday: two on one meal, and one meal with none.
-    ('f1000000-0000-0000-0000-000000000011', 'Spokój',     5),
-    ('f1000000-0000-0000-0000-000000000014', 'Smutek',     4),
+    -- Yesterday: two on one meal, and two meals with none.
+    ('f1000000-0000-0000-0000-000000000011', 'Spokój',        5),
+    ('f1000000-0000-0000-0000-000000000014', 'Smutek',        4),
     ('f1000000-0000-0000-0000-000000000014', 'Bezradność', NULL),
 
-    ('f1000000-0000-0000-0000-000000000021', 'Stres',      8),
-    ('f1000000-0000-0000-0000-000000000022', 'Radość',     5)
-ON CONFLICT (id_meal, emotion) DO NOTHING;
+    ('f1000000-0000-0000-0000-000000000021', 'Stres',         8),
+    ('f1000000-0000-0000-0000-000000000022', 'Radość',        5),
+    -- The meal saved with NO KIND, at 22:10. It is what puts a "Bez rodzaju"
+    -- column on §11's "Emocje a rodzaj posiłku" and a row in "Noc".
+    ('f1000000-0000-0000-0000-000000000023', 'Wstyd',         6),
+    ('f1000000-0000-0000-0000-000000000023', 'Poczucie winy', NULL),
+
+    ('f1000000-0000-0000-0000-000000000031', 'Bezradność',    6),
+    -- The meal saved with NO HOUR — the "Bez godziny" column of "Emocje a pora
+    -- dnia", which is drawn only when the window holds such a meal.
+    ('f1000000-0000-0000-0000-000000000032', 'Smutek',        5),
+
+    -- === Week CURRENT_DATE - 10 .. - 4 (closed, the newest report) ===
+    -- 'Spokój' and 'Radość' both land at three meals here, with different
+    -- averages: the ranking's tie-break on the average, on screen.
+    ('f1000000-0000-0000-0000-000000000051', 'Spokój',        5),
+    ('f1000000-0000-0000-0000-000000000052', 'Radość',        6),
+    ('f1000000-0000-0000-0000-000000000053', 'Smutek',     NULL),
+    ('f1000000-0000-0000-0000-000000000061', 'Spokój',        7),
+    ('f1000000-0000-0000-0000-000000000062', 'Radość',        8),
+    ('f1000000-0000-0000-0000-000000000071', 'Spokój',        6),
+    ('f1000000-0000-0000-0000-000000000072', 'Frustracja',    5),
+    ('f1000000-0000-0000-0000-000000000091', 'Radość',        7),
+    ('f1000000-0000-0000-0000-000000000092', 'Poczucie winy', 5),
+
+    -- === Week CURRENT_DATE - 17 .. - 11 (closed) ===
+    ('f1000000-0000-0000-0000-000000000121', 'Stres',         6),
+    ('f1000000-0000-0000-0000-000000000122', 'Radość',        5),
+    ('f1000000-0000-0000-0000-000000000123', 'Stres',         8),
+    ('f1000000-0000-0000-0000-000000000123', 'Wstyd',      NULL),
+    ('f1000000-0000-0000-0000-000000000131', 'Spokój',        6),
+    ('f1000000-0000-0000-0000-000000000141', 'Spokój',        5),
+    ('f1000000-0000-0000-0000-000000000142', 'Stres',         4),
+    ('f1000000-0000-0000-0000-000000000151', 'Poczucie winy', 6),
+
+    -- === Week CURRENT_DATE - 24 .. - 18 (closed, the oldest report) ===
+    ('f1000000-0000-0000-0000-000000000181', 'Spokój',        6),
+    ('f1000000-0000-0000-0000-000000000182', 'Bezradność', NULL),
+    ('f1000000-0000-0000-0000-000000000201', 'Stres',         7),
+    ('f1000000-0000-0000-0000-000000000212', 'Smutek',        6),
+    ('f1000000-0000-0000-0000-000000000221', 'Stres',         5),
+    ('f1000000-0000-0000-0000-000000000241', 'Spokój',        5),
+    ('f1000000-0000-0000-0000-000000000242', 'Stres',         6),
+    -- The 22:40 supper: the "Noc" column in a week a report actually covers.
+    ('f1000000-0000-0000-0000-000000000243', 'Poczucie winy', 7),
+    ('f1000000-0000-0000-0000-000000000243', 'Wstyd',         4)
+-- DO UPDATE for the same reason the meals above take one: a re-run has to leave
+-- the same picture. Here it is the rating rather than a date -- an intensity
+-- edited in this file would otherwise never reach a database that already held
+-- the row, and the difference between 7 and NULL is a whole branch of the
+-- screens (an average, or the sentence that says there is none).
+ON CONFLICT (id_meal, emotion) DO UPDATE SET
+    intensity = EXCLUDED.intensity;
 
 -- ----------------------------
 -- HYDRATION
@@ -508,3 +658,335 @@ INSERT INTO supplement_intake (id_intake, id_supplement, entry_date) VALUES
     ('f4000000-0000-0000-0000-000000000021', 'f3000000-0000-0000-0000-000000000001', CURRENT_DATE - 2),
     ('f4000000-0000-0000-0000-000000000022', 'f3000000-0000-0000-0000-000000000003', CURRENT_DATE - 2)
 ON CONFLICT (id_intake) DO NOTHING;
+
+
+-- ============================================================
+-- GŁĘBOKA HISTORIA DIETETYCZNA — 120 dni, generowana
+--
+-- WHY THIS BLOCK IS GENERATED WHILE THE REST OF THE FILE IS LITERAL. Everything
+-- above is written out row by row, because each row is there for a reason
+-- somebody can read: the meal with no kind, the one with no hour, the empty
+-- description, the gap that stops the streak at four. Those are *shapes*, and a
+-- shape has to be legible.
+--
+-- This block is not shapes, it is **volume**. §10's report list, its pagination
+-- (7 per page) and §11's rolling window all need more history than anybody will
+-- hand-write correctly: 120 days is around 300 meals, and 300 literal rows is a
+-- file nobody reads and nobody keeps accurate. So the days are generated from a
+-- rotation, and what is worth reading is the rotation rather than its output.
+--
+-- WHAT IT ADDS THAT THE FILE DID NOT HAVE AT ALL: `diet_activity`,
+-- `diet_activity_day` and `diet_sleep`. Those tables arrived with migration 0018
+-- and this seed never wrote them, so every day of every weekly report said "nie
+-- wpisano" for three of its four diaries — a report that looked like a week
+-- somebody only ate in.
+--
+-- **EVERY ROW HERE HAS A UUID BEGINNING `fe5eed00`**, and that is load-bearing
+-- rather than decorative: it is what lets the block be deleted and rewritten on
+-- a re-run (the dates are relative to CURRENT_DATE, so they have to be)
+-- **without touching anything a person entered through the app**. A meal
+-- somebody typed into the demo account keeps a random UUID and survives every
+-- re-seed.
+--
+-- EIGHT HEX CHARACTERS RATHER THAN TWO, and the length is the whole point. A
+-- two-character marker matches a random UUID once in 256 -- measured against a
+-- real development database, `LIKE 'fe%'` already matched three rows nobody
+-- generated -- so the delete below would eventually take somebody's own entry
+-- with it. At eight the chance is one in four billion per row, which is the
+-- difference between a marker and a coincidence.
+--
+-- **`d % 23 <> 5` APPEARS IN EVERY BLOCK BELOW, AND IT IS ONE RULE RATHER THAN
+-- SIX COINCIDENCES.** Each diary skips days of its own (a day with no meal, a
+-- day nobody logged a walk on), but those gaps fall on different days, so with
+-- four diaries running the patient ends up having written *something* every
+-- single day of 120 -- and "brak wpisu" becomes unreachable. It is a real state
+-- of a real diary, the report draws a day chip and a line for it, and §02 is
+-- explicit that an empty day "nie jest brakiem". So one shared rule silences
+-- every diary on the same handful of days. They are single days, never a whole
+-- week: a week nobody wrote in has no report at all (`build_diet_reports` skips
+-- it), which would read as a hole in the archive rather than as a quiet week.
+--
+-- NOTHING HERE COUNTS FOOD, exactly as above: no portion, no weight, no calorie.
+-- The emotions are the one thing that is counted, and what they count is a
+-- feeling the patient rated -- see core/diet_reports._rank_meal_emotions.
+-- ============================================================
+
+-- The previous generation, removed before it is rewritten. `diet_meal_emotion`
+-- goes with its meals (ON DELETE CASCADE), so it is not named here.
+DELETE FROM diet_meal
+ WHERE id_medical = 'c0000000-0000-0000-0000-000000000005'
+   AND id_meal::text LIKE 'fe5eed00-%';
+DELETE FROM hydration
+ WHERE id_medical = 'c0000000-0000-0000-0000-000000000005'
+   AND id_hydration::text LIKE 'fe5eed00-%';
+DELETE FROM diet_activity
+ WHERE id_medical = 'c0000000-0000-0000-0000-000000000005'
+   AND id_activity::text LIKE 'fe5eed00-%';
+DELETE FROM diet_activity_day
+ WHERE id_medical = 'c0000000-0000-0000-0000-000000000005'
+   AND id_activity_day::text LIKE 'fe5eed00-%';
+DELETE FROM diet_sleep
+ WHERE id_medical = 'c0000000-0000-0000-0000-000000000005'
+   AND id_sleep::text LIKE 'fe5eed00-%';
+
+-- ----------------------------
+-- DIET_MEAL — dni 25..119
+--
+-- Starts at 25 because the hand-written block above ends at 24, and the two have
+-- to meet: a gap between them would be a week with no entry, which drops out of
+-- the report list entirely (`build_diet_reports` skips a week nobody wrote in)
+-- and would read as data loss rather than as a quiet week.
+--
+-- A seven-day rotation, two to four meals a day, and roughly every thirteenth
+-- day left empty. The gaps matter: a diary with an entry on all 120 days is not
+-- a diary anybody recognises, and §02's rule is that an empty day "nie jest
+-- brakiem". They are single days, never a whole week, for the reason above.
+-- ----------------------------
+INSERT INTO diet_meal (id_meal, id_medical, entry_date, kind, eaten_at, description)
+SELECT
+    ('fe5eed00' || substr(md5('posilek:' || d || ':' || v.idx), 9))::uuid,
+    'c0000000-0000-0000-0000-000000000005',
+    CURRENT_DATE - d,
+    v.kind,
+    v.eaten_at,
+    v.description
+FROM generate_series(25, 119) AS d
+JOIN (VALUES
+    -- idx, rotacja, rodzaj, godzina, opis
+    (1, 0, 'Śniadanie'::TEXT,        TIME '07:40', 'Owsianka z owocami.'),
+    (2, 0, 'Obiad',                  TIME '13:20', 'Zupa i drugie danie w pracy.'),
+    (3, 0, 'Kolacja',                TIME '19:10', 'Kanapki z warzywami.'),
+    (4, 0, 'Przekąska',              TIME '16:00', 'Orzechy przy komputerze.'),
+
+    (1, 1, 'Śniadanie',              TIME '08:15', 'Jajecznica z pieczywem.'),
+    (2, 1, 'Obiad',                  TIME '14:00', 'Makaron z sosem warzywnym.'),
+    (3, 1, 'Kolacja',                TIME '20:30', 'Sałatka, bez apetytu.'),
+    (4, 1, 'Drugie śniadanie',       TIME '10:40', 'Jogurt.'),
+
+    (1, 2, 'Śniadanie',              TIME '09:30', 'Kawa i kanapka, w biegu.'),
+    (2, 2, 'Obiad',                  TIME '15:10', 'Obiad u rodziców.'),
+    -- Po 22:00, czyli kolumna „Noc" — kubełek, który obejmuje północ.
+    (3, 2, 'Kolacja',                TIME '22:30', 'Jadłam późno, po pracy.'),
+    (4, 2, 'Podwieczorek',           TIME '17:20', 'Jabłko i herbata.'),
+
+    (1, 3, 'Śniadanie',              TIME '07:20', 'Płatki z mlekiem.'),
+    (2, 3, 'Obiad',                  TIME '12:50', 'Ryż z warzywami.'),
+    -- Bez rodzaju: §05 pozwala zapisać posiłek, nie mówiąc którym był.
+    (3, 3, NULL,                     TIME '21:40', 'Podjadanie wieczorem, po trudnym dniu.'),
+    (4, 3, 'Przekąska',              TIME '11:30', 'Baton, bardziej z nudów.'),
+
+    (1, 4, 'Śniadanie',              TIME '08:50', 'Twarożek z pieczywem.'),
+    (2, 4, 'Obiad',                  TIME '13:45', 'Zupa krem.'),
+    (3, 4, 'Kolacja',                TIME '18:40', 'Naleśniki.'),
+    -- Bez godziny: pytanie, na które nikt nie odpowiedział, nie jest północą.
+    (4, 4, 'Przekąska',              NULL,         'Coś między posiłkami, nie pamiętam o której.'),
+
+    (1, 5, 'Śniadanie',              TIME '10:10', 'Późne śniadanie, weekend.'),
+    (2, 5, 'Obiad',                  TIME '16:20', 'Obiad ze znajomymi.'),
+    (3, 5, 'Kolacja',                TIME '20:00', 'Kolacja w domu, spokojnie.'),
+    (4, 5, 'Drugie śniadanie',       TIME '11:00', 'Kanapka.'),
+
+    (1, 6, 'Śniadanie',              TIME '07:55', 'Omlet.'),
+    (2, 6, 'Obiad',                  TIME '14:30', 'Kasza z warzywami.'),
+    -- Pusty opis: pole było na ekranie i zostało puste.
+    (3, 6, 'Kolacja',                TIME '19:50', ''),
+    (4, 6, 'Podwieczorek',           TIME '17:00', 'Herbatniki przy pracy.')
+) AS v(idx, rot, kind, eaten_at, description)
+  ON v.rot = d % 7
+WHERE d % 13 <> 0
+  AND d % 23 <> 5          -- dzień całkiem bez wpisu (patrz niżej)
+  AND v.idx <= 2 + (d % 3);
+
+-- ----------------------------
+-- DIET_MEAL_EMOTION — dla wygenerowanych posiłków
+--
+-- Derived from the meal rather than written beside it: the day and the hour are
+-- already in the row, and a rotation over them gives a spread that is varied and
+-- still reproducible. Deliberately mixed rather than uniformly bleak — this is a
+-- demo of a food diary, not a portrait of a patient.
+--
+-- ROUGHLY TWO MEALS IN THREE CARRY A CHIP. The rest carry none, which is the
+-- ordinary case §05 allows and the state the screens have to render as ordinary.
+-- One rating in nine is NULL: a chip pressed with the slider never moved, which
+-- is what `intensity` is nullable for and the branch that prints a sentence
+-- instead of an average.
+-- ----------------------------
+INSERT INTO diet_meal_emotion (id_meal, emotion, intensity)
+SELECT
+    m.id_meal,
+    e.emotion,
+    CASE WHEN (m.d + m.h + e.pos) % 9 = 0 THEN NULL
+         ELSE 2 + ((m.d * 2 + m.h + e.pos * 3) % 9) END
+FROM (
+    SELECT id_meal,
+           (CURRENT_DATE - entry_date)::int AS d,
+           COALESCE(EXTRACT(HOUR FROM eaten_at)::int, 0) AS h
+      FROM diet_meal
+     WHERE id_medical = 'c0000000-0000-0000-0000-000000000005'
+       AND id_meal::text LIKE 'fe5eed00-%'
+) AS m
+JOIN (VALUES
+    (0, 'Radość'::TEXT), (1, 'Smutek'), (2, 'Lęk'), (3, 'Złość'), (4, 'Stres'),
+    (5, 'Poczucie winy'), (6, 'Frustracja'), (7, 'Wstyd'), (8, 'Bezradność'),
+    (9, 'Spokój')
+) AS e(pos, emotion)
+  ON e.pos = (m.d * 3 + m.h) % 10
+WHERE (m.d + m.h) % 3 <> 0
+ON CONFLICT (id_meal, emotion) DO NOTHING;
+
+-- A second chip on some of them, because one meal can hold several feelings and
+-- a ranking whose rows never overlap hides that its counts are per *chip* while
+-- the caption counts *meals*.
+INSERT INTO diet_meal_emotion (id_meal, emotion, intensity)
+SELECT
+    m.id_meal,
+    e.emotion,
+    CASE WHEN (m.d + m.h) % 7 = 0 THEN NULL
+         ELSE 1 + ((m.d + m.h * 3 + e.pos) % 10) END
+FROM (
+    SELECT id_meal,
+           (CURRENT_DATE - entry_date)::int AS d,
+           COALESCE(EXTRACT(HOUR FROM eaten_at)::int, 0) AS h
+      FROM diet_meal
+     WHERE id_medical = 'c0000000-0000-0000-0000-000000000005'
+       AND id_meal::text LIKE 'fe5eed00-%'
+) AS m
+JOIN (VALUES
+    (0, 'Radość'::TEXT), (1, 'Smutek'), (2, 'Lęk'), (3, 'Złość'), (4, 'Stres'),
+    (5, 'Poczucie winy'), (6, 'Frustracja'), (7, 'Wstyd'), (8, 'Bezradność'),
+    (9, 'Spokój')
+) AS e(pos, emotion)
+  ON e.pos = (m.d * 7 + m.h + 4) % 10
+WHERE (m.d + m.h) % 5 = 0
+ON CONFLICT (id_meal, emotion) DO NOTHING;
+
+-- ----------------------------
+-- HYDRATION — dni 7..119
+--
+-- Starts at 7 because the hand-written week above covers 0..6, which is exactly
+-- what §08's chart draws. This is for the *report*, which lists a water figure
+-- per day and said "nie wpisano" for every day older than a week.
+--
+-- Servings, never a total: the table holds one row per glass and every figure
+-- the app shows is a GROUP BY over these. Three to six a day, one in four a
+-- bottle rather than a glass, and roughly every seventeenth day with nothing --
+-- a day below the goal is not a failure, which is what §08 says in words.
+-- ----------------------------
+INSERT INTO hydration (id_hydration, id_medical, entry_date, drink, amount_ml)
+SELECT
+    ('fe5eed00' || substr(md5('woda:' || d || ':' || s), 9))::uuid,
+    'c0000000-0000-0000-0000-000000000005',
+    CURRENT_DATE - d,
+    'Woda',
+    CASE WHEN (d + s) % 4 = 0 THEN 500 ELSE 250 END
+FROM generate_series(7, 119) AS d
+CROSS JOIN generate_series(1, 6) AS s
+WHERE d % 17 <> 0
+  AND d % 23 <> 5
+  AND s <= 3 + (d % 4);
+
+-- The other drinks, recorded and deliberately never converted into water. Their
+-- `amount_ml` is NULL because §08's "Inne napoje" card offers a chip and no
+-- quantity, and inventing one would put a number nobody entered into a record.
+INSERT INTO hydration (id_hydration, id_medical, entry_date, drink, amount_ml)
+SELECT
+    ('fe5eed00' || substr(md5('napoj:' || d || ':' || v.rot), 9))::uuid,
+    'c0000000-0000-0000-0000-000000000005',
+    CURRENT_DATE - d,
+    v.drink,
+    NULL
+FROM generate_series(7, 119) AS d
+JOIN (VALUES
+    (0, 'Herbata'::TEXT), (1, 'Kawa'), (2, 'Napar ziołowy'),
+    (3, 'Woda z cytryną'), (4, 'Kompot')
+) AS v(rot, drink)
+  ON v.rot = d % 5
+WHERE d % 3 <> 2
+  AND d % 23 <> 5;
+
+-- ----------------------------
+-- DIET_ACTIVITY — dni 0..119
+--
+-- §09's movement diary, which this file has never seeded. Roughly two days in
+-- three, never every day: most people do not move every day, and a seed that
+-- said otherwise would make the screen read as a target to hit — which §09 is
+-- explicit that it is not.
+--
+-- `feeling_after` is how somebody felt *after*, not how hard it was, and 'worse'
+-- is one of the three: an activity that left somebody feeling worse is a real
+-- entry and the report has to render it without comment.
+-- ----------------------------
+INSERT INTO diet_activity
+    (id_activity, id_medical, entry_date, logged_at, kind, kind_other, duration_minutes, feeling_after)
+SELECT
+    ('fe5eed00' || substr(md5('ruch:' || d), 9))::uuid,
+    'c0000000-0000-0000-0000-000000000005',
+    CURRENT_DATE - d,
+    v.logged_at, v.kind, v.kind_other, v.duration_minutes, v.feeling_after
+FROM generate_series(0, 119) AS d
+JOIN (VALUES
+    (0, TIME '07:10', 'Joga'::TEXT,     ''::TEXT,          25, 'better'::TEXT),
+    (1, TIME '18:30', 'Spacer',         '',                45, 'better'),
+    (2, TIME '08:00', 'Rower',          '',                40, 'neutral'),
+    (3, TIME '19:15', 'Basen',          '',                50, 'better'),
+    (4, TIME '17:40', 'Siłownia',       '',                60, 'worse'),
+    -- 'Inne' to chip, który odsłania pole tekstowe — dwie kolumny, jedna
+    -- odpowiedź, czytane razem przez `kind_label`.
+    (5, TIME '12:20', 'Inne',           'Nordic walking',  35, 'neutral')
+) AS v(rot, logged_at, kind, kind_other, duration_minutes, feeling_after)
+  ON v.rot = d % 6
+WHERE d % 3 <> 1
+  AND d % 23 <> 5;
+
+-- ----------------------------
+-- DIET_ACTIVITY_DAY — kroki
+--
+-- Its own table because a step count is a fact about a *day* rather than about
+-- an activity: somebody who walked to work and filed no entry still took the
+-- steps. Some days carry one with no activity beside it, some days carry neither
+-- -- NULL steps is "nobody wrote it down", which is not zero steps.
+-- ----------------------------
+INSERT INTO diet_activity_day (id_activity_day, id_medical, entry_date, steps)
+SELECT
+    ('fe5eed00' || substr(md5('kroki:' || d), 9))::uuid,
+    'c0000000-0000-0000-0000-000000000005',
+    CURRENT_DATE - d,
+    2600 + (d * 371) % 9200
+FROM generate_series(0, 119) AS d
+WHERE d % 5 <> 3
+  AND d % 23 <> 5
+ON CONFLICT (id_medical, entry_date) DO NOTHING;
+
+-- ----------------------------
+-- DIET_SLEEP — noce
+--
+-- **A NIGHT IS FILED UNDER THE MORNING IT ENDED ON**, which is what
+-- `diet_sleep.entry_date` holds: the night from Monday to Tuesday belongs to
+-- Tuesday, and therefore to whichever week Tuesday is in. Nothing in the data
+-- says so -- a row holding 23:40 and 06:50 reads equally well as either day --
+-- so it is worth saying here as well as in core/sleep.py.
+--
+-- Some nights are left undescribed, so the report's "nie wpisano" branch is
+-- reachable, and the hours cross midnight in both directions.
+-- ----------------------------
+INSERT INTO diet_sleep
+    (id_sleep, id_medical, entry_date, fell_asleep_at, woke_up_at, quality, awakenings, wake_feeling)
+SELECT
+    ('fe5eed00' || substr(md5('sen:' || d), 9))::uuid,
+    'c0000000-0000-0000-0000-000000000005',
+    CURRENT_DATE - d,
+    v.fell_asleep_at, v.woke_up_at, v.quality, v.awakenings, v.wake_feeling
+FROM generate_series(0, 119) AS d
+JOIN (VALUES
+    (0, TIME '23:20', TIME '06:45', 4, 0, 'rested'::TEXT),
+    (1, TIME '00:15', TIME '07:30', 2, 2, 'heavy'),
+    (2, TIME '22:50', TIME '06:20', 5, 0, 'calm'),
+    (3, TIME '01:10', TIME '08:00', 1, 3, 'tense'),
+    (4, TIME '23:05', TIME '07:10', 3, 1, 'rested'),
+    (5, TIME '22:35', TIME '05:50', 4, 0, 'calm'),
+    (6, TIME '00:40', TIME '07:45', 2, 1, 'heavy')
+) AS v(rot, fell_asleep_at, woke_up_at, quality, awakenings, wake_feeling)
+  ON v.rot = d % 7
+WHERE d % 9 <> 4
+  AND d % 23 <> 5
+ON CONFLICT (id_medical, entry_date) DO NOTHING;
