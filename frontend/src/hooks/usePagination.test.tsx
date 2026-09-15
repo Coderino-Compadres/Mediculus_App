@@ -7,8 +7,16 @@ import { PAGE_SIZE, usePagination } from './usePagination'
 const ITEMS = Array.from({ length: 20 }, (_, index) => `pozycja ${index + 1}`)
 
 /** Renders the hook's answer plus the URL, which is where the page lives. */
-function Probe({ items = ITEMS, pageSize }: { items?: string[]; pageSize?: number }) {
-  const pages = usePagination(items, pageSize)
+function Probe({
+  items = ITEMS,
+  pageSize,
+  scrollToTop,
+}: {
+  items?: string[]
+  pageSize?: number
+  scrollToTop?: boolean
+}) {
+  const pages = usePagination(items, pageSize, { scrollToTop })
   const { search } = useLocation()
   return (
     <div>
@@ -166,6 +174,20 @@ describe('scrolling', () => {
     await userEvent.click(screen.getByRole('button', { name: 'dalej' }))
 
     expect(window.scrollTo).toHaveBeenCalledWith(0, 0)
+  })
+
+  it('leaves the viewport alone for a list that is not the whole screen', async () => {
+    /* The point of the scroll is to put the new rows where the reader can see
+       them, and that is the top of the page only when the list *is* the page.
+       `pages/DietReportDetail.tsx` paginates one card among five, a long way
+       down a report: jumping to the header there hides the very rows that
+       changed and makes the reader scroll back for every one of them. */
+    renderHook(<Probe scrollToTop={false} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'dalej' }))
+
+    expect(page()).toBe('2')
+    expect(window.scrollTo).not.toHaveBeenCalled()
   })
 
   it('does not scroll when a filter resets the page', async () => {

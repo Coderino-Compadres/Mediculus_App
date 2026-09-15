@@ -125,3 +125,54 @@ describe('stepping', () => {
     expect(screen.queryByRole('button', { name: '8' })).toBeNull()
   })
 })
+
+/**
+ * ONE ROW ON EVERY PAGE, which is how the diet module's weekly report walks a
+ * week a day at a time.
+ *
+ * The range then says nothing the page number has not — "Strona 3 z 7 (3–3 z 7
+ * dni)" — and two ends that are the same number read as a fault rather than as
+ * a count. The component works it out rather than taking a prop, because the
+ * condition *is* the definition and so cannot be set wrongly.
+ */
+describe('one row to a page', () => {
+  it('drops the range, which would only restate the page number', () => {
+    render(
+      <Pagination
+        page={3}
+        pageCount={7}
+        from={3}
+        to={3}
+        total={7}
+        onChange={() => {}}
+        unit="dni"
+      />,
+    )
+
+    const status = screen.getByRole('status')
+
+    expect(status).toHaveTextContent('Strona 3 z 7')
+    expect(status.textContent).not.toContain('–')
+    expect(status.textContent).not.toContain('dni')
+  })
+
+  it('keeps the range on a last page that happens to hold one row', () => {
+    /* Three rows two to a page: the second page holds one, so `from === to` —
+       but the pages are not one row each and the reader still needs to be told
+       what they are looking at. `total` against `pageCount` is what tells the
+       two apart. */
+    render(
+      <Pagination
+        page={2}
+        pageCount={2}
+        from={3}
+        to={3}
+        total={3}
+        onChange={() => {}}
+        unit="wpisów"
+      />,
+    )
+
+    expect(screen.getByRole('status')).toHaveTextContent('(3–3 z 3 wpisów)')
+  })
+})

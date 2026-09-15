@@ -25,6 +25,20 @@ interface PaginationProps {
 function Pagination({ page, pageCount, from, to, total, onChange, unit }: PaginationProps) {
   if (pageCount <= 1) return null
 
+  /**
+   * With one row on every page the range says nothing the page number has not
+   * already said — "Strona 3 z 7 (3–3 z 7 dni)" — and a range whose two ends
+   * are the same number reads as a fault rather than as a count.
+   *
+   * DERIVED RATHER THAN A PROP, because the condition *is* the definition and
+   * so cannot be set wrongly: `from === to` says this page holds one row, and
+   * `total === pageCount` says every page does. No other page size satisfies
+   * both — the last page of a 2-per-page list of three has `from === to` and
+   * `total` 3 against a `pageCount` of 2 — so there is no call site that has to
+   * remember anything.
+   */
+  const oneRowPerPage = from === to && total === pageCount
+
   return (
     <nav className="pagination" aria-label="Paginacja">
       <button
@@ -40,10 +54,12 @@ function Pagination({ page, pageCount, from, to, total, onChange, unit }: Pagina
           rather than interrupting whatever the reader was doing. */}
       <p className="pagination-status" role="status">
         Strona {page} z {pageCount}
-        <span className="pagination-range">
-          {' '}
-          ({from}–{to} z {total} {unit})
-        </span>
+        {!oneRowPerPage && (
+          <span className="pagination-range">
+            {' '}
+            ({from}–{to} z {total} {unit})
+          </span>
+        )}
       </p>
 
       <button

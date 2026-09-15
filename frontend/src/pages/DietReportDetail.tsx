@@ -3,9 +3,11 @@ import { Link, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
 import MealEmotions from '../components/MealEmotions'
+import Pagination from '../components/Pagination'
 import ReportRankingBars, { type RankingRow } from '../components/ReportRankingBars'
 import { ApiError } from '../api/client'
 import { fetchDietReport } from '../api/diet'
+import { usePagination } from '../hooks/usePagination'
 import { dietDayLabel, dietShortDayLabel } from '../utils/dietWeeks'
 import { emotionRatingNote, mealSlotLabel } from '../utils/dietReport'
 import { EMOTION_COLORS } from '../utils/emotions'
@@ -73,12 +75,24 @@ import './dietReport.css'
  * report, is worse than no button. It goes below the footer note when the
  * endpoint exists.
  *
+ * **WHEN IT DOES, IT RENDERS ALL SEVEN DAYS.** "Zestawienie tygodnia" pages one
+ * day at a time below, and that is a property of *this screen* rather than of
+ * the document: a report is a week, and a PDF holding whichever day the reader
+ * happened to be on would be a file that means something different every time
+ * it is saved. The server builds the whole week already (`build_diet_reports`
+ * sends all seven), so the renderer has nothing to undo — it simply must not
+ * learn about `?page=`.
+ *
  * TODO(klientka): no "Udostępnij" and no "Wyślij", and no note about who else
  * reads this — both are argued on pages/DietReports.tsx, where the same two
  * absences are visible on the list.
  */
 
 const NOT_ANSWERED = 'nie wpisano'
+
+/** One day to a page in "Zestawienie tygodnia" — see `ReportBody` for why this
+ *  is not the house `PAGE_SIZE`. */
+const DAYS_PER_PAGE = 1
 
 /**
  * The emotions ranking, as the shared bars read it.
@@ -212,7 +226,10 @@ function DaySummary({ day }: { day: DietReportDay }) {
       ) : (
         <dl className="diet-report-day-facts">
           {day.meals.length > 0 && (
-            <>
+            /* Full width, unlike the three short diaries below: a meal carries
+               a description somebody typed in a sentence or two, and a
+               paragraph set in a 300px column is a paragraph nobody reads. */
+            <div className="diet-report-group diet-report-group-wide">
               <dt>Posiłki</dt>
               <dd>
                 <ul className="diet-report-meals">
@@ -221,11 +238,11 @@ function DaySummary({ day }: { day: DietReportDay }) {
                   ))}
                 </ul>
               </dd>
-            </>
+            </div>
           )}
 
           {day.hydration && (
-            <>
+            <div className="diet-report-group">
               <dt>Nawodnienie</dt>
               <dd>
                 {/* As the hydration screen counts it, and nothing more: no
@@ -240,11 +257,11 @@ function DaySummary({ day }: { day: DietReportDay }) {
                   />
                 </ul>
               </dd>
-            </>
+            </div>
           )}
 
           {night && (
-            <>
+            <div className="diet-report-group">
               <dt>Sen</dt>
               <dd>
                 <ul className="diet-report-facts">
@@ -306,11 +323,11 @@ function DaySummary({ day }: { day: DietReportDay }) {
                   />
                 </ul>
               </dd>
-            </>
+            </div>
           )}
 
           {day.activity && (
-            <>
+            <div className="diet-report-group">
               <dt>Aktywność</dt>
               <dd>
                 <ul className="diet-report-facts">
@@ -329,10 +346,18 @@ function DaySummary({ day }: { day: DietReportDay }) {
                         <span className={parts ? undefined : 'diet-report-fact-empty'}>
                           {parts || 'zapisana bez szczegółów'}
                         </span>
+                        {/* Its own line rather than trailing the activity on
+                            the same one. Inline, it made the longest line in
+                            the whole day — "18:30: Spacer · 45 min —
+                            samopoczucie po: lepsze" — and the moment the three
+                            short diaries sit in columns that line is the only
+                            thing in the day that has to wrap, breaking after
+                            the colon. The em dash goes with it: a dash joins
+                            two halves of a sentence, and these are now two
+                            lines. */}
                         {feeling && (
                           <span className="diet-report-fact-aside">
-                            {' '}
-                            — samopoczucie po: {feeling.toLowerCase()}
+                            samopoczucie po: {feeling.toLowerCase()}
                           </span>
                         )}
                       </li>
@@ -346,7 +371,7 @@ function DaySummary({ day }: { day: DietReportDay }) {
                   />
                 </ul>
               </dd>
-            </>
+            </div>
           )}
         </dl>
       )}
@@ -450,6 +475,32 @@ function DietReportDetail() {
 
 function ReportBody({ report }: { report: DietWeeklyReport }) {
   const { mealGrid } = report
+
+  /**
+   * "Zestawienie tygodnia", one day at a time.
+   *
+   * ONE DAY A PAGE RATHER THAN THE HOUSE SEVEN, and the unit is the reason: on
+   * every other list `PAGE_SIZE` counts rows of a few lines each, while a day
+   * here is a block — up to five meals with their descriptions and chips, plus
+   * three more diaries. Seven of them ran the card to some 3500px, which is a
+   * week nobody reads to the end. A day is the thing this card is a list *of*,
+   * so it is also the page.
+   *
+   * **THE WEEK DOES NOT DISAPPEAR WITH IT.** That was the one real objection to
+   * paginating a document: a report is read as a week. But the two cards above
+   * are the week — "Regularność wpisów" draws all seven chips and "Pory
+   * posiłków" all seven rows — so what is paged here is the *detail*, which was
+   * never readable at a glance anyway.
+   *
+   * `scrollToTop: false`, unlike every other caller: this list is one card
+   * among five and a long way down the page, so jumping to the header would
+   * hide the rows that just changed. See `hooks/usePagination.ts`.
+   *
+   * It costs the screen's one `?page=`, which is free here — nothing else on a
+   * report paginates — and it keeps a day addressable: a link to page four is a
+   * link to Thursday, and going back from a day returns to it.
+   */
+  const pages = usePagination(report.days, DAYS_PER_PAGE, { scrollToTop: false })
 
   return (
     <div className="diet-report-page">
@@ -566,10 +617,19 @@ function ReportBody({ report }: { report: DietWeeklyReport }) {
             TODO(§12): "Zastosowane" needs the psychodietetic technique
             catalogue, which this module does not have. */}
         <div className="diet-report-days-list">
-          {report.days.map((day) => (
+          {pages.items.map((day) => (
             <DaySummary key={day.date} day={day} />
           ))}
         </div>
+        <Pagination
+          page={pages.page}
+          pageCount={pages.pageCount}
+          from={pages.from}
+          to={pages.to}
+          total={pages.total}
+          onChange={pages.goTo}
+          unit="dni"
+        />
       </section>
 
       <p className="diet-report-footnote">

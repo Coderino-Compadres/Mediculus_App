@@ -165,9 +165,20 @@ function day(name: string): HTMLElement {
   return within(card('Zestawienie tygodnia')).getByRole('group', { name })
 }
 
-/** Mount and wait for the document rather than the loading line. */
-async function renderReport() {
-  renderWithProviders(<DietReportDetail />)
+/**
+ * Mount and wait for the document rather than the loading line.
+ *
+ * `page` opens "Zestawienie tygodnia" straight at a given day: that card shows
+ * one day at a time now, and most of the assertions below are about a
+ * particular day's rows. Passed through the address rather than by clicking
+ * "Następna" six times, because the page lives in the query string precisely so
+ * a day is addressable — and a test that clicked its way there would be testing
+ * the control in every case instead of the day.
+ */
+async function renderReport({ page }: { page?: number } = {}) {
+  renderWithProviders(<DietReportDetail />, {
+    route: page === undefined ? '/' : `/?page=${page}`,
+  })
   await screen.findByRole('heading', { level: 1, name: 'Raport tygodniowy' })
 }
 
@@ -411,14 +422,87 @@ describe('Najczęstsze emocje przy jedzeniu', () => {
 })
 
 describe('Zestawienie tygodnia', () => {
-  it('lists the days in the week own order, each named in full', async () => {
+  /**
+   * **THE FOUR DIARIES ARE GRID CELLS, AND THE MARKUP IS WHAT MAKES THAT
+   * POSSIBLE.**
+   *
+   * Three of the four are tiny — "Nawodnienie" is one line, "Aktywność" two —
+   * and stacked down a 640px card they used a third of the width and ran the
+   * section to about 4000px of height: sparse and cramped at the same time.
+   * They sit side by side now, which needs each term-description pair wrapped
+   * in its own element: a bare `<dl>` makes `dt` and `dd` two separate grid
+   * items, so the label would land in one column and its content in the next
+   * and the pairing would break the moment a day held an odd number of
+   * diaries.
+   *
+   * Pinned here because the wrappers look like markup somebody could delete as
+   * redundant, and nothing about the rendered text would change if they did —
+   * only the layout, silently, and only on a wide screen.
+   */
+
+  function groupsIn(name: string): HTMLElement[] {
+    return Array.from(day(name).querySelectorAll('.diet-report-group'))
+  }
+
+  it('wraps each diary in its own element, so the columns can pair up', async () => {
     await renderReport()
 
-    const days = within(card('Zestawienie tygodnia')).getAllByRole('heading', { level: 3 })
+    const groups = groupsIn('środa, 26 sierpnia')
+    const labels = groups.map((group) => group.querySelector('dt')?.textContent)
 
-    expect(days).toHaveLength(7)
-    expect(days[0]).toHaveTextContent('środa, 26 sierpnia')
-    expect(days[6]).toHaveTextContent('wtorek, 1 września')
+    expect(labels).toEqual(['Posiłki', 'Nawodnienie', 'Sen', 'Aktywność'])
+    // And each wrapper really does hold the pair, not just the term.
+    for (const group of groups) {
+      expect(group.querySelector('dd')).not.toBeNull()
+    }
+  })
+
+  it('lets the meals span the row and keeps the short diaries in columns', async () => {
+    /* A meal carries a description somebody typed as a sentence or two, and a
+       paragraph set in a 180px column is a paragraph nobody reads. The other
+       three are label-and-value lines, which is exactly what a column is for. */
+    await renderReport()
+
+    const [meals, ...rest] = groupsIn('środa, 26 sierpnia')
+
+    expect(meals).toHaveClass('diet-report-group-wide')
+    for (const group of rest) {
+      expect(group).not.toHaveClass('diet-report-group-wide')
+    }
+  })
+
+  it('puts how somebody felt after an activity on its own line', async () => {
+    /* Inline it was the longest line in the day, and the only one that had to
+       wrap once the diaries became columns — breaking after the colon. The em
+       dash went with it: a dash joins two halves of one line. */
+    await renderReport()
+
+    const aside = day('środa, 26 sierpnia').querySelector('.diet-report-fact-aside')
+
+    expect(aside).toHaveTextContent('samopoczucie po: lepsze')
+    expect(aside?.textContent).not.toContain('—')
+  })
+
+  /* The order is the week's own, starting on the Wednesday the patient began on
+     — not a Monday. With one day to a page the order *is* the pages, so it is
+     read off the first and the last of them — in two tests rather than one,
+     because a second `renderReport` in the same test mounts a second screen and
+     every `card(...)` then finds two. */
+
+  it('opens on the day the week starts, which is not a Monday', async () => {
+    await renderReport()
+
+    expect(
+      within(card('Zestawienie tygodnia')).getByRole('heading', { level: 3 }),
+    ).toHaveTextContent('środa, 26 sierpnia')
+  })
+
+  it('ends on the seventh day of that week', async () => {
+    await renderReport({ page: 7 })
+
+    expect(
+      within(card('Zestawienie tygodnia')).getByRole('heading', { level: 3 }),
+    ).toHaveTextContent('wtorek, 1 września')
   })
 
   it('renders a meal by its hour, its kind and what was typed', async () => {
@@ -434,7 +518,7 @@ describe('Zestawienie tygodnia', () => {
   })
 
   it('says "bez godziny" rather than dropping a meal that has none', async () => {
-    await renderReport()
+    await renderReport({ page: 2 })
 
     const thursday = day('czwartek, 27 sierpnia')
 
@@ -462,7 +546,7 @@ describe('Zestawienie tygodnia', () => {
   })
 
   it('draws no emotion chip for a meal nobody picked one on', async () => {
-    await renderReport()
+    await renderReport({ page: 2 })
 
     const thursday = day('czwartek, 27 sierpnia')
 
@@ -549,11 +633,103 @@ describe('Zestawienie tygodnia', () => {
   })
 
   it('says "brak wpisu" for a day nobody wrote on', async () => {
-    await renderReport()
+    // The third day of the fixture week, and it gets a page of its own like any
+    // other: a quiet day is an ordinary day, not one to skip past.
+    await renderReport({ page: 3 })
 
     const friday = day('piątek, 28 sierpnia')
 
     expect(within(friday).getByText('brak wpisu')).toBeInTheDocument()
+  })
+})
+
+/**
+ * ONE DAY TO A PAGE.
+ *
+ * Seven days of meals, chips and three more diaries ran this card to some
+ * 3500px — a week nobody reads to the end. The page size is 1 rather than the
+ * house seven because the *unit* differs: elsewhere a row is a line or two,
+ * here a "row" is a whole day.
+ *
+ * **WHAT THIS SUITE IS REALLY GUARDING IS THAT THE WEEK SURVIVES IT.** Paging a
+ * document is only acceptable because the two cards above are the week —
+ * "Regularność wpisów" draws all seven chips and "Pory posiłków" all seven rows
+ * — so what is paged is the detail. A change that paged those too would take
+ * the week away, and the last test here is what says so.
+ */
+describe('Zestawienie tygodnia — paginacja', () => {
+  it('shows one day at a time, and says where in the week it is', async () => {
+    await renderReport()
+
+    const section = card('Zestawienie tygodnia')
+
+    expect(within(section).getAllByRole('heading', { level: 3 })).toHaveLength(1)
+    expect(within(section).getByRole('status')).toHaveTextContent('Strona 1 z 7')
+  })
+
+  it('leaves out the range, which at one day a page only restates the page', async () => {
+    /* "Strona 3 z 7 (3–3 z 7 dni)" — a range whose two ends are the same number
+       reads as a fault rather than as a count. */
+    await renderReport({ page: 3 })
+
+    const status = within(card('Zestawienie tygodnia')).getByRole('status')
+
+    expect(status).toHaveTextContent('Strona 3 z 7')
+    expect(status.textContent).not.toContain('–')
+    expect(status.textContent).not.toContain('dni')
+  })
+
+  it('steps to the next day and back again', async () => {
+    const user = userEvent.setup()
+    await renderReport()
+    const section = card('Zestawienie tygodnia')
+
+    await user.click(within(section).getByRole('button', { name: /Następna/ }))
+    expect(within(card('Zestawienie tygodnia')).getByRole('heading', { level: 3 }))
+      .toHaveTextContent('czwartek, 27 sierpnia')
+
+    await user.click(within(card('Zestawienie tygodnia')).getByRole('button', { name: /Poprzednia/ }))
+    expect(within(card('Zestawienie tygodnia')).getByRole('heading', { level: 3 }))
+      .toHaveTextContent('środa, 26 sierpnia')
+  })
+
+  it('cannot step back from the first day', async () => {
+    await renderReport()
+    const section = card('Zestawienie tygodnia')
+
+    expect(within(section).getByRole('button', { name: /Poprzednia/ })).toBeDisabled()
+    expect(within(section).getByRole('button', { name: /Następna/ })).toBeEnabled()
+  })
+
+  it('cannot step past the last day', async () => {
+    await renderReport({ page: 7 })
+    const section = card('Zestawienie tygodnia')
+
+    expect(within(section).getByRole('button', { name: /Następna/ })).toBeDisabled()
+    expect(within(section).getByRole('button', { name: /Poprzednia/ })).toBeEnabled()
+  })
+
+  it('takes the day from the address, so a day can be linked to', async () => {
+    /* The page lives in the query string rather than in component state, which
+       is what makes a report's Thursday a thing somebody can send. */
+    await renderReport({ page: 5 })
+
+    expect(
+      within(card('Zestawienie tygodnia')).getByRole('heading', { level: 3 }),
+    ).toHaveTextContent('niedziela, 30 sierpnia')
+  })
+
+  it('still shows the whole week above, chip by chip and row by row', async () => {
+    /* **THE REASON PAGING THIS CARD IS ALLOWED AT ALL.** A report is read as a
+       week; if the week only existed in this card, hiding six sevenths of it
+       would be hiding the document. It does not — these two cards are the week,
+       and they stay whole on every page. */
+    await renderReport({ page: 4 })
+
+    expect(within(card('Regularność wpisów')).getAllByRole('listitem')).toHaveLength(7)
+    expect(
+      within(card('Pory posiłków')).getAllByRole('row').slice(1),
+    ).toHaveLength(7)
   })
 })
 
