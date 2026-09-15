@@ -3,10 +3,13 @@ import { Link, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
 import MealEmotions from '../components/MealEmotions'
+import ReportRankingBars, { type RankingRow } from '../components/ReportRankingBars'
 import { ApiError } from '../api/client'
 import { fetchDietReport } from '../api/diet'
 import { dietDayLabel, dietShortDayLabel } from '../utils/dietWeeks'
-import { mealSlotLabel } from '../utils/dietReport'
+import { emotionRatingNote, mealSlotLabel } from '../utils/dietReport'
+import { EMOTION_COLORS } from '../utils/emotions'
+import { mealsGenitive, pluralMeals } from '../utils/meals'
 import { formatGlasses, pluralGlasses, weekdayLabel } from '../utils/drinks'
 import { activityKindLabel, feelingAfterLabel, formatDurationMinutes } from '../utils/activity'
 import {
@@ -38,16 +41,22 @@ import './dietReport.css'
  * listing ("co się działo"), not the summary below — nothing here counts how
  * often an emotion appeared.
  *
- * TODO(§05): "Najczęstsze emocje przy jedzeniu", "Głód fizyczny wobec
- * emocjonalnego" and "Sytuacje jedzenia emocjonalnego" — three sections the
- * mockup puts between the meal times and the day-by-day listing, and all
- * three are summaries rather than a listing: a count or a "most common" is a
- * tally, and "NOTHING IS SUMMED AND NOTHING IS SCORED" is this module's own
- * rule (`core/diet_reports.py`). The physical-vs-emotional-hunger and
- * emotional-eating-situation sections also still have no column to read —
- * §04/§05's form only asks what was felt, not either of those. They stay a
- * TODO, and a real one is a design call about what a scoreless "most common"
- * would even mean, not just a missing field.
+ * "NAJCZĘSTSZE EMOCJE PRZY JEDZENIU" IS THE SECOND CARD NOW, and it is the one
+ * place on this screen that counts anything. It stood as a TODO here for as
+ * long as the section was argued two ways at once: the mockup asks for it by
+ * name (§05), and this module's rule is that nothing is summed. What settles it
+ * is *what the number is about*. Every figure in that card rates a feeling the
+ * patient put on a slider herself — the psychotherapy form's own picker, the
+ * same ten names, the same 0-10 — so it is her answer read back, not a verdict
+ * on a meal. Nothing about the food feeds it: no kind, no hour, no description.
+ * A card here that started describing the eating would have crossed the line.
+ *
+ * TODO(§05): "Głód fizyczny wobec emocjonalnego" and "Sytuacje jedzenia
+ * emocjonalnego" — the other two sections the mockup puts between the meal
+ * times and the day-by-day listing. Both are still blocked on the same thing
+ * the emotions card was blocked on until `diet_meal_emotion` arrived: there is
+ * no column to read. §04/§05's form asks what was felt and neither of those
+ * two questions, so summarising them would mean inventing an answer.
  *
  * TODO(§10): "Zmiany od ostatniej wizyty" — the card between the listing and
  * the footer on the artboard. Three things are missing at once: the one pair
@@ -70,6 +79,74 @@ import './dietReport.css'
  */
 
 const NOT_ANSWERED = 'nie wpisano'
+
+/**
+ * The emotions ranking, as the shared bars read it.
+ *
+ * `measure` stays at its default 'count', so the bar draws how *often* — which
+ * is what §05 names this section for. The psychotherapy report's ranking, drawn
+ * by the same component, measures intensity instead, because that one is named
+ * for strength. Both numbers are on both rows; only the length differs, and
+ * `ReportRankingBars` carries the argument.
+ *
+ * The colour is the app's one palette (`utils/emotions.ts`), the same one the
+ * chips under each meal on this very screen use — so an emotion cannot be one
+ * colour in the ranking and another twelve lines below it.
+ */
+function emotionRows(rows: DietWeeklyReport['emotions']['rows']): RankingRow[] {
+  return rows.map((row) => ({
+    label: row.emotion,
+    count: row.meals,
+    color: EMOTION_COLORS[row.emotion],
+    average: row.avgIntensity,
+    note: emotionRatingNote(row),
+  }))
+}
+
+/**
+ * "Najczęstsze emocje przy jedzeniu" — §05.
+ *
+ * Renders nothing at all for a week nobody picked a chip in. An empty ranking,
+ * or a "brak emocji", would read as a question the patient failed to answer;
+ * §05's rule is that no field blocks a save, so a week of meals saved without an
+ * emotion is an ordinary week and the report simply has one card fewer. The
+ * same rule `MealEmotions` follows for a single meal.
+ */
+function EmotionRanking({ emotions }: { emotions: DietWeeklyReport['emotions'] }) {
+  if (emotions.rows.length === 0) return null
+
+  const { mealsWithEmotion } = emotions
+
+  return (
+    <section className="diet-report-card" aria-labelledby="diet-report-emotions-heading">
+      <h2 id="diet-report-emotions-heading">Najczęstsze emocje przy jedzeniu</h2>
+      {/* The count the rows were drawn from, said before them rather than after.
+          One meal may carry several chips, so the rows can add up to more than
+          the meals behind them — without this line a week of three
+          heavily-annotated meals reads like a week of twelve. It is a
+          denominator, not a score: it exists so a number cannot be misread. */}
+      <p className="diet-report-card-caption">
+        Z {mealsWithEmotion} {mealsGenitive(mealsWithEmotion)}, przy których zapisałaś lub
+        zapisałeś emocję.
+      </p>
+      <ReportRankingBars
+        rows={emotionRows(emotions.rows)}
+        // Unreachable — the card returns null above rather than drawing an
+        // empty ranking. Passed because the prop is required, and worded as the
+        // ordinary answer it would be if it ever were reached.
+        emptyText="W tym tygodniu nie ma posiłku z zapisaną emocją."
+        countLabel={pluralMeals}
+      />
+      {/* What the numbers are and, just as importantly, what they are not. The
+          module's whole premise is that it does not grade food, and a card of
+          bars is exactly where a reader might assume otherwise. */}
+      <p className="diet-report-card-note">
+        Liczba mówi, przy ilu posiłkach pojawiła się dana emocja. Średnia dotyczy natężenia,
+        które oceniłaś lub oceniłeś na suwaku — nie ocenia jedzenia.
+      </p>
+    </section>
+  )
+}
 
 /** "22:15 · Kolacja" — the meal's own head, in the mockups' own formatting.
  *  A meal that named neither is still a meal; it is described by its text. */
@@ -475,6 +552,11 @@ function ReportBody({ report }: { report: DietWeeklyReport }) {
           </table>
         </div>
       </section>
+
+      {/* Where the artboard puts it: after the meal times and before the
+          day-by-day listing. The listing repeats every chip under the meal that
+          felt it, so the summary reads first and the detail follows it. */}
+      <EmotionRanking emotions={report.emotions} />
 
       <section className="diet-report-card" aria-labelledby="diet-report-week-heading">
         <h2 id="diet-report-week-heading">Zestawienie tygodnia</h2>

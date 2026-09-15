@@ -165,7 +165,20 @@ def _round1(value):
     return float(quantized)
 
 
-def _average(values):
+def average_rated(values):
+    """The mean of the values that *have* one, or None when none of them does.
+
+    **UNRATED IS SKIPPED, NEVER READ AS ZERO**, which is the whole reason this
+    is a function rather than `sum(...) / len(...)` at four call sites: a slider
+    nobody moved is a question left unanswered, and folding it in as a 0 drags
+    every average towards the floor in proportion to how little somebody filled
+    in — a diary that says "you were calm" because its owner was in a hurry.
+
+    Public, and the only one of this module's helpers that is: the diet module's
+    weekly report averages the intensities on its own emotion chips
+    (`core/diet_reports.py`), and two rounding rules would let the same 6.25
+    print as 6,2 on one report and 6,3 on the other.
+    """
     rated = [value for value in values if value is not None]
     if not rated:
         return None
@@ -215,11 +228,11 @@ class WeekStats:
                  'emotion_ratings', 'emotion_days')
 
     def __init__(self, entries):
-        self.mood = _average([_mood_rank(entry) for entry in entries])
+        self.mood = average_rated([_mood_rank(entry) for entry in entries])
         # Stress is one of the ten emotions, rated on the entry form's chip.
-        self.stress = _average([_intensity_of(entry, STRES) for entry in entries])
-        self.energy = _average([entry['energy_level'] for entry in entries])
-        self.tension = _average([entry['tension_level'] for entry in entries])
+        self.stress = average_rated([_intensity_of(entry, STRES) for entry in entries])
+        self.energy = average_rated([entry['energy_level'] for entry in entries])
+        self.tension = average_rated([entry['tension_level'] for entry in entries])
         self.hard_days = sum(1 for entry in entries if _is_hard_day(entry))
         self.emotion_ratings = _emotion_ratings(entries)
         # Kept alongside: the summary chips compare how *often* an emotion was
@@ -398,7 +411,7 @@ def _rank_emotions(ratings):
     rated at least once, and every rating carries an intensity.
     """
     averages = {
-        emotion: _average(intensities) for emotion, intensities in ratings.items()
+        emotion: average_rated(intensities) for emotion, intensities in ratings.items()
     }
     ranked = sorted(
         ratings.items(),

@@ -346,3 +346,136 @@
   overflow-wrap: anywhere;
 }
 
+
+/* ---- Rankings (ReportRankingBars) ------------------------------------------
+   Horizontal bars with the name and the numbers above them: "Najsilniej
+   odczuwane emocje" and "Najczęstsze wyzwalacze" on a psychotherapy report, and
+   "Najczęstsze emocje przy jedzeniu" on a diet one. They moved here from
+   pages/reportDetail.css when the second module started drawing them, for the
+   reason the bar chart above is here: two screens share the component, and
+   neither should have to import the other's stylesheet to get its styles. */
+
+.report-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.report-ranking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.report-ranking-label {
+  font-family: var(--font-body);
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  color: var(--color-graphite);
+}
+
+/* The leading figure — always the one the bar draws, so the length and the
+   number in front of it say the same thing. */
+.report-ranking-count {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  white-space: nowrap;
+}
+
+/* The second figure on the same row: the reading the length cannot carry. It
+   shares the leading figure's `white-space: nowrap`, so on a narrow phone the
+   pair wraps below the label as one block rather than splitting mid-figure. */
+.report-ranking-average {
+  color: var(--color-sage-hover);
+}
+
+/* The caveat under a row — "przy 2 posiłkach bez oceny". Quiet and small: it
+   qualifies the figure above it rather than competing with it, and it appears
+   only on the rows where the two counts actually disagree. */
+.report-ranking-note {
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-graphite-muted);
+  margin: -2px 0 6px;
+}
+
+.report-ranking-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(var(--shadow-tint), 0.1);
+  overflow: hidden;
+}
+
+.report-ranking-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* ---- Emotion crossings (EmotionCrossTable) ---------------------------------
+   The diet module's "Analiza" draws three of these — an emotion against a part
+   of the day, against a kind of meal, and against a week of the window. A
+   table rather than a chart: the number in the cell is the reading and the
+   tint only helps the eye find the dark end of a row. */
+
+/* Six kinds of meal plus a name column does not fit across a phone, and a
+   heading rotated to fit is a heading nobody reads. The table scrolls sideways
+   inside the card instead, which is what the weekly report's meal grid already
+   does with the same problem. */
+.emotion-cross-scroll {
+  overflow-x: auto;
+}
+
+.emotion-cross {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
+.emotion-cross th,
+.emotion-cross td {
+  padding: 8px 10px;
+  text-align: center;
+  border: 1px solid rgba(var(--shadow-tint), 0.08);
+  white-space: nowrap;
+}
+
+.emotion-cross thead th {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  color: var(--color-graphite-muted);
+}
+
+/* The emotion's name, left-aligned and anchored: it is the row's label, and a
+   row read from a scrolled-right position still needs to say whose it is. */
+.emotion-cross tbody th {
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-graphite);
+  position: sticky;
+  left: 0;
+  background: var(--color-surface);
+  white-space: nowrap;
+}
+
+.emotion-cross-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: baseline;
+}
+
+/* A column the window holds no meal in. Not a zero — nothing was measured
+   there — so it takes no tint and prints an em dash rather than a digit. The
+   muted colour keeps it from reading as a value. */
+.emotion-cross-cell-empty {
+  color: var(--color-graphite-muted);
+  background: rgba(var(--shadow-tint), 0.03);
+}

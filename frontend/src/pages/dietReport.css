@@ -116,6 +116,29 @@
   margin: 0 0 14px;
 }
 
+/* The line between a card's heading and its content: what the figures below
+   were counted out of. It sits above them because it is a denominator rather
+   than an afterthought — a reader who meets the bars first has already formed
+   an impression of how much evidence is behind them. */
+.diet-report-card-caption {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: -8px 0 16px;
+}
+
+/* And the line under it: what the figures mean, and what they are not. Same
+   register as the page's own footnote, which says the same thing about the
+   report as a whole. */
+.diet-report-card-note {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-graphite-muted);
+  margin: 18px 0 0;
+}
+
 /* Regularność wpisów — seven chips, in the week's own order */
 
 .diet-report-days {

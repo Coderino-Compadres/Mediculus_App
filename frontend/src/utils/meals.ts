@@ -38,13 +38,52 @@ export const MEAL_KINDS = [
 
 export type MealKind = (typeof MEAL_KINDS)[number]
 
-/** "1 posiłek", "3 posiłki", "5 posiłków" — with the teens, which are all -ów. */
+/** "1 posiłek", "3 posiłki", "5 posiłków" — with the teens, which are all -ów.
+ *
+ *  The nominative, which is the case a count takes on its own ("Dzisiaj
+ *  zapisane: 3 posiłki"). The two functions below are the same noun after a
+ *  preposition that governs a different case, and Polish gives no way to share
+ *  one form between them. */
 export function pluralMeals(count: number): string {
   const last = count % 10
   const teens = count % 100
   if (count === 1) return '1 posiłek'
   if (last >= 2 && last <= 4 && (teens < 12 || teens > 14)) return `${count} posiłki`
   return `${count} posiłków`
+}
+
+/**
+ * The genitive noun alone, for "wyliczone **z** N posiłków".
+ *
+ * Genitive rather than `pluralMeals`' nominative, because the preposition
+ * governs it: "z 3 posiłków", not "z 3 posiłki". That collapses every count
+ * above one onto one form and leaves only the singular different — the same
+ * split, for the same reason, as `entriesGenitive` and `daysGenitive` in
+ * utils/analysis.ts.
+ *
+ * It lived in `utils/dietAnalysis.ts` until the weekly report needed the same
+ * case for the same noun. Declensions of "posiłek" belong next to each other
+ * and next to `MEAL_KINDS`, not in whichever screen's helper file happened to
+ * need one first — that is how a module ends up with two spellings of one word.
+ */
+export function mealsGenitive(count: number): string {
+  return count === 1 ? 'posiłku' : 'posiłków'
+}
+
+/**
+ * "przy 1 posiłku", "przy 2 posiłkach", "przy 7 posiłkach" — the locative, with
+ * its number.
+ *
+ * "przy" governs the locative, so neither of the two above fits: "przy 2
+ * posiłki" and "przy 2 posiłków" are both wrong. The plural has one form for
+ * every count, which is why this is the shortest of the three.
+ *
+ * The number travels with the noun here, unlike `mealsGenitive`, because every
+ * caller needs both and a bare "posiłkach" reads as a fragment at the call
+ * site.
+ */
+export function mealsLocative(count: number): string {
+  return count === 1 ? '1 posiłku' : `${count} posiłkach`
 }
 
 /**

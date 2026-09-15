@@ -126,6 +126,16 @@ function fixture(overrides: { awakenings?: number } = {}): DietWeeklyReport {
     rangeLabel: '26 sierpnia – 1 września 2026',
     daysWithEntry: 2,
     days,
+    // What the server derives from the two chips on the meals above: 'Spokój'
+    // rated 6 at one meal, 'Wstyd' picked at one and left unrated. Both counts
+    // are on the rows because the second is what makes an average honest.
+    emotions: {
+      mealsWithEmotion: 2,
+      rows: [
+        { emotion: 'Spokój' as const, meals: 1, ratedMeals: 1, avgIntensity: 6 },
+        { emotion: 'Wstyd' as const, meals: 1, ratedMeals: 0, avgIntensity: null },
+      ],
+    },
     mealGrid: {
       // The fifth column is there because the week holds a meal with no hour.
       slots: ['morning', 'noon', 'evening', 'night', 'unspecified'],
@@ -298,6 +308,105 @@ describe('Pory posiłków', () => {
     expect(within(grid).getAllByRole('row')).toHaveLength(8)
     expect(grid.textContent?.toLowerCase()).not.toContain('razem')
     expect(grid.textContent?.toLowerCase()).not.toContain('suma')
+  })
+})
+
+describe('Najczęstsze emocje przy jedzeniu', () => {
+  /**
+   * §05's section, and the one card on this screen that counts anything.
+   *
+   * What makes it allowable is *what the number is about*: an intensity is a
+   * slider the patient moved herself, on the psychotherapy form's own picker.
+   * The moment a figure here starts describing the food, the card has crossed
+   * the line the whole module is built on — which is what the last two tests
+   * in this block guard.
+   */
+
+  it('ranks the week chips, most often picked first', async () => {
+    await renderReport()
+
+    const section = card('Najczęstsze emocje przy jedzeniu')
+
+    expect(within(section).getByText('Spokój')).toBeInTheDocument()
+    expect(within(section).getByText('Wstyd')).toBeInTheDocument()
+  })
+
+  it('counts meals rather than days', async () => {
+    /* An emotion hangs off a meal here, so two difficult meals on one Tuesday
+       are two things that happened. The psychotherapy ranking counts days,
+       which is exactly the unit somebody would "correct" this to. */
+    await renderReport()
+
+    const section = card('Najczęstsze emocje przy jedzeniu')
+
+    expect(within(section).getAllByText(/1 posiłek/)).not.toHaveLength(0)
+    expect(within(section).queryByText(/1 dzień/)).toBeNull()
+  })
+
+  it('says how many meals the ranking was drawn from', async () => {
+    /* One meal may carry several chips, so the rows can add up to more than the
+       meals behind them. A denominator, not a score. */
+    await renderReport()
+
+    expect(
+      within(card('Najczęstsze emocje przy jedzeniu')).getByText(/Z 2 posiłków/),
+    ).toBeInTheDocument()
+  })
+
+  it('prints an average for a rated chip and none for an unrated one', async () => {
+    /* 'Spokój' was rated 6; 'Wstyd' was picked with the slider never moved.
+       Printing "0 / 10" on the second would put a rating on the record that
+       nobody gave. */
+    await renderReport()
+
+    const section = card('Najczęstsze emocje przy jedzeniu')
+
+    expect(within(section).getByText(/6,0 \/ 10/)).toBeInTheDocument()
+    expect(within(section).queryByText(/0,0 \/ 10/)).toBeNull()
+  })
+
+  it('explains the row that has no average instead of leaving it looking broken', async () => {
+    await renderReport()
+
+    expect(
+      within(card('Najczęstsze emocje przy jedzeniu')).getByText(
+        /Natężenie nie zostało ocenione/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('says what the numbers are, and that they do not grade the food', async () => {
+    await renderReport()
+
+    const note = within(card('Najczęstsze emocje przy jedzeniu')).getByText(
+      /nie ocenia jedzenia/,
+    )
+
+    expect(note).toHaveTextContent('oceniłaś lub oceniłeś')
+  })
+
+  it('is absent altogether for a week nobody picked a chip in', async () => {
+    /* Not an empty ranking and not a "brak emocji": §05's rule is that no field
+       blocks a save, so meals saved without an emotion are ordinary meals and
+       the report simply has one card fewer. */
+    mockedFetch.mockResolvedValue({
+      ...fixture(),
+      emotions: { mealsWithEmotion: 0, rows: [] },
+    })
+
+    await renderReport()
+
+    expect(screen.queryByRole('region', { name: 'Najczęstsze emocje przy jedzeniu' })).toBeNull()
+  })
+
+  it('still lists every chip under the meal that felt it', async () => {
+    /* The ranking is a second reading of the same rows, never a replacement:
+       the day-by-day listing keeps its own chips. */
+    await renderReport()
+
+    const wednesday = day('środa, 26 sierpnia')
+
+    expect(within(wednesday).getByText(/Spokój/)).toBeInTheDocument()
   })
 })
 

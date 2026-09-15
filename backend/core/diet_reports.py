@@ -19,16 +19,26 @@ two that justified moving the psychotherapy reports (`core/reports.py`):
   specialist can open one of these — which they cannot yet; see the note at the
   foot of this docstring.
 
-**NOTHING IS SUMMED AND NOTHING IS SCORED.** No total meals for a week, no
-millilitres added up, no minutes of activity, no averages and no comparison with
-the week before. The report is a listing — the client's own words are "etykieta i
-wartość, wiersz po wierszu: data, co się działo" and "bez ocen, bez wniosków,
-bez kalorii". The single count in this whole module is `days_with_entry`, which
-counts *days the patient wrote something on* and is rendered as a plain number,
-never as a fraction of seven: "6 z 7 dni" is a regularity score and this module
-does not score. That absence is the thing most likely to be "improved" by
-somebody adding an average here, and `test_diet_reports_api` sweeps the payload
-for one.
+**NOTHING ABOUT THE FOOD IS SUMMED AND NOTHING IS SCORED.** No total meals for
+a week, no millilitres added up, no minutes of activity, no average of anything
+somebody ate and no comparison with the week before. The report is a listing —
+the client's own words are "etykieta i wartość, wiersz po wierszu: data, co się
+działo" and "bez ocen, bez wniosków, bez kalorii". `days_with_entry` counts
+*days the patient wrote something on* and is rendered as a plain number, never
+as a fraction of seven: "6 z 7 dni" is a regularity score and this module does
+not score. That absence is the thing most likely to be "improved" by somebody
+adding an average of a day's eating here, and `test_diet_reports_api` sweeps the
+payload for one.
+
+**THE ONE THING THAT IS COUNTED AND AVERAGED IS AN EMOTION**, and the boundary
+is what the number is about rather than which arithmetic it uses.
+`_rank_meal_emotions` builds §05's "najczęstsze emocje przy jedzeniu" from the
+chips the patient picked at her meals: how many meals each was picked at, and —
+over the ones she actually rated — how strongly, on the same 0-10 slider the
+psychotherapy diary uses. That is her own answer read back, not this module's
+opinion of a meal, and nothing about *what was eaten* feeds it: the description,
+the kind and the hour are not inputs to any figure in that section. The day it
+starts saying something about food is the day it has crossed the line.
 
 THE WEEK IS NOT A MONDAY. Seven days counted from the patient's first entry —
 the client's rule, on her own artboards ("Tydzień liczony od pierwszego wpisu…
@@ -40,13 +50,17 @@ would make every week id a function of whatever history is in hand.
 
 WHAT IS DELIBERATELY NOT BUILT, each argued where it would go:
 
-* **The three §05 sections** — najczęstsze emocje przy jedzeniu, głód fizyczny
-  wobec emocjonalnego, sytuacje jedzenia emocjonalnego. All three read the
-  psychodietetic context of a meal, and *none of those columns exists*: not in
-  `diet_meal`, not in 0016, and §04/§05's form that would write them is not
-  built. They join this module together with that form and its migration, and
-  not before — a field invented here would be a report claiming to summarise
-  something nobody was ever asked.
+* **Two of the three §05 sections** — głód fizyczny wobec emocjonalnego, and
+  sytuacje jedzenia emocjonalnego. Both read a psychodietetic context of a meal
+  that *has no column*: neither `diet_meal` nor `diet_meal_emotion` holds a
+  hunger scale or a "what was happening before this meal", and §04/§05's form
+  asks neither. They join this module together with those columns and the form
+  that writes them, and not before — a field invented here would be a report
+  claiming to summarise something nobody was ever asked.
+
+  The third of them, **najczęstsze emocje przy jedzeniu, is built**: it was held
+  back for exactly the same reason until `diet_meal_emotion` arrived, and the
+  form now asks. See `_rank_meal_emotions`.
 * **"Zmiany od ostatniej wizyty."** The one pair the mockup says a report may
   compare is the two hungers (§05, neither exists), the app does not know when a
   visit happened, and comparing meal or entry counts week to week would be a
@@ -72,7 +86,7 @@ from . import sleep as sleep_rules
 from .hydration import glasses_for, water_by_day
 from .meals import load_history as load_meal_history
 from .meals import first_entry_date as first_meal_date
-from .reports import format_week_range
+from .reports import EMOTION_ORDER, average_rated, format_week_range
 from .time_of_day import EVENING, MORNING, NIGHT, NOON, TIMES_OF_DAY
 
 DAYS_IN_DIET_WEEK = 7
@@ -283,6 +297,104 @@ def _meal_grid(days):
     return {'slots': slots, 'rows': rows}
 
 
+def _emotion_pickings(days):
+    """Every chip picked at a meal this week, gathered by emotion.
+
+    THE UNIT IS A MEAL, not a day, and that is the one place this section
+    departs from the psychotherapy ranking it is otherwise modelled on
+    (`reports._emotion_ratings`, which counts days because the diary holds one
+    entry per day). An emotion here hangs off a *meal* — `diet_meal_emotion` is
+    a child of `diet_meal` — so two difficult meals on one Tuesday are two
+    things that happened, and collapsing them onto their Tuesday would hide the
+    second one behind the first.
+
+    `intensity` is nullable, and the two counts below exist because of it: a
+    chip picked with the slider never moved says "this was felt" and says
+    nothing about how strongly. It counts towards `meals` and is left out of
+    `intensities`, so it can never pull an average towards zero. See
+    `meals.MealEmotionSerializer`, which is where the nullability is argued.
+    """
+    picked = {}
+    for day in days:
+        for meal in day['meals']:
+            for rating in meal['emotions']:
+                entry = picked.setdefault(
+                    rating['emotion'], {'meals': 0, 'intensities': []})
+                entry['meals'] += 1
+                if rating['intensity'] is not None:
+                    entry['intensities'].append(rating['intensity'])
+    return picked
+
+
+def _rank_meal_emotions(days):
+    """"Najczęstsze emocje przy jedzeniu" — §05's section, now that it can exist.
+
+    **THIS IS THE ONE PLACE THE MODULE COUNTS AND AVERAGES, AND THE LINE IT
+    STAYS ON IS WHAT THE NUMBER IS ABOUT.** The rule this module is built under
+    is that it does not score *food*: no calories, no portions, no "6 z 7 dni"
+    regularity, no verdict on a day's eating. A number here rates a feeling the
+    patient put on a slider herself, in the same ten-name vocabulary and on the
+    same 0-10 scale the psychotherapy diary uses — so `avg_intensity` is her own
+    answer read back, not this module's opinion of a meal. Nothing here touches
+    what was eaten: the description, the kind and the hour are not inputs to a
+    single figure below, and the day this section starts saying something about
+    *food* is the day it has crossed the line.
+
+    ORDERED BY HOW OFTEN, WHICH IS THE OPPOSITE OF THE PSYCHOTHERAPY RANKING and
+    is deliberate rather than an oversight. That one ranks by intensity, because
+    a week where 'Smutek' averaged 0.8 across five days must not draw a longer
+    bar than the week's strongest feeling (see `reports._rank_emotions`). This
+    section is *named* for frequency — the mockup's own words are "najczęstsze
+    emocje przy jedzeniu" — so frequency is the question and the bar answers it.
+    The average travels on the row as the second number, where it cannot be
+    mistaken for what the length draws.
+
+    Ties break on the average and then on declaration order, so two emotions
+    picked at the same number of meals land in a stable, explainable order
+    rather than in whichever one the dict happened to yield first. An emotion
+    with no rated chip at all sorts below one that has an average, because
+    `-1` is under every real mean — it is still on the list, since being felt is
+    what puts it there, and `avg_intensity` is None rather than 0.
+
+    `meals_with_emotion` is the count the caption is written from, and it is a
+    denominator rather than a score: a ranking whose rows add up to more than
+    the meals behind it (a meal may carry several chips) is unreadable without
+    knowing how many meals were being talked about. The same argument the
+    heatmap square's `observedDays` is kept for.
+    """
+    picked = _emotion_pickings(days)
+    averages = {
+        emotion: average_rated(entry['intensities'])
+        for emotion, entry in picked.items()
+    }
+    ranked = sorted(
+        picked.items(),
+        key=lambda pair: (
+            -pair[1]['meals'],
+            -(averages[pair[0]] if averages[pair[0]] is not None else -1),
+            EMOTION_ORDER.get(pair[0], len(EMOTION_ORDER)),
+        ),
+    )
+    return {
+        'meals_with_emotion': sum(
+            1 for day in days for meal in day['meals'] if meal['emotions']
+        ),
+        'rows': [
+            {
+                'emotion': emotion,
+                'meals': entry['meals'],
+                # How many of those carried a number. Sent rather than derived,
+                # because the screen has to be able to say "przy 2 posiłkach bez
+                # oceny" — an average over five of seven chips read as an
+                # average over seven is a precision nobody entered.
+                'rated_meals': len(entry['intensities']),
+                'avg_intensity': averages[emotion],
+            }
+            for emotion, entry in ranked
+        ],
+    }
+
+
 def _by_hour(meals):
     """Meals in the order they were eaten, with the unhoured ones last.
 
@@ -311,6 +423,10 @@ def build_report(week_start, week_end, days):
         # A plain count, never a fraction of seven. See the module docstring.
         'days_with_entry': sum(1 for day in days if not day['empty']),
         'meal_grid': _meal_grid(days),
+        # §05's "najczęstsze emocje przy jedzeniu". An empty `rows` is the
+        # ordinary answer for a week nobody picked a chip in, and the screen
+        # draws no section at all for it rather than an empty ranking.
+        'emotions': _rank_meal_emotions(days),
     }
 
 

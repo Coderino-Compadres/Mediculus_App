@@ -39,26 +39,35 @@
  * days" assembled that way would be a window that stops short of today without
  * saying so.
  *
- * TODO(§05): the mockup's own §11 has three more charts — głód fizyczny wobec
- * emocjonalnego, emocje przed jedzeniem emocjonalnym, relacja stresu i apetytu.
- * All three read the psychodietetic context of a meal, and **none of those
- * columns exists**: `diet_meal` holds `kind`, `time` and `description` and
- * nothing else (migration 0016), and §04/§05's form that would write a mood, two
- * hunger scales, emotions, the situation before the meal, fullness, satisfaction
- * and the body's reaction is not built. They join this file together with that
- * form and its migration, and not before — the same line `types/dietReport.ts`
- * and `core/diet_reports.py` both hold.
+ * §11's EMOTION CHARTS ARE BUILT — the ranking and the three crossings at the
+ * foot of this file. They were blocked for one reason, which is that
+ * `diet_meal` had no emotion to read; `diet_meal_emotion` and §04's picker
+ * closed that, so they were built rather than re-argued.
+ *
+ * TODO(§05): two of the mockup's §11 charts remain — głód fizyczny wobec
+ * emocjonalnego, and the relation between stress and appetite. Both read a
+ * psychodietetic context of a meal that **still has no column**: §04/§05's form
+ * asks what was felt and does not ask a mood, two hunger scales, the situation
+ * before the meal, fullness, satisfaction or the body's reaction. They join this
+ * file together with those columns and the form that writes them, and not
+ * before — the same line `types/dietReport.ts` and `core/diet_reports.py` hold.
  * ────────────────────────────────────────────────────────────────────────────
  */
 
 import { addDays, fromIsoDate, toIsoDate } from './days'
-import { weekdayIndex } from './analysis'
+import { rangeLabel, weekdayIndex } from './analysis'
 import { MEAL_SLOT_UNSPECIFIED } from './dietReport'
-import { TIME_OF_DAY_VALUES, type TimeOfDay } from './timeOfDay'
+import { EMOTION_COLORS, type EmotionName } from './emotions'
+import { MEAL_KINDS } from './meals'
+import { TIME_OF_DAY_LABELS, TIME_OF_DAY_VALUES, type TimeOfDay } from './timeOfDay'
 import type { DietJournalDay, DietMeal } from '../types/diet'
 import type { DietMealSlot } from '../types/dietReport'
 import type {
   DietAnalysis,
+  DietEmotionCross,
+  DietEmotionCrossColumn,
+  DietEmotionShare,
+  DietEmotions,
   DietHeatmap,
   DietHeatmapCell,
   DietSlotShare,
@@ -118,6 +127,25 @@ export const DIET_HEATMAP_MIN_DAYS = 14
  * drawn without a colour and read out as too few days. See `types/dietAnalysis.ts`.
  */
 export const DIET_HEATMAP_MIN_WEEKDAY_DAYS = 2
+
+/**
+ * How many days one column of "Emocje w czasie" covers.
+ *
+ * Seven, because a week is the unit a patient and a specialist already talk in
+ * — but **it is not this module's week**. §10's report counts seven days from
+ * the patient's first entry and anchors them in `patient.diet_week_start`; a
+ * bucket here is seven days of a *rolling* window and moves every day, so
+ * "Tyg. 1" names different dates tomorrow. The two must not be unified: an
+ * anchored week is what makes a report citable, and a rolling one is what makes
+ * this view current. The dates are in every column's hint so nobody has to
+ * guess which kind they are looking at.
+ *
+ * Its own constant rather than `DAYS_PER_WEEK_BAR` from utils/analysis.ts, for
+ * the reason DIET_HEATMAP_MIN_DAYS is its own: the number agreeing today is a
+ * coincidence of two modules both cutting at a week, and tying them together
+ * would let a change to one silently move the other.
+ */
+export const DAYS_PER_DIET_TREND_BAR = 7
 
 /**
  * Where the four parts of the day begin, in minutes from midnight.
@@ -197,19 +225,6 @@ export function mealSlot(time: string | null): DietMealSlot {
     if (minutes >= boundary.minutes) slot = boundary.slot
   }
   return slot
-}
-
-/**
- * The genitive of "posiłek", for the caption's "wyliczone **z** N posiłków".
- *
- * Genitive rather than `pluralMeals`' nominative, because the preposition
- * governs it: "z 3 posiłków", not "z 3 posiłki". That collapses every count
- * above one onto one form and leaves only the singular different — the same
- * split, for the same reason, as `entriesGenitive` and `daysGenitive` in
- * utils/analysis.ts.
- */
-export function mealsGenitive(count: number): string {
-  return count === 1 ? 'posiłku' : 'posiłków'
 }
 
 /**
@@ -370,6 +385,265 @@ function buildSlots(days: DayFacts[]): DietSlotShare[] {
   }))
 }
 
+// ---- Emotions -------------------------------------------------------------------
+
+/**
+ * The column for the meals saved without a kind.
+ *
+ * Its own constant rather than MEAL_SLOT_UNSPECIFIED, even though the two
+ * strings are identical: one names a missing *hour* and the other a missing
+ * *kind*, they head different tables, and tying them together would mean a
+ * change to one crossing silently moving the other. They are spelled the same
+ * because they mean the same thing about the answer, not because they are the
+ * same column.
+ */
+export const MEAL_KIND_UNSPECIFIED = 'unspecified'
+
+/**
+ * The vocabulary's own order, for breaking a tie between two emotions that came
+ * up equally often and were rated the same.
+ *
+ * Taken from `EMOTION_COLORS`' key order, which is the app's one emotion
+ * vocabulary and which `test_emotions.py` pins against `core/emotions.py`'s
+ * tuple in both directions — so this breaks ties exactly the way
+ * `core.diet_reports._rank_meal_emotions` breaks them on the weekly report. Two
+ * screens ranking the same chips in two different orders is the kind of
+ * disagreement a patient reads as a fault.
+ */
+const EMOTION_ORDER = new Map<string, number>(
+  Object.keys(EMOTION_COLORS).map((name, index) => [name, index]),
+)
+
+/** One meal of the window, with the day it belongs to — the week crossing needs
+ *  the date and the other two do not, so they travel together. */
+interface WindowMeal {
+  date: string
+  meal: DietMeal
+}
+
+interface EmotionTally {
+  meals: number
+  intensities: number[]
+}
+
+/**
+ * Every chip in the window, gathered by emotion.
+ *
+ * **AN UNRATED CHIP COUNTS TOWARDS `meals` AND NOT TOWARDS `intensities`**, and
+ * that split is the whole reason this is two fields rather than a list of
+ * numbers. `intensity` is null for a chip picked with the slider never moved —
+ * the column is nullable precisely so it can be — and folding those in as
+ * zeroes would drag an average towards the floor in proportion to how little
+ * somebody filled in, which is a diary telling its owner she was calm because
+ * she was in a hurry.
+ */
+function tallyEmotions(entries: WindowMeal[]): Map<EmotionName, EmotionTally> {
+  const tallies = new Map<EmotionName, EmotionTally>()
+
+  for (const { meal } of entries) {
+    for (const rating of meal.emotions) {
+      const tally = tallies.get(rating.emotion) ?? { meals: 0, intensities: [] }
+      tally.meals += 1
+      if (rating.intensity !== null) tally.intensities.push(rating.intensity)
+      tallies.set(rating.emotion, tally)
+    }
+  }
+
+  return tallies
+}
+
+/** Mean of a list, or null when it is empty — "nobody rated it" is never a zero.
+ *
+ *  Unrounded, like every mean `utils/analysis.ts` computes: the screen rounds at
+ *  render with `formatNumber(value, 1)`, so there is one rounding rather than a
+ *  stored one and a displayed one free to disagree. */
+function mean(values: number[]): number | null {
+  if (values.length === 0) return null
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+/**
+ * "Najczęstsze emocje przy jedzeniu" over the window.
+ *
+ * ORDERED BY HOW OFTEN, which is what the section is named for — and which is
+ * the opposite of the psychotherapy report's ranking, where a length draws
+ * intensity because *that* section is named for strength. The same reversal
+ * `core.diet_reports._rank_meal_emotions` makes, for the same reason, and the
+ * two have to agree: the ranking on a weekly report and the ranking here are
+ * the same question asked over different stretches of time.
+ *
+ * Ties break on the average and then on the vocabulary's order, so the rows
+ * cannot reshuffle between two renders of one window. An emotion nobody rated
+ * sorts below an equally frequent one that was rated, because a null is not a
+ * measurement — but it keeps its row, since being felt is what puts it there.
+ */
+function buildEmotionRanking(entries: WindowMeal[]): DietEmotionShare[] {
+  const tallies = [...tallyEmotions(entries).entries()].map(([emotion, tally]) => ({
+    emotion,
+    meals: tally.meals,
+    ratedMeals: tally.intensities.length,
+    avgIntensity: mean(tally.intensities),
+  }))
+
+  return tallies.sort(
+    (left, right) =>
+      right.meals - left.meals ||
+      (right.avgIntensity ?? -1) - (left.avgIntensity ?? -1) ||
+      (EMOTION_ORDER.get(left.emotion) ?? EMOTION_ORDER.size) -
+        (EMOTION_ORDER.get(right.emotion) ?? EMOTION_ORDER.size),
+  )
+}
+
+/** What a crossing's columns are, before the meals are counted into them. */
+type ColumnSpec = Pick<DietEmotionCrossColumn, 'key' | 'label' | 'hint'>
+
+/**
+ * One crossing: the ranking's emotions against a set of columns.
+ *
+ * `columnOf` is the only thing that differs between the three, which is why
+ * they share this function rather than having one each — three near-identical
+ * builders are three places for the same off-by-one to be introduced
+ * independently.
+ *
+ * **EVERY COLUMN IS KEPT, INCLUDING THE EMPTY ONES**, and `column.meals` is
+ * what lets the screen tell the two kinds of blank apart: a column holding
+ * meals but no chip is a measured zero ("nothing was recorded then"), a column
+ * holding no meal at all is an absence ("we know nothing about then"). Dropping
+ * the second would quietly turn it into the first — the mistake
+ * `DietHeatmapCell` documents at length for the map above, one table over.
+ *
+ * Rows are the emotions in the ranking's order, so the table reads top to
+ * bottom in the same order as the bars beside it.
+ */
+function buildCross(
+  entries: WindowMeal[],
+  order: DietEmotionShare[],
+  specs: ColumnSpec[],
+  columnOf: (entry: WindowMeal) => string,
+): DietEmotionCross {
+  const mealsPerColumn = new Map<string, number>()
+  // `emotion|column` — the two halves of a cell, flattened into one key so the
+  // count is one lookup rather than a map of maps.
+  const cellCounts = new Map<string, number>()
+
+  for (const entry of entries) {
+    const column = columnOf(entry)
+    mealsPerColumn.set(column, (mealsPerColumn.get(column) ?? 0) + 1)
+    for (const rating of entry.meal.emotions) {
+      const key = `${rating.emotion}|${column}`
+      cellCounts.set(key, (cellCounts.get(key) ?? 0) + 1)
+    }
+  }
+
+  const columns = specs.map((spec) => ({
+    ...spec,
+    meals: mealsPerColumn.get(spec.key) ?? 0,
+  }))
+
+  return {
+    columns,
+    rows: order.map((share) => ({
+      emotion: share.emotion,
+      meals: share.meals,
+      cells: columns.map((column) => ({
+        column: column.key,
+        meals: cellCounts.get(`${share.emotion}|${column.key}`) ?? 0,
+      })),
+    })),
+  }
+}
+
+/**
+ * The columns of "Emocje a pora dnia".
+ *
+ * The four parts of the day in chronological order, and the fifth column only
+ * when the window actually holds a meal without an hour — the same rule
+ * `core.diet_reports._meal_grid` applies to the report's grid, and for the same
+ * reason: a permanently empty "Bez godziny" column reads as a question the
+ * patient failed to answer rather than as one she was never asked.
+ */
+function slotColumns(entries: WindowMeal[]): ColumnSpec[] {
+  const columns: ColumnSpec[] = TIME_OF_DAY_VALUES.map((slot) => ({
+    key: slot,
+    label: TIME_OF_DAY_LABELS[slot],
+  }))
+
+  if (entries.some(({ meal }) => mealSlot(meal.time) === MEAL_SLOT_UNSPECIFIED)) {
+    columns.push({ key: MEAL_SLOT_UNSPECIFIED, label: 'Bez godziny' })
+  }
+  return columns
+}
+
+/** The columns of "Emocje a rodzaj posiłku" — §04's six kinds in the order its
+ *  picker draws them, which is also the order of a day, plus the meals saved
+ *  without a kind when the window holds any. */
+function kindColumns(entries: WindowMeal[]): ColumnSpec[] {
+  const columns: ColumnSpec[] = MEAL_KINDS.map((kind) => ({ key: kind, label: kind }))
+
+  if (entries.some(({ meal }) => meal.kind === null)) {
+    columns.push({ key: MEAL_KIND_UNSPECIFIED, label: 'Bez rodzaju' })
+  }
+  return columns
+}
+
+/**
+ * The columns of "Emocje w czasie": consecutive seven-day buckets from the
+ * window's first day.
+ *
+ * NOT MONDAYS, and not the diet module's own week either. A bucket here is
+ * simply seven days of the window, counted from where the window starts — which
+ * rolls with the calendar, so "Tyg. 1" means a different seven days tomorrow.
+ * That is the right unit for a *rolling* view and the wrong one for a report,
+ * which is why `patient.diet_week_start` anchors those and nothing anchors
+ * these. `buildFrequency` in utils/analysis.ts cuts its bars the same way.
+ *
+ * THE LAST BUCKET IS USUALLY SHORT — thirty days is four sevens and two — and
+ * it is left short rather than padded, dropped or rescaled: its dates are in
+ * the hint, so a column standing for two days cannot be read as a quiet week.
+ */
+function weekColumns(windowStart: Date, windowDays: number): ColumnSpec[] {
+  const columns: ColumnSpec[] = []
+
+  for (let offset = 0; offset < windowDays; offset += DAYS_PER_DIET_TREND_BAR) {
+    const length = Math.min(DAYS_PER_DIET_TREND_BAR, windowDays - offset)
+    const start = addDays(windowStart, offset)
+    const end = addDays(start, length - 1)
+    columns.push({
+      key: toIsoDate(start),
+      label: `Tyg. ${columns.length + 1}`,
+      hint: rangeLabel(start, end),
+    })
+  }
+
+  return columns
+}
+
+/** Which seven-day bucket a date falls in, as that bucket's key. */
+function weekColumnOf(date: string, windowStart: Date): string {
+  const offset = daysBetween(windowStart, fromIsoDate(date))
+  const bucket = Math.floor(offset / DAYS_PER_DIET_TREND_BAR)
+  return toIsoDate(addDays(windowStart, bucket * DAYS_PER_DIET_TREND_BAR))
+}
+
+/** Everything §11's emotion charts read, from the window's meals. */
+function buildEmotions(entries: WindowMeal[], windowStart: Date, windowDays: number): DietEmotions {
+  const ranking = buildEmotionRanking(entries)
+
+  return {
+    mealsWithEmotion: entries.filter(({ meal }) => meal.emotions.length > 0).length,
+    ranking,
+    byTimeOfDay: buildCross(entries, ranking, slotColumns(entries), ({ meal }) =>
+      mealSlot(meal.time),
+    ),
+    byKind: buildCross(entries, ranking, kindColumns(entries), ({ meal }) =>
+      meal.kind ?? MEAL_KIND_UNSPECIFIED,
+    ),
+    byWeek: buildCross(entries, ranking, weekColumns(windowStart, windowDays), ({ date }) =>
+      weekColumnOf(date, windowStart),
+    ),
+  }
+}
+
 /**
  * Everything the diet "Analiza" screen draws, from the history the archive
  * already loads.
@@ -432,6 +706,17 @@ export function buildDietAnalysis(
 
   const days = [...mealsByDate.entries()].map(([date, meals]) => factsFor(date, meals))
 
+  /* The same meals, flat and carrying their day.
+   *
+   * The charts above count *days* — two breakfasts on one Tuesday are one
+   * Tuesday morning — and the emotion charts count *meals*, because an emotion
+   * belongs to a meal and two difficult meals on one day are two things that
+   * happened. So they cannot read the same `DayFacts`, and this is the one
+   * extra pass that difference costs. */
+  const windowMeals: WindowMeal[] = [...mealsByDate.entries()].flatMap(([date, meals]) =>
+    meals.map((meal) => ({ date, meal })),
+  )
+
   return {
     window: {
       days: windowDays,
@@ -443,5 +728,6 @@ export function buildDietAnalysis(
     heatmap: buildHeatmap(days),
     slots: buildSlots(days),
     untimedMeals: days.reduce((total, day) => total + day.untimed, 0),
+    emotions: buildEmotions(windowMeals, windowStart, windowDays),
   }
 }
