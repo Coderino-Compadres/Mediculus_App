@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
+import MealEmotions from '../components/MealEmotions'
 import { ApiError } from '../api/client'
 import { fetchDietReport } from '../api/diet'
 import { dietDayLabel, dietShortDayLabel } from '../utils/dietWeeks'
@@ -30,12 +31,23 @@ import './dietReport.css'
  *
  * WHAT IS NOT HERE, all of it deliberate and each argued where it would go:
  *
+ * WHAT A MEAL'S OWN EMOTIONS LOOK LIKE HERE: listed under the meal that felt
+ * them, via `MealEmotions` — the same read-only chips `DietHome.tsx`,
+ * `DietJournals.tsx` and `DietJournalDay.tsx` already draw, so a chip cannot
+ * read differently on the report than it does everywhere else. That is a
+ * listing ("co się działo"), not the summary below — nothing here counts how
+ * often an emotion appeared.
+ *
  * TODO(§05): "Najczęstsze emocje przy jedzeniu", "Głód fizyczny wobec
- * emocjonalnego" and "Sytuacje jedzenia emocjonalnego" — the three sections the
- * mockup puts between the meal times and the day-by-day listing. Every one of
- * them reads the psychodietetic context of a meal, which is §05: none of those
- * columns exists in `diet_meal`, and §04/§05's form that would write them is
- * not built. They belong right here, after the meal-times card, when it is.
+ * emocjonalnego" and "Sytuacje jedzenia emocjonalnego" — three sections the
+ * mockup puts between the meal times and the day-by-day listing, and all
+ * three are summaries rather than a listing: a count or a "most common" is a
+ * tally, and "NOTHING IS SUMMED AND NOTHING IS SCORED" is this module's own
+ * rule (`core/diet_reports.py`). The physical-vs-emotional-hunger and
+ * emotional-eating-situation sections also still have no column to read —
+ * §04/§05's form only asks what was felt, not either of those. They stay a
+ * TODO, and a real one is a design call about what a scoreless "most common"
+ * would even mean, not just a missing field.
  *
  * TODO(§10): "Zmiany od ostatniej wizyty" — the card between the listing and
  * the footer on the artboard. Three things are missing at once: the one pair
@@ -79,6 +91,10 @@ function MealLine({ meal }: { meal: DietMeal }) {
         >
           {description || 'bez opisu'}
         </span>
+        {/* Renders nothing for a meal with no chips picked — `MealEmotions`
+            already returns null for an empty list, the same rule every other
+            line on this card follows for an unanswered question. */}
+        <MealEmotions emotions={meal.emotions} />
       </span>
     </li>
   )
