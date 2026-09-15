@@ -1,3 +1,5 @@
+import './charts.css'
+
 export interface BarRow {
   /** React key — the label is not always unique enough ('Tyg. 1' vs an emotion). */
   key: string
@@ -29,6 +31,17 @@ export interface BarRow {
  * short ("Tyg. 12", "sie") -- thirteen bars at the emotion chart's width would
  * overflow a desktop card and clip the newest one, which is the bar the patient
  * came to look at.
+ *
+ * **A BAR OF ZERO IS A BAR, NOT AN ABSENCE.** `.analysis-bar-fill` carries a 2px
+ * floor so a rated zero still exists as a line, which means this component
+ * cannot tell "measured, and it was none" from "we do not know". It never has
+ * to: every caller drops the rows it has no answer for, and an empty `rows`
+ * draws `emptyText` instead. A caller that passes 0 is promising the reader that
+ * zero is the measurement -- see the subtitle rules in `pages/DietAnalysis.tsx`.
+ *
+ * Its styles live in `components/charts.css` rather than in a screen's own
+ * stylesheet, because two modules draw this chart and neither should have to
+ * import the other's screen to get at it.
  */
 function AnalysisBarChart({
   rows,

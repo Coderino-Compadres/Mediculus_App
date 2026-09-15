@@ -1,0 +1,272 @@
+/* "Analiza" — the diet module's own (§11).
+ *
+ * Its own stylesheet on the same terms as dietReports.css and dietJournals.css:
+ * the module dresses itself from styles/theme.css rather than wearing another
+ * screen's class names. In particular it does **not** import `pages/analysis.css`
+ * — the psychotherapy analysis is a different screen with a different question
+ * behind it, and sharing a stylesheet is how two screens end up being changed as
+ * one by accident. What the two genuinely share is the chart primitives, and
+ * those live in `components/charts.css`, imported by the components that render
+ * them rather than by either screen.
+ *
+ * Colour roles, unchanged from the rest of the module: sage is the frame and the
+ * one action, ochre is the module's own mark, lavender is the page. Ochre that
+ * has to be *read* — a bar, a number, a word — is always `--color-ochre-text`,
+ * never `--color-ochre`, which sits at about 1,9:1 on white and is a background
+ * colour rather than an ink. Nothing here is red: §15 keeps red for signing out
+ * and withdrawing a consent, and nothing on this screen is either.
+ *
+ * And no `text-transform: capitalize` anywhere: the weekday and month names this
+ * screen renders are Polish, and "1 Września" is not.
+ */
+
+.diet-analysis-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-analysis-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header ------------------------------------------------------------------ */
+
+.diet-analysis-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+}
+
+.diet-analysis-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  /* Sage, matching every other nadtytuł in this module (dietHome, dietJournals,
+     dietReports, dietReport). §15 asks for ochre here; the module has answered
+     that with sage on five screens already, and one screen deviating reads as a
+     mistake rather than as a correction. Worth settling module-wide, not here. */
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-analysis-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* The way back: the arrow in the header, as on this module's other screens.
+   A link rather than a button — it only goes somewhere, so it keeps
+   middle-click, cmd-click and "copy link address". 44px, per WCAG 2.5.8. */
+.diet-analysis-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-graphite);
+  text-decoration: none;
+  background: var(--color-surface);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.diet-analysis-back:hover {
+  color: var(--color-sage-hover);
+  text-decoration: none;
+}
+
+.diet-analysis-back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.diet-analysis-header-titles {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* Caption, status, cards -------------------------------------------------- */
+
+/* `margin: 0 auto`, not `margin: 0` — the centring lives on
+   `.diet-analysis-page > *` at the same specificity and loses to a bare
+   `margin: 0` by source order, which silently un-centres the line while every
+   card around it stays in the column. The trap dietJournals.css records. */
+.diet-analysis-caption {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 auto;
+}
+
+.diet-analysis-status {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 auto;
+}
+
+/* A failed load is a state to act on, so it gets a surface and the retry button
+   sits on it. Still not red — the sentence says what happened, and this module
+   spends red on nothing. */
+.diet-analysis-error {
+  background: var(--color-surface);
+  border-radius: var(--radius-tile);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-card);
+  color: var(--color-graphite);
+}
+
+.diet-analysis-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+}
+
+.diet-analysis-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.diet-analysis-card-subtitle {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 16px;
+}
+
+/* The meals with no hour, said in a sentence under the chart rather than drawn
+   as a fifth bar: there is no part of the day to put them in, and a column
+   labelled "bez godziny" next to four that mean "o tej porze" would be four
+   measurements and one category. */
+.diet-analysis-aside {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 14px 0 0;
+}
+
+/* Empty states ------------------------------------------------------------ */
+
+.diet-analysis-empty-state {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 28px 20px;
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+
+.diet-analysis-empty-state h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 20px;
+  color: var(--color-graphite);
+  margin: 0 0 10px;
+}
+
+.diet-analysis-empty-state p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-graphite-muted);
+  margin: 0 0 18px;
+}
+
+/* Sage, because it is an action — the module keeps ochre for its own mark and
+   for state, never for the one button on a screen. */
+.diet-analysis-empty-button {
+  display: inline-block;
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  min-height: 44px;
+  padding: 12px 24px;
+  border-radius: var(--radius-pill);
+  background: var(--color-sage);
+  color: var(--color-surface);
+  text-decoration: none;
+}
+
+.diet-analysis-empty-button:hover {
+  background: var(--color-sage-hover);
+  color: var(--color-surface);
+  text-decoration: none;
+}
+
+.diet-analysis-empty-button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Closing banner ---------------------------------------------------------- */
+
+.diet-analysis-note-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-tile);
+  padding: 14px 18px;
+}
+
+.diet-analysis-note-banner span {
+  font-size: 16px;
+  line-height: 1.4;
+  flex-shrink: 0;
+  color: var(--color-sage-hover);
+}
+
+.diet-analysis-note-banner p {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* Two borrowed components, dressed for this screen -------------------------
+ *
+ * `AnalysisBarChart` and `WeekdayTimeHeatmap` bring their own layout from
+ * `components/charts.css`. What is scoped here is only what this screen's
+ * subject changes, and the scoping is what keeps it off the psychotherapy
+ * screen, which renders the same class names from the same file.
+ */
+
+/* Four bars with labels as short as "Rano" do not need the emotion chart's
+   44px floor, and at this width all four fit a 390px phone without the row
+   scrolling. */
+.diet-analysis-card .analysis-bars {
+  --bar-column-min: 56px;
+}
+
+/* The axis labels under the bars. 12px rather than the 11px the emotion chart
+   is pinned to by "Bezradność" — these four are one short word each, so there
+   is nothing to hyphenate and no reason to sit at §15's 10,5px floor. */
+.diet-analysis-card .analysis-bar-label {
+  font-size: 12px;
+  /* One line is enough for all four, so the two-line reservation that keeps the
+     emotion bars on a shared baseline is not needed here. */
+  min-height: 1.3em;
+}
+
+/* The grid caps itself at 420px and centres in the card, which is what keeps a
+   square square on a wide screen — inherited from components/charts.css and
+   deliberately not overridden. */
