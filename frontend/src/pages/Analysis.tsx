@@ -30,6 +30,7 @@ import type {
 } from '../types/analysis'
 import type { JournalListEntry } from '../types/diaryEntry'
 import { ROUTES } from '../routes'
+import '../components/charts.css'
 import './journals.css'
 import './analysis.css'
 

@@ -83,6 +83,11 @@ export const ROUTES = {
    *  następnego wtorku"). Nothing here touches the psychotherapy half. */
   dietReports: '/diet/reports',
   dietReportDetail: '/diet/reports/:id',
+  /** "Analiza" (§11) — the diet module's own, and its own route for the same
+   *  reason `dietReports` is: the two modules read different diaries over
+   *  different windows, and nothing here touches `/analysis`. See
+   *  pages/DietAnalysis.tsx for what §11 asks for that cannot be drawn yet. */
+  dietAnalysis: '/diet/analysis',
 } as const
 
 /** Fills in ROUTES.journalDetail's `:id` param — use instead of building the path by hand. */
@@ -190,6 +195,11 @@ export const ROUTE_TITLES: Record<string, string> = {
      satisfy a data structure. */
   [ROUTES.dietReports]: 'Raporty',
   [ROUTES.dietReportDetail]: 'Raport tygodniowy',
+  /* The same word as the psychotherapy screen, for the same reason "Raporty" is
+     repeated above: the titles are keyed by path, the two menus are separate
+     lists picked by route, and a patient inside "DIETETYKA I PSYCHODIETETYKA"
+     reading "Analiza" is reading the right word. */
+  [ROUTES.dietAnalysis]: 'Analiza',
   [ROUTES.home]: 'Strona główna',
   [ROUTES.journals]: 'Dzienniczki',
   [ROUTES.journalDetail]: 'Wpis w dzienniczku',

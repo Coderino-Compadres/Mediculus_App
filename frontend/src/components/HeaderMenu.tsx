@@ -62,11 +62,13 @@ const PATIENT_ITEMS: MenuItem[] = [
  * historia dzienniczków żywieniowych, nawodnienie i suplementy, aktywność
  * fizyczna i sen, raporty, analiza, techniki psychodietetyczne, profil zdrowotny,
  * materiały edukacyjne — join this list as they are built, in the order §03
- * gives them. "Nawodnienie" is the first to have done so; §08 pairs it with
- * "Suplementy i leki", which is a screen of its own and is not built, so the
- * entry is worded as the half that exists. One open question for that artboard: whether "przełączanie
- * modułów" means a direct jump to the other module (as below) or a link to the
- * chooser on /modules.
+ * gives them. Everything up to and including "Analiza" has now done so; what is
+ * still missing from §03's eleven is "Techniki psychodietetyczne" and "Materiały
+ * edukacyjne", neither of which is built, plus the coloured dots §03 draws
+ * beside every entry, which this menu has never had on either module's list.
+ * One open question for that artboard: whether "przełączanie modułów" means a
+ * direct jump to the other module (as below) or a link to the chooser on
+ * /modules.
  */
 const DIET_ITEMS: MenuItem[] = [
   { label: 'Strona główna', to: ROUTES.diet },
@@ -80,6 +82,11 @@ const DIET_ITEMS: MenuItem[] = [
   // entries are named the same because they are the same word for two
   // different documents; a patient only ever sees one of the two menus.
   { label: routeTitle(ROUTES.dietReports), to: ROUTES.dietReports },
+  // §03 lists "Analiza" straight after "Raporty", and this is the module's own —
+  // /diet/analysis, over the food diary, not the psychotherapy /analysis over
+  // the emotion one. The two are named the same because they are the same word
+  // for two different views; a patient only ever sees one of the two menus.
+  { label: routeTitle(ROUTES.dietAnalysis), to: ROUTES.dietAnalysis },
   { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
   { label: 'Przejdź do części psychoterapeutycznej', to: ROUTES.home },
 ]

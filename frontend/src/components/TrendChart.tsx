@@ -4,6 +4,7 @@ import { MOOD_SCALE_MAX } from '../utils/analysis'
 import { LEVEL_SCALE_MAX, formatNumber } from '../utils/reports'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import type { TrendPoint } from '../types/analysis'
+import './charts.css'
 
 /**
  * "Zmiany samopoczucia w czasie" — one answer from the diary, day by day.
