@@ -53,8 +53,6 @@ const EMPTY_DAY_LEAD =
  * what will fill it, rather than hiding the section until it has content. A card
  * that appears only on days that went well would make its own absence a verdict.
  */
-const DAY_SUMMARY_EMPTY =
-  'To miejsce wypełni się samo, kiedy zapiszesz pierwszy posiłek z opisem samopoczucia.'
 
 function TodayCard({
   day,
@@ -442,26 +440,10 @@ function DietHome() {
 
       {hydration && <HydrationCard day={hydration} />}
 
-      <section className="diet-card diet-summary" aria-labelledby="diet-summary-heading">
-        <h2 id="diet-summary-heading">Jak się dziś jadło?</h2>
-        <p>{DAY_SUMMARY_EMPTY}</p>
-      </section>
-
       <section className="diet-disclaimer">
         <span className="diet-disclaimer-icon" aria-hidden="true">
           ⓘ
         </span>
-        {/* The shared sentence, not the mockup's. The mockup words it
-            differently — "Aplikacja nie stawia diagnozy i nie zastępuje kontaktu
-            ze specjalistą. Nie jest narzędziem pomocy w kryzysie — wtedy zadzwoń
-            pod 112 lub 800 70 2222." — which is a second wording of the one
-            sentence this app says about its own limits, on a screen next to the
-            one that says the first. utils/disclaimer.ts exists precisely because
-            two copies drift at the first correction.
-            TODO(klientka): settle which wording stands. If it is the mockup's,
-            change APP_DISCLAIMER and both screens change together; the numbers
-            it names are already in data/crisisLines.ts and should be rendered
-            through PhoneLink rather than typed into the sentence. */}
         <p>{APP_DISCLAIMER}</p>
       </section>
     </div>

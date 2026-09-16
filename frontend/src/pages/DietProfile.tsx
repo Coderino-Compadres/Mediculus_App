@@ -691,10 +691,10 @@ function DietProfile() {
               <div className="diet-profile-field-row">
                 <MeasurementField
                   id="diet-profile-height"
-                  label="Wzrost (cm)"
+                  label="Wzrost"
                   unit="cm"
                   value={draft.heightCm}
-                  hint="W centymetrach. Możesz zostawić puste."
+                  hint="W centymetrach."
                   onChange={(next) => set('heightCm', next)}
                 />
               </div>
@@ -718,18 +718,18 @@ function DietProfile() {
               <div className="diet-profile-field-row">
                 <MeasurementField
                   id="diet-profile-weight"
-                  label="Masa ciała (kg)"
+                  label="Masa ciała"
                   unit="kg"
                   value={draft.weightKg}
-                  hint="W kilogramach. Możesz zostawić puste."
+                  hint="W kilogramach."
                   onChange={(next) => set('weightKg', next)}
                 />
                 <MeasurementField
                   id="diet-profile-target-weight"
-                  label="Masa docelowa (kg)"
+                  label="Masa docelowa"
                   unit="kg"
                   value={draft.targetWeightKg}
-                  hint="W kilogramach. Możesz zostawić puste."
+                  hint="W kilogramach."
                   onChange={(next) => set('targetWeightKg', next)}
                 />
               </div>
@@ -746,9 +746,6 @@ function DietProfile() {
                     />
                   ))}
                 </div>
-                <p className="diet-profile-hint">
-                  Kliknij ponownie, żeby odznaczyć. Nic nie jest zaznaczone domyślnie.
-                </p>
               </fieldset>
             </div>
           </section>
@@ -769,28 +766,27 @@ function DietProfile() {
               failure this section cannot afford.
             */}
             <p className="diet-profile-card-lead">
-              Wpisz własnymi słowami — tak, jak sama lub sam to opisujesz.
             </p>
 
             <div className="diet-profile-stack">
               <DescriptiveField
                 id="diet-profile-allergies"
                 label="Alergie pokarmowe"
-                hint="Na przykład: orzechy laskowe. Możesz zostawić puste."
+                hint=""
                 value={draft.allergies}
                 onChange={(next) => set('allergies', next)}
               />
               <DescriptiveField
                 id="diet-profile-intolerances"
                 label="Nietolerancje"
-                hint="Na przykład: laktoza. Możesz zostawić puste."
+                hint=""
                 value={draft.intolerances}
                 onChange={(next) => set('intolerances', next)}
               />
               <DescriptiveField
                 id="diet-profile-preferences"
                 label="Preferencje żywieniowe"
-                hint="Na przykład: dieta wegetariańska, bez glutenu. Możesz zostawić puste."
+                hint=""
                 value={draft.dietaryPreferences}
                 onChange={(next) => set('dietaryPreferences', next)}
               />
@@ -803,8 +799,6 @@ function DietProfile() {
           >
             <h2 id="diet-profile-conditions">Jednostki chorobowe</h2>
             <p className="diet-profile-card-lead">
-              Zaznacz to, co Ciebie dotyczy. Jeśli czegoś tu nie ma, dopisz własną
-              pozycję.
             </p>
 
             <div className="diet-profile-stack">
