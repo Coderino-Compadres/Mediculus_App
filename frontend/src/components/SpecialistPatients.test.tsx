@@ -6,6 +6,7 @@ import { PAGE_SIZE } from '../hooks/usePagination'
 import SpecialistPatients from './SpecialistPatients'
 import { ApiError } from '../api/client'
 import type { SpecialistCaseload, SpecialistPatient } from '../api/specialist'
+import { MODULE_DIET, MODULE_PSYCHOTHERAPY } from '../utils/modules'
 
 vi.mock('../api/specialist', () => ({
   fetchCaseload: vi.fn(),
@@ -40,6 +41,10 @@ function patient(overrides: Partial<SpecialistPatient> = {}): SpecialistPatient 
     isChild: false,
     acceptedAt: '2026-08-12T09:31:02Z',
     consentsActive: true,
+    // A row is a relationship, so it names its module; the psychotherapy one is
+    // what every relationship was before migration 0022.
+    module: MODULE_PSYCHOTHERAPY,
+    moduleLabel: 'Psychoterapia',
     activity: { entryCount: 12, streakDays: 4, lastEntryDate: '2026-09-07' },
     ...overrides,
   }
@@ -265,9 +270,10 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), '  jan@wp.pl  ')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
-    expect(mockedInvite).toHaveBeenCalledWith('jan@wp.pl')
+    expect(mockedInvite).toHaveBeenCalledWith('jan@wp.pl', MODULE_PSYCHOTHERAPY)
     expect(await screen.findByText(/Zaproszenie wysłane na jan@wp.pl/)).toBeInTheDocument()
   })
 
@@ -279,6 +285,7 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), 'jan@wp.pl')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
     const notice = await screen.findByText(/Pacjent zobaczy je po zalogowaniu/)
@@ -300,6 +307,7 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), 'nikt@wp.pl')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
     expect(await screen.findByText('Nie znaleziono pacjenta o tym adresie.')).toBeInTheDocument()
@@ -311,6 +319,7 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), 'nikt@wp.pl')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
     await screen.findByText('Nie znaleziono.')
@@ -322,6 +331,7 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), 'jan@wp.pl')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
     expect(await screen.findByText('Nie udało się wysłać zaproszenia. Spróbuj ponownie.'))

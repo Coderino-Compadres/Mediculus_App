@@ -21,6 +21,8 @@ import ParentHome from './pages/ParentHome'
 import SpecialistHome from './pages/SpecialistHome'
 import SpecialistPatientReports from './pages/SpecialistPatientReports'
 import SpecialistPatientReport from './pages/SpecialistPatientReport'
+import SpecialistPatientDietReports from './pages/SpecialistPatientDietReports'
+import SpecialistPatientDietReport from './pages/SpecialistPatientDietReport'
 import SpecialistParentAccounts from './pages/SpecialistParentAccounts'
 import SpecialistColleagues from './pages/SpecialistColleagues'
 import SpecialistTechniques from './pages/SpecialistTechniques'
@@ -317,6 +319,25 @@ function App() {
             element={
               <RequireSpecialist>
                 <SpecialistPatientReport />
+              </RequireSpecialist>
+            }
+          />
+          {/* The same pair for the diet module. Behind `RequireSpecialist` like
+              every other panel screen; which *module* a specialist may read is
+              decided per request by the relationship, not by the route. */}
+          <Route
+            path={ROUTES.specialistPatientDietReports}
+            element={
+              <RequireSpecialist>
+                <SpecialistPatientDietReports />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistPatientDietReport}
+            element={
+              <RequireSpecialist>
+                <SpecialistPatientDietReport />
               </RequireSpecialist>
             }
           />

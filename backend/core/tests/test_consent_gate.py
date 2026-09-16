@@ -27,6 +27,7 @@ from core.authentication import SESSION_USER_KEY
 from core.consents import (CONSENTS, has_active_consents, is_active, restore,
                            withdraw)
 from core.models import Diary, Patient, User, UserRole
+from core.modules import MODULE_PSYCHOTHERAPY
 from core.permissions import CONSENT_GATE_REFUSAL
 from core.reports import DAYS_IN_WEEK, start_of_week, week_report_id
 
@@ -94,16 +95,32 @@ def all_urls(
         ('get', reverse('core:report-pdf', args=[report_id])),
         ('get', reverse('core:technique-catalogue')),
         ('get', reverse('core:specialist-invitation')),
-        ('post', reverse('core:specialist-invitation-accept')),
-        ('post', reverse('core:specialist-invitation-reject')),
+        # The invitation's own id since 0022: a patient can hold one per module,
+        # so answering names which.
+        ('post', reverse(
+            'core:specialist-invitation-accept', args=[invitation_id])),
+        ('post', reverse(
+            'core:specialist-invitation-reject', args=[invitation_id])),
         ('get', reverse('core:specialist-patients')),
         ('post', reverse('core:specialist-patients')),
-        ('delete', reverse('core:specialist-patient', args=[patient_id])),
+        ('delete', reverse(
+            'core:specialist-patient', args=[patient_id, MODULE_PSYCHOTHERAPY])),
         ('get', reverse('core:specialist-patient-reports', args=[patient_id])),
         ('get', reverse(
             'core:specialist-patient-report', args=[patient_id, report_id])),
         ('get', reverse(
             'core:specialist-patient-report-pdf', args=[patient_id, report_id])),
+        # §10's reports in the panel, and the patient's own copy as a file.
+        ('get', reverse(
+            'core:specialist-patient-diet-reports', args=[patient_id])),
+        ('get', reverse(
+            'core:specialist-patient-diet-report',
+            args=[patient_id, 'week-2026-01-05'])),
+        ('get', reverse(
+            'core:specialist-patient-diet-report-pdf',
+            args=[patient_id, 'week-2026-01-05'])),
+        ('get', reverse('core:diet-report-pdf', args=['week-2026-01-05'])),
+        ('get', reverse('core:diet-profile')),
         ('get', reverse('core:specialist-parent-invitations')),
         ('post', reverse('core:specialist-parent-invitations')),
         ('delete', reverse('core:specialist-parent-invitation', args=[invitation_id])),

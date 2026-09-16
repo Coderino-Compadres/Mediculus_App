@@ -35,6 +35,11 @@ urlpatterns = [
         'account/health-profile/',
         views.HealthProfileView.as_view(), name='account-health-profile',
     ),
+    # §13's own profile: the diet module's counters and its psychodietitian.
+    # Under diet/ rather than account/, unlike the health profile above, because
+    # unlike that one it *is* module-specific — it answers "who treats me here"
+    # and "how much have I written here".
+    path('diet/profile/', views.DietAccountProfileView.as_view(), name='diet-profile'),
     path('account/password/', views.PasswordChangeView.as_view(), name='account-password'),
     path(
         'account/consents/withdraw/',
@@ -114,6 +119,12 @@ urlpatterns = [
         'diet/reports/<slug:report_id>/',
         views.DietReportDetailView.as_view(), name='diet-report-detail',
     ),
+    # The same week as a document. A slug before the trailing segment, exactly
+    # as the psychotherapy PDF route needs it.
+    path(
+        'diet/reports/<slug:report_id>/pdf/',
+        views.DietReportPdfView.as_view(), name='diet-report-pdf',
+    ),
     path('reports/', views.ReportListView.as_view(), name='report-list'),
     # 'week-2026-08-03' — a slug, so it can never swallow the trailing segment
     # of the PDF route below.
@@ -130,13 +141,16 @@ urlpatterns = [
         'account/specialist-invitation/',
         views.SpecialistInvitationView.as_view(), name='specialist-invitation',
     ),
+    # The id names *which* invitation, which is how the module is known: since
+    # 0022 a patient can be asked by a psychotherapist and a psychodietitian at
+    # once, and an endpoint with no id would have had to pick one.
     path(
-        'account/specialist-invitation/accept/',
+        'account/specialist-invitation/<uuid:invitation_id>/accept/',
         views.SpecialistInvitationAcceptView.as_view(),
         name='specialist-invitation-accept',
     ),
     path(
-        'account/specialist-invitation/reject/',
+        'account/specialist-invitation/<uuid:invitation_id>/reject/',
         views.SpecialistInvitationRejectView.as_view(),
         name='specialist-invitation-reject',
     ),
@@ -146,10 +160,6 @@ urlpatterns = [
     path(
         'specialist/patients/',
         views.SpecialistPatientsView.as_view(), name='specialist-patients',
-    ),
-    path(
-        'specialist/patients/<uuid:patient_id>/',
-        views.SpecialistPatientView.as_view(), name='specialist-patient',
     ),
     path(
         'specialist/patients/<uuid:patient_id>/reports/',
@@ -165,6 +175,38 @@ urlpatterns = [
         'specialist/patients/<uuid:patient_id>/reports/<slug:report_id>/pdf/',
         views.SpecialistPatientReportPdfView.as_view(),
         name='specialist-patient-report-pdf',
+    ),
+    # §10's reports, read by the patient's psychodietitian. Their own prefix
+    # rather than a module parameter on the routes above, exactly as the
+    # patient's own routes are split: the two modules do not agree on what a
+    # week is (Monday-to-Sunday there, seven days from the first entry here).
+    path(
+        'specialist/patients/<uuid:patient_id>/diet-reports/',
+        views.SpecialistPatientDietReportListView.as_view(),
+        name='specialist-patient-diet-reports',
+    ),
+    path(
+        'specialist/patients/<uuid:patient_id>/diet-reports/<slug:report_id>/',
+        views.SpecialistPatientDietReportDetailView.as_view(),
+        name='specialist-patient-diet-report',
+    ),
+    path(
+        'specialist/patients/<uuid:patient_id>/diet-reports/<slug:report_id>/pdf/',
+        views.SpecialistPatientDietReportPdfView.as_view(),
+        name='specialist-patient-diet-report-pdf',
+    ),
+    # Ending one relationship: the module is in the path and is not optional,
+    # because a specialist treating somebody in both modules is ending one of
+    # two.
+    #
+    # **DECLARED LAST OF THE `patients/<id>/…` ROUTES, AND THAT IS LOAD-BEARING**
+    # rather than tidy: `<slug:module>` matches 'reports' and 'diet-reports'
+    # perfectly well, so higher up it swallowed both report routes and every GET
+    # to them answered 405. Django resolves in declaration order; anything more
+    # specific has to come first.
+    path(
+        'specialist/patients/<uuid:patient_id>/<slug:module>/',
+        views.SpecialistPatientView.as_view(), name='specialist-patient',
     ),
     path(
         'specialist/parent-invitations/',

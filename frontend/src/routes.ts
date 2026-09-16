@@ -18,6 +18,13 @@ export const ROUTES = {
   /** One patient's weekly reports, read by their specialist. */
   specialistPatientReports: '/specialist/patients/:patientId/reports',
   specialistPatientReport: '/specialist/patients/:patientId/reports/:reportId',
+  /** The same pair for the **diet** module, read by the patient's
+   *  psychodietitian. Their own routes rather than a module segment on the two
+   *  above, mirroring the split the patient's own screens already have: the two
+   *  modules do not agree on what a week is, so one screen holding both would
+   *  be one screen with two meanings of the word. */
+  specialistPatientDietReports: '/specialist/patients/:patientId/diet-reports',
+  specialistPatientDietReport: '/specialist/patients/:patientId/diet-reports/:reportId',
   /** Where a specialist issues a code for a guardian's account. */
   specialistParentAccounts: '/specialist/parent-accounts',
   /** Where a specialist creates another specialist's account — the only place
@@ -139,6 +146,20 @@ export function specialistPatientReportPath(patientId: string, reportId: string)
     .replace(':reportId', reportId)
 }
 
+/** The same two, for the diet module's copy of those screens. */
+export function specialistPatientDietReportsPath(patientId: string): string {
+  return ROUTES.specialistPatientDietReports.replace(':patientId', patientId)
+}
+
+export function specialistPatientDietReportPath(
+  patientId: string,
+  reportId: string,
+): string {
+  return ROUTES.specialistPatientDietReport
+    .replace(':patientId', patientId)
+    .replace(':reportId', reportId)
+}
+
 export function specialistTechniqueEditPath(id: number | string): string {
   return ROUTES.specialistTechniqueEdit.replace(':id', String(id))
 }
@@ -189,6 +210,8 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistHome]: 'Panel specjalisty',
   [ROUTES.specialistPatientReports]: 'Raporty pacjenta',
   [ROUTES.specialistPatientReport]: 'Raport tygodniowy pacjenta',
+  [ROUTES.specialistPatientDietReports]: 'Raporty żywieniowe pacjenta',
+  [ROUTES.specialistPatientDietReport]: 'Raport żywieniowy pacjenta',
   [ROUTES.specialistParentAccounts]: 'Konta opiekunów',
   [ROUTES.specialistColleagues]: 'Konta specjalistów',
   [ROUTES.specialistTechniques]: 'Moje techniki',

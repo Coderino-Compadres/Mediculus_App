@@ -9,9 +9,12 @@ import uuid
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
 from django.test import TestCase
+from django.utils import timezone
 
 from core.models import (Diary, MoodScale, ParentChild, Patient, Raport,
-                         Specjalist, Technique, User, UserRole)
+                         Specjalist, SpecjalistPatient, Technique, User,
+                         UserRole)
+from core.modules import MODULE_DIET, MODULE_PSYCHOTHERAPY
 
 
 class RoutingTests(TestCase):
@@ -79,15 +82,104 @@ class OnDeleteTests(TestCase):
         with self.assertRaises(ProtectedError):
             role.delete()
 
-    def test_deleting_a_specjalist_nulls_the_patient_link(self):
+    def test_deleting_a_specjalist_drops_the_relationship_and_keeps_the_patient(self):
+        """CASCADE on the link, never on the person.
+
+        The relationship is a row of its own since 0022 and deleting the
+        specialist deletes it — there is no "assigned to nobody" state to leave
+        behind, which is what `SET_NULL` used to produce on `patient`. The
+        patient's own account and diaries are untouched: they are not the
+        specialist's to remove.
+        """
         spec_user = User.objects.create(email='spec@example.com')
         spec = Specjalist.objects.create(user=spec_user, specjalization='CBT')
-        patient = Patient.objects.create(
-            user=User.objects.create(email='p@example.com'), specjalist=spec)
+        patient = Patient.objects.create(user=User.objects.create(email='p@example.com'))
+        SpecjalistPatient.objects.create(
+            specjalist=spec, patient=patient, module=MODULE_PSYCHOTHERAPY,
+            accepted_at=timezone.now(),
+        )
+
         spec.delete()
-        patient.refresh_from_db()
-        self.assertIsNone(patient.specjalist_id)
+
+        self.assertFalse(SpecjalistPatient.objects.exists())
         self.assertTrue(Patient.objects.filter(pk=patient.pk).exists())
+
+    def test_deleting_a_patient_drops_their_relationships(self):
+        """The other side of the same CASCADE: no row may outlive either end."""
+        spec = Specjalist.objects.create(
+            user=User.objects.create(email='spec2@example.com'), specjalization='CBT',
+        )
+        patient = Patient.objects.create(user=User.objects.create(email='p2@example.com'))
+        SpecjalistPatient.objects.create(
+            specjalist=spec, patient=patient, module=MODULE_DIET,
+        )
+
+        patient.delete()
+
+        self.assertFalse(SpecjalistPatient.objects.exists())
+        self.assertTrue(Specjalist.objects.filter(pk=spec.pk).exists())
+
+    def test_one_accepted_specialist_per_module_and_two_across_them(self):
+        """The constraint that replaced the old single FK, in both directions.
+
+        One accepted relationship per module — "kto mnie prowadzi" has one
+        answer — and one patient may still hold two, one per module, which is
+        the whole reason the table exists.
+        """
+        first = Specjalist.objects.create(
+            user=User.objects.create(email='a@example.com'), specjalization='CBT',
+        )
+        second = Specjalist.objects.create(
+            user=User.objects.create(email='b@example.com'), specjalization='Dietetyka',
+        )
+        patient = Patient.objects.create(user=User.objects.create(email='p3@example.com'))
+
+        SpecjalistPatient.objects.create(
+            specjalist=first, patient=patient, module=MODULE_PSYCHOTHERAPY,
+            accepted_at=timezone.now(),
+        )
+        # A different module is a different relationship, and allowed.
+        SpecjalistPatient.objects.create(
+            specjalist=second, patient=patient, module=MODULE_DIET,
+            accepted_at=timezone.now(),
+        )
+
+        with self.assertRaises(IntegrityError):
+            SpecjalistPatient.objects.create(
+                specjalist=second, patient=patient, module=MODULE_PSYCHOTHERAPY,
+                accepted_at=timezone.now(),
+            )
+
+    def test_two_pending_invitations_in_one_module_are_allowed(self):
+        """The unique index is partial on purpose: being *asked* by two
+        specialists is a choice the patient gets to make."""
+        first = Specjalist.objects.create(
+            user=User.objects.create(email='c@example.com'), specjalization='CBT',
+        )
+        second = Specjalist.objects.create(
+            user=User.objects.create(email='d@example.com'), specjalization='DBT',
+        )
+        patient = Patient.objects.create(user=User.objects.create(email='p4@example.com'))
+
+        SpecjalistPatient.objects.create(
+            specjalist=first, patient=patient, module=MODULE_PSYCHOTHERAPY,
+        )
+        SpecjalistPatient.objects.create(
+            specjalist=second, patient=patient, module=MODULE_PSYCHOTHERAPY,
+        )
+
+        self.assertEqual(SpecjalistPatient.objects.count(), 2)
+
+    def test_an_unknown_module_is_refused_by_the_database(self):
+        spec = Specjalist.objects.create(
+            user=User.objects.create(email='e@example.com'), specjalization='CBT',
+        )
+        patient = Patient.objects.create(user=User.objects.create(email='p5@example.com'))
+
+        with self.assertRaises(IntegrityError):
+            SpecjalistPatient.objects.create(
+                specjalist=spec, patient=patient, module='astrologia',
+            )
 
     def test_deleting_a_technique_nulls_the_raport_link(self):
         technique = Technique.objects.create(name='mindfulness')

@@ -1,3 +1,4 @@
+<?xml version='1.0' encoding='utf-8'?>
 <mxfile host="app.diagrams.net">
   <diagram name="Page-1" id="PpPSRsivmKojQ3H_oQLC">
     <mxGraphModel dx="2067" dy="1844" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
@@ -254,7 +255,7 @@
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="XStGSPc4a961Q_rSeY5y-82" parent="1" style="shape=table;startSize=30;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=0;fontStyle=1;align=center;resizeLast=1;html=1;" value="PATIENT" vertex="1">
-          <mxGeometry height="270" width="270" x="600" y="200" as="geometry" />
+          <mxGeometry height="180" width="270" x="600" y="200" as="geometry" />
         </mxCell>
         <mxCell id="XStGSPc4a961Q_rSeY5y-83" parent="XStGSPc4a961Q_rSeY5y-82" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=1;" value="" vertex="1">
           <mxGeometry height="30" width="270" y="30" as="geometry" />
@@ -264,7 +265,7 @@
             <mxRectangle height="30" width="30" as="alternateBounds" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="XStGSPc4a961Q_rSeY5y-85" parent="XStGSPc4a961Q_rSeY5y-83" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;fontStyle=5;overflow=hidden;whiteSpace=wrap;html=1;" value="ID_USER : UUID&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#x9;&lt;/span&gt;" vertex="1">
+        <mxCell id="XStGSPc4a961Q_rSeY5y-85" parent="XStGSPc4a961Q_rSeY5y-83" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;fontStyle=5;overflow=hidden;whiteSpace=wrap;html=1;" value="ID_USER : UUID&lt;span style=&quot;white-space: pre;&quot;&gt;&#09;&lt;/span&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&#09;&lt;/span&gt;" vertex="1">
           <mxGeometry height="30" width="240" x="30" as="geometry">
             <mxRectangle height="30" width="240" as="alternateBounds" />
           </mxGeometry>
@@ -282,21 +283,8 @@
             <mxRectangle height="30" width="240" as="alternateBounds" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="XStGSPc4a961Q_rSeY5y-86" parent="XStGSPc4a961Q_rSeY5y-82" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=0;" value="" vertex="1">
-          <mxGeometry height="30" width="270" y="90" as="geometry" />
-        </mxCell>
-        <mxCell id="XStGSPc4a961Q_rSeY5y-87" parent="XStGSPc4a961Q_rSeY5y-86" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;editable=1;overflow=hidden;whiteSpace=wrap;html=1;" value="FK" vertex="1">
-          <mxGeometry height="30" width="30" as="geometry">
-            <mxRectangle height="30" width="30" as="alternateBounds" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="XStGSPc4a961Q_rSeY5y-88" parent="XStGSPc4a961Q_rSeY5y-86" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;whiteSpace=wrap;html=1;" value="ID_SPECJALIST : UUID" vertex="1">
-          <mxGeometry height="30" width="240" x="30" as="geometry">
-            <mxRectangle height="30" width="240" as="alternateBounds" />
-          </mxGeometry>
-        </mxCell>
         <mxCell id="fJHzIR_TfxATXoFXLsMx-2" parent="XStGSPc4a961Q_rSeY5y-82" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=0;" value="" vertex="1">
-          <mxGeometry height="30" width="270" y="120" as="geometry" />
+          <mxGeometry height="30" width="270" y="90" as="geometry" />
         </mxCell>
         <mxCell id="fJHzIR_TfxATXoFXLsMx-3" parent="fJHzIR_TfxATXoFXLsMx-2" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;editable=1;overflow=hidden;" value="" vertex="1">
           <mxGeometry height="30" width="30" as="geometry">
@@ -309,7 +297,7 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="erd-patient-2026-09-1" parent="XStGSPc4a961Q_rSeY5y-82" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=0;" value="" vertex="1">
-          <mxGeometry height="30" width="270" y="150" as="geometry" />
+          <mxGeometry height="30" width="270" y="120" as="geometry" />
         </mxCell>
         <mxCell id="erd-patient-2026-09-1-k" parent="erd-patient-2026-09-1" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;editable=1;overflow=hidden;whiteSpace=wrap;html=1;" value="" vertex="1">
           <mxGeometry height="30" width="30" as="geometry">
@@ -321,34 +309,8 @@
             <mxRectangle height="30" width="240" as="alternateBounds" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="erd-patient-2026-09-2" parent="XStGSPc4a961Q_rSeY5y-82" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=0;" value="" vertex="1">
-          <mxGeometry height="30" width="270" y="180" as="geometry" />
-        </mxCell>
-        <mxCell id="erd-patient-2026-09-2-k" parent="erd-patient-2026-09-2" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;editable=1;overflow=hidden;whiteSpace=wrap;html=1;" value="FK" vertex="1">
-          <mxGeometry height="30" width="30" as="geometry">
-            <mxRectangle height="30" width="30" as="alternateBounds" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="erd-patient-2026-09-2-v" parent="erd-patient-2026-09-2" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;whiteSpace=wrap;html=1;" value="ID_SPECJALIST_PENDING : UUID" vertex="1">
-          <mxGeometry height="30" width="240" x="30" as="geometry">
-            <mxRectangle height="30" width="240" as="alternateBounds" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="erd-patient-2026-09-3" parent="XStGSPc4a961Q_rSeY5y-82" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=0;" value="" vertex="1">
-          <mxGeometry height="30" width="270" y="210" as="geometry" />
-        </mxCell>
-        <mxCell id="erd-patient-2026-09-3-k" parent="erd-patient-2026-09-3" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;editable=1;overflow=hidden;whiteSpace=wrap;html=1;" value="" vertex="1">
-          <mxGeometry height="30" width="30" as="geometry">
-            <mxRectangle height="30" width="30" as="alternateBounds" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="erd-patient-2026-09-3-v" parent="erd-patient-2026-09-3" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;whiteSpace=wrap;html=1;" value="SPECJALIST_ACCEPTED_AT : TIMESTAMPTZ" vertex="1">
-          <mxGeometry height="30" width="240" x="30" as="geometry">
-            <mxRectangle height="30" width="240" as="alternateBounds" />
-          </mxGeometry>
-        </mxCell>
         <mxCell id="erd-patient-2026-09-4" parent="XStGSPc4a961Q_rSeY5y-82" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=0;" value="" vertex="1">
-          <mxGeometry height="30" width="270" y="240" as="geometry" />
+          <mxGeometry height="30" width="270" y="150" as="geometry" />
         </mxCell>
         <mxCell id="erd-patient-2026-09-4-k" parent="erd-patient-2026-09-4" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;editable=1;overflow=hidden;whiteSpace=wrap;html=1;" value="" vertex="1">
           <mxGeometry height="30" width="30" as="geometry">
@@ -358,15 +320,6 @@
         <mxCell id="erd-patient-2026-09-4-v" parent="erd-patient-2026-09-4" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;overflow=hidden;whiteSpace=wrap;html=1;" value="DIET_WEEK_START : DATE" vertex="1">
           <mxGeometry height="30" width="240" x="30" as="geometry">
             <mxRectangle height="30" width="240" as="alternateBounds" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="XStGSPc4a961Q_rSeY5y-92" edge="1" parent="1" source="XStGSPc4a961Q_rSeY5y-56" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=ERoneToMany;endFill=0;startArrow=ERone;startFill=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="XStGSPc4a961Q_rSeY5y-86">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="870" y="95" />
-              <mxPoint x="870" y="305" />
-            </Array>
-            <mxPoint x="780" y="245" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="XStGSPc4a961Q_rSeY5y-107" edge="1" parent="1" source="XStGSPc4a961Q_rSeY5y-93" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=ERoneToMany;endFill=0;startArrow=ERmany;startFill=0;">
@@ -1325,9 +1278,6 @@
         <mxCell id="erd-edge-parent-invitation-child" edge="1" parent="1" source="erd-parent-invitation-2026-09-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=ERone;endFill=0;startArrow=ERmany;startFill=0;" target="XStGSPc4a961Q_rSeY5y-1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="erd-edge-patient-specjalist-pending" edge="1" parent="1" source="erd-patient-2026-09-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=ERone;endFill=0;startArrow=ERmany;startFill=0;" target="XStGSPc4a961Q_rSeY5y-55">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
         <mxCell id="erd-edge-technique-author" edge="1" parent="1" source="erd-technique-2026-09-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=ERone;endFill=0;startArrow=ERmany;startFill=0;dashed=1;" target="XStGSPc4a961Q_rSeY5y-55">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
@@ -2149,7 +2099,7 @@
         <mxCell id="erd-edge-diet-sleep-patient" edge="1" parent="1" source="erd-diet-sleep-2026-09" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=ERone;endFill=0;startArrow=ERmany;startFill=0;dashed=1;" target="XStGSPc4a961Q_rSeY5y-82">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-      </root>
+      <mxCell id="erd-specjalist-patient" value="SPECJALIST_PATIENT" style="shape=table;startSize=30;container=1;collapsible=1;childLayout=tableLayout;fixedRows=1;rowLines=0;fontStyle=1;align=center;resizeLast=1;html=1;" vertex="1" parent="1"><mxGeometry x="920" y="50" width="330" height="210" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row1" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=1;" vertex="1" parent="erd-specjalist-patient"><mxGeometry y="30" width="330" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row1-badge" value="PK" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontStyle=1;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row1"><mxGeometry width="30" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row1-label" value="ID_SPECJALIST_PATIENT : UUID" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;fontStyle=5;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row1"><mxGeometry x="30" width="300" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row2" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=1;" vertex="1" parent="erd-specjalist-patient"><mxGeometry y="60" width="330" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row2-badge" value="FK" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontStyle=1;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row2"><mxGeometry width="30" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row2-label" value="ID_SPECJALIST : UUID" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;fontStyle=5;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row2"><mxGeometry x="30" width="300" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row3" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=1;" vertex="1" parent="erd-specjalist-patient"><mxGeometry y="90" width="330" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row3-badge" value="FK" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontStyle=1;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row3"><mxGeometry width="30" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row3-label" value="ID_USER : UUID" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;fontStyle=5;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row3"><mxGeometry x="30" width="300" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row4" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=1;" vertex="1" parent="erd-specjalist-patient"><mxGeometry y="120" width="330" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row4-badge" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontStyle=1;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row4"><mxGeometry width="30" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row4-label" value="MODULE : TEXT" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;fontStyle=5;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row4"><mxGeometry x="30" width="300" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row5" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=1;" vertex="1" parent="erd-specjalist-patient"><mxGeometry y="150" width="330" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row5-badge" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontStyle=1;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row5"><mxGeometry width="30" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row5-label" value="ACCEPTED_AT : TIMESTAMPTZ" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;fontStyle=5;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row5"><mxGeometry x="30" width="300" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row6" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;fillColor=none;collapsible=0;dropTarget=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;top=0;left=0;right=0;bottom=1;" vertex="1" parent="erd-specjalist-patient"><mxGeometry y="180" width="330" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row6-badge" value="" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;fontStyle=1;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row6"><mxGeometry width="30" height="30" as="geometry" /></mxCell><mxCell id="erd-specjalist-patient-row6-label" value="CREATED_AT : TIMESTAMPTZ" style="shape=partialRectangle;connectable=0;fillColor=none;top=0;left=0;bottom=0;right=0;align=left;spacingLeft=6;fontStyle=5;overflow=hidden;whiteSpace=wrap;html=1;" vertex="1" parent="erd-specjalist-patient-row6"><mxGeometry x="30" width="300" height="30" as="geometry" /></mxCell><mxCell id="erd-edge-specjalist-patient-specjalist" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=ERoneToMany;startArrow=ERone;startFill=0;endFill=0;" edge="1" parent="1" source="erd-specjalist-patient-row2" target="XStGSPc4a961Q_rSeY5y-56"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="erd-edge-specjalist-patient-patient" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=ERoneToMany;startArrow=ERone;startFill=0;endFill=0;" edge="1" parent="1" source="erd-specjalist-patient-row3" target="XStGSPc4a961Q_rSeY5y-83"><mxGeometry relative="1" as="geometry" /></mxCell></root>
     </mxGraphModel>
   </diagram>
 </mxfile>

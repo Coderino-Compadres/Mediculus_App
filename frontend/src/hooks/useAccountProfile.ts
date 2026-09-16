@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { fetchAccountProfile } from '../api/profile'
+import { fetchAccountProfile, fetchDietAccountProfile } from '../api/profile'
 import { hasPatientProfile } from '../api/auth'
 import { useAuth } from '../auth/authContext'
+import { MODULE_DIET, MODULE_PSYCHOTHERAPY, type AppModule } from '../utils/modules'
 import type { AccountProfile } from '../types/profile'
 
 /**
@@ -11,6 +12,13 @@ import type { AccountProfile } from '../types/profile'
  * bezpieczeństwa" both name the treating specialist, and the whole reason the
  * care relationship has one source is that the two must not be able to disagree
  * about who that is (see `CareDetails`). One caller would not need this; two do.
+ *
+ * **`module` DECIDES WHICH SPECIALIST AND WHICH FIGURES.** Since migration 0022
+ * "who treats me" is a question per module: the psychotherapy screens ask for
+ * their therapist and their diary's counters, §13's diet profile for its
+ * psychodietitian and the food diary's. It defaults to the psychotherapy module
+ * because that is what the two original callers mean, and a default that had to
+ * be spelled out at every call site would eventually be spelled wrong.
  *
  * IT DOES NOT ASK FOR EVERY ACCOUNT. The endpoint is behind `_require_patient`,
  * so a guardian or a specialist is answered 403 — correctly, since they have no
@@ -25,7 +33,7 @@ import type { AccountProfile } from '../types/profile'
  * is render the absence silently: on this screen that reads as "you have written
  * nothing" and "you have no therapist", both of which are claims.
  */
-export function useAccountProfile(): {
+export function useAccountProfile(module: AppModule = MODULE_PSYCHOTHERAPY): {
   data: AccountProfile | null
   loading: boolean
   failed: boolean
@@ -46,7 +54,9 @@ export function useAccountProfile(): {
     // Flipped by the cleanup below, so a screen unmounted mid-flight does not
     // set state after the fact.
     let live = true
-    fetchAccountProfile()
+    const fetching =
+      module === MODULE_DIET ? fetchDietAccountProfile : fetchAccountProfile
+    fetching()
       .then((answer) => {
         if (!live) return
         setData(answer)
@@ -65,7 +75,7 @@ export function useAccountProfile(): {
     return () => {
       live = false
     }
-  }, [applies, attempt])
+  }, [applies, attempt, module])
 
   function retry() {
     setPending(true)

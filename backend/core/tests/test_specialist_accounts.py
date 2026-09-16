@@ -39,7 +39,9 @@ from core.authentication import SESSION_USER_KEY
 from core.colleagues import (COLLEAGUE_SUMMARY_FIELDS, PASSWORD_ALPHABET,
                              SPECIALIST_ROLE, generate_password)
 from core.consents import has_active_consents
-from core.models import Patient, Specjalist, User, UserRole
+from core.models import (Patient, Specjalist, SpecjalistPatient, User,
+                         UserRole)
+from core.modules import MODULE_PSYCHOTHERAPY
 from core.permissions import PASSWORD_GATE_REFUSAL
 from core.throttling import SpecialistAccountThrottle
 from core.views import SPECIALIST_REFUSAL
@@ -303,7 +305,7 @@ class NewAccountTests(ColleagueTestCase):
         patient = Patient.objects.create(
             user=self.make_user('pacjent@example.com'), is_child=False,
         )
-        self.assertIsNone(patient.specjalist_id)
+        self.assertFalse(SpecjalistPatient.objects.filter(patient=patient).exists())
         self.sign_in_as_new()
 
         changed = self.unlock()
@@ -490,7 +492,10 @@ class RosterTests(ColleagueTestCase):
         and it looking like an improvement."""
         patient = Patient.objects.create(
             user=self.make_user('pacjent@example.com'), is_child=False,
-            specjalist=self.specjalist, specjalist_accepted_at=timezone.now(),
+        )
+        SpecjalistPatient.objects.create(
+            specjalist=self.specjalist, patient=patient,
+            module=MODULE_PSYCHOTHERAPY, accepted_at=timezone.now(),
         )
 
         response = self.client.get(reverse('core:specialist-colleagues'))

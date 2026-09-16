@@ -13,6 +13,7 @@ import { ApiError } from '../api/client'
 import { fetchHealthProfile, saveHealthProfile } from '../api/healthProfile'
 import { useAuth } from '../auth/authContext'
 import { useAccountProfile } from '../hooks/useAccountProfile'
+import { MODULE_DIET } from '../utils/modules'
 import { useSignOut } from '../hooks/useSignOut'
 import {
   ACTIVITY_LEVELS,
@@ -111,13 +112,14 @@ import './dietProfile.css'
  * and no link in either direction. Answering an open question in markup is
  * still answering it.
  *
- * TODO(backend): a **second specialist.** §13 draws two, tagged by module
- * ("psychodietetyczka", "psychoterapeuta") and told apart by a coloured dot.
- * `patient.id_specjalist` is a single FK and `specjalist.specjalization` is
- * free text with no vocabulary behind it, so a patient seeing both a
- * psychotherapist and a psychodietitian cannot be expressed at all. The card
- * below shows the one relationship that exists and says nothing it cannot
- * check.
+ * THE CARD BELOW NAMES THIS MODULE'S SPECIALIST, which §13 asks for and which
+ * the schema could not express until migration 0022: `patient.id_specjalist`
+ * was a single FK, so both profile screens named the same person. Now the
+ * relationship lives in `specjalist_patient` with a module on it, this screen
+ * asks `/api/diet/profile/` and /profile asks its own — two cards, two people,
+ * exactly as the artboard draws them. What is still not drawn is §13's coloured
+ * dot: the module is said in words on each screen instead, since each screen
+ * only ever shows its own.
  *
  * Also absent: the artboard's "konto od 3 marca" (the API sends no creation
  * date), its consent toggles (consents have one mechanism, `ProfileDataRights`)
@@ -340,7 +342,10 @@ function Chip({
  * actually holds one.
  */
 function CareCard() {
-  const { data, loading, failed, retry } = useAccountProfile()
+  // §13's card names the **psychodietitian**, which is a different person from
+  // the therapist /profile names — and a question that could not be asked at
+  // all before migration 0022, when one column held both.
+  const { data, loading, failed, retry } = useAccountProfile(MODULE_DIET)
 
   return (
     <section className="diet-profile-card" aria-labelledby="diet-profile-care">

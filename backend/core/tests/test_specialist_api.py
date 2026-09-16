@@ -14,6 +14,7 @@ and what kind of care they are in.
 """
 
 import datetime
+import uuid
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -23,7 +24,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
-from core.models import Diary, Patient, Specjalist, User, UserRole
+from core.models import (Diary, Patient, Specjalist, SpecjalistPatient, User,
+                         UserRole)
+from core.modules import MODULE_DIET, MODULE_PSYCHOTHERAPY
 from core.reports import DAYS_IN_WEEK, start_of_week, week_report_id
 from core.serializers import SpecialistPatientInviteSerializer
 from core.specialist import PATIENT_SUMMARY_FIELDS
@@ -74,16 +77,26 @@ class SpecialistTestCase(TestCase):
         session.save()
         self.client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
 
-    def invite(self, specjalist, patient):
-        patient.specjalist_pending = specjalist
-        patient.save(update_fields=['specjalist_pending'])
-        return patient
+    def invite(self, specjalist, patient, module=MODULE_PSYCHOTHERAPY):
+        """A pending relationship, which is what an unanswered invitation is.
 
-    def assign(self, specjalist, patient):
-        patient.specjalist = specjalist
-        patient.specjalist_accepted_at = timezone.now()
-        patient.save(update_fields=['specjalist', 'specjalist_accepted_at'])
-        return patient
+        Returns the **link**, not the patient: since 0022 the invitation has an
+        id of its own and the patient's accept/reject URLs carry it.
+        """
+        return SpecjalistPatient.objects.create(
+            specjalist=specjalist, patient=patient, module=module,
+        )
+
+    def assign(self, specjalist, patient, module=MODULE_PSYCHOTHERAPY):
+        """An accepted relationship, in one module. Defaults to psychotherapy,
+        which is what every relationship was before the diet panel existed."""
+        return SpecjalistPatient.objects.create(
+            specjalist=specjalist, patient=patient, module=module,
+            accepted_at=timezone.now(),
+        )
+
+    def links(self, **filters):
+        return SpecjalistPatient.objects.filter(**filters)
 
 
 class RegistrationTests(SpecialistTestCase):
@@ -151,9 +164,10 @@ class InvitationTests(SpecialistTestCase):
         self.specjalist = self.make_specialist()
         self.sign_in(self.specjalist.user)
 
-    def invite_by_email(self, email):
+    def invite_by_email(self, email, module=MODULE_PSYCHOTHERAPY):
         return self.client.post(
-            reverse('core:specialist-patients'), {'patient_email': email}, format='json',
+            reverse('core:specialist-patients'),
+            {'patient_email': email, 'module': module}, format='json',
         )
 
     def test_inviting_creates_a_request_and_grants_nothing(self):
@@ -163,9 +177,10 @@ class InvitationTests(SpecialistTestCase):
         response = self.invite_by_email(patient.user.email)
 
         self.assertEqual(response.status_code, 201, response.data)
-        patient.refresh_from_db()
-        self.assertEqual(patient.specjalist_pending_id, self.specjalist.pk)
-        self.assertIsNone(patient.specjalist_id)
+        self.assertTrue(self.links(
+            patient=patient, specjalist=self.specjalist,
+            module=MODULE_PSYCHOTHERAPY, accepted_at__isnull=True,
+        ).exists())
         # Pending, so still nobody's patient: the reports refuse exactly as they
         # would for a stranger.
         self.assertEqual(
@@ -190,8 +205,9 @@ class InvitationTests(SpecialistTestCase):
         patient = self.make_patient(email='pacjent@example.com')
 
         self.assertEqual(self.invite_by_email('Pacjent@Example.COM').status_code, 201)
-        patient.refresh_from_db()
-        self.assertEqual(patient.specjalist_pending_id, self.specjalist.pk)
+        self.assertTrue(self.links(
+            patient=patient, specjalist=self.specjalist, accepted_at__isnull=True,
+        ).exists())
 
     def test_re_inviting_the_same_patient_is_idempotent(self):
         patient = self.make_patient()
@@ -199,7 +215,7 @@ class InvitationTests(SpecialistTestCase):
 
         self.assertEqual(self.invite_by_email(patient.user.email).status_code, 201)
         self.assertEqual(
-            Patient.objects.filter(specjalist_pending=self.specjalist).count(), 1)
+            self.links(specjalist=self.specjalist, accepted_at__isnull=True).count(), 1)
 
     def test_every_uninvitable_address_answers_identically(self):
         """The point of the shared message. An address nobody registered, a
@@ -244,8 +260,9 @@ class InvitationTests(SpecialistTestCase):
             str(response.data['patient_email'][0]),
             SpecialistPatientInviteSerializer.ALREADY_MINE,
         )
-        patient.refresh_from_db()
-        self.assertEqual(patient.specjalist_id, self.specjalist.pk)
+        self.assertTrue(self.links(
+            patient=patient, specjalist=self.specjalist, accepted_at__isnull=False,
+        ).exists())
 
     def test_somebody_else_s_patient_is_still_refused_without_a_reason(self):
         """The half that must stay vague: whose patient this is, and whether
@@ -274,21 +291,22 @@ class InvitationTests(SpecialistTestCase):
         self.invite_by_email(patient.user.email)
 
         response = self.client.delete(
-            reverse('core:specialist-patient', args=[patient.user_id]))
+            reverse('core:specialist-patient', args=[patient.user_id, MODULE_PSYCHOTHERAPY]))
 
         self.assertEqual(response.status_code, 200)
-        patient.refresh_from_db()
-        self.assertIsNone(patient.specjalist_pending_id)
+        self.assertFalse(self.links(patient=patient).exists())
 
     def test_ending_care_clears_the_moment_it_started(self):
         patient = self.make_patient()
         self.assign(self.specjalist, patient)
 
-        self.client.delete(reverse('core:specialist-patient', args=[patient.user_id]))
+        self.client.delete(reverse(
+            'core:specialist-patient', args=[patient.user_id, MODULE_PSYCHOTHERAPY]))
 
-        patient.refresh_from_db()
-        self.assertIsNone(patient.specjalist_id)
-        self.assertIsNone(patient.specjalist_accepted_at)
+        # The row is gone, and with it the moment the patient agreed: an
+        # accepted_at without a relationship would date an assignment that no
+        # longer exists.
+        self.assertFalse(self.links(patient=patient).exists())
 
     def test_somebody_else_s_patient_cannot_be_dropped_and_answers_like_a_stranger(self):
         colleague = self.make_specialist(email='kolega@example.com')
@@ -296,11 +314,12 @@ class InvitationTests(SpecialistTestCase):
         self.assign(colleague, patient)
 
         response = self.client.delete(
-            reverse('core:specialist-patient', args=[patient.user_id]))
+            reverse('core:specialist-patient', args=[patient.user_id, MODULE_PSYCHOTHERAPY]))
 
         self.assertEqual(response.status_code, 404)
-        patient.refresh_from_db()
-        self.assertEqual(patient.specjalist_id, colleague.pk)
+        self.assertTrue(self.links(
+            patient=patient, specjalist=colleague, accepted_at__isnull=False,
+        ).exists())
 
 
 class PatientDecisionTests(SpecialistTestCase):
@@ -324,11 +343,20 @@ class PatientDecisionTests(SpecialistTestCase):
         # mock_data.sql seeds — so this also covers the fallback: an assigned
         # specialist with no name is still reported, with the address, rather
         # than as a blank line.
-        self.assertEqual(response.data['invitation'], {
-            'specialist': self.specjalist.user.email,
-            'email': self.specjalist.user.email,
-            'approach': 'DBT',
-        })
+        [invitation] = response.data['invitations']
+        self.assertEqual(
+            {key: value for key, value in invitation.items() if key != 'id'},
+            {
+                'specialist': self.specjalist.user.email,
+                'email': self.specjalist.user.email,
+                'approach': 'DBT',
+                # Which module is being agreed to, because agreeing to a
+                # psychodietitian is not agreeing to hand over a psychotherapy
+                # diary.
+                'module': MODULE_PSYCHOTHERAPY,
+                'module_label': 'Psychoterapia',
+            },
+        )
 
     def test_a_named_specialist_is_named(self):
         self.specjalist.user.name = 'Anna'
@@ -339,29 +367,30 @@ class PatientDecisionTests(SpecialistTestCase):
 
         response = self.client.get(reverse('core:specialist-invitation'))
 
-        self.assertEqual(response.data['invitation']['specialist'], 'Anna Terapeutka')
+        self.assertEqual(
+            response.data['invitations'][0]['specialist'], 'Anna Terapeutka')
 
-    def test_no_invitation_is_null_rather_than_an_error(self):
+    def test_no_invitation_is_an_empty_list_rather_than_an_error(self):
         self.sign_in(self.patient.user)
 
         response = self.client.get(reverse('core:specialist-invitation'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.data['invitation'])
+        self.assertEqual(response.data['invitations'], [])
 
     def test_accepting_is_what_opens_the_reports(self):
-        self.invite(self.specjalist, self.patient)
+        link = self.invite(self.specjalist, self.patient)
         self.sign_in(self.patient.user)
 
-        response = self.client.post(reverse('core:specialist-invitation-accept'))
+        response = self.client.post(
+            reverse('core:specialist-invitation-accept', args=[link.pk]))
 
         self.assertEqual(response.status_code, 200)
-        self.patient.refresh_from_db()
-        self.assertEqual(self.patient.specjalist_id, self.specjalist.pk)
-        self.assertIsNotNone(self.patient.specjalist_accepted_at)
-        # And the pending column is emptied rather than left as a second copy:
-        # "asked" and "treating" are phases, not parallel facts.
-        self.assertIsNone(self.patient.specjalist_pending_id)
+        link.refresh_from_db()
+        # The same row, stamped: "asked" and "treating" are phases of one
+        # relationship rather than two columns that can both be set.
+        self.assertIsNotNone(link.accepted_at)
+        self.assertEqual(response.data['invitations'], [])
 
         self.sign_in(self.specjalist.user)
         self.assertEqual(
@@ -371,30 +400,54 @@ class PatientDecisionTests(SpecialistTestCase):
         )
 
     def test_refusing_records_nothing_and_lets_the_specialist_ask_again(self):
-        self.invite(self.specjalist, self.patient)
+        link = self.invite(self.specjalist, self.patient)
         self.sign_in(self.patient.user)
 
-        self.client.post(reverse('core:specialist-invitation-reject'))
+        self.client.post(reverse('core:specialist-invitation-reject', args=[link.pk]))
 
-        self.patient.refresh_from_db()
-        self.assertIsNone(self.patient.specjalist_pending_id)
-        self.assertIsNone(self.patient.specjalist_id)
+        # The row is deleted rather than marked refused: a stored "no" is a
+        # state nobody can act on.
+        self.assertFalse(self.links(patient=self.patient).exists())
 
         self.sign_in(self.specjalist.user)
         self.assertEqual(
             self.client.post(
                 reverse('core:specialist-patients'),
-                {'patient_email': self.patient.user.email}, format='json',
+                {
+                    'patient_email': self.patient.user.email,
+                    'module': MODULE_PSYCHOTHERAPY,
+                },
+                format='json',
             ).status_code, 201,
         )
 
     def test_nothing_to_answer_is_a_404_rather_than_a_silent_success(self):
         self.sign_in(self.patient.user)
+        nobodys = uuid.uuid4()
 
         self.assertEqual(
-            self.client.post(reverse('core:specialist-invitation-accept')).status_code, 404)
+            self.client.post(
+                reverse('core:specialist-invitation-accept', args=[nobodys]),
+            ).status_code, 404)
         self.assertEqual(
-            self.client.post(reverse('core:specialist-invitation-reject')).status_code, 404)
+            self.client.post(
+                reverse('core:specialist-invitation-reject', args=[nobodys]),
+            ).status_code, 404)
+
+    def test_somebody_else_s_invitation_answers_like_one_that_does_not_exist(self):
+        """The id is in the URL now, so this is the question the old endpoint
+        could not be asked: a patient naming another patient's invitation gets
+        404, and nothing about whose it is."""
+        stranger = self.make_patient(email='obcy@example.com')
+        theirs = self.invite(self.specjalist, stranger)
+        self.sign_in(self.patient.user)
+
+        response = self.client.post(
+            reverse('core:specialist-invitation-accept', args=[theirs.pk]))
+
+        self.assertEqual(response.status_code, 404)
+        theirs.refresh_from_db()
+        self.assertIsNone(theirs.accepted_at)
 
     def test_the_patient_cannot_end_an_accepted_link(self):
         """The client's rule: dropping a link is the specialist's action. With
@@ -404,22 +457,25 @@ class PatientDecisionTests(SpecialistTestCase):
         self.assign(self.specjalist, self.patient)
         self.sign_in(self.patient.user)
 
-        response = self.client.post(reverse('core:specialist-invitation-reject'))
+        link = self.links(patient=self.patient).get()
+        response = self.client.post(
+            reverse('core:specialist-invitation-reject', args=[link.pk]))
 
         self.assertEqual(response.status_code, 404)
-        self.patient.refresh_from_db()
-        self.assertEqual(self.patient.specjalist_id, self.specjalist.pk)
+        link.refresh_from_db()
+        self.assertIsNotNone(link.accepted_at)
 
     def test_a_specialist_cannot_answer_on_the_patient_s_behalf(self):
-        self.invite(self.specjalist, self.patient)
+        link = self.invite(self.specjalist, self.patient)
         self.sign_in(self.specjalist.user)
 
-        response = self.client.post(reverse('core:specialist-invitation-accept'))
+        response = self.client.post(
+            reverse('core:specialist-invitation-accept', args=[link.pk]))
 
         # No `patient` row, so the endpoint refuses them outright.
         self.assertEqual(response.status_code, 403)
-        self.patient.refresh_from_db()
-        self.assertIsNone(self.patient.specjalist_id)
+        link.refresh_from_db()
+        self.assertIsNone(link.accepted_at)
 
 
 class ReportAccessTests(SpecialistTestCase):
@@ -544,7 +600,7 @@ class PanelRefusalTests(SpecialistTestCase):
         return [
             ('get', reverse('core:specialist-patients')),
             ('post', reverse('core:specialist-patients')),
-            ('delete', reverse('core:specialist-patient', args=[self.patient.user_id])),
+            ('delete', reverse('core:specialist-patient', args=[self.patient.user_id, MODULE_PSYCHOTHERAPY])),
             ('get', reverse(
                 'core:specialist-patient-reports', args=[self.patient.user_id])),
             ('get', reverse(

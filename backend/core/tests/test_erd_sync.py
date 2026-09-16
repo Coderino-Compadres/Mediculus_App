@@ -29,6 +29,7 @@ ERD_PATH = REPO_ROOT / 'ERD' / 'DIAGRAM.drawio'
 #: Every model whose table the diagram is meant to describe.
 DIAGRAMMED_MODELS = [
     models.UserRole, models.User, models.Specjalist, models.Patient,
+    models.SpecjalistPatient,
     models.ParentChild, models.ParentInvitation, models.Diary, models.MoodScale,
     models.Technique, models.Raport, models.Hydration, models.DietMeal,
     models.Supplement, models.SupplementHour, models.SupplementIntake,

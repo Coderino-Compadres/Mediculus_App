@@ -162,3 +162,58 @@
     align-items: flex-start;
   }
 }
+
+/* WHICH RELATIONSHIP A CARD IS, in a word rather than in a colour. §13 tells the
+   two specialists apart with a coloured dot; a dot says nothing to a screen
+   reader and nothing to somebody who has not been told what the colours mean,
+   so the badge carries the module's name and the colour only reinforces it.
+   Sage for psychotherapy and ochre for the diet module — the two tokens the app
+   already uses for those halves (styles/theme.css). */
+.caseload-card-module {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  padding: 2px 10px;
+  margin: 8px 0 0;
+}
+
+.caseload-card-module-psychotherapy {
+  background: var(--color-lavender);
+  color: var(--color-graphite);
+}
+
+.caseload-card-module-diet {
+  background: var(--color-ochre-soft);
+  color: var(--color-ochre-text);
+}
+
+.caseload-pending-module {
+  color: var(--color-graphite-muted);
+}
+
+/* The module question on the invite form. A radio group rather than a select:
+   two options, and the answer decides which diary this specialist will be able
+   to read. */
+.caseload-invite-module {
+  border: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.caseload-invite-module legend {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.caseload-invite-module-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--color-graphite);
+  padding: 4px 0;
+}

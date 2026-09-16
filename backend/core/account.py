@@ -25,15 +25,19 @@ from .diary import count_entries, last_entry_date
 from .meals import count_meals
 from .meals import last_entry_date as last_meal_date
 from .meals import streak_days as meal_streak_days
+from .modules import MODULE_DIET, MODULE_PSYCHOTHERAPY
 from .reports import build_weekly_reports
 
 
-def _care(patient):
+def _care(specjalist):
     """Who is treating this patient, or None when nobody is assigned yet.
 
-    `patient.specjalist` is nullable (SET_NULL), and an unassigned patient is a
+    Takes the `specjalist` row the caller resolved rather than a patient,
+    because since migration 0022 "who treats this patient" is a question that
+    needs a *module*: the relationship lives in `specjalist_patient` and
+    `core/specialist.care_for` is what answers it. An unassigned patient is a
     perfectly ordinary state — an account can be registered before the first
-    appointment. None rather than a row of blanks, so the screen can say so in
+    appointment — and None rather than a row of blanks lets the screen say so in
     words instead of drawing an empty card.
 
     WHAT THE COLUMNS ACTUALLY ARE. The frontend's `CareDetails` was written
@@ -45,7 +49,6 @@ def _care(patient):
     so treat a difference there as a schema question rather than a mapping bug.
     There is no phone column anywhere; see the note on `phone` below.
     """
-    specjalist = patient.specjalist
     if specjalist is None:
         return None
 
@@ -71,20 +74,54 @@ def _care(patient):
     }
 
 
-def build_account_profile(patient):
+def build_account_profile(patient, module=MODULE_PSYCHOTHERAPY):
     """The profile screen's own data, as JSON-ready primitives.
 
     Takes the `Patient` row rather than a UUID, because unlike every other
     aggregation in this project it needs the user_db half too. The caller has
     already resolved it from the session (`_require_patient`), so there is no
     patient id in the URL here either.
+
+    `module` decides *which* specialist the care card names, and it defaults to
+    the psychotherapy one because this endpoint is that screen's — §13's diet
+    profile draws its own card, for its own specialist, and asks for it with the
+    module named. Before 0022 there was one column and therefore one answer; the
+    card that said "Specjalista" could not say which.
+
+    The import is local to dodge a cycle: `core/specialist.py` reads this
+    module's activity builders, and this needs its `care_for`. The two genuinely
+    depend on each other — one is "what a patient's figures are", the other "who
+    may see them" — and a local import is the smaller of the two fixes.
     """
+    from .specialist import care_for
+
     return {
         'activity': {
             'entry_count': count_entries(patient.id_medical),
             'streak_days': streak_days(patient.id_medical),
         },
-        'care': _care(patient),
+        'care': _care(care_for(patient, module)),
+    }
+
+
+def build_diet_account_profile(patient):
+    """§13's profile screen: the diet module's counters and its own care card.
+
+    ITS OWN FUNCTION RATHER THAN A MODULE ARGUMENT ON THE ONE ABOVE, because the
+    two screens do not summarise the same thing. `/profile` counts diary entries
+    and a psychotherapy streak; §13 counts meals and the food diary's streak,
+    and its "Specjalista" card names the psychodietitian. Sharing the shape
+    while differing in every value is what a second function is for.
+
+    The care card is the part that could not exist before migration 0022: with
+    one `id_specjalist` column, both profile screens named the same person, and
+    §13 draws two cards told apart by a coloured dot.
+    """
+    from .specialist import care_for
+
+    return {
+        'activity': build_child_diet_activity(patient),
+        'care': _care(care_for(patient, MODULE_DIET)),
     }
 
 

@@ -18,11 +18,16 @@ import type { HealthProfileDraft, HealthProfileInput } from '../types/healthProf
 import type { DietDay, DietJournalDay, HydrationDay } from '../types/diet'
 import type { DietWeeklyReport } from '../types/dietReport'
 
-/** The one request this screen actually makes — the treating specialist. */
+/** The one request this screen actually makes — its own psychodietitian.
+ *
+ *  `fetchDietAccountProfile`, not `fetchAccountProfile`: since migration 0022
+ *  the two profile screens ask different endpoints, because "who treats me" is
+ *  a question per module and §13's card is the diet one. The mock keeps the old
+ *  variable name so the assertions below still read about "the profile". */
 const fetchAccountProfile = vi.fn<() => Promise<AccountProfile>>()
 vi.mock('../api/profile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/profile')>()
-  return { ...actual, fetchAccountProfile: () => fetchAccountProfile() }
+  return { ...actual, fetchDietAccountProfile: () => fetchAccountProfile() }
 })
 
 /**

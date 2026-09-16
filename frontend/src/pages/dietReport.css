@@ -461,3 +461,44 @@
   padding: 14px 18px;
   margin: 0 auto;
 }
+
+/* "Pobierz PDF", the screen's one action. Centred and quiet, like the
+   psychotherapy report's: it saves a file, it does not change anything, and a
+   report is not a form. */
+.diet-report-download {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+.diet-report-download-button {
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-graphite);
+  background: var(--color-lavender);
+  border: none;
+  border-radius: var(--radius-tile);
+  padding: 10px 20px;
+  cursor: pointer;
+}
+
+.diet-report-download-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.diet-report-download-error {
+  font-size: 13px;
+  color: var(--color-error);
+  margin: 0;
+}
+
+/* Whose week it is — only on a specialist's copy, where the reader is not the
+   subject of the document. */
+.diet-report-subtitle {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+  margin: 4px 0 0;
+}

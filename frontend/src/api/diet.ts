@@ -56,7 +56,7 @@
  * up with two versions of itself.
  */
 
-import { apiRequest } from './client'
+import { apiDownload, apiRequest } from './client'
 import { toIsoDate } from '../utils/days'
 import { WATER } from '../utils/drinks'
 import type { FeelingAfter } from '../utils/activity'
@@ -948,3 +948,27 @@ export async function fetchDietReports(): Promise<DietWeeklyReport[]> {
 export async function fetchDietReport(id: string): Promise<DietWeeklyReport> {
   return toReport(await apiRequest<ReportPayload>(`${DIET_REPORTS_URL}${id}/`))
 }
+
+/**
+ * The same week as a file.
+ *
+ * Its own document rather than the psychotherapy one with different numbers —
+ * see core/diet_report_pdf.py, which lays out the meal grid and the week. Named
+ * apart on disk too (`raport-zywieniowy-…`), so a specialist downloading both
+ * for one patient does not end up with two files whose names collide.
+ */
+export async function fetchDietReportPdf(id: string): Promise<Blob> {
+  return apiDownload(`${DIET_REPORTS_URL}${encodeURIComponent(id)}/pdf/`)
+}
+
+/**
+ * The report mapping, for the specialist panel's copy of these screens.
+ *
+ * Exported under names that say which module they belong to, because
+ * `api/specialist.ts` already imports `toReport` from `api/reports.ts` — one
+ * file holding both needs them told apart. Reused rather than copied for the
+ * reason the psychotherapy one is: two mappings of one payload are two things
+ * that can disagree about a week.
+ */
+export { toReport as toDietReport }
+export type { ReportPayload as DietReportPayload }

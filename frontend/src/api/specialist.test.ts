@@ -9,7 +9,7 @@ import {
   fetchCaseload,
   fetchParentInvitations,
   fetchPatientReport,
-  fetchSpecialistInvitation,
+  fetchSpecialistInvitations,
   invitePatient,
   rejectSpecialistInvitation,
   revokeParentInvitation,
@@ -32,6 +32,9 @@ const ACCEPTED = {
   is_child: true,
   accepted_at: '2026-08-30T10:00:00Z',
   consents_active: true,
+  // A row is a relationship since 0022, so it says which module it is about.
+  module: 'psychotherapy',
+  module_label: 'Psychoterapia',
   activity: { entry_count: 12, streak_days: 3, last_entry_date: '2026-09-03' },
 }
 
@@ -43,6 +46,8 @@ const PENDING = {
   is_child: false,
   accepted_at: null,
   consents_active: true,
+  module: 'diet',
+  module_label: 'Dietetyka i psychodietetyka',
   activity: null,
 }
 
@@ -64,6 +69,8 @@ describe('the caseload', () => {
         isChild: true,
         acceptedAt: '2026-08-30T10:00:00Z',
         consentsActive: true,
+        module: 'psychotherapy',
+        moduleLabel: 'Psychoterapia',
         activity: { entryCount: 12, streakDays: 3, lastEntryDate: '2026-09-03' },
       },
     ])
@@ -124,26 +131,41 @@ describe('the caseload', () => {
     expect(Object.keys(patient)).not.toContain('idMedical')
   })
 
-  it('invites by e-mail and answers with the updated caseload', async () => {
+  it('invites by e-mail into one module, and answers with the caseload', async () => {
     mockedRequest.mockResolvedValueOnce({ patients: [], pending: [PENDING] })
 
-    const caseload = await invitePatient('jan@wp.pl')
+    const caseload = await invitePatient('jan@wp.pl', 'diet')
 
     expect(mockedRequest).toHaveBeenCalledWith('/api/specialist/patients/', {
       method: 'POST',
-      body: { patient_email: 'jan@wp.pl' },
+      // The module travels with the address: a specialist asks to treat
+      // somebody *in a module*, and that is what the patient agrees to.
+      body: { patient_email: 'jan@wp.pl', module: 'diet' },
     })
     expect(caseload.pending).toHaveLength(1)
   })
 
-  it('drops a link by the patient id in the URL', async () => {
+  it('drops a link by the patient id and the module in the URL', async () => {
     mockedRequest.mockResolvedValueOnce({ patients: [], pending: [] })
 
-    await dropPatient(PATIENT_ID)
+    await dropPatient(PATIENT_ID, 'diet')
 
     expect(mockedRequest).toHaveBeenCalledWith(
-      `/api/specialist/patients/${PATIENT_ID}/`, { method: 'DELETE' },
+      `/api/specialist/patients/${PATIENT_ID}/diet/`, { method: 'DELETE' },
     )
+  })
+
+  it('reads a backend that predates the module as a psychotherapy row', async () => {
+    /** Everything that existed before `specjalist_patient` was a psychotherapy
+     *  relationship — which is exactly what migration 0022's backfill says, so
+     *  the client defaults the same way rather than inventing a third state. */
+    const { module: _m, module_label: _l, ...older } = ACCEPTED
+    mockedRequest.mockResolvedValueOnce({ patients: [older], pending: [] })
+
+    const [patient] = (await fetchCaseload()).patients
+
+    expect(patient.module).toBe('psychotherapy')
+    expect(patient.moduleLabel).toBe('Psychoterapia')
   })
 })
 
@@ -237,42 +259,65 @@ describe('the guardian invitations a specialist issues', () => {
 })
 
 describe('the patient’s side of an invitation', () => {
-  it('unwraps the invitation, and null when nobody has asked', async () => {
-    mockedRequest.mockResolvedValueOnce({ invitation: null })
+  const INVITATION = {
+    id: 'e1000000-0000-0000-0000-000000000001',
+    specialist: 'Anna Terapeutka',
+    email: 'anna@wp.pl',
+    approach: 'psychoterapia poznawczo-behawioralna',
+    module: 'psychotherapy',
+    module_label: 'Psychoterapia',
+  }
 
-    expect(await fetchSpecialistInvitation()).toBeNull()
+  it('unwraps the list, and empty when nobody has asked', async () => {
+    mockedRequest.mockResolvedValueOnce({ invitations: [] })
+
+    expect(await fetchSpecialistInvitations()).toEqual([])
     expect(mockedRequest).toHaveBeenCalledWith(
       '/api/account/specialist-invitation/', undefined,
     )
   })
 
-  it('names the specialist rather than only their address', async () => {
-    mockedRequest.mockResolvedValueOnce({
-      invitation: {
+  it('names the specialist and the module being agreed to', async () => {
+    mockedRequest.mockResolvedValueOnce({ invitations: [INVITATION] })
+
+    expect(await fetchSpecialistInvitations()).toEqual([
+      {
+        id: INVITATION.id,
         specialist: 'Anna Terapeutka',
         email: 'anna@wp.pl',
         approach: 'psychoterapia poznawczo-behawioralna',
+        module: 'psychotherapy',
+        moduleLabel: 'Psychoterapia',
       },
-    })
-
-    expect(await fetchSpecialistInvitation()).toEqual({
-      specialist: 'Anna Terapeutka',
-      email: 'anna@wp.pl',
-      approach: 'psychoterapia poznawczo-behawioralna',
-    })
+    ])
   })
 
-  it('accepts and rejects through their own URLs', async () => {
-    mockedRequest.mockResolvedValueOnce({ invitation: null })
-    await acceptSpecialistInvitation()
+  it('carries both when two specialists are asking at once', async () => {
+    /** One per module is a real state — a psychotherapist and a
+     *  psychodietitian in the same week — and it is why the payload is a list. */
+    mockedRequest.mockResolvedValueOnce({
+      invitations: [
+        INVITATION,
+        { ...INVITATION, id: 'e2', module: 'diet', module_label: 'Dietetyka i psychodietetyka' },
+      ],
+    })
+
+    const waiting = await fetchSpecialistInvitations()
+
+    expect(waiting.map((row) => row.module)).toEqual(['psychotherapy', 'diet'])
+  })
+
+  it('accepts and rejects through the invitation’s own URL', async () => {
+    mockedRequest.mockResolvedValueOnce({ invitations: [] })
+    await acceptSpecialistInvitation('e1')
     expect(mockedRequest).toHaveBeenCalledWith(
-      '/api/account/specialist-invitation/accept/', { method: 'POST' },
+      '/api/account/specialist-invitation/e1/accept/', { method: 'POST' },
     )
 
-    mockedRequest.mockResolvedValueOnce({ invitation: null })
-    await rejectSpecialistInvitation()
+    mockedRequest.mockResolvedValueOnce({ invitations: [] })
+    await rejectSpecialistInvitation('e1')
     expect(mockedRequest).toHaveBeenCalledWith(
-      '/api/account/specialist-invitation/reject/', { method: 'POST' },
+      '/api/account/specialist-invitation/e1/reject/', { method: 'POST' },
     )
   })
 })
