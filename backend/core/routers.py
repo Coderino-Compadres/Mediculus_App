@@ -3,6 +3,7 @@ MEDICAL_MODELS = {
     'dietmealemotion',
     'supplement', 'supplementhour', 'supplementintake',
     'dietactivity', 'dietactivityday', 'dietsleep',
+    'healthprofile', 'healthcondition',
 }
 
 

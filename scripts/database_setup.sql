@@ -731,6 +731,118 @@ CREATE INDEX IF NOT EXISTS idx_diet_sleep_patient
     ON diet_sleep (id_medical);
 
 -- ----------------------------
+-- HEALTH_PROFILE
+-- §13's "Profil zdrowotny": one row per patient, and never a second.
+--
+-- IN medical_db RATHER THAN user_db, which is where the frontend's own contract
+-- (src/api/healthProfile.ts) asked for it. Its argument -- that a weight beside
+-- a pseudonymous key "would put identity into the database whose whole point is
+-- not having any" -- runs the wrong way: a weight identifies nobody, while
+-- 'eating-disorder' and 'depression' filed next to the surname and the e-mail
+-- address in user_db is the pairing the two-database split exists to prevent.
+-- CLAUDE.md's rule settles it: clinical data lives here. The endpoint is gated
+-- by _require_patient exactly as that contract asks.
+-- Mirrors core/migrations/0021_health_profile.py.
+--
+-- ONE ROW, NO HISTORY. There is no entry_date and nothing unique on a day: a
+-- weight series is what a chart is made of, and §13 rules the chart out by name
+-- ("te dwie liczby są danymi dla specjalisty, nie celem pokazywanym
+-- codziennie"). updated_at says when the row last changed; nothing says what it
+-- said before.
+--
+-- NO BMI COLUMN, derived or stored. weight_kg and target_weight_kg are two
+-- independent numbers that happen to sit next to each other.
+--
+-- EVERY COLUMN NULLABLE -- §05's rule for the whole diet module: no field
+-- blocks a save.
+--
+-- NUMERIC(4,1) rather than a float: a figure somebody typed about their own
+-- body has to read back exactly as typed, and the precision doubles as the
+-- bound (999.9), which is the same limit the frontend's own field applies.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS health_profile (
+    id_health_profile UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Logical relation:
+    -- health_profile.id_medical -> user_db.patient.id_medical
+    -- UNIQUE, so the one-row rule belongs to the schema rather than to the API.
+    id_medical UUID UNIQUE NOT NULL,
+
+    height_cm NUMERIC(4,1),
+    weight_kg NUMERIC(4,1),
+    target_weight_kg NUMERIC(4,1),
+
+    -- One of core.health_profile.ACTIVITY_LEVELS, or NULL for unanswered.
+    -- Unconstrained here, with the same caveat as diet_meal.kind: the only
+    -- thing refusing an unknown value is the API serializer.
+    activity_level TEXT,
+
+    -- Free text on §13's own instruction ("Pola opisowe, nie słownikowe"): a
+    -- closed list leaves somebody allergic to something outside it nowhere to
+    -- write it down.
+    allergies TEXT,
+    intolerances TEXT,
+    dietary_preferences TEXT,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ----------------------------
+-- HEALTH_CONDITION
+-- One jednostka chorobowa on a profile: a key from §13's seventeen, or a
+-- diagnosis somebody typed in themselves.
+--
+-- A ROW PER CONDITION rather than a text column or seventeen booleans, so the
+-- vocabulary stays a closed set that core/tests/test_health_profile.py can
+-- compare against frontend/src/utils/healthProfile.ts name for name -- the
+-- cross-language rule CLAUDE.md states for emotions.ts/emotions.py.
+--
+-- TWO COLUMNS, EXACTLY ONE FILLED (ck_health_condition). A single column
+-- holding both would make a hand-typed 'hashimoto' indistinguishable from the
+-- chip, and a renamed key indistinguishable from a diagnosis the list lacks.
+--
+-- The psychiatric diagnoses share this table with the somatic ones, with no
+-- column, flag or second table between them -- §13: "Rozpoznania psychiatryczne
+-- stoją w tej samej liście, co somatyczne — bez osobnej sekcji."
+--
+-- A real foreign key with ON DELETE CASCADE, unlike every id_medical here:
+-- both ends live in medical_db, so Postgres can enforce it -- the same
+-- exception diet_meal_emotion, supplement_hour and supplement_intake are.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS health_condition (
+    id_health_condition UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    id_health_profile UUID NOT NULL
+        REFERENCES health_profile (id_health_profile) ON DELETE CASCADE,
+
+    -- One of core.health_profile.CONDITIONS, or NULL on a hand-written row.
+    condition TEXT,
+    -- Somebody's own words, or NULL on a picked chip.
+    own_label TEXT,
+
+    -- Index within its own list, so hand-typed entries come back in the order
+    -- they were written. The picked chips carry one and ignore it: the API
+    -- sorts those by the vocabulary.
+    position SMALLINT NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    -- Exactly one of the two is filled. A row with neither says nothing; a row
+    -- with both says two things about one diagnosis.
+    CONSTRAINT ck_health_condition CHECK (num_nonnulls(condition, own_label) = 1),
+
+    -- The same condition twice on one profile is a double-submitted form, not a
+    -- second diagnosis. NULLs are distinct in Postgres, so this constrains the
+    -- picked chips and leaves the hand-written rows alone -- which is right:
+    -- somebody may well write two things the list does not have.
+    -- Its btree also serves the only query this table has -- every condition of
+    -- one profile -- so there is no separate index on id_health_profile, the
+    -- same as supplement_hour and diet_meal_emotion.
+    CONSTRAINT uq_health_condition UNIQUE (id_health_profile, condition)
+);
+
+-- ----------------------------
 -- RAPORT
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS raport (

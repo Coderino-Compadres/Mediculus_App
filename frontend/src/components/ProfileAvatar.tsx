@@ -1,4 +1,8 @@
 import { initials } from '../utils/profile'
+// `.profile-avatar`. Imported here rather than left to arrive from whichever
+// screen happens to mount this — two screens render it now, and one of them is
+// in the other module.
+import './profileForms.css'
 
 /**
  * The initials circle at the top of the profile.

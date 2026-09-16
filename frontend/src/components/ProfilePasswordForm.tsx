@@ -3,6 +3,10 @@ import FormField from './FormField'
 import { PASSWORD_FIELDS, changePassword } from '../api/account'
 import { useAuthForm, FORM_ERROR } from '../hooks/useAuthForm'
 import { validateConfirmPassword, validatePassword } from '../utils/validation'
+// `.auth-form` and friends — three screens render this component now
+// (/profile, /diet/profile and the held password screen), so the styling
+// travels with it.
+import './auth.css'
 
 /** Present, nothing more — see the note above on why this is not `validatePassword`. */
 function validateCurrentPassword(value: string): string | null {

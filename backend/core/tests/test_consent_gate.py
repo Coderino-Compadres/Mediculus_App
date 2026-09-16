@@ -48,6 +48,8 @@ def all_urls(
         ('post', reverse('core:account-consents-restore')),
         ('post', reverse('core:account-password')),
         ('get', reverse('core:account-profile')),
+        ('get', reverse('core:account-health-profile')),
+        ('put', reverse('core:account-health-profile')),
         ('post', reverse('core:guardian-link')),
         ('delete', reverse('core:guardian-link')),
         ('get', reverse('core:guardian-invitations')),

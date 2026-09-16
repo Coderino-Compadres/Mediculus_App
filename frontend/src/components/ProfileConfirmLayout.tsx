@@ -1,4 +1,9 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+// `.profile-confirm-lead`, plus the archival entry's frame this screen wears
+// (.journal-detail-*), which stays in its own file for the same reason the
+// collapse rules do — pages/JournalDetail.tsx renders it too.
+import './profileForms.css'
+import '../pages/journalDetail.css'
 
 /**
  * The frame every confirmation screen on the profile shares: a back arrow, the
@@ -22,12 +27,29 @@ function ProfileConfirmLayout({
   title,
   lead,
   onBack,
+  moduleLabel = 'PSYCHOTERAPIA',
   children,
 }: {
   title: string
   lead: string
   /** Leaves without doing anything — every one of these screens is escapable. */
   onBack: () => void
+  /**
+   * The nadtytuł over the title — which module the reader is standing in.
+   *
+   * It used to be the literal 'PSYCHOTERAPIA', which was true while /profile
+   * was the only screen that opened these confirmations. The diet module has a
+   * profile of its own now, offering the same consent register through the same
+   * component, and a patient who pressed "Wycofaj tę zgodę" under a header
+   * reading DIETETYKA I PSYCHODIETETYKA was being shown the other module's name
+   * on the screen that takes the decision — on a screen whose entire job is to
+   * be exact about what is happening and to whom.
+   *
+   * Defaulted rather than required, so every existing caller keeps the label it
+   * had and this stays a strictly additive change: a screen that does not say
+   * otherwise is still the psychotherapy one.
+   */
+  moduleLabel?: string
   children: ReactNode
 }) {
   const heading = useRef<HTMLHeadingElement>(null)
@@ -50,7 +72,7 @@ function ProfileConfirmLayout({
           ←
         </button>
         <div className="journal-detail-header-titles">
-          <p className="journal-detail-module-label">PSYCHOTERAPIA</p>
+          <p className="journal-detail-module-label">{moduleLabel}</p>
           {/* tabIndex -1 so it can be focused programmatically without joining
               the tab order. */}
           <h1 ref={heading} tabIndex={-1}>

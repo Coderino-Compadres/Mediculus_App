@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitForElementToBeRemoved, within } from '@testing-library/react'
 import { renderWithProviders } from '../test/render'
 import DietAnalysis from './DietAnalysis'
@@ -96,8 +96,44 @@ function readableText(): string {
   return [document.body.textContent ?? '', ...attributes.filter((value) => value !== null)].join(' ')
 }
 
+/**
+ * "Dziś" for the whole file, pinned rather than read off the machine's clock.
+ *
+ * WHY THIS IS NOT A DETAIL. Every fixture below is built by counting backwards
+ * from today (`isoDaysAgo`), and the assertions about the heat map talk about
+ * weekdays — so what the grid contains depends on which weekday the suite is
+ * run. In a 30-day window each weekday occurs four or five times, and the two
+ * that occur **five** times are exactly today's and yesterday's. The grid test
+ * below needs Monday to be one of the five-timers and Tuesday not to be, which
+ * is true on one day of the week and no other.
+ *
+ * So `draws a weekday eaten on four of five paler than one eaten on four of
+ * four` was green when it was written (Monday 14 September 2026), went red by
+ * itself the next morning, and was still red on main with nothing in the
+ * source having changed — the ramp, the thresholds and the tooltip are
+ * byte-for-byte what they were. Nobody broke it; the calendar moved.
+ *
+ * The date below is that Monday, so the file now asserts the same thing every
+ * day of the week. It is pinned for the WHOLE file rather than for the one
+ * test that noticed, because every other fixture here counts from the same
+ * clock and any of them could grow the same dependency without anybody
+ * meaning to — a suite that is green six days out of seven is worse than one
+ * that is red, because it looks fine.
+ *
+ * `shouldAdvanceTime` so `findBy*` still resolves, and the real clock goes
+ * back in `afterEach` — the same shape pages/DietActivitySleep.test.tsx and
+ * hooks/useCurrentDay.test.tsx already use for their own day-lock cases.
+ */
+const TODAY = new Date(2026, 8, 14, 10, 0)
+
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  vi.setSystemTime(TODAY)
   mockedFetch.mockResolvedValue([])
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('DietAnalysis — the three states', () => {

@@ -105,3 +105,20 @@ export function ageFromDateOfBirth(value: string): number | null {
     (today.getMonth() === born.getMonth() && today.getDate() >= born.getDate())
   return today.getFullYear() - born.getFullYear() - (hadBirthdayThisYear ? 0 : 1)
 }
+
+/**
+ * "rok / lata / lat" — the noun a Polish age count takes, declined.
+ *
+ * The same shape as `pluralGlasses` (utils/drinks.ts) and `pluralItems`
+ * (utils/supplements.ts): the noun alone, so the caller keeps the figure. A
+ * fixed "lat" is right for 5-21 and wrong for every count ending in 2-4 outside
+ * the teens — "32 lat" instead of "32 lata" — which on the profile is a
+ * misdeclined sentence about the reader's own age.
+ */
+export function pluralYears(count: number): string {
+  const last = count % 10
+  const teens = count % 100
+  if (count === 1) return 'rok'
+  if (last >= 2 && last <= 4 && (teens < 12 || teens > 14)) return 'lata'
+  return 'lat'
+}

@@ -13,6 +13,7 @@ import DietActivitySleep from './pages/DietActivitySleep'
 import DietReports from './pages/DietReports'
 import DietReportDetail from './pages/DietReportDetail'
 import DietAnalysis from './pages/DietAnalysis'
+import DietProfile from './pages/DietProfile'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
@@ -492,6 +493,34 @@ function App() {
             element={
               <RequireAuth>
                 <DietAnalysis />
+              </RequireAuth>
+            }
+          />
+          {/* The diet module's own profile (§13).
+
+              RequireAuth's DEFAULTS, unlike /profile — which is the one screen
+              in the app that opts out of both role redirects. That exemption
+              exists because a guardian's and a specialist's profile is
+              genuinely theirs: identity, the consent register and the password
+              form all work for them. None of that is true of *this* screen.
+              Its subject is a patient's body and diet — a height, a mass, a
+              set of diagnoses, the way somebody eats — and a guardian has no
+              `patient` row to hold any of it against, so the health half would
+              be a form about a person who is not the one filling it in. They
+              keep /profile, which is where everything they can actually change
+              lives, and this route sends them to their own panel rather than
+              to a screen that would quietly be about nobody.
+
+              Both gates that matter still apply regardless: `gateRouteFor`
+              (consents, then the password) and the guardian gate for a minor
+              are checked before either role flag, so a minor whose guardian
+              has not accepted is sent to /link-guardian from here exactly as
+              from every other screen. */}
+          <Route
+            path={ROUTES.dietProfile}
+            element={
+              <RequireAuth>
+                <DietProfile />
               </RequireAuth>
             }
           />

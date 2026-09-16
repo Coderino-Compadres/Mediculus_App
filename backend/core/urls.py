@@ -27,6 +27,14 @@ urlpatterns = [
         views.GuardianInvitationRejectView.as_view(), name='guardian-invitation-reject',
     ),
     path('account/profile/', views.AccountProfileView.as_view(), name='account-profile'),
+    # §13's health profile. Under account/ rather than diet/, because it is a
+    # record about the person rather than an entry in a diary: it has no date,
+    # no week and no history, and the diet module reads it rather than owning
+    # it.
+    path(
+        'account/health-profile/',
+        views.HealthProfileView.as_view(), name='account-health-profile',
+    ),
     path('account/password/', views.PasswordChangeView.as_view(), name='account-password'),
     path(
         'account/consents/withdraw/',

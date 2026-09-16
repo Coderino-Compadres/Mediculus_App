@@ -21,6 +21,12 @@ import type { AccountClosureReason, AccountProfile } from '../types/profile'
 // imports it and App.tsx pulls Login in eagerly, so route-level lazy loading
 // would have left the profile forms unstyled.
 import '../components/auth.css'
+// The card shell, the shared buttons and the consent register moved to a sheet
+// of their own when the diet module got a profile too — see the header of
+// components/profileForms.css. Named here because this screen renders
+// `.profile-card` and `.profile-secondary-button` in its own markup, not only
+// through the components that now import it themselves.
+import '../components/profileForms.css'
 import './journals.css'
 import './journalDetail.css'
 import './diaryEntry.css'

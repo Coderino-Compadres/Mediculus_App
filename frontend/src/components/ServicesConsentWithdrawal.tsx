@@ -6,6 +6,11 @@ import { withdrawConsent } from '../api/account'
 import { useAuthForm } from '../hooks/useAuthForm'
 import { validatePassword } from '../utils/validation'
 import { CONSENT_IDS, consentById } from '../utils/consents'
+// `.profile-consent-quote` and `.profile-todo-box`, the card frame and the
+// password form — see the note in AccountClosureConfirm.
+import './profileForms.css'
+import '../pages/journalDetail.css'
+import './auth.css'
 
 /**
  * Withdrawing only the consent to use the foundation's services.
@@ -33,7 +38,14 @@ import { CONSENT_IDS, consentById } from '../utils/consents'
  * and a shared screen would quietly withdraw both.
  */
 
-function ServicesConsentWithdrawal({ onBack }: { onBack: () => void }) {
+function ServicesConsentWithdrawal({
+  onBack,
+  moduleLabel,
+}: {
+  onBack: () => void
+  /** See the same prop on AccountClosureConfirm. */
+  moduleLabel?: string
+}) {
   // Looked up here rather than at module scope: `consentById` throws on an
   // unknown id by design, and at module scope that throw lands during the eager
   // App -> Profile -> here import chain, blanking the entire app instead of the
@@ -61,7 +73,12 @@ function ServicesConsentWithdrawal({ onBack }: { onBack: () => void }) {
     'Wycofujesz tylko zgodę na korzystanie z usług Fundacji Mediculus. Zgoda na przetwarzanie danych o zdrowiu zostaje w mocy — to dwie osobne decyzje i wycofujesz jedną z nich. Aplikacja jest usługą fundacji, więc do czasu przywrócenia tej zgody konto będzie zatrzymane. Nic nie zostanie usunięte.'
 
   return (
-    <ProfileConfirmLayout title="Wycofaj zgodę na usługi" lead={lead} onBack={onBack}>
+    <ProfileConfirmLayout
+      title="Wycofaj zgodę na usługi"
+      lead={lead}
+      onBack={onBack}
+      moduleLabel={moduleLabel}
+    >
       <section className="journal-detail-card">
         <h2>Zgoda, którą wycofujesz</h2>
         {/* The wording of record, from utils/consents.ts — the same sentence the

@@ -2,6 +2,11 @@ import { CONSENTS, consentGrants, type ConsentDefinition } from '../utils/consen
 import { consentDateLabel } from '../utils/profile'
 import type { AuthUser } from '../api/auth'
 import type { AccountClosureReason } from '../types/profile'
+// The consent register's own styling — the card, the quote, the status pill
+// and the three buttons. Owned by this component rather than by a screen, so
+// /profile and /diet/profile cannot drift apart about what a consent looks
+// like.
+import './profileForms.css'
 
 /**
  * "Twoje dane i zgody" — the consents and the way out.

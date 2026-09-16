@@ -56,9 +56,10 @@ const PATIENT_ITEMS: MenuItem[] = [
  * ("Menu i przełączanie modułów") is the artboard that settles what the diet
  * menu holds, and it is in the part of the document the Claude Design viewer
  * would not scroll to — so nothing is invented here. What is listed is what
- * exists: the module's home, the profile (one account, one profile), and the way
- * back to the other module, mirroring the entry `PATIENT_ITEMS` already carries
- * in the opposite direction. The screens the mockups name — dodawanie posiłku,
+ * exists: the module's home, its own profile (one account, two profiles — the
+ * account data and the consents are shared components, the health fields are
+ * not), and the way back to the other module, mirroring the entry
+ * `PATIENT_ITEMS` already carries in the opposite direction. The screens the mockups name — dodawanie posiłku,
  * historia dzienniczków żywieniowych, nawodnienie i suplementy, aktywność
  * fizyczna i sen, raporty, analiza, techniki psychodietetyczne, profil zdrowotny,
  * materiały edukacyjne — join this list as they are built, in the order §03
@@ -87,7 +88,16 @@ const DIET_ITEMS: MenuItem[] = [
   // the emotion one. The two are named the same because they are the same word
   // for two different views; a patient only ever sees one of the two menus.
   { label: routeTitle(ROUTES.dietAnalysis), to: ROUTES.dietAnalysis },
-  { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
+  // The module's own profile — /diet/profile, not /profile, and this is the
+  // entry that used to break the module. Sending a patient to /profile from
+  // here handed them the *psychotherapy* screen: `isDietRoute` says no about
+  // that path, so the menu swapped itself back to PATIENT_ITEMS, the nadtytuł
+  // read PSYCHOTERAPIA, and the screen has no back arrow — so the only way
+  // back into the diet module was the menu's last entry. Both entries are
+  // still called "Profil" because both are the profile; a patient only ever
+  // sees one of the two menus, the same rule "Raporty" and "Analiza" already
+  // follow above.
+  { label: routeTitle(ROUTES.dietProfile), to: ROUTES.dietProfile },
   { label: 'Przejdź do części psychoterapeutycznej', to: ROUTES.home },
 ]
 

@@ -38,6 +38,7 @@ from . import supplements as supplement_rules
 from . import activity as activity_rules
 from . import sleep as sleep_rules
 from .diet_reports import build_diet_reports, find_diet_report, latch_week_start
+from . import health_profile as health_profile_rules
 from .guardian import (STATUS_ACCEPTED, accept_invitation, accepted_children,
                        cancel_invitation, guardian_status, pending_invitations,
                        reject_invitation)
@@ -255,6 +256,14 @@ PROFILE_REFUSAL = (
     'Ta część profilu jest dostępna tylko dla konta pacjenta.'
 )
 
+# Its own sentence rather than PROFILE_REFUSAL's, because it answers a different
+# question: the counters above are "this part of the profile", while this is a
+# clinical record about a body. A guardian reaching it is not being told a
+# screen is unavailable, they are being told whose record it is.
+HEALTH_PROFILE_REFUSAL = (
+    'Profil zdrowotny jest dostępny tylko dla konta pacjenta.'
+)
+
 REPORT_REFUSAL = 'Raporty są dostępne tylko dla konta pacjenta.'
 
 REPORT_NOT_FOUND = 'Nie znaleziono raportu dla tego tygodnia.'
@@ -406,6 +415,57 @@ class AccountProfileView(APIView):
     def get(self, request):
         patient = _require_patient(request, PROFILE_REFUSAL, with_care=True)
         return Response(build_account_profile(patient))
+
+
+class HealthProfileView(APIView):
+    """GET/PUT /api/account/health-profile/ — §13's "Profil zdrowotny".
+
+    BEHIND `_require_patient`, like every clinical endpoint here and unlike the
+    password form beside it. A guardian and a specialist have no `patient` row
+    and are refused rather than handed an empty profile: an empty profile is a
+    misleading answer to a question that does not apply to them, and this one
+    would read as "we hold no diagnoses for you" rather than as "you are not the
+    subject of this record". A minor whose guardian has not accepted is refused
+    by the same call (RODO art. 8).
+
+    THE PATIENT IS THE SESSION AND NEVER THE URL. There is no id here to vary,
+    so there is no version of this endpoint that reads somebody else's body —
+    the rule every clinical route in this file follows.
+
+    GET on a profile nobody has filled in answers an empty one rather than a
+    404, the same choice `/api/diet/sleep/` makes: the screen is a form, there
+    is always a profile on it, and an untouched profile and one saved with every
+    field blank are the same thing in truth.
+
+    PUT REPLACES RATHER THAN MERGES — the rule the diary, the meal form, the
+    supplement form and the sleep panel all follow. The screen submits its whole
+    state, so an allergy left out is one taken back rather than one left
+    unchanged; a merge would make clearing a field impossible from the only form
+    that writes it.
+
+    NOTHING IS REQUIRED (§05: "Żadne pole nie blokuje zapisu"), so a PUT with an
+    empty body is a valid save that empties the profile. That is not a footgun
+    to guard against: it is what the screen does when somebody clears every
+    field and presses Zapisz, and refusing it would make the profile
+    write-once.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, HEALTH_PROFILE_REFUSAL)
+        return Response(
+            health_profile_rules.build_health_profile(patient.id_medical),
+        )
+
+    def put(self, request):
+        patient = _require_patient(request, HEALTH_PROFILE_REFUSAL)
+        serializer = health_profile_rules.HealthProfileSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = serializer.save_profile(patient.id_medical)
+        # Read back through the same serialiser the GET uses, rather than
+        # echoing the request: the response is then the stored truth, and a
+        # value the database rounded or a condition order the API normalised
+        # cannot differ between the save and the next load.
+        return Response(health_profile_rules.serialize_profile(profile))
 
 
 class PasswordChangeView(APIView):
