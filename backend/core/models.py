@@ -896,3 +896,147 @@ class DietSleep(models.Model):
 
     def __str__(self):
         return f'{self.entry_date}'
+
+
+class HealthProfile(models.Model):
+    """Profil zdrowotny — §13, one row per patient and never more.
+
+    WHY IT IS HERE RATHER THAN IN user_db, where the frontend's own contract
+    (`src/api/healthProfile.ts`) asks for it: a height and a weight identify
+    nobody, so nothing about `id_medical` stops being pseudonymous with them
+    beside it — while 'eating-disorder' and 'depression' filed next to the
+    surname and the e-mail address in `user_db` is exactly the pairing the
+    two-database split exists to prevent. `core/health_profile.py` argues it at
+    length. The endpoint is gated by `_require_patient` either way.
+
+    ONE ROW, NO HISTORY, AND THAT IS THE FEATURE. There is no `entry_date`,
+    nothing unique on a day, and no second row when the number changes — a
+    weight series is what a chart is made of, and §13's whole argument is that
+    there is no chart: "te dwie liczby są danymi dla specjalisty, nie celem
+    pokazywanym codziennie". `updated_at` says when the row last changed and
+    nothing says what it said before. Adding a dated row here would build the
+    first half of the feature §13 forbids.
+
+    NO BMI COLUMN, derived or stored, and none is to be added. `weight_kg` and
+    `target_weight_kg` are two independent numbers that happen to sit next to
+    each other, and nothing in this app subtracts one from the other.
+
+    EVERY COLUMN IS NULLABLE, §05's rule for the whole diet module: no field
+    blocks a save, so a profile that answers nothing is an ordinary row rather
+    than an unfinished one.
+
+    NUMERIC(4,1) for the three measurements rather than a float: these are
+    clinical figures somebody typed about their own body, and 71.3 has to read
+    back as 71.3. The precision also *is* the bound — 999.9 is the largest
+    value the column holds, which is the same limit `typeMeasurement` puts on
+    the field somebody types into.
+    """
+
+    id_health_profile = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False)
+    # Unique rather than merely indexed: the one-row rule is the schema's, not a
+    # convention the API is trusted to keep. `update_or_create` in
+    # core/health_profile.py writes against exactly this constraint.
+    id_medical = models.UUIDField(unique=True)
+    height_cm = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True)
+    weight_kg = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True)
+    # Independent of `weight_kg` in every sense that matters -- see the
+    # docstring. Nothing compares the two.
+    target_weight_kg = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True)
+    # One of core.health_profile.ACTIVITY_LEVELS, or NULL for unanswered.
+    # TextField with the serializer constraining the value, the same arrangement
+    # `DietSleep.wake_feeling` and `DietMeal.kind` have.
+    activity_level = models.TextField(null=True, blank=True)
+    # The three eating fields, free text on §13's own instruction: "Pola
+    # opisowe, nie słownikowe -- pacjentka wpisuje własnymi słowami." The same
+    # artboard draws preferences as chips, which contradicts it; the sentence
+    # wins, because a chip list is a closed list and somebody allergic to
+    # something that is not on it has nowhere to write it down.
+    allergies = models.TextField(null=True, blank=True)
+    intolerances = models.TextField(null=True, blank=True)
+    dietary_preferences = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'health_profile'
+
+    def __str__(self):
+        return str(self.id_medical)
+
+
+class HealthCondition(models.Model):
+    """One jednostka chorobowa on a profile — picked from §13's list, or typed.
+
+    A ROW PER CONDITION rather than a text column or seventeen booleans. The
+    vocabulary stays a closed set that `core/tests/test_health_profile.py` can
+    compare against `frontend/src/utils/healthProfile.ts` name for name — the
+    same cross-language rule CLAUDE.md states for `emotions.ts`/`emotions.py`,
+    and the same reason: a key added on one side only loses its chip, a key
+    spelled differently loses the diagnosis.
+
+    TWO COLUMNS, EXACTLY ONE OF THEM FILLED, enforced by `ck_health_condition`
+    in the database. `condition` holds a key from the vocabulary; `own_label`
+    holds somebody's own words ("z możliwością dodania własnej"). One column
+    holding both would make a hand-typed "hashimoto" indistinguishable from the
+    chip, and there would be no way to tell a renamed key from a diagnosis the
+    list does not have.
+
+    THE PSYCHIATRIC DIAGNOSES SHARE THIS TABLE WITH THE SOMATIC ONES and are not
+    separated by a column, a flag or a second table. §13's own note: "Rozpoznania
+    psychiatryczne stoją w tej samej liście, co somatyczne — bez osobnej
+    sekcji." A separate anything would draw a line around the patient's
+    psychiatric history in the one place it would outlive a redesign.
+
+    `profile` is a real foreign key with CASCADE, like `DietMealEmotion.meal`
+    and for the same reason: both tables live in medical_db, so Postgres can
+    enforce it, and a condition has no meaning without the profile it is on.
+    """
+
+    id_health_condition = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False)
+    profile = models.ForeignKey(
+        HealthProfile, on_delete=models.CASCADE, db_column='id_health_profile',
+        related_name='conditions',
+    )
+    # One of core.health_profile.CONDITIONS, or NULL when this row is a
+    # hand-written one.
+    condition = models.TextField(null=True, blank=True)
+    # Somebody's own words, or NULL when this row is a picked chip.
+    own_label = models.TextField(null=True, blank=True)
+    # Index within its own list, so hand-written entries come back in the order
+    # they were typed rather than in whatever order the rows were read. The
+    # picked chips carry one too and ignore it: `serialize_profile` sorts those
+    # by the vocabulary, which is the order §13 draws them in.
+    position = models.SmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'health_condition'
+        ordering = ['position', 'created_at']
+        constraints = [
+            # Exactly one of the two columns is filled. A row with neither says
+            # nothing; a row with both says two things about one diagnosis.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(condition__isnull=False, own_label__isnull=True)
+                    | models.Q(condition__isnull=True, own_label__isnull=False)
+                ),
+                name='ck_health_condition',
+            ),
+            # The same condition twice on one profile is a double-submitted
+            # form, not a second diagnosis -- the rule
+            # `validate_conditions` states in the serializer, enforced here as
+            # well. NULLs are distinct in Postgres, so this constrains the
+            # picked chips and leaves the hand-written rows alone, which is
+            # right: somebody may well write two things the list does not have.
+            models.UniqueConstraint(
+                fields=['profile', 'condition'], name='uq_health_condition',
+            ),
+        ]
+
+    def __str__(self):
+        return self.condition or self.own_label or str(self.id_health_condition)

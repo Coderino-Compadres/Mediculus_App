@@ -8,8 +8,9 @@ import DietReports from './DietReports'
 import DietAnalysis from './DietAnalysis'
 import HeaderMenu from '../components/HeaderMenu'
 import Profile from './Profile'
-import { CONDITIONS, emptyHealthProfile } from '../utils/healthProfile'
-import { PendingBackendError } from '../api/account'
+import {
+  CONDITIONS, emptyHealthProfile, formatMeasurement,
+} from '../utils/healthProfile'
 import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
 import type { AccountProfile } from '../types/profile'
@@ -25,16 +26,21 @@ vi.mock('../api/profile', async (importOriginal) => {
 })
 
 /**
- * The health profile's two stubs.
+ * The health profile's two requests.
  *
- * Mocked so the failure branches can be reached at all — the real stubs cannot
- * fail (one resolves, the other always rejects with `PendingBackendError`), and
- * "cannot fail today" is exactly why the handling for the day they can needs a
- * test rather than a promise. `beforeEach` restores today's behaviour, so every
- * other test in this file still runs against the real contract.
+ * Mocked at the api layer rather than at `fetch`, which is what every other
+ * screen's tests here do: the mapping between the payload and the draft has its
+ * own tests (`api/healthProfile.ts` is exercised through `utils/healthProfile`),
+ * and what this file is about is what the *screen* does with a resolved or
+ * rejected promise — including the two failures a server can produce and a
+ * stub never could.
+ *
+ * `beforeEach` gives them the behaviour a working backend has: a profile that
+ * reads back what was saved.
  */
 const fetchHealthProfile = vi.fn<() => Promise<HealthProfileDraft>>()
-const saveHealthProfile = vi.fn<(input: HealthProfileInput) => Promise<void>>()
+const saveHealthProfile =
+  vi.fn<(input: HealthProfileInput) => Promise<HealthProfileDraft>>()
 vi.mock('../api/healthProfile', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/healthProfile')>()
   return {
@@ -72,15 +78,42 @@ vi.mock('../api/diet', async (importOriginal) => {
  * adds thinking it an improvement, which is why a comment in the source would
  * not be enough.
  *
- * The second group is honesty about the backend: there is none. The fields are
- * empty because nothing is stored, the save says so, and neither may ever be
- * "finished" by inventing a body for whoever opens the screen.
+ * The second group is honesty about what is stored. The fields hold what
+ * `GET /api/account/health-profile/` returned and nothing else: empty when the
+ * profile is empty, an error when the request failed, and never a body invented
+ * for whoever opens the screen.
  */
 
 function careProfile(specialist: string | null, approach: string | null = null): AccountProfile {
   return {
     activity: { entryCount: 0, streakDays: 0 },
     care: specialist === null ? null : { specialist, approach, phone: null },
+  }
+}
+
+/**
+ * What the server answers a save with: the profile as it was stored.
+ *
+ * A transcription of `core/health_profile.serialize_profile` into the draft the
+ * client makes of it — trimmed text, measurements back as text, conditions in
+ * §13's own order. Written out rather than echoing the input, because the
+ * screen settling on the *stored* profile rather than on its own draft is one
+ * of the things this file pins.
+ */
+function storedFrom(input: HealthProfileInput): HealthProfileDraft {
+  const order = CONDITIONS.map((condition) => condition.id)
+  return {
+    heightCm: formatMeasurement(input.heightCm),
+    weightKg: formatMeasurement(input.weightKg),
+    targetWeightKg: formatMeasurement(input.targetWeightKg),
+    activityLevel: input.activityLevel,
+    allergies: input.allergies ?? '',
+    intolerances: input.intolerances ?? '',
+    dietaryPreferences: input.dietaryPreferences ?? '',
+    conditions: [...input.conditions].sort(
+      (a, b) => order.indexOf(a) - order.indexOf(b),
+    ),
+    ownConditions: [...input.ownConditions],
   }
 }
 
@@ -112,12 +145,10 @@ beforeEach(() => {
     mock.mockReset()
   }
   fetchAccountProfile.mockResolvedValue(careProfile(null))
-  // What the real stubs do today: an empty profile, and a save that was never
-  // sent anywhere. See src/api/healthProfile.ts.
+  // A patient who has filled nothing in, and a save that stores what it was
+  // sent — which is what the endpoint does (`core/health_profile.py`).
   fetchHealthProfile.mockResolvedValue(emptyHealthProfile())
-  saveHealthProfile.mockRejectedValue(
-    new PendingBackendError('PUT /api/account/health-profile/'),
-  )
+  saveHealthProfile.mockImplementation(async (input) => storedFrom(input))
   fetchDietDay.mockResolvedValue({ date: '2026-09-09', streakDays: 0, mealCount: 0, meals: [] })
   fetchHydration.mockResolvedValue({
     date: '2026-09-09',
@@ -170,12 +201,12 @@ describe('the screen itself', () => {
   })
 })
 
-describe('the health fields start empty and stay honest', () => {
-  it('opens with every field blank and nothing suggested', async () => {
-    /** There is no endpoint to read from, so the alternative to blank fields is
-     *  invented ones — which is what src/data/profile.ts was, and why it is
-     *  gone. A height and a mass printed into somebody's own profile are a
-     *  statement about that person's body. */
+describe('the health fields hold what is stored and nothing else', () => {
+  it('opens with every field blank when the profile is empty', async () => {
+    /** Empty because the server said the profile is empty — the alternative to
+     *  blank fields being invented ones, which is what src/data/profile.ts was
+     *  and why it is gone. A height and a mass printed into somebody's own
+     *  profile are a statement about that person's body. */
     await renderScreen()
 
     expect(screen.getByLabelText('Wzrost (cm)')).toHaveValue('')
@@ -197,31 +228,87 @@ describe('the health fields start empty and stay honest', () => {
     }
   })
 
-  it('answers a save with a wait, not with a success and not with a failure', async () => {
+  it('fills the fields with what the server holds', async () => {
+    /** The measurements arrive as numbers and go into fields that hold text —
+     *  with a Polish comma, and without the ',0' the NUMERIC column adds to a
+     *  whole number. */
+    fetchHealthProfile.mockResolvedValue({
+      ...emptyHealthProfile(),
+      heightCm: '168',
+      weightKg: '71,5',
+      allergies: 'orzechy laskowe',
+      conditions: ['hashimoto'],
+      ownConditions: ['Migrena'],
+    })
+
+    await renderScreen()
+
+    expect(screen.getByLabelText('Wzrost (cm)')).toHaveValue('168')
+    expect(screen.getByLabelText('Masa ciała (kg)')).toHaveValue('71,5')
+    expect(screen.getByLabelText('Alergie pokarmowe')).toHaveValue('orzechy laskowe')
+    expect(screen.getByRole('button', { name: 'Hashimoto', pressed: true })).toBeInTheDocument()
+    expect(screen.getByText('Migrena')).toBeInTheDocument()
+  })
+
+  it('says the profile was saved, and only after the server said so', async () => {
     await renderScreen()
 
     await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '71')
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
 
-    const notice = await screen.findByRole('status')
-
-    expect(notice).toHaveTextContent(/Zmiana zostanie zapisana po podłączeniu backendu/)
-    // Neither of the two things it must not say.
-    expect(screen.queryByText(/^Zapisano/)).toBeNull()
-    expect(screen.queryByText(/nie udało się/i)).toBeNull()
+    expect(await screen.findByRole('status')).toHaveTextContent('Zapisano.')
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('does not claim a save survives the screen', async () => {
-    /** Nothing is stored, so nothing comes back. The notice describes the last
-     *  submit and stops describing it the moment anything changes. */
+  it('sends the form as numbers and nulls rather than as typed text', async () => {
+    /** The contract `toHealthProfileInput` states: a half-typed '71,' is 71,
+     *  and an untouched field is null rather than 0 — a patient who has not
+     *  filled in a weight has not weighed zero. */
+    await renderScreen()
+
+    await userEvent.type(screen.getByLabelText('Wzrost (cm)'), '168')
+    await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '71,5')
+    await userEvent.type(screen.getByLabelText('Alergie pokarmowe'), '  orzechy  ')
+    await userEvent.click(screen.getByRole('button', { name: 'Hashimoto' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
+
+    await screen.findByRole('status')
+    expect(saveHealthProfile).toHaveBeenCalledWith({
+      heightCm: 168,
+      weightKg: 71.5,
+      targetWeightKg: null,
+      activityLevel: null,
+      allergies: 'orzechy',
+      intolerances: null,
+      dietaryPreferences: null,
+      conditions: ['hashimoto'],
+      ownConditions: [],
+    })
+  })
+
+  it('settles on the profile the server stored, not on its own draft', async () => {
+    /** The same thing DietSleepPanel does with its night: a form still showing
+     *  what was typed can disagree with the record it just wrote. Here the
+     *  visible difference is the trimmed text. */
+    await renderScreen()
+
+    await userEvent.type(screen.getByLabelText('Alergie pokarmowe'), '  orzechy  ')
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
+
+    await screen.findByRole('status')
+    expect(screen.getByLabelText('Alergie pokarmowe')).toHaveValue('orzechy')
+  })
+
+  it('stops saying "Zapisano" the moment anything changes', async () => {
+    /** The notice describes the last submit, and one keystroke later it is
+     *  describing something else. */
     await renderScreen()
 
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
     expect(await screen.findByRole('status')).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText('Wzrost (cm)'), '1')
-    expect(screen.queryByText(/Zmiana zostanie zapisana/)).toBeNull()
+    expect(screen.queryByText('Zapisano.')).toBeNull()
   })
 
   it('saves with every field left empty', async () => {
@@ -232,7 +319,11 @@ describe('the health fields start empty and stay honest', () => {
     expect(save).toBeEnabled()
 
     await userEvent.click(save)
-    expect(await screen.findByRole('status')).toBeInTheDocument()
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Zapisano.')
+    expect(saveHealthProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ heightCm: null, conditions: [], ownConditions: [] }),
+    )
   })
 })
 
@@ -244,8 +335,8 @@ describe('a load that failed is not drawn as an empty profile', () => {
    * thing somebody does about that is type their allergies in again, over the
    * top of the ones the server still holds.
    *
-   * The stub cannot reject today. These tests are what make the handling for
-   * the day it can more than a comment.
+   * Reachable for real now that the fields come from a request: a dropped
+   * connection, a 503, a session that expired between two screens.
    */
   it('says so, and does not render the fields it could not fill', async () => {
     fetchHealthProfile.mockRejectedValue(new Error('offline'))
@@ -331,18 +422,17 @@ describe('a save that failed is not silence', () => {
     expect(alert).toHaveClass('diet-profile-health-error')
   })
 
-  it('never says a failure in the pending notice\'s calm words', async () => {
-    /** The two are different facts: "nic nie zostało wysłane" is true of a
-     *  backend that does not exist and false of a 500, where something was
-     *  sent and lost. One state at a time, so they cannot both be on screen. */
+  it('never says a lost save was stored', async () => {
+    /** One state at a time, so the two claims cannot both be on screen: a
+     *  "Zapisano" left standing over a failed request is the one thing this
+     *  screen can least afford to say. */
     saveHealthProfile.mockRejectedValue(new Error('network'))
 
     await renderScreen()
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
 
     expect(await screen.findByRole('alert')).toBeInTheDocument()
-    expect(screen.queryByText(/Zmiana zostanie zapisana po podłączeniu backendu/)).toBeNull()
-    expect(screen.queryByText(/^Zapisano/)).toBeNull()
+    expect(screen.queryByText('Zapisano.')).toBeNull()
     expect(screen.queryByRole('status')).toBeNull()
   })
 
@@ -383,16 +473,19 @@ describe('a save that failed is not silence', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('still answers the backend\'s absence with the neutral notice', async () => {
-    /** The other half of the same rule: a `PendingBackendError` is not a
-     *  failure and must not become one. Nothing was sent, so nothing was
-     *  lost. */
+  it('leaves the alert behind once a retry works', async () => {
+    /** The other half of the same rule: the notice describes the last submit,
+     *  so a save that went through must not be read under a sentence saying one
+     *  did not. */
+    saveHealthProfile.mockRejectedValueOnce(new Error('network'))
+
     await renderScreen()
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      /Zmiana zostanie zapisana po podłączeniu backendu/,
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Zapisano.')
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })

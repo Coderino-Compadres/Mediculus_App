@@ -106,6 +106,13 @@ def clinical_urls(diary_id, report_id, hydration_id=None, supplement_id=None,
     return [
         ('get', reverse('core:home-dashboard'), 200),
         ('get', reverse('core:account-profile'), 200),
+        # §13's health profile. Same gate as the diary and for the plainer
+        # reason: seventeen diagnoses logged against a named account are health
+        # data in the most literal sense RODO art. 9 means it.
+        ('get', reverse('core:account-health-profile'), 200),
+        # 200 on an empty body, which is a valid save (§05, literally): a
+        # profile that answers nothing is an ordinary row.
+        ('put', reverse('core:account-health-profile'), 200),
         ('get', reverse('core:analysis-frequency'), 200),
         ('get', reverse('core:diary-today'), 200),
         ('put', reverse('core:diary-today'), 200),

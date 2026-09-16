@@ -151,6 +151,33 @@ export function parseMeasurement(typed: string): number | null {
   return Number.isFinite(value) && value > 0 ? value : null
 }
 
+/**
+ * A stored measurement as the field should show it.
+ *
+ * The inverse of `parseMeasurement`, and the only place in the app that turns a
+ * number back into one of these fields. Three things it has to get right:
+ *
+ *   - **a comma, not a point.** Polish writes 71,5, and the field somebody then
+ *     edits accepts both — but showing them a point they did not type is the
+ *     app rewriting their own answer back at them;
+ *   - **no trailing ',0'.** The column is NUMERIC(4,1), so 168 comes back as
+ *     168.0; printing "168,0 cm" would add a precision nobody claimed, and the
+ *     next save would read it back as the same number anyway;
+ *   - **'' for null**, because the draft is text and "nothing was written" is
+ *     an empty field. Never '0' — a patient who has not filled in a weight has
+ *     not weighed zero, which is the same distinction `parseMeasurement` keeps
+ *     going the other way.
+ */
+export function formatMeasurement(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return ''
+  // One decimal place is all the column holds, so rounding here cannot lose an
+  // answer -- and it keeps a float's tail (71.30000000000001) out of a field.
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded)
+    ? String(rounded)
+    : String(rounded).replace('.', ',')
+}
+
 /** Trimmed, or null when there is nothing but whitespace. */
 function orNull(value: string): string | null {
   const trimmed = value.trim()

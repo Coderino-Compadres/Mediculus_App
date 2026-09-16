@@ -97,11 +97,11 @@ const COPY: Record<AccountClosureReason, Copy> = {
  * /diet/profile and asserts the two lists are identical item for item, so the
  * split cannot be reintroduced quietly.
  *
- * TODO(§13): the health profile — height, mass, target mass, activity level,
- * allergies, intolerances, eating preferences and conditions — joins this list
- * the day it gets a table. It has none yet (see src/api/healthProfile.ts), so
- * naming it here would promise the deletion of something that is not stored;
- * the entry goes in with the migration, not before it.
+ * The health profile joined the list with its migration
+ * (`core/migrations/0021_health_profile.py`) and not a commit before it: while
+ * there was no table, naming it here would have promised the deletion of
+ * something that was not stored. That is the rule for the next entry too — a
+ * line goes in when the data does, never in anticipation of it.
  */
 const REMOVED_ITEMS = [
   'wpisy w dzienniczku wraz z ocenami nastroju, emocji, napięcia i energii',
@@ -110,6 +110,7 @@ const REMOVED_ITEMS = [
   'zapisane nawodnienie, sen i aktywność fizyczna',
   'lista suplementów i leków razem z odhaczeniami przyjęcia',
   'raporty tygodniowe z części dietetycznej i psychodietetycznej',
+  'profil zdrowotny: wzrost, masa ciała, masa docelowa, poziom aktywności, alergie, nietolerancje, preferencje żywieniowe i jednostki chorobowe',
   'dane konta: imię, nazwisko, adres e-mail, data urodzenia',
   'powiązanie ze specjalistą prowadzącym i jego wgląd w Twoje dane',
 ]

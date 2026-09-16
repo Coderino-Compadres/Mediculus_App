@@ -26,8 +26,8 @@
  *
  *   - a value that cannot be read (`.diet-profile-field-notice`) — ochre, and
  *     a request to check rather than a fault. Never blocks the save;
- *   - the backend not being there yet (`.diet-profile-pending`) — lavender and
- *     neutral, because nothing failed and nothing succeeded;
+ *   - a save that went through (`.diet-profile-saved`) — lavender and quiet,
+ *     because it is a confirmation rather than something to act on;
  *   - a load or a save that actually failed (`.diet-profile-health-error`) —
  *     ochre, the colour this module already gives a consequence to weigh
  *     (`.supplement-danger-button`, `.diet-as-late`). Red is the psychotherapy
@@ -480,10 +480,10 @@
   cursor: default;
 }
 
-/* "This will work once the backend is connected." Deliberately neutral — not a
-   success, because nothing was saved, and not an error, because nothing
-   failed. Lavender, like the same notice on /profile. */
-.diet-profile-pending {
+/* "Zapisano." Lavender and quiet, like the same notice on /profile: it is worth
+   saying, because without it a re-enabled button is the only sign a save went
+   through — but it is not something the reader has to do anything about. */
+.diet-profile-saved {
   font-family: var(--font-body);
   font-size: 14px;
   line-height: 1.5;

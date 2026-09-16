@@ -13,7 +13,8 @@ MEDICAL = [models.Diary, models.MoodScale, models.Technique, models.Raport,
            models.Hydration, models.DietMeal, models.DietMealEmotion,
            models.Supplement,
            models.SupplementHour, models.SupplementIntake,
-           models.DietActivity, models.DietActivityDay, models.DietSleep]
+           models.DietActivity, models.DietActivityDay, models.DietSleep,
+           models.HealthProfile, models.HealthCondition]
 USER_SIDE = [models.User, models.UserRole, models.Specjalist,
              models.Patient, models.ParentChild]
 

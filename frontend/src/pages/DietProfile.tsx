@@ -9,7 +9,6 @@ import ProfileDataRights from '../components/ProfileDataRights'
 import ProfileEmailForm from '../components/ProfileEmailForm'
 import ProfilePasswordForm from '../components/ProfilePasswordForm'
 import ServicesConsentWithdrawal from '../components/ServicesConsentWithdrawal'
-import { PendingBackendError } from '../api/account'
 import { ApiError } from '../api/client'
 import { fetchHealthProfile, saveHealthProfile } from '../api/healthProfile'
 import { useAuth } from '../auth/authContext'
@@ -56,10 +55,11 @@ import './dietProfile.css'
  *
  * ── NOTHING ON THIS SCREEN IS INVENTED ABOUT A PERSON ───────────────────────
  *
- * The health fields start **empty, every time**, and they must keep starting
- * empty until there is a backend. `fetchHealthProfile` resolves with
- * `emptyHealthProfile()` because that is the true answer: nothing is stored,
- * so nothing was written.
+ * The health fields hold **what the server has on file and nothing else**.
+ * `fetchHealthProfile` reads `GET /api/account/health-profile/`; a patient who
+ * has filled nothing in gets empty fields because the profile is genuinely
+ * empty, and a request that *fails* gets an error rather than empty fields —
+ * see HEALTH_LOAD_ERROR below for why that difference is worth a branch.
  *
  * The temptation this paragraph exists to defuse is filling them in with the
  * artboard's 168 cm and 71 kg "so the screen shows something". `src/data/
@@ -67,8 +67,8 @@ import './dietProfile.css'
  * deleted for it. A weight is not decoration: printed into somebody's own
  * profile it is a statement about that person's body, shown to that person, in
  * a module whose §13 says in so many words that some of its users have eating
- * disorders. Whoever wires the backend replaces the *source* of these values.
- * Nobody types example values in here.
+ * disorders. The source of these values is the endpoint; nobody types example
+ * values in here.
  *
  * Everything that IS real comes from where it really lives: identity and the
  * consents from the session (`useAuth`), the treating specialist from
@@ -134,23 +134,6 @@ const MAX_MEASUREMENT_DIGITS = 3
 const CARE_LOAD_ERROR = 'Nie udało się wczytać danych o specjaliście.'
 
 /**
- * Said under the save button after a submit.
- *
- * Neither a success nor a failure, and the wording has to stay that way: the
- * request was never made (see src/api/healthProfile.ts). "Zapisano" here would
- * be the lie that matters most on this screen — somebody could write down an
- * allergy, be told it was saved, and expect their dietitian to have read it.
- *
- * It is NOT the wording for a save that failed, and the two must never be
- * merged into one calm sentence: "na razie nic nie zostało wysłane" is true of
- * a backend that does not exist and false of a 500, where something was sent
- * and lost.
- */
-const PENDING_SAVE_NOTICE =
-  'Zmiana zostanie zapisana po podłączeniu backendu — na razie nic nie zostało ' +
-  'wysłane ani zapamiętane.'
-
-/**
  * A load that failed, and the reason this screen may not answer it with blank
  * fields.
  *
@@ -191,9 +174,8 @@ const HEALTH_SAVE_ERROR =
 type SaveState =
   | { kind: 'idle' }
   | { kind: 'saving' }
-  /** The request was never made — there is no endpoint yet. Neutral. */
-  | { kind: 'pending' }
-  /** Unreachable while the stub rejects; written for the day it resolves. */
+  /** Stored. Said plainly, because on this screen it is a real claim: somebody
+   *  wrote down an allergy and expects their dietitian to read it. */
   | { kind: 'saved' }
   /** Sent and lost. Ochre and role="alert" — see dietProfile.css. */
   | { kind: 'failed'; message: string }
@@ -426,12 +408,10 @@ function DietProfile() {
   /**
    * The health fields.
    *
-   * Held here rather than fetched-and-cached, because there is nothing to
-   * fetch: `fetchHealthProfile` resolves with an empty draft. The state exists
-   * so the screen can be used — typed into, chips picked and unpicked — and it
-   * does not survive a reload, which is the honest consequence of there being
-   * no store. See the paragraph at the top of this file before "fixing" that
-   * by seeding it with values.
+   * `emptyHealthProfile()` is the starting value rather than the answer: it is
+   * what the form holds for the moment before the first response arrives, and
+   * the effect below replaces it with what the server has. It is never what a
+   * *failed* load settles on — see the paragraph at the top of this file.
    */
   const [draft, setDraft] = useState<HealthProfileDraft>(emptyHealthProfile)
   const [ownCondition, setOwnCondition] = useState('')
@@ -446,12 +426,12 @@ function DietProfile() {
   /**
    * The load, and the failure it is not allowed to swallow.
    *
-   * The stub resolves and cannot reject today, so the `.catch` is unreachable
-   * on this branch — which is exactly why it is written now. The day
-   * `fetchHealthProfile` really performs the GET, the alternative to this is a
-   * screen that answers a dropped connection with an empty profile and invites
-   * somebody to fill their allergies in over the top of the ones the server
-   * still holds.
+   * The alternative to this `.catch` is a screen that answers a dropped
+   * connection with an empty profile and invites somebody to fill their
+   * allergies in over the top of the ones the server still holds. A profile
+   * that is genuinely empty and one that could not be fetched look identical on
+   * a form, so the difference has to be carried by a branch rather than by what
+   * the fields happen to show.
    */
   useEffect(() => {
     let cancelled = false
@@ -576,30 +556,31 @@ function DietProfile() {
    * blokuje zapisu") and it holds here: a profile filled in halfway is better
    * than one nobody dared start.
    *
-   * THREE OUTCOMES, THREE STATES, AND NEVER THE WRONG ONE.
-   * `PendingBackendError` is the only outcome today and is neutral wording:
-   * nothing failed, because nothing was sent. Any other rejection is a real
-   * failure and is *said* — it used to be re-thrown from inside the `.catch`,
-   * which produces a rejected promise nothing handles: no error boundary sees
-   * it, it lands in the console, and the patient gets a re-enabled button and
-   * no sentence at all. A lost save that looks exactly like a successful one is
-   * the failure this screen can least afford, since what is lost is an allergy
-   * somebody expects their dietitian to have read.
+   * A FAILURE IS SAID RATHER THAN SWALLOWED. The rejection used to be
+   * re-thrown from inside the `.catch`, which produces a rejected promise
+   * nothing handles: no error boundary sees it, it lands in the console, and
+   * the patient gets a re-enabled button and no sentence at all. A lost save
+   * that looks exactly like a successful one is the failure this screen can
+   * least afford, since what is lost is an allergy somebody expects their
+   * dietitian to have read.
+   *
+   * THE FORM SETTLES ON WHAT WAS STORED, not on what was typed: the response is
+   * the saved profile, so trimmed text and a condition order normalised to
+   * §13's arrive back here rather than waiting for the next reload to appear.
+   * The same thing `DietSleepPanel` does with its night, and for the same
+   * reason — a form still showing its own draft can disagree with the record it
+   * just wrote. A failed save keeps the draft instead: losing answers somebody
+   * just typed because the network dropped would be the worse outcome by far.
    */
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSave({ kind: 'saving' })
     saveHealthProfile(toHealthProfileInput(draft))
-      .then(() => {
-        // Unreachable while the stub rejects; written so the day it resolves,
-        // the screen says the true thing rather than the pending one.
+      .then((stored) => {
+        setDraft(stored)
         setSave({ kind: 'saved' })
       })
       .catch((cause: unknown) => {
-        if (cause instanceof PendingBackendError) {
-          setSave({ kind: 'pending' })
-          return
-        }
         setSave({
           kind: 'failed',
           message: (cause instanceof ApiError && cause.formMessage) || HEALTH_SAVE_ERROR,
@@ -896,11 +877,12 @@ function DietProfile() {
             Zapisz profil
           </button>
 
-          {/* role="status" and not "alert": nothing failed and nothing is urgent.
-              The wording says what happened, which today is "nothing yet". */}
-          {(save.kind === 'pending' || save.kind === 'saved') && (
-            <p className="diet-profile-pending" role="status">
-              {save.kind === 'saved' ? 'Zapisano.' : PENDING_SAVE_NOTICE}
+          {/* role="status" and not "alert": nothing failed and nothing is
+              urgent. It is cleared by the next change to any field — see
+              `set` — so it always describes the form as it stands. */}
+          {save.kind === 'saved' && (
+            <p className="diet-profile-saved" role="status">
+              Zapisano.
             </p>
           )}
 

@@ -3,6 +3,7 @@ import {
   ACTIVITY_LEVELS,
   CONDITIONS,
   emptyHealthProfile,
+  formatMeasurement,
   measurementProblem,
   parseMeasurement,
   toHealthProfileInput,
@@ -142,6 +143,41 @@ describe('reading a measurement', () => {
     expect(parseMeasurement('')).toBeNull()
     expect(parseMeasurement(',')).toBeNull()
     expect(parseMeasurement('0')).toBeNull()
+  })
+})
+
+describe('writing a stored measurement back into a field', () => {
+  /**
+   * The inverse of `parseMeasurement`, and the only place a number from the
+   * server becomes one of these fields. What it has to get right is somebody's
+   * own answer read back to them unchanged.
+   */
+  it('writes a decimal with the separator Polish uses', () => {
+    expect(formatMeasurement(71.5)).toBe('71,5')
+  })
+
+  it('does not add a precision nobody claimed', () => {
+    /** The column is NUMERIC(4,1), so a whole number comes back as 168.0.
+     *  "168,0 cm" is a different statement from "168 cm". */
+    expect(formatMeasurement(168)).toBe('168')
+    expect(formatMeasurement(168.0)).toBe('168')
+  })
+
+  it('keeps a float\'s tail out of the field', () => {
+    expect(formatMeasurement(71.30000000000001)).toBe('71,3')
+  })
+
+  it('answers an empty field for nothing stored, never a zero', () => {
+    /** The same distinction `parseMeasurement` keeps going the other way: a
+     *  patient who has not filled in a weight has not weighed zero. */
+    expect(formatMeasurement(null)).toBe('')
+    expect(formatMeasurement(Number.NaN)).toBe('')
+  })
+
+  it('round-trips whatever somebody typed', () => {
+    for (const typed of ['168', '71,5', '99,9', '5']) {
+      expect(formatMeasurement(parseMeasurement(typed))).toBe(typed)
+    }
   })
 })
 
