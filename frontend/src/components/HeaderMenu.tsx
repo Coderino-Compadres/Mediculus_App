@@ -63,10 +63,10 @@ const PATIENT_ITEMS: MenuItem[] = [
  * historia dzienniczków żywieniowych, nawodnienie i suplementy, aktywność
  * fizyczna i sen, raporty, analiza, techniki psychodietetyczne, profil zdrowotny,
  * materiały edukacyjne — join this list as they are built, in the order §03
- * gives them. Everything up to and including "Analiza" has now done so; what is
- * still missing from §03's eleven is "Techniki psychodietetyczne" and "Materiały
- * edukacyjne", neither of which is built, plus the coloured dots §03 draws
- * beside every entry, which this menu has never had on either module's list.
+ * gives them. Everything up to and including "Profil" has now done so; the one
+ * entry still missing from §03's eleven is "Materiały edukacyjne", which is not
+ * built, plus the coloured dots §03 draws beside every entry, which this menu
+ * has never had on either module's list.
  * One open question for that artboard: whether "przełączanie modułów" means a
  * direct jump to the other module (as below) or a link to the chooser on
  * /modules.
@@ -88,6 +88,13 @@ const DIET_ITEMS: MenuItem[] = [
   // the emotion one. The two are named the same because they are the same word
   // for two different views; a patient only ever sees one of the two menus.
   { label: routeTitle(ROUTES.dietAnalysis), to: ROUTES.dietAnalysis },
+  // §03 puts "Techniki" between "Analiza" and "Profil", and this is the
+  // module's own catalogue — /diet/techniques, the psychodietetic exercises,
+  // not /techniques, which is the DBT one. Called "Techniki" here and "Techniki
+  // terapeutyczne" in the other menu, so unlike "Raporty", "Analiza" and
+  // "Profil" these two entries are not even the same word; a patient only ever
+  // sees one of the two menus regardless.
+  { label: routeTitle(ROUTES.dietTechniques), to: ROUTES.dietTechniques },
   // The module's own profile — /diet/profile, not /profile, and this is the
   // entry that used to break the module. Sending a patient to /profile from
   // here handed them the *psychotherapy* screen: `isDietRoute` says no about

@@ -1,0 +1,399 @@
+/* "Techniki psychodietetyczne" (§12) — both screens, the list and one technique.
+ *
+ * ITS OWN STYLESHEET, on the same terms as dietReports.css and dietProfile.css:
+ * the module dresses itself from styles/theme.css rather than wearing another
+ * screen's class names. In particular it imports neither pages/techniques.css
+ * nor components/techniqueCatalogue.css — the psychotherapy catalogue is a
+ * different document about different material, and sharing a stylesheet is how
+ * two screens end up being changed as one by accident. (Those two files are
+ * also where the app's hardcoded ochre literals live — #8a6416 and #7a5a17,
+ * the second with no token at all. Nothing here copies them: the one ochre this
+ * sheet uses is --color-ochre-text, as ink and as an outline. There is no ochre
+ * fill on either screen — see .diet-techniques-pending for the arithmetic.)
+ *
+ * The NAME matters too, and techniqueCatalogue.css explains why: pages/ and
+ * components/ both already hold a "techniques" stylesheet, and as siblings they
+ * would be imported by the same relative path.
+ *
+ * Colour roles, unchanged from the rest of the module: ochre is the module's
+ * own mark (the duration chip, the notice about content still being written),
+ * sage is an action (the row's arrow, a link) and also carries the nadtytuł,
+ * lavender is the page. Nothing here is red — there is no error
+ * state on either screen, because there is no request.
+ *
+ * Class prefixes: `.diet-techniques-*` for the page shell and the list,
+ * `.diet-technique-*` for the parts that belong to one technique. */
+
+.diet-techniques-page {
+  flex-grow: 1;
+  width: 100%;
+  background: var(--color-lavender);
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.diet-techniques-page > * {
+  width: 100%;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Header */
+
+.diet-techniques-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+}
+
+.diet-techniques-module-label {
+  font-weight: var(--font-weight-semibold);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--color-sage-hover);
+  margin: 0 0 4px;
+}
+
+.diet-techniques-header h1 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 26px;
+  line-height: 1.25;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+/* The way back: the arrow in the header, as on this module's other screens.
+   A link rather than a button — it only goes somewhere, so it keeps
+   middle-click, cmd-click and "copy link address". 44px, per WCAG 2.5.8. */
+.diet-techniques-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-graphite);
+  text-decoration: none;
+  background: var(--color-surface);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+}
+
+.diet-techniques-back:hover {
+  color: var(--color-sage-hover);
+  text-decoration: none;
+}
+
+.diet-techniques-back:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.diet-techniques-header-titles {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* `margin: 0 auto`, not `margin: 0` — the centring lives on
+   `.diet-techniques-page > *` at the same specificity and loses to a bare
+   `margin: 0` by source order, which silently un-centres a paragraph while
+   every card around it stays in the column. The trap dietJournals.css records. */
+.diet-techniques-intro {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 auto;
+}
+
+/* The notice that the content is still being written. Ochre rather than the
+   error red: this is information about where the work stands, not a warning.
+
+   ON --color-surface, NOT ON --color-ochre-soft, AND THE ARITHMETIC IS THE
+   REASON. This element sits on the page, whose background is --color-lavender
+   (#f0edf6) — not on a card. --color-ochre-soft is rgba(224, 180, 92, 0.28), so
+   over lavender it composites to rgb(236, 221, 203), and --color-ochre-text on
+   that is 4.02:1 — under the 4.5:1 that 13px text needs. The tempting number,
+   5.36:1, is --color-ochre-text on plain white and says nothing about this
+   background; the earlier version of this rule quoted it and was wrong by 0.48.
+   dietProfile.css had already been here: its note under
+   .diet-profile-health-error records that the same ink reads 4.50:1 on
+   --color-ochre-soft — the AA floor itself rather than a margin above it — and
+   puts the text on the surface for exactly that reason. So: white fill,
+   --color-ochre-text at 5.36:1, and the ochre carried by the border, which is
+   decoration and answers 1.4.11 at 4.64:1 against the page. */
+.diet-techniques-pending {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-ochre-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-ochre-text);
+  border-radius: var(--radius-tile);
+  padding: 12px 16px;
+  margin: 0 auto;
+}
+
+/* The list */
+
+.diet-techniques-list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diet-techniques-row {
+  display: block;
+}
+
+/* The whole row is the link, so the target is the card rather than one word of
+   it. Two rows of text on the left, the arrow held on the right across both. */
+.diet-techniques-link {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 12px;
+  min-height: 44px;
+  padding: 16px 20px;
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  text-decoration: none;
+}
+
+.diet-techniques-link:hover {
+  text-decoration: none;
+}
+
+.diet-techniques-link:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-card), var(--focus-ring);
+}
+
+.diet-techniques-name {
+  grid-column: 1;
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 17px;
+  line-height: 1.3;
+  color: var(--color-graphite);
+}
+
+.diet-techniques-meta {
+  grid-column: 1;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-graphite-muted);
+}
+
+/* Sage, like every other action in the app. */
+.diet-techniques-arrow {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: 16px;
+  color: var(--color-sage);
+}
+
+.diet-techniques-link:hover .diet-techniques-arrow {
+  color: var(--color-sage-hover);
+}
+
+/* Empty state: one sentence on the page, not a card. There is nothing to press
+   and nothing to fix, so a card would give it a weight it does not have. */
+.diet-techniques-empty,
+.diet-techniques-not-found {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-graphite-muted);
+  margin: 0 auto;
+}
+
+/* The way back from the "not found" screen, which has no header to hold an
+   arrow. The ordinary detail screen does not get one of these: this module
+   puts the way back in the header and only there.
+
+   An inline link in a line of text, so the 44px target (WCAG 2.5.8) comes from
+   a stretched ::after rather than from real height — giving it a box would push
+   the page around it. The same technique .diet-report-back-link uses. */
+.diet-techniques-back-link {
+  position: relative;
+  display: inline-block;
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-sage);
+  margin: 0 auto;
+}
+
+.diet-techniques-back-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  min-height: 44px;
+  transform: translateY(-50%);
+}
+
+.diet-techniques-back-link:hover {
+  color: var(--color-sage-hover);
+}
+
+/* One technique */
+
+.diet-techniques-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-card);
+  padding: 20px 24px;
+  box-shadow: var(--shadow-card);
+}
+
+.diet-techniques-card h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 18px;
+  color: var(--color-graphite);
+  margin: 0 0 14px;
+}
+
+/* The two chips under the title: how long it takes, and when to reach for it. */
+.diet-technique-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.diet-technique-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-graphite-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 5px 12px;
+}
+
+/* The duration, in the module's own accent — ink and outline, no fill.
+
+   THE BORDER CARRIES THE DIFFERENCE, AND NOW IT CARRIES ALL OF IT. The fill was
+   --color-ochre-soft, which was never doing the work: over this screen's
+   lavender it is rgb(236, 221, 203), 1.15:1 against the page and 1.33:1 against
+   the plain chip beside it — no difference at all for a reader with any loss of
+   contrast sensitivity, which is the point dietReport.css makes about the same
+   tint. What it *did* do was drag the text down to 4.02:1, under the 4.5:1 that
+   12px needs. Dropping it back to --color-surface puts --color-ochre-text at
+   5.36:1 and leaves the two chips told apart by hue and outline — the outline
+   at 3.86:1 against the plain chip's border, which is where the difference was
+   legible anyway. (The two inks are 1.06:1 apart in luminance and differ in hue
+   alone, which is fine here and only here: neither chip's meaning depends on
+   telling it from the other, because each says what it is in words.) */
+.diet-technique-chip-time {
+  color: var(--color-ochre-text);
+  border-color: var(--color-ochre-text);
+}
+
+.diet-technique-intro {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-graphite);
+  margin: 0;
+  /* A description may be written as several short lines; the newlines are part
+     of the text rather than wrapping. */
+  white-space: pre-line;
+}
+
+/* "Kroki" */
+
+.diet-technique-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.diet-technique-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+/* The drawn marker: a number, or the technique's own letter. Sized for two
+   characters, and `flex-shrink: 0` so a long step never squeezes it. */
+.diet-technique-step-marker {
+  flex-shrink: 0;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-lavender);
+  color: var(--color-sage-hover);
+  font-weight: var(--font-weight-semibold);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.diet-technique-step-body {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.diet-technique-step-name {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 2px 0 4px;
+}
+
+.diet-technique-step-text {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-graphite);
+  margin: 0;
+  white-space: pre-line;
+}
+
+/* The line at the foot of one technique. The same shape as the analysis
+   screen's note banner, because it does the same job: a quiet sentence about
+   what the screen is, not a warning. */
+.diet-techniques-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-tile);
+  padding: 14px 18px;
+}
+
+.diet-techniques-disclaimer span {
+  font-size: 16px;
+  line-height: 1.4;
+  flex-shrink: 0;
+  color: var(--color-sage-hover);
+}
+
+.diet-techniques-disclaimer p {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-graphite);
+  margin: 0;
+}

@@ -13,6 +13,8 @@ import DietActivitySleep from './pages/DietActivitySleep'
 import DietReports from './pages/DietReports'
 import DietReportDetail from './pages/DietReportDetail'
 import DietAnalysis from './pages/DietAnalysis'
+import DietTechniques from './pages/DietTechniques'
+import DietTechniqueDetail from './pages/DietTechniqueDetail'
 import DietProfile from './pages/DietProfile'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
@@ -493,6 +495,32 @@ function App() {
             element={
               <RequireAuth>
                 <DietAnalysis />
+              </RequireAuth>
+            }
+          />
+          {/* "Techniki psychodietetyczne" (§12). Patient screens like the rest
+              of /diet, so RequireAuth's defaults keep a guardian and a
+              specialist out.
+
+              DELIBERATELY NOT `allowSpecialist`, which is what the
+              psychotherapy catalogue carries: that exemption exists because a
+              specialist *writes* into that catalogue and seeing what a patient
+              sees is the point. Nothing writes into this one — there is no
+              specialist panel for the diet module at all — so the exemption
+              would let an account in for no reason. */}
+          <Route
+            path={ROUTES.dietTechniques}
+            element={
+              <RequireAuth>
+                <DietTechniques />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.dietTechniqueDetail}
+            element={
+              <RequireAuth>
+                <DietTechniqueDetail />
               </RequireAuth>
             }
           />
