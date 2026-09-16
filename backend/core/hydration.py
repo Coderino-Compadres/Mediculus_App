@@ -327,4 +327,5 @@ def remove_entry(id_medical, id_hydration, today):
     deleted, _ = Hydration.objects.filter(
         id_medical=id_medical, id_hydration=id_hydration, entry_date=today,
     ).delete()
+    
     return deleted > 0

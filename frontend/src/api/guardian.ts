@@ -70,6 +70,8 @@ interface LinkedChildPayload {
   /** See `needsAttention` — a boolean, never a count and never a reason. */
   needs_attention?: boolean
   activity: ChildActivityPayload | null
+  /** The diet module's own three, under their own key — see `dietActivity`. */
+  diet_activity?: ChildActivityPayload | null
 }
 
 export interface ChildActivity {
@@ -114,6 +116,39 @@ export interface LinkedChild {
   needsAttention: boolean
   /** null when the account has no patient row, or when its consents are withdrawn. */
   activity: ChildActivity | null
+  /**
+   * The same three figures, counted off the **diet** module's food diary.
+   *
+   * A second set rather than a bigger `activity`, because the app counts the two
+   * modules apart everywhere else — see DIET_CHILD_SUMMARY_FIELDS in
+   * core/account.py. Merging them would invent a third meaning of "wpis" that no
+   * screen uses, and it would hide which diary a child is actually keeping.
+   *
+   * WHAT IT FIXES: the card used to read the psychotherapy diary and nothing
+   * else, so a minor who uses only the diet module reached their guardian as "0
+   * wpisów" — an account nobody touches, which on this screen is the one wrong
+   * answer.
+   *
+   * The same line holds: how many meals, whether a run is going, when the last
+   * one was. Nothing of what was eaten, described or felt beside it.
+   *
+   * **undefined** on a backend that predates the field, and that is why the key
+   * is optional rather than defaulted to zeroes: zeroes would be a claim that
+   * the child keeps no food diary, made by a client that cannot know. The card
+   * renders the module's row only when the figures actually arrived.
+   */
+  dietActivity: ChildActivity | null
+}
+
+/** One module's figures. Shared by both halves, which send the same shape. */
+function toActivity(payload: ChildActivityPayload | null): ChildActivity | null {
+  return (
+    payload && {
+      entryCount: payload.entry_count,
+      streakDays: payload.streak_days,
+      lastEntryDate: payload.last_entry_date,
+    }
+  )
 }
 
 function toChild(payload: LinkedChildPayload): LinkedChild {
@@ -125,11 +160,11 @@ function toChild(payload: LinkedChildPayload): LinkedChild {
     linkedAt: payload.linked_at,
     consentsActive: payload.consents_active ?? true,
     needsAttention: payload.needs_attention ?? false,
-    activity: payload.activity && {
-      entryCount: payload.activity.entry_count,
-      streakDays: payload.activity.streak_days,
-      lastEntryDate: payload.activity.last_entry_date,
-    },
+    activity: toActivity(payload.activity),
+    // `?? null` rather than a default of zeroes: an absent key is a backend that
+    // does not send this yet, and the card must not claim an empty food diary on
+    // its behalf.
+    dietActivity: toActivity(payload.diet_activity ?? null),
   }
 }
 

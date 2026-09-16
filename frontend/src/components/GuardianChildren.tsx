@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { fetchGuardianChildren, type LinkedChild } from '../api/guardian'
+import { fetchGuardianChildren, type ChildActivity, type LinkedChild } from '../api/guardian'
+import { entriesNoun } from '../utils/analysis'
 import {
   childLabel,
   entryDateLabel,
@@ -7,6 +8,7 @@ import {
   linkedSinceLabel,
   showsStreak,
 } from '../utils/children'
+import { mealsNoun } from '../utils/meals'
 import { pluralDays } from '../utils/reports'
 import '../styles/panel.css'
 import './guardianChildren.css'
@@ -41,6 +43,19 @@ import './guardianChildren.css'
  * count and the reason are not in the payload at all, so this card cannot drift
  * into quoting the report without a backend change to go with the decision.
  *
+ * ONE ROW PER MODULE, and that is a fix rather than a decoration. The card read
+ * the psychotherapy diary and nothing else, so a minor who uses only the diet
+ * module — which is the whole reason there are two — reached their guardian as
+ * "0 wpisów", i.e. as an account nobody touches. Since the card exists to answer
+ * "is my child still doing this", that was the one wrong answer it could give.
+ * The two are counted apart rather than summed, for the reason
+ * DIET_CHILD_SUMMARY_FIELDS gives: a total would be a third meaning of "wpis"
+ * that no screen in the app uses.
+ *
+ * The line does not move with the second row. Meals are counted, never
+ * described: no photo, no kind, no description, none of the emotions picked
+ * beside one — and the backend sends none of them either.
+ *
  * A FAILED LOAD SAYS SO. Silence would read as "no children linked" to somebody
  * who has one, which on this screen is the one wrong answer — it is the whole
  * reason they are here.
@@ -74,9 +89,62 @@ function Figure({ value, label, title }: { value: string; label: string; title?:
   )
 }
 
+/**
+ * One module's row of figures, under the module's own name.
+ *
+ * TWO ROWS RATHER THAN ONE, and the heading is what makes them readable: a
+ * patient writes in two modules, the app counts them apart everywhere else (see
+ * DIET_CHILD_SUMMARY_FIELDS in core/account.py), and a single "12 wpisów" would
+ * leave a guardian unable to tell whether their child keeps a diary, a food
+ * diary, or half of each. The headings are the names the child themselves picks
+ * between on /modules, so the two screens say one thing.
+ *
+ * The declension of the noun travels as a function rather than as a finished
+ * string, because the tile draws the number and its label as two elements —
+ * `entriesNoun` and `mealsNoun` are the two callers, each the nominative of its
+ * own word.
+ */
+function ModuleFigures({
+  heading,
+  activity,
+  entryNoun,
+  lastLabel,
+}: {
+  heading: string
+  activity: ChildActivity
+  entryNoun: (count: number) => string
+  lastLabel: string
+}) {
+  return (
+    <section className="child-module">
+      <h4 className="child-module-heading">{heading}</h4>
+      <div className="child-figures panel-figures">
+        <Figure value={String(activity.entryCount)} label={entryNoun(activity.entryCount)} />
+        {showsStreak(activity.streakDays) && (
+          <Figure
+            value={String(activity.streakDays)}
+            label={`${pluralDays(activity.streakDays)} z rzędu`}
+          />
+        )}
+        <Figure
+          value={lastEntryLabel(activity.lastEntryDate, new Date()) ?? '—'}
+          label={lastLabel}
+          title={entryDateLabel(activity.lastEntryDate) ?? undefined}
+        />
+      </div>
+    </section>
+  )
+}
+
 function ChildCard({ child }: { child: LinkedChild }) {
   const linkedSince = linkedSinceLabel(child.linkedAt)
-  const { activity } = child
+  const { activity, dietActivity } = child
+  // Nothing at all in either module, which is the state a guardian most needs
+  // to see. Written as "neither" rather than as a check on the psychotherapy
+  // diary alone: that is exactly the bug this card had — a child who only used
+  // the diet module was told on, in words, as having written nothing.
+  const wroteNothing =
+    activity?.entryCount === 0 && (dietActivity === null || dietActivity.entryCount === 0)
 
   return (
     <article className="child-card panel-card">
@@ -127,36 +195,39 @@ function ChildCard({ child }: { child: LinkedChild }) {
         )
       ) : (
         <>
-          <div className="child-figures panel-figures">
-            <Figure
-              value={String(activity.entryCount)}
-              label={activity.entryCount === 1 ? 'wpis' : 'wpisów'}
-            />
-            {showsStreak(activity.streakDays) && (
-              <Figure
-                value={String(activity.streakDays)}
-                label={`${pluralDays(activity.streakDays)} z rzędu`}
-              />
-            )}
-            <Figure
-              value={lastEntryLabel(activity.lastEntryDate, new Date()) ?? '—'}
-              label="ostatni wpis"
-              title={entryDateLabel(activity.lastEntryDate) ?? undefined}
-            />
-          </div>
+          <ModuleFigures
+            heading="Psychoterapia"
+            activity={activity}
+            entryNoun={entriesNoun}
+            lastLabel="ostatni wpis"
+          />
 
-          {activity.entryCount === 0 && (
+          {/* Only when the figures actually arrived: `dietActivity` is null on a
+              backend that does not send them, and a row of zeroes would claim
+              the child keeps no food diary on its behalf. */}
+          {dietActivity && (
+            <ModuleFigures
+              heading="Dietetyka i psychodietetyka"
+              activity={dietActivity}
+              entryNoun={mealsNoun}
+              lastLabel="ostatni posiłek"
+            />
+          )}
+
+          {wroteNothing && (
             /* The state a guardian most needs to see, said in words rather than
-               left as three zeroes to interpret. */
+               left as rows of zeroes to interpret. It names both modules,
+               because it is now a claim about both. */
             <p className="child-card-note">
-              Dziecko nie zapisało jeszcze żadnego wpisu.
+              Dziecko nie zapisało jeszcze żadnego wpisu ani posiłku.
             </p>
           )}
         </>
       )}
 
       <p className="child-card-privacy">
-        Widzisz, czy dziecko korzysta z aplikacji — nie widzisz treści jego wpisów.
+        Widzisz, czy dziecko korzysta z aplikacji — nie widzisz treści jego wpisów
+        ani tego, co je.
       </p>
     </article>
   )

@@ -2,7 +2,7 @@
 
 **Dla kogo:** dla osób zakładających i obsługujących konta — pacjentów, rodziców
 i opiekunów, specjalistów oraz zespołu fundacji.
-**Stan na:** 9 września 2026.
+**Stan na:** 16 września 2026.
 
 Ten dokument odpowiada na cztery pytania: **jakie są rodzaje kont**, **jak każde
 z nich założyć**, **co się w nim widzi** i **co zrobić, gdy coś nie działa**.
@@ -203,11 +203,21 @@ Twój ekran to **Strona główna** i **Profil**. Na stronie głównej:
   Dopóki jakaś prośba czeka, **przy przycisku menu widać kropkę, a w menu liczbę**
   — na każdym ekranie, żeby dziecko nie czekało na kogoś, kto nie ma jak o tym
   wiedzieć;
-- **lista dzieci**, dla których jesteś opiekunem, a przy każdym z nich: liczba
-  wpisów, seria dni i data ostatniego wpisu.
+- **lista dzieci**, dla których jesteś opiekunem, a przy każdym z nich dwa
+  osobne zestawy liczb — **jeden na moduł**: dla psychoterapii liczba wpisów,
+  seria dni i data ostatniego wpisu, dla dietetyki liczba posiłków, seria dni
+  i data ostatniego posiłku. Liczby nie są sumowane, bo aplikacja liczy oba
+  moduły osobno wszędzie indziej: „12 wpisów" jako jedna liczba nie mówiłoby,
+  czy dziecko prowadzi dzienniczek emocji, żywieniowy, czy po trochu każdy.
+  Dziecko, które korzysta **tylko** z modułu dietetycznego, ma po stronie
+  psychoterapii zera — i odwrotnie; zdanie „Dziecko nie zapisało jeszcze
+  żadnego wpisu ani posiłku" pojawia się dopiero wtedy, gdy oba moduły są
+  puste.
 
 **Nie widzisz treści dzienniczka dziecka** — ani nastroju, ani emocji, ani
-raportów, ani tego, co dziecko napisało. Karta na ekranie mówi to wprost. Powód
+raportów, ani tego, co dziecko napisało. W module dietetycznym ta sama granica:
+widzisz, **ile** posiłków zostało zapisanych i kiedy, a nie **co** dziecko
+zjadło — bez opisów, bez rodzaju posiłku i bez emocji zaznaczonych przy nim. Karta na ekranie mówi to wprost. Powód
 jest kliniczny, a nie techniczny: dziecko, które wie, że rodzic czyta jego
 dzienniczek, pisze inny dzienniczek. Czy opiekun kiedykolwiek dostanie wgląd
 w treść, jest wciąż nierozstrzygnięte.
@@ -226,6 +236,13 @@ zachowaniem ryzykownym**. Trzy rzeczy o nim:
   zatrzymuje właśnie to wyliczanie.
 
 Znika sam, gdy kolejny raport zmieści się poniżej progu.
+
+**Wykrzyknik dotyczy wyłącznie raportu psychoterapeutycznego.** Moduł
+dietetyczny nie ma swojego odpowiednika i nie dostanie go bez decyzji klientki:
+próg trzech dni jest jej liczbą dla rzeczy, którą sama zdefiniowała (zachowanie
+ryzykowne), a nic w dzienniczku żywieniowym nie zostało tak opisane. Aplikacja
+nie będzie sama rozstrzygać, jak wygląda niepokojący tydzień jedzenia — ani
+mówić o tym rodzicowi.
 
 Reszta panelu rodzica jest w budowie i ekran o tym mówi.
 
@@ -401,7 +418,8 @@ ekrany — przekierowanie w przeglądarce nie jest zabezpieczeniem. Gdzie co sie
 | Zaproszenia specjalista–pacjent, kartoteka | `backend/core/specialist.py` |
 | Bramka zgód i bramka hasła | `backend/core/permissions.py`, `backend/core/consents.py` |
 | Bramka opiekuna, „czy to pacjent", „czy to specjalista" | `backend/core/views.py` |
-| Liczniki wspólne dla panelu, profilu i opiekuna | `backend/core/account.py` |
+| Liczniki wspólne dla panelu, profilu i opiekuna (oba moduły) | `backend/core/account.py` |
+| Liczniki dzienniczka żywieniowego | `backend/core/meals.py` |
 | Trasy i przekierowania per rodzaj konta | `frontend/src/App.tsx` |
 | Menu per rodzaj konta | `frontend/src/components/HeaderMenu.tsx` |
 | Lustro reguł backendu na froncie | `frontend/src/api/auth.ts` |

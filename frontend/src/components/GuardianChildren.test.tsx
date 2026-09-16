@@ -28,6 +28,9 @@ function child(overrides: Partial<LinkedChild> = {}): LinkedChild {
     // The ordinary card: no marker. A test about the marker sets it.
     needsAttention: false,
     activity: { entryCount: 12, streakDays: 4, lastEntryDate: isoDaysAgo(1) },
+    // The diet module's own three, which the card draws as a second row. A
+    // child using both modules is the ordinary case now that there are two.
+    dietActivity: { entryCount: 8, streakDays: 2, lastEntryDate: isoDaysAgo(0) },
     ...overrides,
   }
 }
@@ -91,8 +94,11 @@ describe('GuardianChildren', () => {
   })
 
   it('hides a run of one, which is an entry rather than a streak', async () => {
+    // Both modules quiet, so a streak tile from the other row cannot answer
+    // this test's question for it.
     await render([child({
       activity: { entryCount: 1, streakDays: 1, lastEntryDate: isoDaysAgo(0) },
+      dietActivity: { entryCount: 0, streakDays: 0, lastEntryDate: null },
     })])
 
     await screen.findByRole('heading', { name: 'Ola Testowa' })
@@ -103,13 +109,87 @@ describe('GuardianChildren', () => {
   })
 
   it('says in words when the child has written nothing yet', async () => {
-    /** The state a guardian most needs to notice, and three zeroes are not a
-     *  sentence somebody reads at a glance. */
+    /** The state a guardian most needs to notice, and rows of zeroes are not a
+     *  sentence somebody reads at a glance. Both modules empty: the claim is
+     *  about the account, so one quiet diary is not enough to make it. */
     await render([child({
       activity: { entryCount: 0, streakDays: 0, lastEntryDate: null },
+      dietActivity: { entryCount: 0, streakDays: 0, lastEntryDate: null },
     })])
 
-    expect(await screen.findByText(/nie zapisało jeszcze żadnego wpisu/i)).toBeInTheDocument()
+    expect(await screen.findByText(/nie zapisało jeszcze żadnego wpisu ani posiłku/i))
+      .toBeInTheDocument()
+  })
+
+  describe('the diet module', () => {
+    /** The bug this row closes: the card read the psychotherapy diary and
+     *  nothing else, so a child who uses only the diet module reached their
+     *  guardian as an account nobody touches. See DIET_CHILD_SUMMARY_FIELDS in
+     *  core/account.py for why the two are counted apart rather than summed. */
+
+    it('draws a row per module, each under its own name', async () => {
+      await render()
+
+      await screen.findByRole('heading', { name: 'Ola Testowa' })
+
+      expect(screen.getByRole('heading', { name: 'Psychoterapia' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Dietetyka i psychodietetyka' }))
+        .toBeInTheDocument()
+      expect(screen.getByText('12')).toBeInTheDocument()
+      expect(screen.getByText('wpisów')).toBeInTheDocument()
+      expect(screen.getByText('8')).toBeInTheDocument()
+      expect(screen.getByText('posiłków')).toBeInTheDocument()
+      expect(screen.getByText('ostatni posiłek')).toBeInTheDocument()
+    })
+
+    it('does not call a child who only keeps a food diary inactive', async () => {
+      await render([child({
+        activity: { entryCount: 0, streakDays: 0, lastEntryDate: null },
+        dietActivity: { entryCount: 6, streakDays: 3, lastEntryDate: isoDaysAgo(0) },
+      })])
+
+      await screen.findByRole('heading', { name: 'Ola Testowa' })
+
+      expect(screen.queryByText(/nie zapisało jeszcze/i)).toBeNull()
+      expect(screen.getByText('6')).toBeInTheDocument()
+    })
+
+    it('declines the noun rather than printing "3 posiłków"', async () => {
+      await render([child({
+        dietActivity: { entryCount: 3, streakDays: 0, lastEntryDate: isoDaysAgo(2) },
+      })])
+
+      await screen.findByRole('heading', { name: 'Ola Testowa' })
+
+      expect(screen.getByText('posiłki')).toBeInTheDocument()
+    })
+
+    it('draws no diet row when the backend does not send the figures', async () => {
+      /** `dietActivity` is null on a backend that predates the field, and a row
+       *  of zeroes there would claim the child keeps no food diary — a claim
+       *  this client cannot make. */
+      await render([child({ dietActivity: null })])
+
+      await screen.findByRole('heading', { name: 'Ola Testowa' })
+
+      expect(screen.queryByRole('heading', { name: 'Dietetyka i psychodietetyka' })).toBeNull()
+      expect(screen.queryByText('ostatni posiłek')).toBeNull()
+      // The psychotherapy row is untouched.
+      expect(screen.getByText('12')).toBeInTheDocument()
+    })
+
+    it('says nothing about what the child ate', async () => {
+      /** The line does not move with the second row: meals are counted, never
+       *  described. The payload carries no kind, description or photo, and this
+       *  pins that the card renders no place for one. */
+      const { container } = await render()
+
+      await screen.findByRole('heading', { name: 'Ola Testowa' })
+
+      expect(container.textContent).not.toMatch(/obiad|śniadanie|kolacja|zdjęci/i)
+      expect(screen.getByText(/nie widzisz treści jego wpisów ani tego, co je/i))
+        .toBeInTheDocument()
+    })
   })
 
   it('lists every linked child, with the heading in the plural', async () => {

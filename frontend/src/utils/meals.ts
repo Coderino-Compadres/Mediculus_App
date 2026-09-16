@@ -45,11 +45,24 @@ export type MealKind = (typeof MEAL_KINDS)[number]
  *  preposition that governs a different case, and Polish gives no way to share
  *  one form between them. */
 export function pluralMeals(count: number): string {
+  return `${count} ${mealsNoun(count)}`
+}
+
+/**
+ * The same nominative noun **without** its count — 'posiłek' / 'posiłki' /
+ * 'posiłków'.
+ *
+ * For the figure tiles on the guardian's card, which draw the number and its
+ * label as two separate elements (a large value over a small caption), so a
+ * string holding both cannot be used there. `pluralMeals` above is this plus the
+ * number, rather than the other way round, so the three forms are written once.
+ */
+export function mealsNoun(count: number): string {
   const last = count % 10
   const teens = count % 100
-  if (count === 1) return '1 posiłek'
-  if (last >= 2 && last <= 4 && (teens < 12 || teens > 14)) return `${count} posiłki`
-  return `${count} posiłków`
+  if (count === 1) return 'posiłek'
+  if (last >= 2 && last <= 4 && (teens < 12 || teens > 14)) return 'posiłki'
+  return 'posiłków'
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mealsGenitive, mealsLocative, pluralMeals } from './meals'
+import { mealsGenitive, mealsLocative, mealsNoun, pluralMeals } from './meals'
 
 /**
  * One definition of "3 posiłki", because two screens say it.
@@ -7,6 +7,25 @@ import { mealsGenitive, mealsLocative, pluralMeals } from './meals'
  * The home screen used to have its own copy and it was wrong past four ("5
  * posiłki") — the ordinary fate of a Polish declension living in a component.
  */
+
+describe('mealsNoun', () => {
+  /** The noun without its count, for a figure tile that draws the two apart —
+   *  the guardian's card. `pluralMeals` is this plus the number. */
+  it('takes all three nominative forms', () => {
+    expect(mealsNoun(1)).toBe('posiłek')
+    expect(mealsNoun(3)).toBe('posiłki')
+    expect(mealsNoun(5)).toBe('posiłków')
+    expect(mealsNoun(0)).toBe('posiłków')
+    expect(mealsNoun(12)).toBe('posiłków')
+    expect(mealsNoun(22)).toBe('posiłki')
+  })
+
+  it('is what pluralMeals prints, so the two cannot disagree', () => {
+    for (const count of [0, 1, 2, 5, 11, 14, 22, 105]) {
+      expect(pluralMeals(count)).toBe(`${count} ${mealsNoun(count)}`)
+    }
+  })
+})
 
 describe('pluralMeals', () => {
   it('is singular for one', () => {

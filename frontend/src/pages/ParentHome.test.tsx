@@ -24,6 +24,7 @@ const LINKED_CHILD = {
   consentsActive: true,
   needsAttention: false,
   activity: { entryCount: 12, streakDays: 4, lastEntryDate: '2026-09-01' },
+  dietActivity: { entryCount: 8, streakDays: 2, lastEntryDate: '2026-09-02' },
 }
 
 /** A guardian: role 'rodzic', and no `patient` row of any kind. */

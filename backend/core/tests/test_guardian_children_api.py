@@ -20,9 +20,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.account import (CHILD_ATTENTION_FIELD, CHILD_SUMMARY_FIELDS,
-                          RISKY_DAYS_FOR_ATTENTION)
+                          DIET_CHILD_SUMMARY_FIELDS, RISKY_DAYS_FOR_ATTENTION)
 from core.authentication import SESSION_USER_KEY
-from core.models import Diary, ParentChild, Patient, User, UserRole
+from core.models import Diary, DietMeal, ParentChild, Patient, User, UserRole
 
 PASSWORD = 'TajneHaslo123'
 
@@ -67,6 +67,19 @@ class ChildrenTestCase(TestCase):
         noon = timezone.make_aware(datetime.datetime.combine(day, datetime.time(12, 0)))
         Diary.objects.filter(pk=diary.pk).update(created_at=noon)
         return diary
+
+    def meal(self, patient, days_ago=0, kind='Obiad', description='Zupa.'):
+        """One meal in the food diary, the diet module's half of the card.
+
+        Its own helper rather than a flag on `entry` above: the two diaries have
+        nothing in common on the way in either — `diet_meal` stores the calendar
+        day it belongs to, so nothing here backdates a `created_at`.
+        """
+        return DietMeal.objects.create(
+            id_medical=patient.id_medical,
+            entry_date=self.today - datetime.timedelta(days=days_ago),
+            kind=kind, description=description,
+        )
 
     def sign_in(self, user):
         session = self.client.session
@@ -211,6 +224,132 @@ class SummaryTests(ChildrenTestCase):
         self.assertIsNone(row['activity'])
 
 
+class DietSummaryTests(ChildrenTestCase):
+    """The diet module's half of the card — `diet_activity`.
+
+    THE BUG THIS CLOSES IS THE FIRST TEST HERE. The summary read `diary` and
+    nothing else, so a minor who uses only the diet module — which is the whole
+    reason there are two — reached their guardian as "0 wpisów": an account
+    nobody touches. The card exists to answer "is my child still doing this",
+    and that was the one wrong answer it could give.
+
+    THE LINE IS THE SAME LINE. Engagement, never content: how many meals,
+    whether a run is going, when the last one was. Nothing of what was eaten,
+    described, or felt beside it — see NothingClinicalTests, which sweeps this
+    half too.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.child = self.make_child()
+        self.link(self.child)
+
+    def diet(self):
+        return self.children()[0]['diet_activity']
+
+    def test_a_child_who_only_uses_the_diet_module_does_not_read_as_inactive(self):
+        """The regression, spelled out: two counters, and the food diary is not
+        summarised into the psychotherapy one."""
+        for days_ago in (0, 1, 2):
+            self.meal(self.child, days_ago)
+
+        row = self.children()[0]
+
+        self.assertEqual(row['activity']['entry_count'], 0)
+        self.assertEqual(row['diet_activity']['entry_count'], 3)
+
+    def test_a_child_who_has_written_nothing_is_zeroes_rather_than_absent(self):
+        self.assertEqual(self.diet(),
+                         {'entry_count': 0, 'streak_days': 0, 'last_entry_date': None})
+
+    def test_it_counts_the_meals_and_the_streak(self):
+        """Three meals on one day are three meals and a run of one: the module
+        counts rows like the diary does, and a day is not a unit here (§07 — a
+        *dzienniczek* is the group of a day's meals, and `diet_meal` is what
+        `meals.count_meals` counts)."""
+        for days_ago in (0, 0, 1, 2, 40):
+            self.meal(self.child, days_ago)
+
+        activity = self.diet()
+
+        self.assertEqual(activity['entry_count'], 5)
+        self.assertEqual(activity['streak_days'], 3)
+
+    def test_it_dates_the_last_meal_so_a_guardian_can_notice_a_gap(self):
+        self.meal(self.child, days_ago=9)
+
+        self.assertEqual(self.diet()['last_entry_date'],
+                         (self.today - datetime.timedelta(days=9)).isoformat())
+
+    def test_the_two_modules_are_counted_apart(self):
+        """One number per module, because the app counts them apart everywhere
+        else — a total would be a third meaning of "wpis" that no screen uses."""
+        self.entry(self.child)
+        self.entry(self.child, days_ago=1)
+        for days_ago in (0, 1, 2):
+            self.meal(self.child, days_ago)
+
+        row = self.children()[0]
+
+        self.assertEqual(row['activity']['entry_count'], 2)
+        self.assertEqual(row['diet_activity']['entry_count'], 3)
+        self.assertEqual(row['activity']['streak_days'], 2)
+        self.assertEqual(row['diet_activity']['streak_days'], 3)
+
+    def test_the_figures_are_the_same_ones_the_child_sees(self):
+        """One definition per number (core/meals.py), so a parent and a child
+        cannot be told different things about one food diary — the same
+        assertion SummaryTests makes about the psychotherapy half."""
+        for days_ago in (0, 1):
+            self.meal(self.child, days_ago)
+        parent_view = self.diet()
+
+        self.client = APIClient()
+        self.sign_in(self.child.user)
+        own = self.client.get(reverse('core:diet-today')).data
+
+        self.assertEqual(parent_view['streak_days'], own['streak_days'])
+
+    def test_it_carries_exactly_the_declared_fields(self):
+        self.meal(self.child)
+
+        self.assertEqual(set(self.diet()), set(DIET_CHILD_SUMMARY_FIELDS))
+
+    def test_nothing_about_the_meal_itself_travels(self):
+        """What was eaten is content, and content is the line this card does not
+        cross. A guardian learns that their child ate and wrote it down."""
+        self.meal(self.child, kind='Kolacja', description='Pizza po szkole.')
+
+        body = str(self.children())
+
+        for leaked in ('Kolacja', 'Pizza', 'kind', 'description', 'meal'):
+            with self.subTest(leaked=leaked):
+                self.assertNotIn(leaked, body)
+
+    def test_a_linked_account_with_no_patient_row_reports_null(self):
+        """Null rather than zeroes, the same rule as `activity`: zeroes would be
+        a claim about a food diary that does not exist."""
+        stray = self.make_user('bez-pacjenta-dieta@example.com')
+        ParentChild.objects.create(
+            parent=self.guardian, child=stray, accepted_at=timezone.now())
+
+        row = next(r for r in self.children() if r['child_email'] == stray.email)
+
+        self.assertIsNone(row['diet_activity'])
+
+    def test_another_childs_meals_are_not_counted_here(self):
+        """`id_medical` is what separates two patients in medical_db, and it is
+        the join a missing filter would silently widen."""
+        other = self.make_child('inne@example.com', name='Antoni')
+        self.link(other)
+        self.meal(other)
+
+        rows = {row['child_name']: row for row in self.children()}
+
+        self.assertEqual(rows['Ola']['diet_activity']['entry_count'], 0)
+        self.assertEqual(rows['Antoni']['diet_activity']['entry_count'], 1)
+
+
 class NothingClinicalTests(ChildrenTestCase):
     """The omissions, which are the point of the endpoint.
 
@@ -240,6 +379,10 @@ class NothingClinicalTests(ChildrenTestCase):
             {
                 'id', 'child_name', 'child_surname', 'child_email', 'linked_at',
                 'consents_active', 'activity',
+                # The diet module's figures, counted apart from the ones above
+                # rather than added to them — see DIET_CHILD_SUMMARY_FIELDS and
+                # DietSummaryTests below.
+                'diet_activity',
                 # The one field here derived from what the diary *says* rather
                 # than from how much of it there is — the client's decision, and
                 # a boolean precisely so that it stays one field. See
@@ -429,6 +572,10 @@ class WithdrawnConsentTests(ChildrenTestCase):
         self.child = self.make_child()
         self.entry(self.child)
         self.entry(self.child, days_ago=1)
+        # And a meal, so the diet half of the card has something to stop
+        # reporting too: a withdrawal that only silenced one module would leave
+        # the other one deriving figures from a locked account.
+        self.meal(self.child)
         self.link(self.child)
         self.sign_in(self.guardian)
 
@@ -445,6 +592,7 @@ class WithdrawnConsentTests(ChildrenTestCase):
 
         self.assertFalse(row['consents_active'])
         self.assertIsNone(row['activity'])
+        self.assertIsNone(row['diet_activity'])
 
     def test_the_child_stays_on_the_list_so_the_guardian_knows_why(self):
         """Hiding the card would leave a parent thinking the link had broken."""
@@ -457,7 +605,10 @@ class WithdrawnConsentTests(ChildrenTestCase):
         from core.consents import withdraw
         withdraw(self.child.user, 'services')
 
-        self.assertIsNone(self.row()['activity'])
+        row = self.row()
+
+        self.assertIsNone(row['activity'])
+        self.assertIsNone(row['diet_activity'])
 
     def test_restoring_brings_the_summary_back_unchanged(self):
         from core.consents import restore, withdraw
@@ -468,6 +619,7 @@ class WithdrawnConsentTests(ChildrenTestCase):
 
         self.assertTrue(row['consents_active'])
         self.assertEqual(row['activity']['entry_count'], 2)
+        self.assertEqual(row['diet_activity']['entry_count'], 1)
 
     def test_an_account_that_never_granted_a_consent_is_treated_the_same(self):
         """Rows seeded by mock_data.sql have neither column set, and they belong
@@ -477,4 +629,7 @@ class WithdrawnConsentTests(ChildrenTestCase):
         self.child.user.services_consent_at = None
         self.child.user.save(update_fields=['data_consent_at', 'services_consent_at'])
 
-        self.assertIsNone(self.row()['activity'])
+        row = self.row()
+
+        self.assertIsNone(row['activity'])
+        self.assertIsNone(row['diet_activity'])
