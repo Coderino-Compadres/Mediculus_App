@@ -336,7 +336,6 @@ function OtherDrinksCard({
   return (
     <section className="hydration-card" aria-labelledby="hydration-drinks-heading">
       <h2 id="hydration-drinks-heading">Inne napoje</h2>
-      <p className="hydration-note"></p>
 
       {/* Above the chips, because it is read at the moment one is tapped: a
           field *under* the row would be answered after the act it belongs to.
@@ -354,16 +353,9 @@ function OtherDrinksCard({
           step={10}
           value={amount}
           aria-invalid={amountValid ? undefined : true}
-          aria-describedby="hydration-drink-amount-hint"
           onChange={(event) => setAmount(event.target.value)}
         />
       </div>
-      {/* The bounds are stated rather than only enforced, the same rule the
-          water card's custom amount follows: a control that refuses with no
-          reason beside it is the failure the registration form had. */}
-      <p className="hydration-drink-amount-hint" id="hydration-drink-amount-hint">
-      </p>
-
       <div className="hydration-chips">
         {OTHER_DRINKS.map((drink) => (
           <button

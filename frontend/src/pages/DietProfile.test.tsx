@@ -214,9 +214,9 @@ describe('the health fields hold what is stored and nothing else', () => {
      *  profile are a statement about that person's body. */
     await renderScreen()
 
-    expect(screen.getByLabelText('Wzrost (cm)')).toHaveValue('')
-    expect(screen.getByLabelText('Masa ciała (kg)')).toHaveValue('')
-    expect(screen.getByLabelText('Masa docelowa (kg)')).toHaveValue('')
+    expect(screen.getByLabelText('Wzrost')).toHaveValue('')
+    expect(screen.getByLabelText('Masa ciała')).toHaveValue('')
+    expect(screen.getByLabelText('Masa docelowa')).toHaveValue('')
     expect(screen.getByLabelText('Alergie pokarmowe')).toHaveValue('')
     expect(screen.getByLabelText('Nietolerancje')).toHaveValue('')
     expect(screen.getByLabelText('Preferencje żywieniowe')).toHaveValue('')
@@ -248,8 +248,8 @@ describe('the health fields hold what is stored and nothing else', () => {
 
     await renderScreen()
 
-    expect(screen.getByLabelText('Wzrost (cm)')).toHaveValue('168')
-    expect(screen.getByLabelText('Masa ciała (kg)')).toHaveValue('71,5')
+    expect(screen.getByLabelText('Wzrost')).toHaveValue('168')
+    expect(screen.getByLabelText('Masa ciała')).toHaveValue('71,5')
     expect(screen.getByLabelText('Alergie pokarmowe')).toHaveValue('orzechy laskowe')
     expect(screen.getByRole('button', { name: 'Hashimoto', pressed: true })).toBeInTheDocument()
     expect(screen.getByText('Migrena')).toBeInTheDocument()
@@ -258,7 +258,7 @@ describe('the health fields hold what is stored and nothing else', () => {
   it('says the profile was saved, and only after the server said so', async () => {
     await renderScreen()
 
-    await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '71')
+    await userEvent.type(screen.getByLabelText('Masa ciała'), '71')
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('Zapisano.')
@@ -271,8 +271,8 @@ describe('the health fields hold what is stored and nothing else', () => {
      *  filled in a weight has not weighed zero. */
     await renderScreen()
 
-    await userEvent.type(screen.getByLabelText('Wzrost (cm)'), '168')
-    await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '71,5')
+    await userEvent.type(screen.getByLabelText('Wzrost'), '168')
+    await userEvent.type(screen.getByLabelText('Masa ciała'), '71,5')
     await userEvent.type(screen.getByLabelText('Alergie pokarmowe'), '  orzechy  ')
     await userEvent.click(screen.getByRole('button', { name: 'Hashimoto' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
@@ -312,7 +312,7 @@ describe('the health fields hold what is stored and nothing else', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
     expect(await screen.findByRole('status')).toBeInTheDocument()
 
-    await userEvent.type(screen.getByLabelText('Wzrost (cm)'), '1')
+    await userEvent.type(screen.getByLabelText('Wzrost'), '1')
     expect(screen.queryByText('Zapisano.')).toBeNull()
   })
 
@@ -353,7 +353,7 @@ describe('a load that failed is not drawn as an empty profile', () => {
     // The distinction the whole test exists for, said in words.
     expect(alert).toHaveTextContent(/To nie znaczy, że jest pusty/)
 
-    for (const label of ['Wzrost (cm)', 'Masa ciała (kg)', 'Alergie pokarmowe']) {
+    for (const label of ['Wzrost', 'Masa ciała', 'Alergie pokarmowe']) {
       expect(screen.queryByLabelText(label)).toBeNull()
     }
     expect(screen.queryByRole('button', { name: 'Zapisz profil' })).toBeNull()
@@ -371,7 +371,7 @@ describe('a load that failed is not drawn as an empty profile', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Spróbuj ponownie' }))
 
-    expect(await screen.findByLabelText('Wzrost (cm)')).toHaveValue('')
+    expect(await screen.findByLabelText('Wzrost')).toHaveValue('')
     expect(screen.queryByText(/Nie udało się wczytać Twojego profilu/)).toBeNull()
     expect(fetchHealthProfile).toHaveBeenCalledTimes(2)
   })
@@ -473,7 +473,7 @@ describe('a save that failed is not silence', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
 
-    await userEvent.type(screen.getByLabelText('Wzrost (cm)'), '1')
+    await userEvent.type(screen.getByLabelText('Wzrost'), '1')
 
     expect(screen.queryByRole('alert')).toBeNull()
   })
@@ -553,19 +553,19 @@ describe('mass and target mass', () => {
   it('are two independent fields and both accept a decimal comma', async () => {
     await renderScreen()
 
-    await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '71,5')
-    await userEvent.type(screen.getByLabelText('Masa docelowa (kg)'), '66,2')
+    await userEvent.type(screen.getByLabelText('Masa ciała'), '71,5')
+    await userEvent.type(screen.getByLabelText('Masa docelowa'), '66,2')
 
-    expect(screen.getByLabelText('Masa ciała (kg)')).toHaveValue('71,5')
-    expect(screen.getByLabelText('Masa docelowa (kg)')).toHaveValue('66,2')
+    expect(screen.getByLabelText('Masa ciała')).toHaveValue('71,5')
+    expect(screen.getByLabelText('Masa docelowa')).toHaveValue('66,2')
   })
 
   it('may each be left empty on their own', async () => {
     await renderScreen()
 
-    await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '71')
+    await userEvent.type(screen.getByLabelText('Masa ciała'), '71')
 
-    expect(screen.getByLabelText('Masa docelowa (kg)')).toHaveValue('')
+    expect(screen.getByLabelText('Masa docelowa')).toHaveValue('')
     expect(screen.getByRole('button', { name: 'Zapisz profil' })).toBeEnabled()
   })
 
@@ -578,8 +578,8 @@ describe('mass and target mass', () => {
      */
     await renderScreen()
 
-    await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '71')
-    await userEvent.type(screen.getByLabelText('Masa docelowa (kg)'), '66')
+    await userEvent.type(screen.getByLabelText('Masa ciała'), '71')
+    await userEvent.type(screen.getByLabelText('Masa docelowa'), '66')
 
     const numbers = (document.body.textContent ?? '').match(/\d+([.,]\d+)?/g) ?? []
     // The only figures on the screen are the ones that were typed and the age.
@@ -592,7 +592,7 @@ describe('mass and target mass', () => {
   it('asks gently about a value that cannot be a mass, and still saves', async () => {
     await renderScreen()
 
-    await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '0')
+    await userEvent.type(screen.getByLabelText('Masa ciała'), '0')
 
     expect(screen.getByText(/Sprawdź, proszę, tę wagę/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Zapisz profil' })).toBeEnabled()
@@ -603,9 +603,9 @@ describe('mass and target mass', () => {
   it('refuses letters at the keyboard rather than scolding afterwards', async () => {
     await renderScreen()
 
-    await userEvent.type(screen.getByLabelText('Wzrost (cm)'), '16a8')
+    await userEvent.type(screen.getByLabelText('Wzrost'), '16a8')
 
-    expect(screen.getByLabelText('Wzrost (cm)')).toHaveValue('168')
+    expect(screen.getByLabelText('Wzrost')).toHaveValue('168')
   })
 })
 
@@ -618,8 +618,8 @@ describe('what this screen refuses to show', () => {
   it('names no measure derived from the two masses', async () => {
     await renderScreen()
 
-    await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '71')
-    await userEvent.type(screen.getByLabelText('Masa docelowa (kg)'), '66')
+    await userEvent.type(screen.getByLabelText('Masa ciała'), '71')
+    await userEvent.type(screen.getByLabelText('Masa docelowa'), '66')
 
     for (const forbidden of [
       /BMI/i, /%/, /zostało/i, /pozostało/i, /cel osiągnięty/i, /w normie/i,
@@ -640,7 +640,7 @@ describe('what this screen refuses to show', () => {
   it('draws no chart and keeps no history of a mass', async () => {
     await renderScreen()
 
-    await userEvent.type(screen.getByLabelText('Masa ciała (kg)'), '71')
+    await userEvent.type(screen.getByLabelText('Masa ciała'), '71')
 
     expect(document.querySelector('svg')).toBeNull()
     for (const forbidden of [/histori/i, /wykres/i, /poprzedni/i, /wcześniej/i]) {
@@ -711,10 +711,19 @@ describe('the eating fields', () => {
     }
   })
 
-  it('says each may be left empty', async () => {
+  it('leaves each one optional, and marks none of them required', async () => {
+    /** The screen used to say "Możesz zostawić puste" under every field; that
+     *  copy was dropped in 02659e6. What has to stay true is the property the
+     *  sentence was describing — nothing here is required, and nothing scolds a
+     *  patient for an empty box. */
     await renderScreen()
 
-    expect(screen.getAllByText(/Możesz zostawić puste/).length).toBeGreaterThan(0)
+    for (const label of ['Alergie pokarmowe', 'Nietolerancje', 'Preferencje żywieniowe']) {
+      const field = screen.getByLabelText(label)
+
+      expect(field).not.toBeRequired()
+      expect(field).not.toHaveAttribute('aria-invalid', 'true')
+    }
   })
 })
 

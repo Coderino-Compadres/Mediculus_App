@@ -106,6 +106,40 @@ describe('what the patient is asked', () => {
   })
 })
 
+describe('two specialists asking at once', () => {
+  it('tells them apart by module, which is all that differs on the card', async () => {
+    /**
+     * WHY THE MODULE IS DRAWN BEFORE ANYTHING ELSE. A patient can be asked by a
+     * psychotherapist and a psychodietitian at the same time, and the two cards
+     * carry the same heading, the same two buttons and the same sentence about
+     * what the specialist will see. Without the module named, answering one of
+     * them is a guess — and accepting cannot be taken back.
+     */
+    mockedFetch.mockResolvedValueOnce([INVITATION, DIET_INVITATION])
+
+    renderWithProviders(<SpecialistInvitationCard />)
+
+    expect(await screen.findByText('Psychoterapia')).toBeInTheDocument()
+    expect(screen.getByText('Dietetyka i psychodietetyka')).toBeInTheDocument()
+    expect(screen.getByText('Anna Terapeutka')).toBeInTheDocument()
+    expect(screen.getByText('Ewa Dietetyczka')).toBeInTheDocument()
+  })
+
+  it('confirms the one that was answered, by naming its module', async () => {
+    /** The confirmation says which relationship now exists — see the note on
+     *  `asking.moduleLabel` in the component. */
+    mockedFetch.mockResolvedValueOnce([DIET_INVITATION])
+    mockedAccept.mockResolvedValueOnce([])
+
+    renderWithProviders(<SpecialistInvitationCard />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Potwierdzam' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      /Ewa Dietetyczka.*Dietetyka i psychodietetyka/s,
+    )
+  })
+})
+
 describe('answering', () => {
   it('accepts and confirms who can now read the reports', async () => {
     mockedFetch.mockResolvedValueOnce([INVITATION])

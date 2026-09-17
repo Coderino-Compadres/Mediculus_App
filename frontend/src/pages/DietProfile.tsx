@@ -266,7 +266,15 @@ function DescriptiveField({
 }: {
   id: string
   label: string
-  hint: string
+  /**
+   * Optional, and drawn only when it says something.
+   *
+   * An empty hint used to render an empty `<p>` that `aria-describedby` still
+   * pointed at — a description the field promises and does not have, which a
+   * screen reader announces as nothing at all after the label. No hint means
+   * no element and no reference.
+   */
+  hint?: string
   value: string
   onChange: (next: string) => void
 }) {
@@ -278,12 +286,14 @@ function DescriptiveField({
         id={id}
         rows={2}
         value={value}
-        aria-describedby={hintId}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(event) => onChange(event.target.value)}
       />
-      <p className="diet-profile-hint" id={hintId}>
-        {hint}
-      </p>
+      {hint && (
+        <p className="diet-profile-hint" id={hintId}>
+          {hint}
+        </p>
+      )}
     </div>
   )
 }
@@ -772,21 +782,18 @@ function DietProfile() {
               <DescriptiveField
                 id="diet-profile-allergies"
                 label="Alergie pokarmowe"
-                hint=""
                 value={draft.allergies}
                 onChange={(next) => set('allergies', next)}
               />
               <DescriptiveField
                 id="diet-profile-intolerances"
                 label="Nietolerancje"
-                hint=""
                 value={draft.intolerances}
                 onChange={(next) => set('intolerances', next)}
               />
               <DescriptiveField
                 id="diet-profile-preferences"
                 label="Preferencje żywieniowe"
-                hint=""
                 value={draft.dietaryPreferences}
                 onChange={(next) => set('dietaryPreferences', next)}
               />

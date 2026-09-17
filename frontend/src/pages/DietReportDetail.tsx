@@ -72,15 +72,15 @@ import './dietReport.css'
  * entry counts week to week would be a verdict on regularity, which this module
  * does not pass.
  *
- * TODO(backend): "Pobierz PDF", which the artboard puts at the foot of this
- * screen. In the psychotherapy module the file is rendered by the server
+ * "Pobierz PDF" is built: the endpoint exists now (`fetchDietReportPdf`), the
+ * file is rendered by the server the way the psychotherapy one is
  * (`core/report_pdf.py`, ReportLab, its own throttle) and fetched with the
- * session cookie; there is no such renderer for this module. A button that did
- * nothing, or that produced something the browser drew itself and called the
- * report, is worse than no button. It goes below the footer note when the
- * endpoint exists.
+ * session cookie. Both readers of this view get it — the patient here and the
+ * specialist through pages/SpecialistPatientDietReport.tsx — and it is drawn
+ * only when an `onDownload` is handed in, as a button rather than a link,
+ * because it saves a file rather than going anywhere.
  *
- * **WHEN IT DOES, IT RENDERS ALL SEVEN DAYS.** "Zestawienie tygodnia" pages one
+ * **IT RENDERS ALL SEVEN DAYS.** "Zestawienie tygodnia" pages one
  * day at a time below, and that is a property of *this screen* rather than of
  * the document: a report is a week, and a PDF holding whichever day the reader
  * happened to be on would be a file that means something different every time

@@ -464,13 +464,21 @@
 
 /* "Pobierz PDF", the screen's one action. Centred and quiet, like the
    psychotherapy report's: it saves a file, it does not change anything, and a
-   report is not a form. */
+   report is not a form.
+
+   `margin: 0 auto 20px`, not `margin: 0 0 20px` — the trap dietJournals.css
+   records. The centring lives on `.diet-report-page > *` at the same
+   specificity, so a bare `0` in the shorthand wins by source order and zeroes
+   the auto margins: on any viewport wider than 640px the whole download block
+   slid to the left edge while every card around it stayed in the column. The
+   `align-items: center` below centres the button *inside* the block, which is
+   why it looked deliberate rather than broken. */
 .diet-report-download {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  margin: 0 0 20px;
+  margin: 0 auto 20px;
 }
 
 .diet-report-download-button {

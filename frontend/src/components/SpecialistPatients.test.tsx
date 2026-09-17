@@ -186,7 +186,7 @@ describe('pending invitations', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Anuluj' }))
 
-    expect(mockedDrop).toHaveBeenCalledWith(pending.id)
+    expect(mockedDrop).toHaveBeenCalledWith(pending.id, pending.module)
     await waitFor(() => expect(screen.queryByText('Jan Nowak')).toBeNull())
   })
 })
@@ -229,8 +229,29 @@ describe('ending care', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zakończ opiekę' }))
     await userEvent.click(screen.getByRole('button', { name: 'Tak, zakończ' }))
 
-    expect(mockedDrop).toHaveBeenCalledWith(patient().id)
+    expect(mockedDrop).toHaveBeenCalledWith(patient().id, MODULE_PSYCHOTHERAPY)
     await waitFor(() => expect(screen.getByText(/Nie masz jeszcze pacjentów/)).toBeInTheDocument())
+  })
+
+  it('ends the relationship it was asked about, not the patient', async () => {
+    /**
+     * WHY `dropPatient` TAKES A MODULE AND NOT JUST AN ID. One patient can be
+     * in both modules with one account, so an id alone does not name a
+     * relationship — dropping by id would be ambiguous at the endpoint and
+     * would eventually end the wrong half of somebody's care. The row knows
+     * which relationship it is, and that is what is sent.
+     */
+    mockedDrop.mockResolvedValueOnce({ patients: [], pending: [] })
+    await render(
+      caseload({
+        patients: [patient({ module: MODULE_DIET, moduleLabel: 'Dietetyka i psychodietetyka' })],
+      }),
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zakończ opiekę' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Tak, zakończ' }))
+
+    expect(mockedDrop).toHaveBeenCalledWith(patient().id, MODULE_DIET)
   })
 
   it('reports a failed change as a failed change, not as a failed load', async () => {
@@ -274,7 +295,9 @@ describe('inviting a patient', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
     expect(mockedInvite).toHaveBeenCalledWith('jan@wp.pl', MODULE_PSYCHOTHERAPY)
-    expect(await screen.findByText(/Zaproszenie wysłane na jan@wp.pl/)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/Zaproszenie do modułu Psychoterapia wysłane na jan@wp.pl/),
+    ).toBeInTheDocument()
   })
 
   it('says the patient decides, and does not name a screen they may never see', async () => {

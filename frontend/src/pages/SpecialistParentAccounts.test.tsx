@@ -5,6 +5,7 @@ import { renderWithProviders, TEST_USER } from '../test/render'
 import { PAGE_SIZE } from '../hooks/usePagination'
 import SpecialistParentAccounts from './SpecialistParentAccounts'
 import { ApiError } from '../api/client'
+import { MODULE_PSYCHOTHERAPY } from '../utils/modules'
 import type {
   ParentInvitation,
   SpecialistCaseload,
@@ -52,6 +53,9 @@ function patient(overrides: Partial<SpecialistPatient> = {}): SpecialistPatient 
     isChild: true,
     acceptedAt: '2026-08-12T09:31:02Z',
     consentsActive: true,
+    // A row is a relationship, not a person: it names the module it belongs to.
+    module: MODULE_PSYCHOTHERAPY,
+    moduleLabel: 'Psychoterapia',
     activity: { entryCount: 4, streakDays: 1, lastEntryDate: '2026-09-07' },
     ...overrides,
   }
