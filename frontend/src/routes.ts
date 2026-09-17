@@ -18,6 +18,13 @@ export const ROUTES = {
   /** One patient's weekly reports, read by their specialist. */
   specialistPatientReports: '/specialist/patients/:patientId/reports',
   specialistPatientReport: '/specialist/patients/:patientId/reports/:reportId',
+  /** The same pair for the **diet** module, read by the patient's
+   *  psychodietitian. Their own routes rather than a module segment on the two
+   *  above, mirroring the split the patient's own screens already have: the two
+   *  modules do not agree on what a week is, so one screen holding both would
+   *  be one screen with two meanings of the word. */
+  specialistPatientDietReports: '/specialist/patients/:patientId/diet-reports',
+  specialistPatientDietReport: '/specialist/patients/:patientId/diet-reports/:reportId',
   /** Where a specialist issues a code for a guardian's account. */
   specialistParentAccounts: '/specialist/parent-accounts',
   /** Where a specialist creates another specialist's account — the only place
@@ -88,6 +95,18 @@ export const ROUTES = {
    *  different windows, and nothing here touches `/analysis`. See
    *  pages/DietAnalysis.tsx for what §11 asks for that cannot be drawn yet. */
   dietAnalysis: '/diet/analysis',
+  /** "Techniki psychodietetyczne" (§12) — pages/DietTechniques.tsx and
+   *  pages/DietTechniqueDetail.tsx.
+   *
+   *  ITS OWN PAIR OF ROUTES RATHER THAN A REUSE OF `/techniques`, and this one
+   *  is not even close: the psychotherapy catalogue is DBT material organised
+   *  into three schools and four groups, this is nine-ish psychodietetic
+   *  exercises on one flat list. They share a word and nothing else — no
+   *  content, no type (`types/dietTechnique.ts` says why), no data file and no
+   *  backend. `/techniques` is also the one patient screen a specialist is let
+   *  onto; these are ordinary /diet screens and let nobody extra in. */
+  dietTechniques: '/diet/techniques',
+  dietTechniqueDetail: '/diet/techniques/:id',
   /** "Profil zdrowotny" (§13) — pages/DietProfile.tsx.
    *
    *  ITS OWN ROUTE RATHER THAN A REUSE OF `/profile`, and the reason is the
@@ -139,8 +158,29 @@ export function specialistPatientReportPath(patientId: string, reportId: string)
     .replace(':reportId', reportId)
 }
 
+/** The same two, for the diet module's copy of those screens. */
+export function specialistPatientDietReportsPath(patientId: string): string {
+  return ROUTES.specialistPatientDietReports.replace(':patientId', patientId)
+}
+
+export function specialistPatientDietReportPath(
+  patientId: string,
+  reportId: string,
+): string {
+  return ROUTES.specialistPatientDietReport
+    .replace(':patientId', patientId)
+    .replace(':reportId', reportId)
+}
+
 export function specialistTechniqueEditPath(id: number | string): string {
   return ROUTES.specialistTechniqueEdit.replace(':id', String(id))
+}
+
+/** The same for ROUTES.dietTechniqueDetail, whose `:id` is a technique slug
+ *  ('technika-1'). Hand-written in `data/dietTechniques.ts`, same slug shape as
+ *  the psychotherapy catalogue's. */
+export function dietTechniqueDetailPath(id: string): string {
+  return ROUTES.dietTechniqueDetail.replace(':id', id)
 }
 
 export function dietMealEditPath(id: string): string {
@@ -189,6 +229,8 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistHome]: 'Panel specjalisty',
   [ROUTES.specialistPatientReports]: 'Raporty pacjenta',
   [ROUTES.specialistPatientReport]: 'Raport tygodniowy pacjenta',
+  [ROUTES.specialistPatientDietReports]: 'Raporty żywieniowe pacjenta',
+  [ROUTES.specialistPatientDietReport]: 'Raport żywieniowy pacjenta',
   [ROUTES.specialistParentAccounts]: 'Konta opiekunów',
   [ROUTES.specialistColleagues]: 'Konta specjalistów',
   [ROUTES.specialistTechniques]: 'Moje techniki',
@@ -216,6 +258,21 @@ export const ROUTE_TITLES: Record<string, string> = {
      lists picked by route, and a patient inside "DIETETYKA I PSYCHODIETETYKA"
      reading "Analiza" is reading the right word. */
   [ROUTES.dietAnalysis]: 'Analiza',
+  /* "Techniki", not "Techniki psychodietetyczne": §03 draws the menu entry with
+     the short word, and this key is what both the menu and the document title
+     read. The <h1> on the screen itself says the long name.
+
+     THIS IS THE ONE SCREEN IN THE MODULE WHERE THE TWO DIFFER, and an earlier
+     version of this comment justified that by pointing at §13 — wrongly, as it
+     happens: pages/DietProfile.tsx renders <h1>Profil</h1>, the same short word
+     as its menu entry, and so do Raporty and Analiza. The real reason is that
+     "Techniki" alone is ambiguous in a way the other three are not — the app has
+     a second catalogue by that name — so the screen names itself in full while
+     the menu, where the module is already the heading, keeps the short word §03
+     draws. The psychotherapy catalogue's entry is "Techniki terapeutyczne", so
+     the two menus do not collide either. */
+  [ROUTES.dietTechniques]: 'Techniki',
+  [ROUTES.dietTechniqueDetail]: 'Technika psychodietetyczna',
   /* The same word as the psychotherapy screen, for the third time in this map
      and for the same reason "Raporty" and "Analiza" are repeated above: the
      titles are keyed by path, the two menus are separate lists picked by

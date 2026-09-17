@@ -107,7 +107,68 @@ describe('fetchGuardianChildren — the attention marker', () => {
 
     expect(Object.keys(child).sort()).toEqual([
       'activity', 'childEmail', 'childName', 'childSurname', 'consentsActive',
-      'id', 'linkedAt', 'needsAttention',
+      'dietActivity', 'id', 'linkedAt', 'needsAttention',
     ])
+  })
+})
+
+
+describe('fetchGuardianChildren — the diet module', () => {
+  const CHILD = {
+    id: 'c0000000-0000-0000-0000-000000000001',
+    child_name: 'Ola',
+    child_surname: 'Testowa',
+    child_email: 'dziecko@wp.pl',
+    linked_at: '2026-08-12T09:31:02Z',
+    consents_active: true,
+    needs_attention: false,
+    activity: { entry_count: 12, streak_days: 4, last_entry_date: '2026-09-01' },
+  }
+
+  it('maps the food diary figures to their own key', async () => {
+    mockedRequest.mockResolvedValueOnce([{
+      ...CHILD,
+      diet_activity: { entry_count: 8, streak_days: 2, last_entry_date: '2026-09-02' },
+    }])
+
+    const [child] = await fetchGuardianChildren()
+
+    expect(child.dietActivity)
+      .toEqual({ entryCount: 8, streakDays: 2, lastEntryDate: '2026-09-02' })
+  })
+
+  it('keeps the two modules apart rather than summing them', async () => {
+    /** The app counts them apart everywhere else, and a total would be a third
+     *  meaning of "wpis" that no screen uses — see DIET_CHILD_SUMMARY_FIELDS. */
+    mockedRequest.mockResolvedValueOnce([{
+      ...CHILD,
+      diet_activity: { entry_count: 8, streak_days: 2, last_entry_date: '2026-09-02' },
+    }])
+
+    const [child] = await fetchGuardianChildren()
+
+    expect(child.activity?.entryCount).toBe(12)
+    expect(child.dietActivity?.entryCount).toBe(8)
+  })
+
+  it('reads a missing key as "not told", never as an empty food diary', async () => {
+    /** Same default as `needsAttention` and for the same reason: zeroes would be
+     *  a claim the client cannot make on a backend that sends nothing. */
+    mockedRequest.mockResolvedValueOnce([CHILD])
+
+    const [child] = await fetchGuardianChildren()
+
+    expect(child.dietActivity).toBeNull()
+  })
+
+  it('passes a locked account through as null, like the other half', async () => {
+    mockedRequest.mockResolvedValueOnce([{
+      ...CHILD, consents_active: false, activity: null, diet_activity: null,
+    }])
+
+    const [child] = await fetchGuardianChildren()
+
+    expect(child.activity).toBeNull()
+    expect(child.dietActivity).toBeNull()
   })
 })

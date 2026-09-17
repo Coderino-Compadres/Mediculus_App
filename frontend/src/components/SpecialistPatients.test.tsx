@@ -6,6 +6,7 @@ import { PAGE_SIZE } from '../hooks/usePagination'
 import SpecialistPatients from './SpecialistPatients'
 import { ApiError } from '../api/client'
 import type { SpecialistCaseload, SpecialistPatient } from '../api/specialist'
+import { MODULE_DIET, MODULE_PSYCHOTHERAPY } from '../utils/modules'
 
 vi.mock('../api/specialist', () => ({
   fetchCaseload: vi.fn(),
@@ -40,6 +41,10 @@ function patient(overrides: Partial<SpecialistPatient> = {}): SpecialistPatient 
     isChild: false,
     acceptedAt: '2026-08-12T09:31:02Z',
     consentsActive: true,
+    // A row is a relationship, so it names its module; the psychotherapy one is
+    // what every relationship was before migration 0022.
+    module: MODULE_PSYCHOTHERAPY,
+    moduleLabel: 'Psychoterapia',
     activity: { entryCount: 12, streakDays: 4, lastEntryDate: '2026-09-07' },
     ...overrides,
   }
@@ -181,7 +186,7 @@ describe('pending invitations', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Anuluj' }))
 
-    expect(mockedDrop).toHaveBeenCalledWith(pending.id)
+    expect(mockedDrop).toHaveBeenCalledWith(pending.id, pending.module)
     await waitFor(() => expect(screen.queryByText('Jan Nowak')).toBeNull())
   })
 })
@@ -224,8 +229,29 @@ describe('ending care', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zakończ opiekę' }))
     await userEvent.click(screen.getByRole('button', { name: 'Tak, zakończ' }))
 
-    expect(mockedDrop).toHaveBeenCalledWith(patient().id)
+    expect(mockedDrop).toHaveBeenCalledWith(patient().id, MODULE_PSYCHOTHERAPY)
     await waitFor(() => expect(screen.getByText(/Nie masz jeszcze pacjentów/)).toBeInTheDocument())
+  })
+
+  it('ends the relationship it was asked about, not the patient', async () => {
+    /**
+     * WHY `dropPatient` TAKES A MODULE AND NOT JUST AN ID. One patient can be
+     * in both modules with one account, so an id alone does not name a
+     * relationship — dropping by id would be ambiguous at the endpoint and
+     * would eventually end the wrong half of somebody's care. The row knows
+     * which relationship it is, and that is what is sent.
+     */
+    mockedDrop.mockResolvedValueOnce({ patients: [], pending: [] })
+    await render(
+      caseload({
+        patients: [patient({ module: MODULE_DIET, moduleLabel: 'Dietetyka i psychodietetyka' })],
+      }),
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zakończ opiekę' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Tak, zakończ' }))
+
+    expect(mockedDrop).toHaveBeenCalledWith(patient().id, MODULE_DIET)
   })
 
   it('reports a failed change as a failed change, not as a failed load', async () => {
@@ -265,10 +291,13 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), '  jan@wp.pl  ')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
-    expect(mockedInvite).toHaveBeenCalledWith('jan@wp.pl')
-    expect(await screen.findByText(/Zaproszenie wysłane na jan@wp.pl/)).toBeInTheDocument()
+    expect(mockedInvite).toHaveBeenCalledWith('jan@wp.pl', MODULE_PSYCHOTHERAPY)
+    expect(
+      await screen.findByText(/Zaproszenie do modułu Psychoterapia wysłane na jan@wp.pl/),
+    ).toBeInTheDocument()
   })
 
   it('says the patient decides, and does not name a screen they may never see', async () => {
@@ -279,6 +308,7 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), 'jan@wp.pl')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
     const notice = await screen.findByText(/Pacjent zobaczy je po zalogowaniu/)
@@ -300,6 +330,7 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), 'nikt@wp.pl')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
     expect(await screen.findByText('Nie znaleziono pacjenta o tym adresie.')).toBeInTheDocument()
@@ -311,6 +342,7 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), 'nikt@wp.pl')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
     await screen.findByText('Nie znaleziono.')
@@ -322,6 +354,7 @@ describe('inviting a patient', () => {
     await render()
 
     await userEvent.type(screen.getByLabelText('Adres e-mail pacjenta'), 'jan@wp.pl')
+    await userEvent.click(screen.getByRole('radio', { name: 'Psychoterapia' }))
     await userEvent.click(screen.getByRole('button', { name: 'Zaproś' }))
 
     expect(await screen.findByText('Nie udało się wysłać zaproszenia. Spróbuj ponownie.'))

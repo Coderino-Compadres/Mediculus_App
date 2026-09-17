@@ -64,9 +64,6 @@ import './dietHydration.css'
 
 /** Said once, above the chips, rather than left to be inferred from a counter
  *  that does not move — an unexplained non-response reads as a fault. */
-const OTHER_DRINKS_NOTE =
-  'Inne napoje wliczają się w dzienny licznik szklanek.'
-
 const LOAD_ERROR = 'Nie udało się wczytać nawodnienia.'
 
 /** "piątek, 14 sierpnia", as the artboard writes it. Lowercase month, which is
@@ -263,7 +260,6 @@ function TodayCard({
  */
 function OtherDrinksCard({
   busy,
-  glassMl,
   maxDrinkName,
   minAmountMl,
   maxAmountMl,
@@ -273,7 +269,6 @@ function OtherDrinksCard({
   busy: boolean
   /** Named in the hint below, because a serving with no size given is recorded
    *  as this — a number nobody typed, so the screen has to say it. */
-  glassMl: number
   maxDrinkName: number
   minAmountMl: number
   maxAmountMl: number
@@ -341,7 +336,6 @@ function OtherDrinksCard({
   return (
     <section className="hydration-card" aria-labelledby="hydration-drinks-heading">
       <h2 id="hydration-drinks-heading">Inne napoje</h2>
-      <p className="hydration-note">{OTHER_DRINKS_NOTE}</p>
 
       {/* Above the chips, because it is read at the moment one is tapped: a
           field *under* the row would be answered after the act it belongs to.
@@ -359,19 +353,9 @@ function OtherDrinksCard({
           step={10}
           value={amount}
           aria-invalid={amountValid ? undefined : true}
-          aria-describedby="hydration-drink-amount-hint"
           onChange={(event) => setAmount(event.target.value)}
         />
       </div>
-      {/* The bounds are stated rather than only enforced, the same rule the
-          water card's custom amount follows: a control that refuses with no
-          reason beside it is the failure the registration form had. */}
-      <p className="hydration-drink-amount-hint" id="hydration-drink-amount-hint">
-        {amountValid
-          ? `Bez podanej ilości zapisujemy szklankę (${glassMl} ml). Możesz podać swoją — od ${minAmountMl} do ${maxAmountMl} ml.`
-          : `Podaj wartość od ${minAmountMl} do ${maxAmountMl} ml albo zostaw puste.`}
-      </p>
-
       <div className="hydration-chips">
         {OTHER_DRINKS.map((drink) => (
           <button
@@ -718,7 +702,6 @@ function DietHydration() {
           <TodayCard day={day} busy={busy} onDrink={(ml, name) => void drink(ml, name)} />
           <OtherDrinksCard
             busy={busy}
-            glassMl={day.glassMl}
             maxDrinkName={day.maxDrinkName}
             minAmountMl={day.minAmountMl}
             maxAmountMl={day.maxAmountMl}

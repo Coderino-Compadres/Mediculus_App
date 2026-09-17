@@ -18,8 +18,10 @@ from . import colleagues
 from . import guardian
 from .consents import SCOPES, consent_state, has_active_consents
 from . import parent_invitations
-from .specialist import assigned_patient
-from .models import ParentChild, Patient, Specjalist, User, UserRole
+from .specialist import invite, treated_patient
+from .models import (ParentChild, Patient, Specjalist, SpecjalistPatient, User,
+                     UserRole)
+from .modules import MODULES
 
 # What the registration form's "account type" choice means in the schema. Role
 # names match the rows seeded by scripts/mock_data.sql.
@@ -895,9 +897,16 @@ class SpecialistPatientInviteSerializer(serializers.Serializer):
 
     This is the one form that can eventually put a specialist in front of
     somebody's weekly reports, so what it refuses matters more than what it
-    accepts. Nothing here assigns anything: it sets
-    `patient.id_specjalist_pending`, and the patient decides on their own screen
+    accepts. Nothing here assigns anything: it writes a `specjalist_patient` row
+    with `accepted_at` NULL, and the patient decides on their own screen
     (core/specialist.py). Being asked grants no access at all.
+
+    **THE MODULE IS PART OF THE ASK**, since migration 0022. A specialist invites
+    a patient into one module — psychotherapy or diet — and that is what the
+    relationship, and therefore the reports they may open, is about. It is a
+    field on this form rather than a property of the specialist's account: one
+    person may genuinely work in both, and what a patient agrees to is being
+    treated *in a module*, not being read by a category of professional.
 
     ONE SHARED REFUSAL, like `GuardianLinkSerializer`, and the reasoning
     transfers with one addition. An address nobody registered, an address
@@ -919,6 +928,20 @@ class SpecialistPatientInviteSerializer(serializers.Serializer):
             'blank': 'Podaj adres e-mail pacjenta.',
             'required': 'Podaj adres e-mail pacjenta.',
             'invalid': 'Podaj poprawny adres e-mail.',
+        },
+    )
+    #: Which module the specialist is asking to treat this patient in.
+    #:
+    #: Required rather than defaulted, deliberately: a default would make the
+    #: module a thing a specialist can fail to think about, and the one it would
+    #: default to is the module carrying the risky-behaviour notes. A
+    #: `ChoiceField` over `core.modules.MODULES`, so an unknown value is a 400
+    #: rather than a row nothing can interpret.
+    module = serializers.ChoiceField(
+        choices=MODULES,
+        error_messages={
+            'required': 'Wskaż moduł, w którym prowadzisz pacjenta.',
+            'invalid_choice': 'Nieznany moduł.',
         },
     )
 
@@ -960,30 +983,43 @@ class SpecialistPatientInviteSerializer(serializers.Serializer):
 
         if patient is None:
             raise serializers.ValidationError({'patient_email': self.NOT_INVITABLE})
-        # Already this specialist's, which is the one refusal that can name its
-        # reason (see ALREADY_MINE). Checked before the shared one below, so the
-        # honest answer wins wherever it is available.
-        if patient.specjalist_id == specjalist.pk:
+
+        # EVERY CHECK BELOW IS PER MODULE, which is the whole change of 0022: a
+        # patient who has a psychotherapist is invitable by a psychodietitian,
+        # and used to be refused by a form that could only see one column.
+        module = attrs['module']
+        links = SpecjalistPatient.objects.filter(patient=patient, module=module)
+
+        # Already treated by this specialist **in this module**, which is the one
+        # refusal that can name its reason (see ALREADY_MINE): the patient is on
+        # the list above the form, so saying so reveals nothing new. Checked
+        # before the shared refusal below, so the honest answer wins wherever it
+        # is available.
+        if links.filter(specjalist=specjalist, accepted_at__isnull=False).exists():
             raise serializers.ValidationError({'patient_email': self.ALREADY_MINE})
-        # Treated by somebody else. Dropping a link is an action on the panel's
-        # own list, not something a re-invite should do quietly — and whose
-        # patient this is stays unsaid.
-        if patient.specjalist_id is not None:
+        # Treated by somebody else **in this module**. Dropping a link is an
+        # action on the panel's own list, not something a re-invite should do
+        # quietly — and whose patient this is stays unsaid.
+        if links.filter(accepted_at__isnull=False).exists():
             raise serializers.ValidationError({'patient_email': self.NOT_INVITABLE})
-        # Somebody else is already asking. One pending invitation per patient, so
-        # a patient is never made to choose between two specialists in a form
-        # that has no room to explain either.
-        if patient.specjalist_pending_id not in (None, specjalist.pk):
+        # Somebody else is already asking, in this module. One pending invitation
+        # per patient per module, so a patient is never made to choose between
+        # two specialists in a card that has no room to explain either.
+        #
+        # This specialist's *own* pending invitation is not a refusal: re-asking
+        # is the same request arriving twice (a double-tapped button, or somebody
+        # who cannot remember whether they already did), and `invite` is
+        # idempotent — which is what it was before the module column existed.
+        if links.filter(accepted_at__isnull=True).exclude(specjalist=specjalist).exists():
             raise serializers.ValidationError({'patient_email': self.NOT_INVITABLE})
 
         attrs['patient'] = patient
         return attrs
 
     def create(self, validated_data):
-        patient = validated_data['patient']
-        patient.specjalist_pending = self.specjalist
-        patient.save(update_fields=['specjalist_pending'])
-        return patient
+        return invite(
+            self.specjalist, validated_data['patient'], validated_data['module'],
+        )
 
 
 class ParentInvitationCreateSerializer(serializers.Serializer):
@@ -1044,7 +1080,10 @@ class ParentInvitationCreateSerializer(serializers.Serializer):
         return value.lower()
 
     def validate(self, attrs):
-        patient = assigned_patient(self.specjalist, attrs['patient_id'])
+        # Any module: see `treated_patient`. A guardian code is a statement
+        # about a family, and which half of the app this specialist treats the
+        # child in has nothing to do with it.
+        patient = treated_patient(self.specjalist, attrs['patient_id'])
         if patient is None:
             raise serializers.ValidationError({'patient_id': self.NOT_MY_PATIENT})
         if patient.is_child is not True:

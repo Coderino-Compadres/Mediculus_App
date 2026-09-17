@@ -503,10 +503,3 @@
 .hydration-drink-amount-input[aria-invalid='true'] {
   border-color: var(--color-caution);
 }
-
-.hydration-drink-amount-hint {
-  font-size: 13px;
-  color: var(--color-graphite-muted);
-  line-height: 1.5;
-  margin: 0;
-}

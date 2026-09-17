@@ -12,11 +12,17 @@ the question blank. A value spelled differently on one side is the same silent
 loss, only with a 400 instead — which is the better failure and still not one
 anybody wants to debug from a bug report.
 
-The split of responsibilities is the other thing pinned here: only the four
-technical keys live in Python, and the Polish labels live only in TypeScript. A
-second copy of 'Rano'/'Południe'/'Wieczór'/'Noc' in Python would be one that can
-quietly disagree — the opposite arrangement to `emotions.py`, where the Polish
-name *is* the stored value.
+The split of responsibilities used to be the other thing pinned here: only the
+four technical keys lived in Python, and the Polish labels only in TypeScript.
+**That changed with §10's PDF.** `core/diet_report_pdf.py` lays out the "Pory
+posiłków" table on the server, and its column headings are those four words — a
+document whose columns read "morning / noon" is not a smaller problem than a
+duplicated string. So Python holds the labels too now, and the duplication is
+*pinned* instead of avoided, exactly as `emotions.py` is: the class at the
+bottom of this file asserts the two sides agree label for label.
+
+What has not changed is the rule that mattered: the wire carries the key, never
+the label, and `DiaryEntrySerializer` refuses 'Rano'.
 """
 
 import re
@@ -27,7 +33,8 @@ from django.test import SimpleTestCase
 from core.diary import DiaryEntrySerializer
 from core.models import Diary
 from core.time_of_day import (EVENING, MORNING, NIGHT, NOON,
-                              TIME_OF_DAY_CHOICES, TIMES_OF_DAY)
+                              TIME_OF_DAY_CHOICES, TIME_OF_DAY_LABELS,
+                              TIMES_OF_DAY, time_of_day_label)
 
 TIME_OF_DAY_TS = (
     Path(__file__).resolve().parent.parent.parent.parent
@@ -156,6 +163,19 @@ class FrontendParityTests(SimpleTestCase):
             'evening': 'Wieczór',
             'night': 'Noc',
         })
+
+    def test_the_python_labels_say_the_same_words(self):
+        """The duplication §10's PDF forced, pinned rather than avoided: the
+        browser prints the TypeScript labels and `core/diet_report_pdf.py`
+        prints the Python ones, and a patient can hold both in one hand."""
+        labels = {value: label for value, label in self.frontend_options()}
+
+        self.assertEqual(labels, TIME_OF_DAY_LABELS)
+
+    def test_an_unknown_part_of_the_day_falls_back_to_its_own_value(self):
+        """Display text in a document: something unexpected should be visible on
+        the page rather than turn a specialist's download into a 500."""
+        self.assertEqual(time_of_day_label('świt'), 'świt')
 
     def test_the_type_union_is_derived_from_the_options_rather_than_retyped(self):
         """A hand-written union is a third list to keep in step; the file derives

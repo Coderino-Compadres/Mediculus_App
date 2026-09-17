@@ -32,7 +32,7 @@ vi.mock('../api/auth', async (importOriginal) => ({
  * Its own behaviour is covered in components/SpecialistInvitation.test.tsx.
  */
 vi.mock('../api/specialist', () => ({
-  fetchSpecialistInvitation: vi.fn().mockResolvedValue(null),
+  fetchSpecialistInvitations: vi.fn().mockResolvedValue([]),
   acceptSpecialistInvitation: vi.fn(),
   rejectSpecialistInvitation: vi.fn(),
 }))

@@ -378,6 +378,30 @@ def count_meals(id_medical):
     return DietMeal.objects.filter(id_medical=id_medical).count()
 
 
+def last_entry_date(id_medical):
+    """The calendar day of the most recent meal, or None for an empty diary.
+
+    A date, never the meal: this is what the guardian's summary reports, and
+    "kiedy ostatnio" is the whole of the answer it is allowed to give — the same
+    rule, word for word, as `diary.last_entry_date`, which is the psychotherapy
+    half of the same card.
+
+    Read off `entry_date` rather than off `created_at`, which is where the two
+    functions differ and why this one is not a copy of that one: `diet_meal`
+    stores the calendar day it belongs to (see the model docstring), so there is
+    no timezone to convert here. A meal written at 23:50 and corrected after
+    midnight keeps the day it was eaten on, which is the day the streak beside
+    it counts.
+    """
+    return (
+        DietMeal.objects
+        .filter(id_medical=id_medical)
+        .order_by('-entry_date')
+        .values_list('entry_date', flat=True)
+        .first()
+    )
+
+
 def streak_days(id_medical, today):
     """Consecutive days holding at least one meal, ending today or yesterday.
 

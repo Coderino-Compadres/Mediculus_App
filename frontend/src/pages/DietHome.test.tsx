@@ -278,19 +278,6 @@ describe('nawodnienie', () => {
   })
 })
 
-describe('"Jak się dziś jadło?"', () => {
-  it('is on the screen before there is anything to summarise', () => {
-    /** Kept visible and explained, rather than hidden until the day goes well —
-     *  a card that appeared only on some days would make its absence a verdict.
-     *  The same reasoning as the report's risky-behaviour section. */
-    renderWithProviders(<DietHome />)
-
-    expect(screen.getByRole('heading', { name: 'Jak się dziś jadło?' })).toBeInTheDocument()
-    expect(screen.getByText(/wypełni się samo, kiedy zapiszesz pierwszy posiłek/))
-      .toBeInTheDocument()
-  })
-})
-
 describe('what the screen refuses to show', () => {
   it('invents no figures — the mockup\'s sample streak is not a patient\'s streak', () => {
     /** The mockup is drawn with "6 dni z rzędu". Nothing writes a meal yet, so

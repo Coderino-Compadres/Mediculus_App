@@ -12,7 +12,10 @@
  */
 
 import { apiDownload, apiRequest } from './client'
+import { toDietReport, type DietReportPayload } from './diet'
 import { toReport, type ReportPayload } from './reports'
+import { MODULE_PSYCHOTHERAPY, moduleLabel, type AppModule } from '../utils/modules'
+import type { DietWeeklyReport } from '../types/dietReport'
 import type { WeeklyReport } from '../types/report'
 
 /** As `core.account.build_child_activity` returns it — shared with the parent panel. */
@@ -31,6 +34,8 @@ interface SpecialistPatientPayload {
   is_child: boolean | null
   accepted_at: string | null
   consents_active?: boolean
+  module?: AppModule
+  module_label?: string
   activity: PatientActivityPayload | null
 }
 
@@ -66,11 +71,27 @@ export interface SpecialistPatient {
    */
   consentsActive: boolean
   /**
-   * How much they have been writing — null on a pending invitation.
+   * Which module this relationship is about.
+   *
+   * **A ROW IS A RELATIONSHIP, NOT A PERSON.** A patient this specialist treats
+   * in both modules arrives twice, once per module, each row with its own
+   * `acceptedAt` and its own figures — because that is what the two are: two
+   * relationships, each with its own moment of consent and its own reports. See
+   * `specjalist_patient` and migration 0022.
+   */
+  module: AppModule
+  /** The module in words, from the backend, so the panel and the invitation
+   *  card cannot disagree about what to call it. */
+  moduleLabel: string
+  /**
+   * How much they have been writing **in this module** — null on a pending
+   * invitation.
    *
    * Engagement only, never content: the content is the weekly reports, which are
    * a document you open deliberately rather than a figure in a list. See
-   * PATIENT_SUMMARY_FIELDS in core/specialist.py.
+   * PATIENT_SUMMARY_FIELDS in core/specialist.py. Which diary the figures come
+   * from follows the relationship: a psychodietitian reading an entry count
+   * from a diary they cannot open would be told something they cannot act on.
    */
   activity: PatientActivity | null
 }
@@ -91,6 +112,11 @@ function toPatient(payload: SpecialistPatientPayload): SpecialistPatient {
     isChild: payload.is_child,
     acceptedAt: payload.accepted_at,
     consentsActive: payload.consents_active ?? true,
+    // Defaulted for a backend that predates the column: everything that existed
+    // before it was a psychotherapy relationship, which is exactly what
+    // migration 0022's backfill says.
+    module: payload.module ?? MODULE_PSYCHOTHERAPY,
+    moduleLabel: payload.module_label ?? moduleLabel(payload.module ?? MODULE_PSYCHOTHERAPY),
     activity: payload.activity && {
       entryCount: payload.activity.entry_count,
       streakDays: payload.activity.streak_days,
@@ -118,11 +144,14 @@ export async function fetchCaseload(): Promise<SpecialistCaseload> {
  * `patient_email` — see SpecialistPatientInviteSerializer for why they are not
  * told apart.
  */
-export async function invitePatient(patientEmail: string): Promise<SpecialistCaseload> {
+export async function invitePatient(
+  patientEmail: string,
+  module: AppModule,
+): Promise<SpecialistCaseload> {
   return toCaseload(
     await apiRequest<PatientListPayload>('/api/specialist/patients/', {
       method: 'POST',
-      body: { patient_email: patientEmail },
+      body: { patient_email: patientEmail, module },
     }),
   )
 }
@@ -133,10 +162,13 @@ export async function invitePatient(patientEmail: string): Promise<SpecialistCas
  * The specialist is the only side that can do this to an accepted link — the
  * client's rule, for a clinical reason: see pages/Reports.tsx.
  */
-export async function dropPatient(patientId: string): Promise<SpecialistCaseload> {
+export async function dropPatient(
+  patientId: string,
+  module: AppModule,
+): Promise<SpecialistCaseload> {
   return toCaseload(
     await apiRequest<PatientListPayload>(
-      `/api/specialist/patients/${encodeURIComponent(patientId)}/`,
+      `/api/specialist/patients/${encodeURIComponent(patientId)}/${module}/`,
       { method: 'DELETE' },
     ),
   )
@@ -167,6 +199,48 @@ export async function fetchPatientReportPdf(
 ): Promise<Blob> {
   return apiDownload(
     `/api/specialist/patients/${encodeURIComponent(patientId)}/reports/${encodeURIComponent(reportId)}/pdf/`,
+  )
+}
+
+/**
+ * The same three, for the **diet** module.
+ *
+ * Their own paths rather than a module parameter on the three above, mirroring
+ * the split the patient's own routes already have: the two modules do not agree
+ * on what a week is (Monday-to-Sunday there, seven days from the first entry
+ * here), so one endpoint holding both would be one endpoint with two meanings
+ * of the word.
+ *
+ * 404 for a specialist whose relationship with this patient is a psychotherapy
+ * one — the food diary is not theirs to read, and being somebody's therapist is
+ * not a key to every module.
+ */
+export async function fetchPatientDietReports(
+  patientId: string,
+): Promise<DietWeeklyReport[]> {
+  const payload = await apiRequest<DietReportPayload[]>(
+    `/api/specialist/patients/${encodeURIComponent(patientId)}/diet-reports/`,
+  )
+  return payload.map(toDietReport)
+}
+
+export async function fetchPatientDietReport(
+  patientId: string,
+  reportId: string,
+): Promise<DietWeeklyReport> {
+  return toDietReport(
+    await apiRequest<DietReportPayload>(
+      `/api/specialist/patients/${encodeURIComponent(patientId)}/diet-reports/${encodeURIComponent(reportId)}/`,
+    ),
+  )
+}
+
+export async function fetchPatientDietReportPdf(
+  patientId: string,
+  reportId: string,
+): Promise<Blob> {
+  return apiDownload(
+    `/api/specialist/patients/${encodeURIComponent(patientId)}/diet-reports/${encodeURIComponent(reportId)}/pdf/`,
   )
 }
 
@@ -273,48 +347,92 @@ export async function revokeParentInvitation(id: string): Promise<ParentInvitati
 
 /** As `core.specialist.pending_invitation` returns it. */
 interface SpecialistInvitationPayload {
+  id: string
   specialist: string | null
   email: string | null
   approach: string | null
+  module: AppModule
+  module_label: string
 }
 
 export interface SpecialistInvitation {
+  /** The invitation's own id — what the accept/reject URLs carry. */
+  id: string
   /** The specialist's name, or their address when the row carries no name. */
   specialist: string | null
   email: string | null
   /** `specjalist.specjalization` — what they entered at registration. */
   approach: string | null
+  /**
+   * Which module is being asked about.
+   *
+   * Agreeing to a psychodietitian is not agreeing to hand over a psychotherapy
+   * diary: the relationship, and the reports it opens, belong to one module.
+   * The card says so before the tap, because a consent that does not name what
+   * it covers is not informed.
+   */
+  module: AppModule
+  moduleLabel: string
+}
+
+function toInvitation(payload: SpecialistInvitationPayload): SpecialistInvitation {
+  return {
+    id: payload.id,
+    specialist: payload.specialist,
+    email: payload.email,
+    approach: payload.approach,
+    module: payload.module,
+    moduleLabel: payload.module_label || moduleLabel(payload.module),
+  }
 }
 
 async function invitationRequest(
   path: string,
   method?: 'POST',
-): Promise<SpecialistInvitation | null> {
-  const payload = await apiRequest<{ invitation: SpecialistInvitationPayload | null }>(
+): Promise<SpecialistInvitation[]> {
+  const payload = await apiRequest<{ invitations: SpecialistInvitationPayload[] }>(
     path,
     method ? { method } : undefined,
   )
-  return payload.invitation
+  return (payload.invitations ?? []).map(toInvitation)
 }
 
-/** The invitation waiting for the signed-in patient, or null when there is none. */
-export function fetchSpecialistInvitation(): Promise<SpecialistInvitation | null> {
+/**
+ * Every invitation waiting for the signed-in patient. Empty is the ordinary
+ * answer.
+ *
+ * **A LIST RATHER THAN ONE ROW**, since the relationship gained a module: a
+ * patient can be asked by a psychotherapist and a psychodietitian in the same
+ * week, and a screen that could only draw one would leave the other specialist
+ * waiting on an answer their patient was never offered.
+ */
+export function fetchSpecialistInvitations(): Promise<SpecialistInvitation[]> {
   return invitationRequest('/api/account/specialist-invitation/')
 }
 
 /**
- * The patient agrees to be treated by that specialist.
+ * The patient agrees to be treated by that specialist, in that invitation's
+ * module.
  *
- * From here on the specialist can read this patient's weekly reports, and the
- * patient cannot undo it — dropping the link is the specialist's action (the
- * client's rule; see pages/Reports.tsx). The screen says so before the tap.
+ * From here on the specialist can read this patient's reports **from that
+ * module**, and the patient cannot undo it — dropping the link is the
+ * specialist's action (the client's rule; see pages/Reports.tsx). The screen
+ * says so before the tap. It also replaces whoever was treating them in that
+ * module, and nothing in the other one.
+ *
+ * Answers with what is still waiting, so a patient holding two invitations sees
+ * the second one where the first was.
  */
-export function acceptSpecialistInvitation(): Promise<SpecialistInvitation | null> {
-  return invitationRequest('/api/account/specialist-invitation/accept/', 'POST')
+export function acceptSpecialistInvitation(id: string): Promise<SpecialistInvitation[]> {
+  return invitationRequest(
+    `/api/account/specialist-invitation/${encodeURIComponent(id)}/accept/`, 'POST',
+  )
 }
 
-export function rejectSpecialistInvitation(): Promise<SpecialistInvitation | null> {
-  return invitationRequest('/api/account/specialist-invitation/reject/', 'POST')
+export function rejectSpecialistInvitation(id: string): Promise<SpecialistInvitation[]> {
+  return invitationRequest(
+    `/api/account/specialist-invitation/${encodeURIComponent(id)}/reject/`, 'POST',
+  )
 }
 
 /** As `core.colleagues.serialize_colleague` returns it — never a password. */

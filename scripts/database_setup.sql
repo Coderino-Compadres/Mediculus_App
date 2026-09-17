@@ -86,28 +86,60 @@ CREATE TABLE IF NOT EXISTS specjalist (
 CREATE TABLE IF NOT EXISTS patient (
     id_user UUID PRIMARY KEY,
     id_medical UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
-    id_specjalist UUID,
-    -- The specialist who has *asked* to take this patient on (NULL = nobody is
-    -- asking), and when the patient agreed to id_specjalist above. Accepting
-    -- moves the id from the pending column into id_specjalist and stamps the
-    -- timestamp; refusing clears the pending column and records nothing, the
-    -- same way parent_child deletes a refused invitation.
-    -- Mirrors core/migrations/0011_specjalist_patient_invitation.py.
-    id_specjalist_pending UUID,
-    specjalist_accepted_at TIMESTAMPTZ,
+    -- WHO TREATS THIS PATIENT IS NOT HERE. It was three columns --
+    -- id_specjalist, id_specjalist_pending, specjalist_accepted_at -- and they
+    -- moved into specjalist_patient below, because a single FK gives a patient
+    -- one specialist and the app has two modules. See that table's comment and
+    -- core/migrations/0022_specjalist_patient_module.py.
     is_child BOOLEAN,
 
     CONSTRAINT fk_patient_user
         FOREIGN KEY (id_user)
-        REFERENCES "user" (id_user),
+        REFERENCES "user" (id_user)
+);
 
-    CONSTRAINT fk_patient_specjalist
+-- ----------------------------
+-- SPECJALIST_PATIENT
+-- One specialist treating one patient in one module -- or asking to.
+--
+-- The row is the link and accepted_at is its state: NULL is an invitation the
+-- patient has not answered, set is the moment they agreed. A refusal deletes
+-- the row rather than recording a "no", exactly as parent_child does.
+--
+-- module says which half of the app the relationship is about
+-- ('psychotherapy' or 'diet', see core/modules.py) and it decides which reports
+-- the specialist may open: a psychodietitian reads diet reports and not the
+-- psychotherapy ones, which carry moods, risky-behaviour notes and the safety
+-- plan a patient shared with somebody else.
+--
+-- The partial unique index below is the one property worth keeping from the old
+-- single FK: one *accepted* specialist per patient per module. Pending rows are
+-- exempt, so two specialists may have asked at once and the patient chooses.
+-- Mirrors core/migrations/0022_specjalist_patient_module.py.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS specjalist_patient (
+    id_specjalist_patient UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_specjalist UUID NOT NULL,
+    id_user UUID NOT NULL,
+    module TEXT NOT NULL,
+    accepted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_specjalist_patient_specjalist
         FOREIGN KEY (id_specjalist)
-        REFERENCES specjalist (id_user),
-
-    CONSTRAINT fk_patient_specjalist_pending
-        FOREIGN KEY (id_specjalist_pending)
         REFERENCES specjalist (id_user)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_specjalist_patient_patient
+        FOREIGN KEY (id_user)
+        REFERENCES patient (id_user)
+        ON DELETE CASCADE,
+
+    CONSTRAINT uniq_specjalist_patient_module
+        UNIQUE (id_specjalist, id_user, module),
+
+    CONSTRAINT specjalist_patient_module_known
+        CHECK (module IN ('psychotherapy', 'diet'))
 );
 
 -- ----------------------------
@@ -185,11 +217,55 @@ ALTER TABLE "user"
 ALTER TABLE parent_child
     ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ;
 
--- Same again for the specialist's half of the assignment, added later still.
--- Mirrors core/migrations/0011_specjalist_patient_invitation.py.
+-- The specialist relationship, moved off `patient` and into its own table.
+--
+-- A database that predates 0022 still holds the three columns with data in
+-- them, and this script has to upgrade it rather than skip it -- the CREATE
+-- TABLE above is IF NOT EXISTS and would leave the rows stranded. So: copy
+-- first, drop after, and guard the copy on the columns actually being there so
+-- that a fresh database (where they never existed) runs the same script.
+--
+-- Every existing relationship is a psychotherapy one: the diet module has never
+-- had a specialist. A row with no `specjalist_accepted_at` predates 0011 and
+-- its date is not recoverable; it is dated from the account's creation rather
+-- than from `now()`, which would claim the consent was given during a
+-- deployment. Mirrors core/migrations/0022_specjalist_patient_module.py.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'patient' AND column_name = 'id_specjalist'
+    ) THEN
+        INSERT INTO specjalist_patient
+            (id_specjalist, id_user, module, accepted_at)
+        SELECT
+            p.id_specjalist, p.id_user, 'psychotherapy',
+            COALESCE(p.specjalist_accepted_at, u.created_at, now())
+        FROM patient p
+        JOIN "user" u ON u.id_user = p.id_user
+        WHERE p.id_specjalist IS NOT NULL
+        ON CONFLICT DO NOTHING;
+
+        INSERT INTO specjalist_patient
+            (id_specjalist, id_user, module, accepted_at)
+        SELECT p.id_specjalist_pending, p.id_user, 'psychotherapy', NULL
+        FROM patient p
+        WHERE p.id_specjalist_pending IS NOT NULL
+        ON CONFLICT DO NOTHING;
+    END IF;
+END $$;
+
+DROP INDEX IF EXISTS idx_patient_id_specjalist;
+DROP INDEX IF EXISTS idx_patient_id_specjalist_pending;
+
 ALTER TABLE patient
-    ADD COLUMN IF NOT EXISTS id_specjalist_pending UUID,
-    ADD COLUMN IF NOT EXISTS specjalist_accepted_at TIMESTAMPTZ;
+    DROP CONSTRAINT IF EXISTS fk_patient_specjalist,
+    DROP CONSTRAINT IF EXISTS fk_patient_specjalist_pending;
+
+ALTER TABLE patient
+    DROP COLUMN IF EXISTS id_specjalist,
+    DROP COLUMN IF EXISTS id_specjalist_pending,
+    DROP COLUMN IF EXISTS specjalist_accepted_at;
 
 -- Where this patient's *diet* weeks are counted from: the day of their first
 -- entry in that module, and rarely a Monday. The two modules count weeks
@@ -203,24 +279,9 @@ ALTER TABLE patient
 ALTER TABLE patient
     ADD COLUMN IF NOT EXISTS diet_week_start DATE;
 
--- The FK belongs with the column above; on a database that predates it the
--- CREATE TABLE never ran, so add it here too. DO block because Postgres has no
--- ADD CONSTRAINT IF NOT EXISTS.
-DO $$
-BEGIN
-    ALTER TABLE patient
-        ADD CONSTRAINT fk_patient_specjalist_pending
-        FOREIGN KEY (id_specjalist_pending) REFERENCES specjalist (id_user);
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
 -- Helpful FK indexes
 CREATE INDEX IF NOT EXISTS idx_user_id_user_role
     ON "user" (id_user_role);
-
-CREATE INDEX IF NOT EXISTS idx_patient_id_specjalist
-    ON patient (id_specjalist);
 
 CREATE INDEX IF NOT EXISTS idx_parent_child_id_parent
     ON parent_child (id_parent);
@@ -228,8 +289,15 @@ CREATE INDEX IF NOT EXISTS idx_parent_child_id_parent
 CREATE INDEX IF NOT EXISTS idx_parent_child_id_child
     ON parent_child (id_child);
 
-CREATE INDEX IF NOT EXISTS idx_patient_id_specjalist_pending
-    ON patient (id_specjalist_pending);
+-- One *accepted* specialist per patient per module; pending rows are exempt so
+-- a patient may hold two invitations in one module and choose.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_patient_module_accepted
+    ON specjalist_patient (id_user, module)
+    WHERE accepted_at IS NOT NULL;
+
+-- The panel's own lookup: "this patient, in this module".
+CREATE INDEX IF NOT EXISTS idx_specjalist_patient_module
+    ON specjalist_patient (id_user, module);
 
 CREATE INDEX IF NOT EXISTS idx_parent_invitation_id_specjalist
     ON parent_invitation (id_specjalist);

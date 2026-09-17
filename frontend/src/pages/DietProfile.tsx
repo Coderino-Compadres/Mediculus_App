@@ -13,6 +13,7 @@ import { ApiError } from '../api/client'
 import { fetchHealthProfile, saveHealthProfile } from '../api/healthProfile'
 import { useAuth } from '../auth/authContext'
 import { useAccountProfile } from '../hooks/useAccountProfile'
+import { MODULE_DIET } from '../utils/modules'
 import { useSignOut } from '../hooks/useSignOut'
 import {
   ACTIVITY_LEVELS,
@@ -111,13 +112,14 @@ import './dietProfile.css'
  * and no link in either direction. Answering an open question in markup is
  * still answering it.
  *
- * TODO(backend): a **second specialist.** §13 draws two, tagged by module
- * ("psychodietetyczka", "psychoterapeuta") and told apart by a coloured dot.
- * `patient.id_specjalist` is a single FK and `specjalist.specjalization` is
- * free text with no vocabulary behind it, so a patient seeing both a
- * psychotherapist and a psychodietitian cannot be expressed at all. The card
- * below shows the one relationship that exists and says nothing it cannot
- * check.
+ * THE CARD BELOW NAMES THIS MODULE'S SPECIALIST, which §13 asks for and which
+ * the schema could not express until migration 0022: `patient.id_specjalist`
+ * was a single FK, so both profile screens named the same person. Now the
+ * relationship lives in `specjalist_patient` with a module on it, this screen
+ * asks `/api/diet/profile/` and /profile asks its own — two cards, two people,
+ * exactly as the artboard draws them. What is still not drawn is §13's coloured
+ * dot: the module is said in words on each screen instead, since each screen
+ * only ever shows its own.
  *
  * Also absent: the artboard's "konto od 3 marca" (the API sends no creation
  * date), its consent toggles (consents have one mechanism, `ProfileDataRights`)
@@ -264,7 +266,15 @@ function DescriptiveField({
 }: {
   id: string
   label: string
-  hint: string
+  /**
+   * Optional, and drawn only when it says something.
+   *
+   * An empty hint used to render an empty `<p>` that `aria-describedby` still
+   * pointed at — a description the field promises and does not have, which a
+   * screen reader announces as nothing at all after the label. No hint means
+   * no element and no reference.
+   */
+  hint?: string
   value: string
   onChange: (next: string) => void
 }) {
@@ -276,12 +286,14 @@ function DescriptiveField({
         id={id}
         rows={2}
         value={value}
-        aria-describedby={hintId}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(event) => onChange(event.target.value)}
       />
-      <p className="diet-profile-hint" id={hintId}>
-        {hint}
-      </p>
+      {hint && (
+        <p className="diet-profile-hint" id={hintId}>
+          {hint}
+        </p>
+      )}
     </div>
   )
 }
@@ -340,7 +352,10 @@ function Chip({
  * actually holds one.
  */
 function CareCard() {
-  const { data, loading, failed, retry } = useAccountProfile()
+  // §13's card names the **psychodietitian**, which is a different person from
+  // the therapist /profile names — and a question that could not be asked at
+  // all before migration 0022, when one column held both.
+  const { data, loading, failed, retry } = useAccountProfile(MODULE_DIET)
 
   return (
     <section className="diet-profile-card" aria-labelledby="diet-profile-care">
@@ -686,10 +701,10 @@ function DietProfile() {
               <div className="diet-profile-field-row">
                 <MeasurementField
                   id="diet-profile-height"
-                  label="Wzrost (cm)"
+                  label="Wzrost"
                   unit="cm"
                   value={draft.heightCm}
-                  hint="W centymetrach. Możesz zostawić puste."
+                  hint="W centymetrach."
                   onChange={(next) => set('heightCm', next)}
                 />
               </div>
@@ -713,18 +728,18 @@ function DietProfile() {
               <div className="diet-profile-field-row">
                 <MeasurementField
                   id="diet-profile-weight"
-                  label="Masa ciała (kg)"
+                  label="Masa ciała"
                   unit="kg"
                   value={draft.weightKg}
-                  hint="W kilogramach. Możesz zostawić puste."
+                  hint="W kilogramach."
                   onChange={(next) => set('weightKg', next)}
                 />
                 <MeasurementField
                   id="diet-profile-target-weight"
-                  label="Masa docelowa (kg)"
+                  label="Masa docelowa"
                   unit="kg"
                   value={draft.targetWeightKg}
-                  hint="W kilogramach. Możesz zostawić puste."
+                  hint="W kilogramach."
                   onChange={(next) => set('targetWeightKg', next)}
                 />
               </div>
@@ -741,9 +756,6 @@ function DietProfile() {
                     />
                   ))}
                 </div>
-                <p className="diet-profile-hint">
-                  Kliknij ponownie, żeby odznaczyć. Nic nie jest zaznaczone domyślnie.
-                </p>
               </fieldset>
             </div>
           </section>
@@ -764,28 +776,24 @@ function DietProfile() {
               failure this section cannot afford.
             */}
             <p className="diet-profile-card-lead">
-              Wpisz własnymi słowami — tak, jak sama lub sam to opisujesz.
             </p>
 
             <div className="diet-profile-stack">
               <DescriptiveField
                 id="diet-profile-allergies"
                 label="Alergie pokarmowe"
-                hint="Na przykład: orzechy laskowe. Możesz zostawić puste."
                 value={draft.allergies}
                 onChange={(next) => set('allergies', next)}
               />
               <DescriptiveField
                 id="diet-profile-intolerances"
                 label="Nietolerancje"
-                hint="Na przykład: laktoza. Możesz zostawić puste."
                 value={draft.intolerances}
                 onChange={(next) => set('intolerances', next)}
               />
               <DescriptiveField
                 id="diet-profile-preferences"
                 label="Preferencje żywieniowe"
-                hint="Na przykład: dieta wegetariańska, bez glutenu. Możesz zostawić puste."
                 value={draft.dietaryPreferences}
                 onChange={(next) => set('dietaryPreferences', next)}
               />
@@ -798,8 +806,6 @@ function DietProfile() {
           >
             <h2 id="diet-profile-conditions">Jednostki chorobowe</h2>
             <p className="diet-profile-card-lead">
-              Zaznacz to, co Ciebie dotyczy. Jeśli czegoś tu nie ma, dopisz własną
-              pozycję.
             </p>
 
             <div className="diet-profile-stack">

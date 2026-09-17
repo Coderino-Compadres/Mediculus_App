@@ -121,6 +121,25 @@ export function entriesGenitive(count: number): string {
 }
 
 /**
+ * The nominative of the same noun — 'wpis' / 'wpisy' / 'wpisów' — without its
+ * count.
+ *
+ * Where a number stands on its own in front of it and nothing governs the case:
+ * the figure tiles on the guardian's card, which draw the value and its label as
+ * two separate elements. That card spelled the rule inline as `count === 1 ?
+ * 'wpis' : 'wpisów'` and therefore read "3 wpisów", which is wrong in Polish for
+ * two to four — visibly so now that the tile beside it declines "posiłki"
+ * correctly (`mealsNoun` in utils/meals.ts, which this mirrors).
+ */
+export function entriesNoun(count: number): string {
+  const last = count % 10
+  const teens = count % 100
+  if (count === 1) return 'wpis'
+  if (last >= 2 && last <= 4 && (teens < 12 || teens > 14)) return 'wpisy'
+  return 'wpisów'
+}
+
+/**
  * The same for "dzień", wherever a preposition governs it — "z 1 dnia", "z 7
  * dni", never `pluralDays`' nominative "z 1 dzień".
  *

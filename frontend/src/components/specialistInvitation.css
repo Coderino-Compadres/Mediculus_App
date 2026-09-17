@@ -132,3 +132,21 @@
   color: var(--color-graphite);
   margin: 0;
 }
+
+/* One card per invitation: a patient can be asked by a psychotherapist and a
+   psychodietitian at once, and the two are different decisions. Separated by a
+   rule rather than by a box, so the section still reads as one thing. */
+.specialist-invitation-card + .specialist-invitation-card {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-divider);
+}
+
+/* WHICH MODULE, directly under the name: it is what is being agreed to, and two
+   invitations differ in nothing else on the screen. */
+.specialist-invitation-module {
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-sage);
+  margin: 2px 0 0;
+}

@@ -20,7 +20,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
-from core.models import Diary, Patient, Specjalist, User, UserRole
+from core.models import (Diary, Patient, Specjalist, SpecjalistPatient, User,
+                         UserRole)
+from core.modules import MODULE_PSYCHOTHERAPY
 from core.serializers import PasswordChangeSerializer
 
 PASSWORD = 'TajneHaslo123'
@@ -53,6 +55,13 @@ class AccountTestCase(TestCase):
     def make_specjalist(self, email='terapeutka@example.com', **fields):
         user = self.make_user(email, role='specjalista', **fields)
         return Specjalist.objects.create(user=user, specjalization='CBT / DBT')
+
+    def treat(self, specjalist, patient, module=MODULE_PSYCHOTHERAPY):
+        """An accepted relationship — what the care card reads since 0022."""
+        return SpecjalistPatient.objects.create(
+            specjalist=specjalist, patient=patient, module=module,
+            accepted_at=timezone.now(),
+        )
 
     def sign_in(self, user):
         session = self.client.session
@@ -178,7 +187,13 @@ class ActivityTests(AccountTestCase):
 
 
 class CareTests(AccountTestCase):
-    """The "OPIEKA" card — `patient.specjalist`, which is nullable."""
+    """The "OPIEKA" card — the patient's accepted psychotherapy relationship.
+
+    A row in `specjalist_patient` since 0022 rather than a column on `patient`,
+    and this endpoint asks for the **psychotherapy** one: /profile is that
+    module's screen, and §13's diet profile has its own card and its own
+    specialist (`/api/diet/profile/`).
+    """
 
     def test_an_unassigned_patient_gets_null_rather_than_a_row_of_blanks(self):
         """Registering before the first appointment is the ordinary case, and
@@ -189,7 +204,8 @@ class CareTests(AccountTestCase):
 
     def test_the_specialist_is_named_from_their_own_user_row(self):
         specjalist = self.make_specjalist(name='Marta', surname='Zielińska')
-        self.patient = self.make_patient(specjalist=specjalist)
+        self.patient = self.make_patient()
+        self.treat(specjalist, self.patient)
 
         self.assertEqual(
             self.get_profile()['care'],
@@ -200,14 +216,16 @@ class CareTests(AccountTestCase):
         """A broken record, not a missing relationship: the care exists, so the
         card should name whoever it can rather than render an empty line."""
         specjalist = self.make_specjalist('bezimienna@example.com')
-        self.patient = self.make_patient(specjalist=specjalist)
+        self.patient = self.make_patient()
+        self.treat(specjalist, self.patient)
 
         self.assertEqual(self.get_profile()['care']['specialist'], 'bezimienna@example.com')
 
     def test_a_specialist_with_no_specjalization_still_has_care(self):
         specjalist = self.make_specjalist(name='Marta', surname='Zielińska')
         Specjalist.objects.filter(pk=specjalist.pk).update(specjalization=None)
-        self.patient = self.make_patient(specjalist=specjalist)
+        self.patient = self.make_patient()
+        self.treat(specjalist, self.patient)
 
         care = self.get_profile()['care']
 
@@ -219,13 +237,15 @@ class CareTests(AccountTestCase):
         link off this key, and the day a column appears this test is what says
         the mapping has to be revisited."""
         specjalist = self.make_specjalist(name='Marta', surname='Zielińska')
-        self.patient = self.make_patient(specjalist=specjalist)
+        self.patient = self.make_patient()
+        self.treat(specjalist, self.patient)
 
         self.assertIsNone(self.get_profile()['care']['phone'])
 
     def test_nothing_identifying_about_the_specialist_leaks_beyond_the_name(self):
         specjalist = self.make_specjalist(name='Marta', surname='Zielińska')
-        self.patient = self.make_patient(specjalist=specjalist)
+        self.patient = self.make_patient()
+        self.treat(specjalist, self.patient)
 
         self.assertEqual(set(self.get_profile()['care']), {'specialist', 'approach', 'phone'})
 

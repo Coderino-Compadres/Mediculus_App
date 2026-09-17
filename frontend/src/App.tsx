@@ -13,6 +13,8 @@ import DietActivitySleep from './pages/DietActivitySleep'
 import DietReports from './pages/DietReports'
 import DietReportDetail from './pages/DietReportDetail'
 import DietAnalysis from './pages/DietAnalysis'
+import DietTechniques from './pages/DietTechniques'
+import DietTechniqueDetail from './pages/DietTechniqueDetail'
 import DietProfile from './pages/DietProfile'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
@@ -21,6 +23,8 @@ import ParentHome from './pages/ParentHome'
 import SpecialistHome from './pages/SpecialistHome'
 import SpecialistPatientReports from './pages/SpecialistPatientReports'
 import SpecialistPatientReport from './pages/SpecialistPatientReport'
+import SpecialistPatientDietReports from './pages/SpecialistPatientDietReports'
+import SpecialistPatientDietReport from './pages/SpecialistPatientDietReport'
 import SpecialistParentAccounts from './pages/SpecialistParentAccounts'
 import SpecialistColleagues from './pages/SpecialistColleagues'
 import SpecialistTechniques from './pages/SpecialistTechniques'
@@ -320,6 +324,25 @@ function App() {
               </RequireSpecialist>
             }
           />
+          {/* The same pair for the diet module. Behind `RequireSpecialist` like
+              every other panel screen; which *module* a specialist may read is
+              decided per request by the relationship, not by the route. */}
+          <Route
+            path={ROUTES.specialistPatientDietReports}
+            element={
+              <RequireSpecialist>
+                <SpecialistPatientDietReports />
+              </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistPatientDietReport}
+            element={
+              <RequireSpecialist>
+                <SpecialistPatientDietReport />
+              </RequireSpecialist>
+            }
+          />
           <Route
             path={ROUTES.specialistParentAccounts}
             element={
@@ -493,6 +516,32 @@ function App() {
             element={
               <RequireAuth>
                 <DietAnalysis />
+              </RequireAuth>
+            }
+          />
+          {/* "Techniki psychodietetyczne" (§12). Patient screens like the rest
+              of /diet, so RequireAuth's defaults keep a guardian and a
+              specialist out.
+
+              DELIBERATELY NOT `allowSpecialist`, which is what the
+              psychotherapy catalogue carries: that exemption exists because a
+              specialist *writes* into that catalogue and seeing what a patient
+              sees is the point. Nothing writes into this one — there is no
+              specialist panel for the diet module at all — so the exemption
+              would let an account in for no reason. */}
+          <Route
+            path={ROUTES.dietTechniques}
+            element={
+              <RequireAuth>
+                <DietTechniques />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path={ROUTES.dietTechniqueDetail}
+            element={
+              <RequireAuth>
+                <DietTechniqueDetail />
               </RequireAuth>
             }
           />

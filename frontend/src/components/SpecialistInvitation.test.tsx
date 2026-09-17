@@ -7,20 +7,35 @@ import SpecialistInvitationCard from './SpecialistInvitation'
 import type { SpecialistInvitation } from '../api/specialist'
 
 vi.mock('../api/specialist', () => ({
-  fetchSpecialistInvitation: vi.fn(),
+  fetchSpecialistInvitations: vi.fn(),
   acceptSpecialistInvitation: vi.fn(),
   rejectSpecialistInvitation: vi.fn(),
 }))
-const { fetchSpecialistInvitation, acceptSpecialistInvitation, rejectSpecialistInvitation } =
+const { fetchSpecialistInvitations, acceptSpecialistInvitation, rejectSpecialistInvitation } =
   await import('../api/specialist')
-const mockedFetch = vi.mocked(fetchSpecialistInvitation)
+const mockedFetch = vi.mocked(fetchSpecialistInvitations)
 const mockedAccept = vi.mocked(acceptSpecialistInvitation)
 const mockedReject = vi.mocked(rejectSpecialistInvitation)
 
 const INVITATION: SpecialistInvitation = {
+  id: 'e1000000-0000-0000-0000-000000000001',
   specialist: 'Anna Terapeutka',
   email: 'anna@wp.pl',
   approach: 'psychoterapia poznawczo-behawioralna',
+  // Which module is being agreed to — a psychodietitian's invitation is a
+  // different question from a psychotherapist's, and the card says so.
+  module: 'psychotherapy',
+  moduleLabel: 'Psychoterapia',
+}
+
+const DIET_INVITATION: SpecialistInvitation = {
+  ...INVITATION,
+  id: 'e1000000-0000-0000-0000-000000000002',
+  specialist: 'Ewa Dietetyczka',
+  email: 'ewa@wp.pl',
+  approach: 'psychodietetyka',
+  module: 'diet',
+  moduleLabel: 'Dietetyka i psychodietetyka',
 }
 
 beforeEach(() => {
@@ -31,7 +46,7 @@ beforeEach(() => {
 
 describe('what the patient is asked', () => {
   it('names the person asking, so the decision is about somebody and not an id', async () => {
-    mockedFetch.mockResolvedValueOnce(INVITATION)
+    mockedFetch.mockResolvedValueOnce([INVITATION])
 
     renderWithProviders(<SpecialistInvitationCard />)
 
@@ -41,7 +56,7 @@ describe('what the patient is asked', () => {
   })
 
   it('says what the specialist will and will not see', async () => {
-    mockedFetch.mockResolvedValueOnce(INVITATION)
+    mockedFetch.mockResolvedValueOnce([INVITATION])
 
     renderWithProviders(<SpecialistInvitationCard />)
 
@@ -53,7 +68,7 @@ describe('what the patient is asked', () => {
     // The client's rule: ending the link is the specialist's action. A screen
     // that collected this agreement without saying so would be collecting a
     // consent that is not informed.
-    mockedFetch.mockResolvedValueOnce(INVITATION)
+    mockedFetch.mockResolvedValueOnce([INVITATION])
 
     renderWithProviders(<SpecialistInvitationCard />)
 
@@ -61,7 +76,7 @@ describe('what the patient is asked', () => {
   })
 
   it('offers refusing at the same weight as accepting', async () => {
-    mockedFetch.mockResolvedValueOnce(INVITATION)
+    mockedFetch.mockResolvedValueOnce([INVITATION])
 
     renderWithProviders(<SpecialistInvitationCard />)
 
@@ -72,7 +87,7 @@ describe('what the patient is asked', () => {
   it('draws nothing at all when nobody has asked', async () => {
     // Almost every patient, almost always. An empty card would be a permanent
     // reminder of a thing that has not happened.
-    mockedFetch.mockResolvedValueOnce(null)
+    mockedFetch.mockResolvedValueOnce([])
 
     const { container } = renderWithProviders(<SpecialistInvitationCard />)
 
@@ -91,10 +106,44 @@ describe('what the patient is asked', () => {
   })
 })
 
+describe('two specialists asking at once', () => {
+  it('tells them apart by module, which is all that differs on the card', async () => {
+    /**
+     * WHY THE MODULE IS DRAWN BEFORE ANYTHING ELSE. A patient can be asked by a
+     * psychotherapist and a psychodietitian at the same time, and the two cards
+     * carry the same heading, the same two buttons and the same sentence about
+     * what the specialist will see. Without the module named, answering one of
+     * them is a guess — and accepting cannot be taken back.
+     */
+    mockedFetch.mockResolvedValueOnce([INVITATION, DIET_INVITATION])
+
+    renderWithProviders(<SpecialistInvitationCard />)
+
+    expect(await screen.findByText('Psychoterapia')).toBeInTheDocument()
+    expect(screen.getByText('Dietetyka i psychodietetyka')).toBeInTheDocument()
+    expect(screen.getByText('Anna Terapeutka')).toBeInTheDocument()
+    expect(screen.getByText('Ewa Dietetyczka')).toBeInTheDocument()
+  })
+
+  it('confirms the one that was answered, by naming its module', async () => {
+    /** The confirmation says which relationship now exists — see the note on
+     *  `asking.moduleLabel` in the component. */
+    mockedFetch.mockResolvedValueOnce([DIET_INVITATION])
+    mockedAccept.mockResolvedValueOnce([])
+
+    renderWithProviders(<SpecialistInvitationCard />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Potwierdzam' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      /Ewa Dietetyczka.*Dietetyka i psychodietetyka/s,
+    )
+  })
+})
+
 describe('answering', () => {
   it('accepts and confirms who can now read the reports', async () => {
-    mockedFetch.mockResolvedValueOnce(INVITATION)
-    mockedAccept.mockResolvedValueOnce(null)
+    mockedFetch.mockResolvedValueOnce([INVITATION])
+    mockedAccept.mockResolvedValueOnce([])
 
     renderWithProviders(<SpecialistInvitationCard />)
     await userEvent.click(await screen.findByRole('button', { name: 'Potwierdzam' }))
@@ -104,8 +153,8 @@ describe('answering', () => {
   })
 
   it('refuses without recording anything, and says nobody saw the data', async () => {
-    mockedFetch.mockResolvedValueOnce(INVITATION)
-    mockedReject.mockResolvedValueOnce(null)
+    mockedFetch.mockResolvedValueOnce([INVITATION])
+    mockedReject.mockResolvedValueOnce([])
 
     renderWithProviders(<SpecialistInvitationCard />)
     await userEvent.click(await screen.findByRole('button', { name: 'Odrzuć' }))
@@ -117,7 +166,7 @@ describe('answering', () => {
   it('explains a 404 as an invitation that is no longer waiting', async () => {
     // Withdrawn by the specialist, or answered in another tab: there is no
     // decision left, so the card goes away with the explanation.
-    mockedFetch.mockResolvedValueOnce(INVITATION)
+    mockedFetch.mockResolvedValueOnce([INVITATION])
     mockedAccept.mockRejectedValueOnce(new ApiError(404, null))
 
     renderWithProviders(<SpecialistInvitationCard />)
@@ -128,7 +177,7 @@ describe('answering', () => {
   })
 
   it('keeps the card when saving the answer failed, so it can be tried again', async () => {
-    mockedFetch.mockResolvedValueOnce(INVITATION)
+    mockedFetch.mockResolvedValueOnce([INVITATION])
     mockedAccept.mockRejectedValueOnce(new ApiError(500, null))
 
     renderWithProviders(<SpecialistInvitationCard />)

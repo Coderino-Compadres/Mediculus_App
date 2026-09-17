@@ -65,8 +65,25 @@
   margin: 6px 0 0;
 }
 
-.child-figures {
+/* One block per module: its name, then its row of tiles. The heading is what
+   makes two rows of near-identical numbers readable — without it the card is
+   six figures in a column and a guardian has to guess which three belong to
+   which diary. */
+.child-module {
   margin-top: 16px;
+}
+
+.child-module-heading {
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-graphite-muted);
+  margin: 0 0 8px;
+}
+
+.child-figures {
+  margin-top: 0;
 }
 
 .child-card-note,

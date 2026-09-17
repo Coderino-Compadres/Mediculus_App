@@ -22,7 +22,8 @@ from rest_framework.views import APIView
 
 from django.utils import timezone
 
-from .account import build_account_profile, build_linked_children
+from .account import (build_account_profile, build_diet_account_profile,
+                      build_linked_children)
 from .authentication import end_session, start_session
 from .colleagues import list_colleagues, serialize_colleague
 from .dashboard import build_home_dashboard
@@ -38,12 +39,15 @@ from . import supplements as supplement_rules
 from . import activity as activity_rules
 from . import sleep as sleep_rules
 from .diet_reports import build_diet_reports, find_diet_report, latch_week_start
+from .diet_report_pdf import pdf_file_name as diet_pdf_file_name
+from .diet_report_pdf import render_diet_report_pdf
 from . import health_profile as health_profile_rules
 from .guardian import (STATUS_ACCEPTED, accept_invitation, accepted_children,
                        cancel_invitation, guardian_status, pending_invitations,
                        reject_invitation)
 from .consents import SCOPES, consent_state, restore, withdraw
 from .models import Patient
+from .modules import MODULE_DIET, MODULE_PSYCHOTHERAPY
 from .parent_invitations import (list_invitations, revoke,
                                 serialize_invitation as serialize_parent_invitation)
 from .permissions import CONSENT_EXEMPT, PASSWORD_CHANGE_EXEMPT
@@ -209,17 +213,14 @@ def _require_patient(
     that the two definitions stay in step, so change them together.
     """
     patients = Patient.objects.filter(user=request.user)
-    if with_pending_specialist:
-        # The card that answers a specialist's invitation names the person
-        # asking, whose name is on their own `user` row — one query instead of
-        # three, the same opt-in as `with_care` and for the same reason.
-        patients = patients.select_related('specjalist_pending__user')
-    elif with_care:
-        # The profile screen names the treating specialist, whose name lives on
-        # their own `user` row — one query instead of three. Opt-in rather than
-        # always, because every other caller wants the two columns below and
-        # nothing else.
-        patients = patients.select_related('specjalist__user')
+    if with_care or with_pending_specialist:
+        # Both callers need the patient's own `user` row as well as the columns
+        # below: the profile card and the invitation card name the *specialist*,
+        # which since 0022 is a second query against `specjalist_patient`
+        # (core/specialist.py does its own select_related there) rather than a
+        # column on this row. What is left to avoid is the `.only()` — those two
+        # read more of the patient than `id_medical` and `is_child`.
+        patients = patients.select_related('user')
     else:
         patients = patients.only('id_medical', 'is_child')
     patient = patients.first()
@@ -414,7 +415,30 @@ class AccountProfileView(APIView):
 
     def get(self, request):
         patient = _require_patient(request, PROFILE_REFUSAL, with_care=True)
-        return Response(build_account_profile(patient))
+        # The psychotherapy module's card: this endpoint is /profile's. §13's
+        # diet profile asks the same question about its own module — see
+        # `DietAccountProfileView`.
+        return Response(build_account_profile(patient, MODULE_PSYCHOTHERAPY))
+
+
+class DietAccountProfileView(APIView):
+    """GET /api/diet/profile/ — the counters and the care card on §13's profile.
+
+    The diet module's own half of what `/api/account/profile/` answers for the
+    psychotherapy one, and a separate endpoint for the same reason the two
+    screens are separate: the figures are meals rather than diary entries, and
+    the specialist named is the psychodietitian rather than the psychotherapist.
+    Until migration 0022 the second half was not expressible at all — there was
+    one `id_specjalist` column, so both screens named the same person.
+
+    Gated exactly like its sibling: `_require_patient` turns away a guardian and
+    a specialist, who have no `patient` row and for whom "0 posiłków, brak
+    specjalisty" would be a clinical record rather than an answer.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, PROFILE_REFUSAL, with_care=True)
+        return Response(build_diet_account_profile(patient))
 
 
 class HealthProfileView(APIView):
@@ -1505,8 +1529,14 @@ def _require_specialist(request):
     return specjalist
 
 
-def _assigned_patient(specjalist, patient_id):
-    """One of this specialist's accepted patients, or a refusal.
+def _assigned_patient(specjalist, patient_id, module):
+    """One of this specialist's accepted patients **in `module`**, or a refusal.
+
+    `module` is a wall rather than a label, and this is the funnel that enforces
+    it: a psychodietitian asking for a psychotherapy report of a patient they
+    genuinely treat gets the same 404 as one asking about a stranger. Which is
+    the point — the psychotherapy report carries moods, risky-behaviour notes
+    and the safety plan, shared with somebody else, in a different room.
 
     404 rather than 403 for a patient who is somebody else's, which is the
     convention every id-carrying URL here follows (/api/diary/<id>/,
@@ -1527,7 +1557,7 @@ def _assigned_patient(specjalist, patient_id):
     state is reversible, and nothing about the patient's data is disclosed by
     saying it.
     """
-    patient = specialist_rules.assigned_patient(specjalist, patient_id)
+    patient = specialist_rules.assigned_patient(specjalist, patient_id, module)
     if patient is None:
         raise NotFound(PATIENT_NOT_FOUND)
     if specialist_rules.patient_locked(patient):
@@ -1544,11 +1574,17 @@ class SpecialistPatientsView(APIView):
     `PATIENT_SUMMARY_FIELDS` in core/specialist.py — identity and engagement, no
     clinical content; the content is the weekly reports, one screen further in.
 
-    POST asks a patient, named by e-mail, to be treated by this specialist. It
-    creates a *request*: `SpecialistPatientInviteSerializer` sets
-    `id_specjalist_pending` and the patient answers on their own screen. Every
-    way the address can fail gets the same refusal — see that serializer — and
-    `SpecialistInviteThrottle` is what keeps the shared refusal worth having.
+    POST asks a patient, named by e-mail, to be treated by this specialist **in
+    one module**. It creates a *request*: `SpecialistPatientInviteSerializer`
+    writes a `specjalist_patient` row with `accepted_at` NULL and the patient
+    answers on their own screen. Every way the address can fail gets the same
+    refusal — see that serializer — and `SpecialistInviteThrottle` is what keeps
+    the shared refusal worth having.
+
+    A row is a relationship rather than a person, so a patient this specialist
+    treats in both modules appears twice, each row naming its own module. That is
+    the honest rendering of what the table holds: two relationships, each with
+    its own reports and its own moment of consent.
 
     **The cap applies to POST only**, via `get_throttles`. It is there because
     *asking about an address* is a question worth bounding; reading your own
@@ -1578,7 +1614,7 @@ class SpecialistPatientsView(APIView):
 
 
 class SpecialistPatientView(APIView):
-    """DELETE /api/specialist/patients/<id>/ — end the relationship, or drop the request.
+    """DELETE /api/specialist/patients/<id>/<module>/ — end it, or drop the request.
 
     THE ONLY SIDE THAT CAN DROP AN ACCEPTED LINK. That is the client's rule and
     not an oversight of the patient's screen: with eating disorders the tendency
@@ -1589,11 +1625,15 @@ class SpecialistPatientView(APIView):
 
     A patient who is not this specialist's answers 404, like every other
     id-carrying URL here.
+
+    **The module is in the path and is not optional.** A specialist treating
+    somebody in both modules is ending one of two relationships, and a URL that
+    guessed which would be guessing about somebody's care.
     """
 
-    def delete(self, request, patient_id):
+    def delete(self, request, patient_id, module):
         specjalist = _require_specialist(request)
-        if not specialist_rules.drop_link(specjalist, patient_id):
+        if not specialist_rules.drop_link(specjalist, patient_id, module):
             raise NotFound(PATIENT_NOT_FOUND)
         return Response(specialist_rules.build_patient_list(specjalist))
 
@@ -1613,7 +1653,7 @@ class SpecialistPatientReportListView(APIView):
 
     def get(self, request, patient_id):
         specjalist = _require_specialist(request)
-        patient = _assigned_patient(specjalist, patient_id)
+        patient = _assigned_patient(specjalist, patient_id, MODULE_PSYCHOTHERAPY)
         return Response(build_weekly_reports(patient.id_medical, timezone.localdate()))
 
 
@@ -1627,7 +1667,7 @@ class SpecialistPatientReportDetailView(APIView):
 
     def get(self, request, patient_id, report_id):
         specjalist = _require_specialist(request)
-        patient = _assigned_patient(specjalist, patient_id)
+        patient = _assigned_patient(specjalist, patient_id, MODULE_PSYCHOTHERAPY)
         reports = build_weekly_reports(patient.id_medical, timezone.localdate())
         report = find_report(reports, report_id)
         if report is None:
@@ -1646,8 +1686,104 @@ class SpecialistPatientReportPdfView(ReportPdfBase):
 
     def get(self, request, patient_id, report_id):
         specjalist = _require_specialist(request)
-        patient = _assigned_patient(specjalist, patient_id)
+        patient = _assigned_patient(specjalist, patient_id, MODULE_PSYCHOTHERAPY)
         return self.render(patient.id_medical, report_id, patient.user.email)
+
+
+class DietReportPdfBase(ReportPdfBase):
+    """The diet module's half of the PDF plumbing.
+
+    Everything about *serving* a PDF is inherited — attachment disposition,
+    `Cache-Control: no-store`, the throttle, and the renderer swap that keeps a
+    404 as JSON — because none of it is module-specific and two copies would
+    drift. What differs is the document: `core/diet_report_pdf.py` lays out the
+    meal grid and the week, and `_diet_reports` builds the weeks from four
+    diaries rather than from `diary`.
+    """
+
+    def render_diet(self, patient, report_id, email):
+        """The file, or a 404 for a week this patient's diaries do not support.
+
+        `email` is always the **patient's**, as on the psychotherapy document
+        and for the same reason: a printout that reaches a specialist has to say
+        whose week it is, and on their copy the reader is not the subject.
+        """
+        report = find_diet_report(_diet_reports(patient), report_id)
+        if report is None:
+            raise NotFound(DIET_REPORT_NOT_FOUND)
+
+        document = render_diet_report_pdf(report, email)
+        response = HttpResponse(document, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="{diet_pdf_file_name(report)}"'
+        )
+        response['Cache-Control'] = 'no-store'
+        return response
+
+
+class DietReportPdfView(DietReportPdfBase):
+    """GET /api/diet/reports/<week-id>/pdf/ — the patient's own diet report as a file.
+
+    Built from the same payload `DietReportDetailView` answers with, so the
+    document and the screen cannot drift apart — and it exists on the patient's
+    side as well as the specialist's for the reason the psychotherapy PDF does:
+    two people discussing a week must be able to hold the same paper.
+    """
+
+    def get(self, request, report_id):
+        patient = _require_patient(request, DIET_REPORT_REFUSAL)
+        return self.render_diet(patient, report_id, request.user.email)
+
+
+class SpecialistPatientDietReportListView(APIView):
+    """GET /api/specialist/patients/<id>/diet-reports/ — one patient's diet reports.
+
+    The same documents the patient sees on their own /diet/reports, built by the
+    same `build_diet_reports` from the same rows — so a psychodietitian and a
+    patient can never be looking at two different accounts of one week.
+
+    **Its own URL rather than a module parameter on the psychotherapy one**, for
+    the reason the patient's routes are already split (`core/urls.py`): the two
+    modules do not agree on what a week is. A psychotherapy week is Monday to
+    Sunday; this one is seven days from the patient's first entry.
+
+    Three gates: a `specjalist` row, an accepted relationship, and — the one this
+    endpoint adds — that the relationship is a **diet** one. A psychotherapist
+    treating this patient gets 404 here, exactly like a stranger: the food diary
+    is not theirs to read, and being somebody's therapist is not a key to every
+    module.
+    """
+
+    def get(self, request, patient_id):
+        specjalist = _require_specialist(request)
+        patient = _assigned_patient(specjalist, patient_id, MODULE_DIET)
+        return Response(_diet_reports(patient))
+
+
+class SpecialistPatientDietReportDetailView(APIView):
+    """GET /api/specialist/patients/<id>/diet-reports/<week-id>/ — one of them.
+
+    Building every report to return one is the honest cost of deriving them, and
+    here it is also what latches the week anchor exactly once — see
+    `_diet_reports`.
+    """
+
+    def get(self, request, patient_id, report_id):
+        specjalist = _require_specialist(request)
+        patient = _assigned_patient(specjalist, patient_id, MODULE_DIET)
+        report = find_diet_report(_diet_reports(patient), report_id)
+        if report is None:
+            raise NotFound(DIET_REPORT_NOT_FOUND)
+        return Response(report)
+
+
+class SpecialistPatientDietReportPdfView(DietReportPdfBase):
+    """GET /api/specialist/patients/<id>/diet-reports/<week-id>/pdf/ — as a file."""
+
+    def get(self, request, patient_id, report_id):
+        specjalist = _require_specialist(request)
+        patient = _assigned_patient(specjalist, patient_id, MODULE_DIET)
+        return self.render_diet(patient, report_id, patient.user.email)
 
 
 class SpecialistParentInvitationsView(APIView):
@@ -1877,12 +2013,32 @@ class TechniqueCatalogueView(APIView):
 GUARDIAN_GATE_EXEMPT_REASON = 'specialist invitation — see the note above'
 
 
+def _invitation_patient(request):
+    """The patient row behind an invitation request, gate-exempt.
+
+    One helper for the three views below, which were three copies of the same
+    four lines. See GUARDIAN_GATE_EXEMPT_REASON: gating these is a deadlock, and
+    accepting while gated grants access to a diary the gate keeps empty anyway.
+    """
+    return _require_patient(
+        request, SPECIALIST_INVITATION_REFUSAL,
+        require_guardian_link=False, with_pending_specialist=True,
+    )
+
+
 class SpecialistInvitationView(APIView):
     """GET /api/account/specialist-invitation/ — the patient's side of the ask.
 
-    Answers `{"invitation": null}` for a patient nobody has asked, which is the
+    Answers `{"invitations": []}` for a patient nobody has asked, which is the
     normal case rather than an error: the card this feeds sits on the patient's
     home screen and has to know to draw nothing.
+
+    **A LIST SINCE 0022, WHERE IT USED TO BE ONE ROW.** A patient can be asked by
+    a psychotherapist and a psychodietitian in the same week — the two are
+    separate relationships now — and a payload that could carry one of them would
+    leave the other specialist waiting on an answer their patient was never
+    offered. Each entry names the module, because agreeing to a psychodietitian
+    is not agreeing to hand over a psychotherapy diary.
 
     Behind `_require_patient`, so a guardian or a specialist is refused rather
     than told they have no invitation — a true statement about a row that does
@@ -1891,61 +2047,54 @@ class SpecialistInvitationView(APIView):
     """
 
     def get(self, request):
-        patient = _require_patient(
-            request, SPECIALIST_INVITATION_REFUSAL,
-            # See GUARDIAN_GATE_EXEMPT_REASON: gating this is a deadlock, and
-            # accepting while gated grants access to an empty diary.
-            require_guardian_link=False, with_pending_specialist=True,
-        )
+        patient = _invitation_patient(request)
         return Response({
-            'invitation': specialist_rules.pending_invitation(patient),
+            'invitations': specialist_rules.pending_invitations(patient),
         })
 
 
 class SpecialistInvitationAcceptView(APIView):
-    """POST /api/account/specialist-invitation/accept/ — agree to be treated.
+    """POST /api/account/specialist-invitation/<id>/accept/ — agree to be treated.
 
     This is the consent behind the whole specialist view: from here on that
-    specialist can read this patient's weekly reports. Accepting twice is the
-    same answer arriving twice (a double-tapped button), not an error.
+    specialist can read this patient's reports **in that invitation's module**.
+    Accepting twice is the same answer arriving twice (a double-tapped button),
+    not an error.
+
+    The id in the URL is the invitation's, and it is what the module comes from:
+    a patient holding two invitations is answering one of them, and an endpoint
+    that took no id would have had to pick. An invitation addressed to somebody
+    else answers exactly like one that does not exist (404), the same convention
+    as /api/guardian/invitations/<id>/.
 
     Note what accepting gives up, because the screen says it in words: the
     patient cannot undo it. Dropping the link is the specialist's action — see
-    `SpecialistPatientView` for the client's reasoning.
+    `SpecialistPatientView` for the client's reasoning. It also **replaces**
+    whoever was treating them in that module, and nothing in the other one.
     """
 
-    def post(self, request):
-        patient = _require_patient(
-            request, SPECIALIST_INVITATION_REFUSAL,
-            # See GUARDIAN_GATE_EXEMPT_REASON: gating this is a deadlock, and
-            # accepting while gated grants access to an empty diary.
-            require_guardian_link=False, with_pending_specialist=True,
-        )
-        if not specialist_rules.accept_invitation(patient):
+    def post(self, request, invitation_id):
+        patient = _invitation_patient(request)
+        if not specialist_rules.accept_invitation(patient, invitation_id):
             raise NotFound(SPECIALIST_INVITATION_NOT_FOUND)
         return Response({
-            'invitation': specialist_rules.pending_invitation(patient),
+            'invitations': specialist_rules.pending_invitations(patient),
         })
 
 
 class SpecialistInvitationRejectView(APIView):
-    """POST /api/account/specialist-invitation/reject/ — refuse it.
+    """POST /api/account/specialist-invitation/<id>/reject/ — refuse it.
 
-    The pending column is cleared and no refusal is recorded, exactly as a
-    refused guardian invitation deletes its row: a stored "no" would be a state
-    nobody in the app can act on, while an absent invitation lets the specialist
-    ask again after talking to them.
+    The row is deleted and no refusal is recorded, exactly as a refused guardian
+    invitation deletes its row: a stored "no" would be a state nobody in the app
+    can act on, while an absent invitation lets the specialist ask again after
+    talking to them.
     """
 
-    def post(self, request):
-        patient = _require_patient(
-            request, SPECIALIST_INVITATION_REFUSAL,
-            # See GUARDIAN_GATE_EXEMPT_REASON: gating this is a deadlock, and
-            # accepting while gated grants access to an empty diary.
-            require_guardian_link=False, with_pending_specialist=True,
-        )
-        if not specialist_rules.reject_invitation(patient):
+    def post(self, request, invitation_id):
+        patient = _invitation_patient(request)
+        if not specialist_rules.reject_invitation(patient, invitation_id):
             raise NotFound(SPECIALIST_INVITATION_NOT_FOUND)
         return Response({
-            'invitation': specialist_rules.pending_invitation(patient),
+            'invitations': specialist_rules.pending_invitations(patient),
         })

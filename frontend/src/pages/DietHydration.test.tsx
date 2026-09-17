@@ -276,13 +276,26 @@ describe('inne napoje', () => {
     expect(recordDrink).toHaveBeenCalledWith(null, 'Herbata')
   })
 
-  it('says out loud that they are not counted as water', async () => {
-    /** Otherwise a counter that does not move after a tap reads as a bug. */
+  it('keeps them off the water count, whatever the card says about it', async () => {
+    /**
+     * THE NOTE ABOVE THE CHIPS IS GONE. It said "nie przeliczamy na wodę", was
+     * reworded to "wliczają się w dzienny licznik szklanek" — the opposite
+     * claim — and then removed outright in 02659e6. What this test pins is the
+     * behaviour rather than any of the three wordings: a drink that is not
+     * water is sent with its own name and the water count does not move.
+     *
+     * TODO(klientka): whether the card should say so again, and in which of the
+     * two directions. Today a counter that does not move after a tap is left to
+     * be worked out, which is what the original sentence existed to prevent.
+     */
+    recordDrink.mockResolvedValue(day())
     renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
 
-    expect(
-      await screen.findByText(/nie przeliczamy na wodę/),
-    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Herbata' }))
+
+    expect(recordDrink).toHaveBeenCalledWith(null, 'Herbata')
+    await waitFor(() => expect(screen.getByText('4')).toBeInTheDocument())
   })
 })
 
@@ -302,8 +315,13 @@ describe('millilitres for a drink that is not water', () => {
     renderWithProviders(<DietHydration />)
     await screen.findByText('4')
 
-    expect(screen.getByText(/Bez podanej ilości zapisujemy szklankę \(250 ml\)/))
-      .toBeInTheDocument()
+    /** THE SENTENCE IS GONE, THE DEFAULT IS NOT — removed in 02659e6 while
+     *  `DEFAULT_SERVING_ML` stayed. So this asserts the half that can still be
+     *  asserted from here: the field is genuinely optional, and a bare tap
+     *  sends no amount, which is what lets the server apply the glass. The
+     *  disclosure itself is now nowhere on the screen. */
+    expect(screen.getByLabelText(AMOUNT)).toHaveValue(null)
+    expect(screen.getByLabelText(AMOUNT)).not.toBeRequired()
   })
 
   it('is optional — a bare tap on a chip is still a serving', async () => {
@@ -370,8 +388,11 @@ describe('millilitres for a drink that is not water', () => {
 
     await userEvent.type(screen.getByLabelText(AMOUNT), '9000')
 
+    /** The bounds are enforced and, since 02659e6, no longer stated: the hint
+     *  that spelled them out was emptied. The refusal is still marked on the
+     *  field itself, which is the part a reader can act on. */
     expect(screen.getByRole('button', { name: 'Herbata' })).toBeDisabled()
-    expect(screen.getByText(/od 10 do 2000 ml/)).toBeInTheDocument()
+    expect(screen.getByLabelText(AMOUNT)).toHaveAttribute('aria-invalid', 'true')
     expect(recordDrink).not.toHaveBeenCalled()
   })
 
@@ -384,12 +405,18 @@ describe('millilitres for a drink that is not water', () => {
     expect(input).toHaveAttribute('max', '2000')
   })
 
-  it('still says out loud that none of it is counted as water', async () => {
+  it('sends a measured drink under its own name, never as water', async () => {
     /** More important now, not less: a number next to a drink invites exactly
-     *  the assumption the client ruled out. */
+     *  the assumption the client ruled out, and the sentence that ruled it out
+     *  is no longer on the card (see the note on the chips above). */
+    recordDrink.mockResolvedValue(day())
     renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
 
-    expect(await screen.findByText(/nie przeliczamy na wodę/)).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(AMOUNT), '300')
+    await userEvent.click(screen.getByRole('button', { name: 'Herbata' }))
+
+    expect(recordDrink).toHaveBeenCalledWith(300, 'Herbata')
   })
 
   it('lists a measured drink by its own name, never as a glass of water', async () => {

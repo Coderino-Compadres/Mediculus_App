@@ -62,26 +62,47 @@ INSERT INTO specjalist (id_user, specjalization) VALUES
     ('b0000000-0000-0000-0000-000000000002', 'Dietetyka')
 ON CONFLICT (id_user) DO NOTHING;
 
--- specjalist_accepted_at is set for the same reason parent_child.accepted_at is
--- below: these are established care relationships, and the patient's agreement
--- is what an assigned specialist means (see core/specialist.py). A NULL would
--- read as "assigned, and nobody knows when or whether the patient agreed",
--- which is the one state the invitation flow exists to avoid. Nothing is
--- pending here: id_specjalist_pending stays NULL on every row, so the seeded
--- patients show no invitation card.
+INSERT INTO patient (id_user, id_medical, is_child) VALUES
+    ('b0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001', FALSE),
+    ('b0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000002', TRUE),
+    ('b0000000-0000-0000-0000-000000000006', 'c0000000-0000-0000-0000-000000000003', FALSE),
+    ('b0000000-0000-0000-0000-000000000007', 'c0000000-0000-0000-0000-000000000004', FALSE),
+    ('b0000000-0000-0000-0000-000000000008', 'c0000000-0000-0000-0000-000000000005', FALSE)
+ON CONFLICT (id_user) DO NOTHING;
+
+-- WHO TREATS WHOM, AND IN WHICH MODULE. This used to be three columns on
+-- `patient` above; migration 0022 moved it into its own table so that a patient
+-- can have a psychotherapist *and* a psychodietitian, which is what the app's
+-- two modules mean and what a single FK could not express.
 --
--- DO UPDATE rather than DO NOTHING, unlike most of the seed: the column arrived
--- (migration 0011) after these rows did, so a database seeded earlier already
--- holds them with the timestamp missing.
-INSERT INTO patient (id_user, id_medical, id_specjalist, specjalist_accepted_at, is_child) VALUES
-    ('b0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', '2025-01-15 10:00:00+01', FALSE),
-    ('b0000000-0000-0000-0000-000000000005', 'c0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002', '2025-01-15 10:00:00+01', TRUE),
-    ('b0000000-0000-0000-0000-000000000006', 'c0000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000001', '2025-01-15 10:00:00+01', FALSE),
-    ('b0000000-0000-0000-0000-000000000007', 'c0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000002', '2025-01-15 10:00:00+01', FALSE),
-    ('b0000000-0000-0000-0000-000000000008', 'c0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000001', '2025-01-15 10:00:00+01', FALSE)
-ON CONFLICT (id_user) DO UPDATE SET
+-- accepted_at is set for the same reason parent_child.accepted_at is below:
+-- these are established care relationships, and the patient's agreement is what
+-- a treating specialist means (see core/specialist.py). A NULL would read as
+-- "assigned, and nobody knows when or whether the patient agreed", which is the
+-- one state the invitation flow exists to avoid -- so nothing here is pending
+-- and the seeded patients show no invitation card.
+--
+-- The assignments follow the two specialists' own specializations, which the
+-- old seed could not do: b...001 is "Psychoterapia" and b...002 is "Dietetyka".
+-- b...008 is deliberately in **both** lists -- it is the account with a full
+-- food diary *and* diary entries, so it is the one that shows what the new
+-- table is for: two specialists, each reading their own module's reports and
+-- neither reading the other's.
+--
+-- Fixed ids rather than gen_random_uuid(), so re-running this file updates the
+-- same six rows instead of adding six more.
+INSERT INTO specjalist_patient (id_specjalist_patient, id_specjalist, id_user, module, accepted_at) VALUES
+    ('e1000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000003', 'psychotherapy', '2025-01-15 10:00:00+01'),
+    ('e1000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000005', 'psychotherapy', '2025-01-15 10:00:00+01'),
+    ('e1000000-0000-0000-0000-000000000003', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000006', 'psychotherapy', '2025-01-15 10:00:00+01'),
+    ('e1000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000008', 'psychotherapy', '2025-01-15 10:00:00+01'),
+    ('e1000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000007', 'diet', '2025-01-15 10:00:00+01'),
+    ('e1000000-0000-0000-0000-000000000006', 'b0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000008', 'diet', '2025-01-15 10:00:00+01')
+ON CONFLICT (id_specjalist_patient) DO UPDATE SET
     id_specjalist = EXCLUDED.id_specjalist,
-    specjalist_accepted_at = EXCLUDED.specjalist_accepted_at;
+    id_user = EXCLUDED.id_user,
+    module = EXCLUDED.module,
+    accepted_at = EXCLUDED.accepted_at;
 
 -- The diet module's week anchor, cleared so it re-latches onto whatever the
 -- diet section of this file has seeded.

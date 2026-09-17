@@ -101,3 +101,19 @@ export function emotionRatingNote(
     `przy ${mealsLocative(unrated)} natężenie nie zostało ocenione.`
   )
 }
+
+/**
+ * What the browser names a downloaded diet report.
+ *
+ * Matches `pdf_file_name` in core/diet_report_pdf.py, which is what the
+ * Content-Disposition header carries — kept here too because a blob download
+ * names the file from the client side (see `saveBlob` in api/reports.ts).
+ *
+ * **Named apart from the psychotherapy document** (`raport-tygodniowy-…`), and
+ * that is the point of having its own function rather than a shared one with a
+ * prefix argument: a specialist downloading both reports for one patient would
+ * otherwise end up with two files whose names collide and a browser's "(1)".
+ */
+export function dietReportPdfFileName(report: { weekStart: string }): string {
+  return `raport-zywieniowy-${report.weekStart}.pdf`
+}

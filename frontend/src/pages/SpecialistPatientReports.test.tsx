@@ -5,6 +5,7 @@ import { renderWithProviders, TEST_USER } from '../test/render'
 import { WEEK_A, WEEK_B, reportFixture } from '../test/reportFixture'
 import SpecialistPatientReports from './SpecialistPatientReports'
 import { ApiError } from '../api/client'
+import { MODULE_PSYCHOTHERAPY } from '../utils/modules'
 import type { SpecialistPatient } from '../api/specialist'
 
 const PATIENT_ID = 'p0000000-0000-0000-0000-000000000001'
@@ -53,6 +54,9 @@ function patient(overrides: Partial<SpecialistPatient> = {}): SpecialistPatient 
     isChild: false,
     acceptedAt: '2026-08-12T09:31:02Z',
     consentsActive: true,
+    // A row is a relationship, not a person: it names the module it belongs to.
+    module: MODULE_PSYCHOTHERAPY,
+    moduleLabel: 'Psychoterapia',
     activity: { entryCount: 12, streakDays: 4, lastEntryDate: '2026-09-07' },
     ...overrides,
   }

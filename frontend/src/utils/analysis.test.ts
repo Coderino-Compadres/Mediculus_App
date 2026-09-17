@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   ANALYSIS_WINDOW_DAYS,
-  HEATMAP_MIN_DAYS,
-  WEEKDAYS,
   buildAnalysis,
   buildFrequency,
-  difficultyScore,
   daysGenitive,
+  difficultyScore,
   entriesGenitive,
+  entriesNoun,
+  HEATMAP_MIN_DAYS,
   weekdayIndex,
+  WEEKDAYS,
 } from './analysis'
 import { addDays, fromIsoDate, toIsoDate } from './days'
 import type { JournalListEntry } from '../types/diaryEntry'
@@ -546,6 +547,20 @@ describe('buildAnalysis — a day with more than one entry', () => {
       entry(index, { timeOfDay: 'evening', mood: 'bad' }),
     ).flatMap((day) => [day, { ...day, id: `${day.id}-again` }])
     expect(analysisOf(doubled).heatmap.ratedDays).toBe(HEATMAP_MIN_DAYS)
+  })
+})
+
+describe('entriesNoun', () => {
+  /** The nominative, for the guardian's figure tiles. That card used to spell
+   *  the rule inline as `count === 1 ? 'wpis' : 'wpisów'` and read "3 wpisów". */
+  it('takes all three forms', () => {
+    expect(entriesNoun(1)).toBe('wpis')
+    expect(entriesNoun(3)).toBe('wpisy')
+    expect(entriesNoun(4)).toBe('wpisy')
+    expect(entriesNoun(5)).toBe('wpisów')
+    expect(entriesNoun(0)).toBe('wpisów')
+    expect(entriesNoun(12)).toBe('wpisów')
+    expect(entriesNoun(22)).toBe('wpisy')
   })
 })
 

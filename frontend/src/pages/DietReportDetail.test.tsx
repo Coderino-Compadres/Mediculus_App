@@ -848,13 +848,17 @@ describe('what this screen refuses to show', () => {
     }
   })
 
-  it('offers no PDF, no sharing and no send', async () => {
-    /** There is no PDF renderer for this module — the psychotherapy one is a
-     *  server endpoint — and sharing is not the patient decision. */
+  it('offers the PDF and nothing else — no sharing, no send', async () => {
+    /** The renderer exists now (`fetchDietReportPdf`, the same server-side
+     *  ReportLab path the psychotherapy report uses), so "Pobierz PDF" is a
+     *  real action and no longer banned here. The other two still are: saving a
+     *  file to your own device is not an act of sharing, and who else reads
+     *  this report is not the patient's decision to make on this screen. */
     await renderReport()
 
+    expect(screen.getByRole('button', { name: 'Pobierz PDF' })).toBeEnabled()
+
     const text = document.body.textContent ?? ''
-    expect(text).not.toContain('PDF')
     expect(text).not.toContain('Udostępnij')
     expect(text).not.toContain('Wyślij')
   })

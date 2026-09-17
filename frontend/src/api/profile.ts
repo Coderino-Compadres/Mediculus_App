@@ -1,5 +1,6 @@
 /**
- * The profile screen's own data: GET /api/account/profile/.
+ * The profile screens' own data: GET /api/account/profile/ and, for §13's diet
+ * profile, GET /api/diet/profile/.
  *
  * A mapping layer like api/dashboard.ts and api/reports.ts — snake_case columns
  * in, camelCase shapes out, and nothing else. What it does *not* carry is as
@@ -52,8 +53,7 @@ function toCare(payload: CarePayload | null): CareDetails | null {
   }
 }
 
-export async function fetchAccountProfile(): Promise<AccountProfile> {
-  const payload = await apiRequest<AccountProfilePayload>('/api/account/profile/')
+function toProfile(payload: AccountProfilePayload): AccountProfile {
   return {
     activity: {
       entryCount: payload.activity.entry_count,
@@ -61,4 +61,25 @@ export async function fetchAccountProfile(): Promise<AccountProfile> {
     },
     care: toCare(payload.care),
   }
+}
+
+export async function fetchAccountProfile(): Promise<AccountProfile> {
+  return toProfile(await apiRequest<AccountProfilePayload>('/api/account/profile/'))
+}
+
+/**
+ * The same shape for the **diet** module: GET /api/diet/profile/.
+ *
+ * TWO ENDPOINTS BECAUSE THEY ANSWER TWO QUESTIONS, and until migration 0022 the
+ * second one could not be asked at all: `patient.id_specjalist` was a single
+ * column, so both profile screens named the same person — §13 draws two cards,
+ * told apart by a coloured dot, and the diet one belongs to the
+ * psychodietitian. The figures differ too: meals and the food diary's streak
+ * rather than diary entries.
+ *
+ * The mapping is shared because the payloads are identical in shape; what
+ * differs is which module the backend read them for.
+ */
+export async function fetchDietAccountProfile(): Promise<AccountProfile> {
+  return toProfile(await apiRequest<AccountProfilePayload>('/api/diet/profile/'))
 }

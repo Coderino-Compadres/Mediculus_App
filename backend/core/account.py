@@ -22,15 +22,22 @@ from django.utils import timezone
 from .consents import has_active_consents
 from .dashboard import streak_days
 from .diary import count_entries, last_entry_date
+from .meals import count_meals
+from .meals import last_entry_date as last_meal_date
+from .meals import streak_days as meal_streak_days
+from .modules import MODULE_DIET, MODULE_PSYCHOTHERAPY
 from .reports import build_weekly_reports
 
 
-def _care(patient):
+def _care(specjalist):
     """Who is treating this patient, or None when nobody is assigned yet.
 
-    `patient.specjalist` is nullable (SET_NULL), and an unassigned patient is a
+    Takes the `specjalist` row the caller resolved rather than a patient,
+    because since migration 0022 "who treats this patient" is a question that
+    needs a *module*: the relationship lives in `specjalist_patient` and
+    `core/specialist.care_for` is what answers it. An unassigned patient is a
     perfectly ordinary state — an account can be registered before the first
-    appointment. None rather than a row of blanks, so the screen can say so in
+    appointment — and None rather than a row of blanks lets the screen say so in
     words instead of drawing an empty card.
 
     WHAT THE COLUMNS ACTUALLY ARE. The frontend's `CareDetails` was written
@@ -42,7 +49,6 @@ def _care(patient):
     so treat a difference there as a schema question rather than a mapping bug.
     There is no phone column anywhere; see the note on `phone` below.
     """
-    specjalist = patient.specjalist
     if specjalist is None:
         return None
 
@@ -68,20 +74,54 @@ def _care(patient):
     }
 
 
-def build_account_profile(patient):
+def build_account_profile(patient, module=MODULE_PSYCHOTHERAPY):
     """The profile screen's own data, as JSON-ready primitives.
 
     Takes the `Patient` row rather than a UUID, because unlike every other
     aggregation in this project it needs the user_db half too. The caller has
     already resolved it from the session (`_require_patient`), so there is no
     patient id in the URL here either.
+
+    `module` decides *which* specialist the care card names, and it defaults to
+    the psychotherapy one because this endpoint is that screen's — §13's diet
+    profile draws its own card, for its own specialist, and asks for it with the
+    module named. Before 0022 there was one column and therefore one answer; the
+    card that said "Specjalista" could not say which.
+
+    The import is local to dodge a cycle: `core/specialist.py` reads this
+    module's activity builders, and this needs its `care_for`. The two genuinely
+    depend on each other — one is "what a patient's figures are", the other "who
+    may see them" — and a local import is the smaller of the two fixes.
     """
+    from .specialist import care_for
+
     return {
         'activity': {
             'entry_count': count_entries(patient.id_medical),
             'streak_days': streak_days(patient.id_medical),
         },
-        'care': _care(patient),
+        'care': _care(care_for(patient, module)),
+    }
+
+
+def build_diet_account_profile(patient):
+    """§13's profile screen: the diet module's counters and its own care card.
+
+    ITS OWN FUNCTION RATHER THAN A MODULE ARGUMENT ON THE ONE ABOVE, because the
+    two screens do not summarise the same thing. `/profile` counts diary entries
+    and a psychotherapy streak; §13 counts meals and the food diary's streak,
+    and its "Specjalista" card names the psychodietitian. Sharing the shape
+    while differing in every value is what a second function is for.
+
+    The care card is the part that could not exist before migration 0022: with
+    one `id_specjalist` column, both profile screens named the same person, and
+    §13 draws two cards told apart by a coloured dot.
+    """
+    from .specialist import care_for
+
+    return {
+        'activity': build_child_diet_activity(patient),
+        'care': _care(care_for(patient, MODULE_DIET)),
     }
 
 
@@ -102,6 +142,46 @@ def build_account_profile(patient):
 #: and ask. Content is a clinical decision nobody has made yet, and the day it is
 #: made this is the list to change.
 CHILD_SUMMARY_FIELDS = ('entry_count', 'streak_days', 'last_entry_date')
+
+#: The same three, read off the **diet** module's diary instead.
+#:
+#: WHY A SECOND SET RATHER THAN ONE BIGGER NUMBER. A patient writes in two
+#: modules and the app counts them apart everywhere else — `meals.streak_days`
+#: says so in its own docstring, and `diet_reports` counts a week from the first
+#: entry while `reports` counts Mondays. Adding a meal to the psychotherapy
+#: counter would invent a third meaning of "wpis" that no screen in the app uses,
+#: and it would be invisible: a guardian reading "12 wpisów" could not tell
+#: whether their child is keeping a diary, a food diary, or half of each.
+#:
+#: WHY IT WAS MISSING, which is the bug this closes rather than a feature. The
+#: card read `diary` and nothing else, so a minor who uses only the diet module —
+#: which is the whole point of having two — showed up to their guardian as "0
+#: wpisów", i.e. as an account nobody touches. That is the one wrong answer this
+#: screen can give: it is read to notice that a child has stopped.
+#:
+#: THE SAME LINE HOLDS. Engagement, never content: how many meals, whether a run
+#: is going, when the last one was. Not what was eaten, not the photo, not the
+#: description, and none of the emotions picked beside it — those are health data
+#: a minor writes about themselves, and the argument above CHILD_SUMMARY_FIELDS
+#: applies to a food diary at least as strongly (the client's own reason for it
+#: was eating disorders).
+#:
+#: NOT AN ATTENTION MARKER. There is deliberately no diet equivalent of
+#: CHILD_ATTENTION_FIELD below: the threshold there is the client's number for a
+#: thing she defined (risky behaviour, three days), and nothing in the diet
+#: module has been given that treatment. Inventing one here would be the app
+#: deciding on its own what a worrying week of eating looks like, and telling a
+#: parent about it.
+#:
+#: WHAT COUNTS AS AN ENTRY HERE IS MEALS, and that is a choice worth knowing
+#: about: the module has four diaries (meals, water, activity, sleep) and
+#: `diet_reports.first_entry_date` takes the earliest of all four. This counter
+#: takes meals alone, because "dzienniczek żywieniowy" is what §07 calls the
+#: thing a day of meals is, and a glass of water is not an entry in it. A child
+#: who only logs water therefore still reads as quiet here; if that turns out to
+#: matter, the fix is a fourth figure rather than a sum, because a total mixing
+#: meals with glasses would be a number with no screen behind it.
+DIET_CHILD_SUMMARY_FIELDS = ('entry_count', 'streak_days', 'last_entry_date')
 
 #: How many flagged days in one weekly report put an attention marker on the
 #: child's card. Client's number.
@@ -159,6 +239,38 @@ def build_child_activity(patient):
     }
 
 
+def build_child_diet_activity(patient, today=None):
+    """The same shape as above, off the food diary. See DIET_CHILD_SUMMARY_FIELDS.
+
+    Deliberately the same three keys rather than `meal_count`: the guardian's
+    card renders one figure row per module from one function, and two payloads
+    that agree on their shape are two payloads that cannot drift into disagreeing
+    about which one holds the date. What the numbers *mean* is said by the label
+    beside them on the screen ("posiłków"), which is where a person reads it.
+
+    None for a link with no `patient` row behind it, exactly like the
+    psychotherapy half: zeroes would be a claim about a food diary that does not
+    exist rather than one that is empty.
+
+    `today` is a parameter, defaulted here rather than left to the caller, so
+    this reads like `build_child_activity` above at the call site:
+    `dashboard.streak_days` defaults its own day internally and
+    `meals.streak_days` requires one, and pushing that difference out to
+    `_linked_child` would make one of the two halves of one card look special.
+    It stays on the signature for the same reason `last_report_needs_attention`
+    takes one — a test that fixes the day rather than racing midnight.
+    """
+    if patient is None:
+        return None
+    day = today or timezone.localdate()
+    last = last_meal_date(patient.id_medical)
+    return {
+        'entry_count': count_meals(patient.id_medical),
+        'streak_days': meal_streak_days(patient.id_medical, day),
+        'last_entry_date': None if last is None else last.isoformat(),
+    }
+
+
 def last_report_needs_attention(patient, today=None):
     """Whether this child's newest weekly report flagged enough days to say so.
 
@@ -183,8 +295,9 @@ def build_linked_children(links, patients_by_user):
     child's `patient` row in one query instead of one per child — and so this
     stays a shaping function with no idea who is asking.
 
-    The identity half comes from the child's `user` row and the activity half
-    from medical_db; like `build_account_profile` above, the two only meet here.
+    The identity half comes from the child's `user` row and the activity halves
+    — one per module, `activity` and `diet_activity` — from medical_db; like
+    `build_account_profile` above, the two databases only meet here.
 
     **A CHILD WHOSE CONSENTS ARE WITHDRAWN GETS NO FIGURES.** `HasActiveConsents`
     gates the account making a request, and a guardian is a *second* reader of
@@ -216,6 +329,13 @@ def _linked_child(link, patients_by_user):
         'linked_at': link.accepted_at.isoformat() if link.accepted_at else None,
         'consents_active': active,
         'activity': build_child_activity(patient) if active else None,
+        # The diet module's own figures, under their own key rather than merged
+        # into the one above — see DIET_CHILD_SUMMARY_FIELDS for why a patient
+        # who writes in both modules is counted twice rather than summed. Gated
+        # on the same `active`, and for the same reason: a withdrawn consent
+        # stops the app reading the food diary exactly as it stops it reading the
+        # other one.
+        'diet_activity': build_child_diet_activity(patient) if active else None,
         # Withdrawn consents mean the app has stopped reading this diary at all,
         # so there is nothing to raise a marker from either — the same rule as
         # the figures above, and for a stronger reason: this one is about content.

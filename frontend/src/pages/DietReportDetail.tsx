@@ -6,10 +6,15 @@ import MealEmotions from '../components/MealEmotions'
 import Pagination from '../components/Pagination'
 import ReportRankingBars, { type RankingRow } from '../components/ReportRankingBars'
 import { ApiError } from '../api/client'
-import { fetchDietReport } from '../api/diet'
+import { fetchDietReport, fetchDietReportPdf } from '../api/diet'
+import { saveBlob } from '../api/reports'
 import { usePagination } from '../hooks/usePagination'
 import { dietDayLabel, dietShortDayLabel } from '../utils/dietWeeks'
-import { emotionRatingNote, mealSlotLabel } from '../utils/dietReport'
+import {
+  dietReportPdfFileName,
+  emotionRatingNote,
+  mealSlotLabel,
+} from '../utils/dietReport'
 import { EMOTION_COLORS } from '../utils/emotions'
 import { mealsGenitive, pluralMeals } from '../utils/meals'
 import { formatGlasses, pluralGlasses, weekdayLabel } from '../utils/drinks'
@@ -67,15 +72,15 @@ import './dietReport.css'
  * entry counts week to week would be a verdict on regularity, which this module
  * does not pass.
  *
- * TODO(backend): "Pobierz PDF", which the artboard puts at the foot of this
- * screen. In the psychotherapy module the file is rendered by the server
+ * "Pobierz PDF" is built: the endpoint exists now (`fetchDietReportPdf`), the
+ * file is rendered by the server the way the psychotherapy one is
  * (`core/report_pdf.py`, ReportLab, its own throttle) and fetched with the
- * session cookie; there is no such renderer for this module. A button that did
- * nothing, or that produced something the browser drew itself and called the
- * report, is worse than no button. It goes below the footer note when the
- * endpoint exists.
+ * session cookie. Both readers of this view get it — the patient here and the
+ * specialist through pages/SpecialistPatientDietReport.tsx — and it is drawn
+ * only when an `onDownload` is handed in, as a button rather than a link,
+ * because it saves a file rather than going anywhere.
  *
- * **WHEN IT DOES, IT RENDERS ALL SEVEN DAYS.** "Zestawienie tygodnia" pages one
+ * **IT RENDERS ALL SEVEN DAYS.** "Zestawienie tygodnia" pages one
  * day at a time below, and that is a property of *this screen* rather than of
  * the document: a report is a week, and a PDF holding whichever day the reader
  * happened to be on would be a file that means something different every time
@@ -380,9 +385,12 @@ function DaySummary({ day }: { day: DietReportDay }) {
 }
 
 const LOAD_ERROR = 'Nie udało się wczytać raportu.'
+const PDF_ERROR = 'Nie udało się pobrać raportu. Spróbuj ponownie.'
 
 function DietReportDetail() {
   const { id } = useParams<{ id: string }>()
+  const [downloading, setDownloading] = useState(false)
+  const [pdfError, setPdfError] = useState<string | null>(null)
   const [report, setReport] = useState<DietWeeklyReport | null>(null)
   /** Initialised from whether there is anything to load, rather than set to
    *  false inside the effect: a route with no `:id` never fetches, and starting
@@ -470,10 +478,57 @@ function DietReportDetail() {
     )
   }
 
-  return <ReportBody report={report} />
+  async function downloadPdf(current: DietWeeklyReport) {
+    setDownloading(true)
+    setPdfError(null)
+    try {
+      saveBlob(await fetchDietReportPdf(current.id), dietReportPdfFileName(current))
+    } catch (cause: unknown) {
+      setPdfError((cause instanceof ApiError && cause.formMessage) || PDF_ERROR)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <DietReportBody
+      report={report}
+      onDownload={() => void downloadPdf(report)}
+      downloading={downloading}
+      downloadError={pdfError}
+    />
+  )
 }
 
-function ReportBody({ report }: { report: DietWeeklyReport }) {
+/**
+ * The report itself, without the screen around it.
+ *
+ * **EXPORTED SO THE SPECIALIST'S COPY IS THE SAME DOCUMENT**, not a second one
+ * that can drift: `pages/SpecialistPatientDietReport.tsx` renders this with a
+ * different way back and the patient's name in the header. The rule is the one
+ * the psychotherapy module already follows — two people in a consulting room
+ * must not be holding different papers — and the only way to keep it is for
+ * there to be one implementation.
+ *
+ * `backTo` and `subtitle` are the whole of the difference. `onDownload` is
+ * optional because the two screens fetch the file from different URLs (a
+ * patient's own report, or one of their specialist's patients').
+ */
+export function DietReportBody({
+  report,
+  backTo = ROUTES.dietReports,
+  subtitle,
+  onDownload,
+  downloading = false,
+  downloadError,
+}: {
+  report: DietWeeklyReport
+  backTo?: string
+  subtitle?: string | null
+  onDownload?: () => void
+  downloading?: boolean
+  downloadError?: string | null
+}) {
   const { mealGrid } = report
 
   /**
@@ -505,20 +560,37 @@ function ReportBody({ report }: { report: DietWeeklyReport }) {
   return (
     <div className="diet-report-page">
       <header className="diet-report-header">
-        <Link
-          className="diet-report-back"
-          to={ROUTES.dietReports}
-          aria-label="Wróć do raportów"
-        >
+        <Link className="diet-report-back" to={backTo} aria-label="Wróć do raportów">
           ←
         </Link>
         <div className="diet-report-header-titles">
           <p className="diet-report-module-label">DIETETYKA I PSYCHODIETETYKA</p>
           <h1>Raport tygodniowy</h1>
           <p className="diet-report-range">{report.rangeLabel}</p>
+          {/* Whose week it is — drawn only on the specialist's copy, where the
+              reader is not the subject. */}
+          {subtitle && <p className="diet-report-subtitle">{subtitle}</p>}
         </div>
         <HeaderMenu />
       </header>
+
+      {onDownload && (
+        <div className="diet-report-download">
+          <button
+            type="button"
+            className="diet-report-download-button"
+            onClick={onDownload}
+            disabled={downloading}
+          >
+            {downloading ? 'Przygotowywanie…' : 'Pobierz PDF'}
+          </button>
+          {downloadError && (
+            <p className="diet-report-download-error" role="alert">
+              {downloadError}
+            </p>
+          )}
+        </div>
+      )}
 
       <section className="diet-report-card" aria-labelledby="diet-report-days-heading">
         <h2 id="diet-report-days-heading">Regularność wpisów</h2>

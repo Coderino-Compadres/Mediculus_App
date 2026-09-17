@@ -21,7 +21,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.authentication import SESSION_USER_KEY
-from core.models import ParentChild, ParentInvitation, Patient, Specjalist, User, UserRole
+from core.models import (ParentChild, ParentInvitation, Patient, Specjalist,
+                         SpecjalistPatient, User, UserRole)
+from core.modules import MODULE_PSYCHOTHERAPY
 from core.parent_invitations import (INVITATION_TTL_DAYS, generate_code,
                                      normalize_code)
 from core.serializers import ACCOUNT_TYPE_PARENT
@@ -58,10 +60,14 @@ class ParentInvitationTestCase(TestCase):
             user=self.make_user(email, role='specjalista'), specjalization='DBT',
         )
 
-    def assign(self, specjalist, patient):
-        patient.specjalist = specjalist
-        patient.specjalist_accepted_at = timezone.now()
-        patient.save(update_fields=['specjalist', 'specjalist_accepted_at'])
+    def assign(self, specjalist, patient, module=MODULE_PSYCHOTHERAPY):
+        """An accepted relationship. A guardian code needs one in *any* module —
+        see `core.specialist.treated_patient` — so the module here is only the
+        ordinary default."""
+        SpecjalistPatient.objects.create(
+            specjalist=specjalist, patient=patient, module=module,
+            accepted_at=timezone.now(),
+        )
         return patient
 
     def sign_in(self, user):
@@ -332,8 +338,9 @@ class IssueRulesTests(ParentInvitationTestCase):
 
     def test_not_for_a_patient_who_only_has_a_pending_invitation(self):
         asked = self.make_patient(email='pytany@example.com')
-        asked.specjalist_pending = self.specjalist
-        asked.save(update_fields=['specjalist_pending'])
+        SpecjalistPatient.objects.create(
+            specjalist=self.specjalist, patient=asked, module=MODULE_PSYCHOTHERAPY,
+        )
 
         response = self.issue(patient=asked)
 
@@ -474,13 +481,19 @@ class DeadlockTests(ParentInvitationTestCase):
         self.sign_in(self.specjalist.user)
         invited = self.client.post(
             reverse('core:specialist-patients'),
-            {'patient_email': self.unlinked.user.email}, format='json',
+            {
+                'patient_email': self.unlinked.user.email,
+                'module': MODULE_PSYCHOTHERAPY,
+            },
+            format='json',
         )
         self.assertEqual(invited.status_code, 201, invited.data)
 
         # 3. The child accepts — the step the gate would otherwise refuse.
         self.sign_in_child()
-        accepted = self.client.post(reverse('core:specialist-invitation-accept'))
+        invitation = SpecjalistPatient.objects.get(patient=self.unlinked)
+        accepted = self.client.post(
+            reverse('core:specialist-invitation-accept', args=[invitation.pk]))
         self.assertEqual(accepted.status_code, 200)
         # Still blocked: accepting a specialist is not a guardian's consent.
         self.assertEqual(self.client.get(reverse('core:diary-history')).status_code, 403)

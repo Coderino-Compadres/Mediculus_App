@@ -29,6 +29,38 @@ NIGHT = 'night'
 TIMES_OF_DAY = (MORNING, NOON, EVENING, NIGHT)
 
 #: `choices` for the model field. Value and label are the same string on purpose:
-#: Django wants a label, the Polish one is the frontend's, and 'Morning' (which
-#: is what Django would invent) would be a third wording nobody asked for.
+#: Django wants a label, the Polish one is below, and 'Morning' (which is what
+#: Django would invent) would be a third wording nobody asked for.
 TIME_OF_DAY_CHOICES = tuple((value, value) for value in TIMES_OF_DAY)
+
+#: The Polish names, which this file did **not** hold until the diet report grew
+#: a PDF.
+#:
+#: WHY THEY ARE HERE NOW, because the arrangement was deliberate and the reason
+#: it changed matters. The four keys travel on the wire and the browser prints
+#: them, so `frontend/src/utils/timeOfDay.ts` was the one place the Polish
+#: existed and a second copy here could only drift. Then §10's report became a
+#: document: `core/diet_report_pdf.py` lays out the "Pory posiłków" table on the
+#: server, and its column headings are these four words. A PDF whose columns read
+#: "morning / noon" is not a smaller problem than a duplicated string.
+#:
+#: So the duplication is accepted and *pinned* instead, exactly as `emotions.py`
+#: is: `test_time_of_day.py` reads the TypeScript and asserts the two agree
+#: label for label. The rule is unchanged where it still applies — the wire
+#: carries the key, never the label, and `DiaryEntrySerializer` refuses 'Rano'.
+TIME_OF_DAY_LABELS = {
+    MORNING: 'Rano',
+    NOON: 'Południe',
+    EVENING: 'Wieczór',
+    NIGHT: 'Noc',
+}
+
+
+def time_of_day_label(value):
+    """The Polish name of one part of the day, or the raw value for an unknown.
+
+    Falling back rather than raising: this is display text in a document, and a
+    value nothing recognises should show up on the page to be noticed, not turn
+    a specialist's download into a 500.
+    """
+    return TIME_OF_DAY_LABELS.get(value, value)

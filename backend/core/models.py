@@ -3,6 +3,7 @@ import uuid
 from django.db import models
 
 from .drinks import DRINKS, WATER
+from .modules import MODULES
 from .technique_vocabulary import AVAILABILITY_GENERAL
 from .time_of_day import TIME_OF_DAY_CHOICES
 
@@ -91,25 +92,18 @@ class Patient(models.Model):
         related_name='patient_profile',
     )
     id_medical = models.UUIDField(unique=True, default=uuid.uuid4, editable=False)
-    specjalist = models.ForeignKey(
-        Specjalist, db_column='id_specjalist', on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='patients',
-    )
-    # The specialist who has *asked* to take this patient on, and the moment the
-    # patient said yes to the one above. Two columns rather than a second table,
-    # because `id_specjalist` is a single FK: this schema gives a patient one
-    # treating specialist, so an invitation is one slot too.
+    # WHO TREATS THIS PATIENT IS NOT A COLUMN HERE ANY MORE. It was three of
+    # them -- `id_specjalist`, `id_specjalist_pending`, `specjalist_accepted_at`
+    # -- and migration 0020 moved every one into `specjalist_patient`, which is
+    # the model below.
     #
-    # `id_specjalist_pending` set is a request nobody has answered; accepting
-    # moves it into `id_specjalist` and stamps `specjalist_accepted_at`, and
-    # refusing clears it -- the same shape as `parent_child.accepted_at`, and for
-    # the same reason (see 0011). The state therefore lives in exactly one place
-    # per phase: pending in one column, accepted in the other two.
-    specjalist_pending = models.ForeignKey(
-        Specjalist, db_column='id_specjalist_pending', on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='pending_patients',
-    )
-    specjalist_accepted_at = models.DateTimeField(null=True, blank=True)
+    # The reason is the second module. A single FK gives a patient one treating
+    # specialist, so a patient seeing a psychotherapist *and* a psychodietitian
+    # could not be expressed -- and worse, the two quietly collided: accepting a
+    # dietitian's invitation overwrote `id_specjalist`, and the psychotherapist
+    # lost the reports of a patient who had never been asked about that. The
+    # client's own rule speaks of "the specialists treating the patient" in the
+    # plural; this table is that plural.
     is_child = models.BooleanField(null=True, blank=True)
     # Where this patient's *diet* weeks are counted from -- the day of their
     # first entry in that module, and rarely a Monday.
@@ -140,6 +134,99 @@ class Patient(models.Model):
 
     def __str__(self):
         return str(self.user_id)
+
+
+class SpecjalistPatient(models.Model):
+    """One specialist treating one patient **in one module** — or asking to.
+
+    THE TABLE THAT REPLACED THREE COLUMNS ON `patient` (migration 0020), and the
+    second module is why. `patient.id_specjalist` was a single foreign key, so
+    the schema could hold one treating specialist per patient; the app has two
+    modules, the client describes "the specialists treating the patient" in the
+    plural, and §13 of the diet mockups draws two cards told apart by a coloured
+    dot. Worse than missing, the old shape was *lossy*: accepting a dietitian's
+    invitation wrote over `id_specjalist`, and the psychotherapist lost their
+    patient's reports without either of them being asked.
+
+    THE STATE IS THE ROW, exactly as in `parent_child` above: `accepted_at` NULL
+    is an invitation nobody has answered, set is the moment the patient agreed.
+    A refusal deletes the row rather than writing a third state, for the reason
+    0007 gives — a stored "no" is a state nothing in the app can act on, while an
+    absent row simply lets the specialist ask again after talking to them.
+
+    `module` says which half of the app the relationship is about, and it is what
+    decides which reports the specialist may open (`core/specialist.py`). A
+    psychodietitian reads the diet reports of their own patients and nothing
+    else: the psychotherapy report carries moods, risky-behaviour notes and the
+    safety plan, which a patient agreed to share with somebody else.
+
+    ONE PERSON CAN HOLD BOTH, which the second constraint below allows on
+    purpose: a specialist who genuinely treats somebody in both modules gets two
+    rows, and that is a different claim from one row meaning "everything".
+    """
+
+    id_specjalist_patient = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False,
+    )
+    specjalist = models.ForeignKey(
+        Specjalist, db_column='id_specjalist', on_delete=models.CASCADE,
+        related_name='patient_links',
+    )
+    # To `patient` rather than to `user`, unlike `parent_child`: this is a
+    # clinical relationship and only a patient can be on this side of it, so the
+    # foreign key says so instead of leaving it to application code. (A guardian
+    # is linked to a `user` because the adult on the other side of that link has
+    # no `patient` row at all.)
+    patient = models.ForeignKey(
+        Patient, db_column='id_user', on_delete=models.CASCADE,
+        related_name='specjalist_links',
+    )
+    # One of core.modules.MODULES. TextField like every other vocabulary column
+    # in this schema (`diet_meal.kind`, `technique.school`): the serializer
+    # constrains the value, so a length limit here would only be a second thing
+    # to keep in step with database_setup.sql.
+    module = models.TextField()
+    # NULL while the patient has not answered. Stored as the moment of the
+    # decision rather than as a boolean, the same reason `parent_child` and the
+    # consent columns on `user` do: RODO art. 7(1) puts the burden of proving
+    # consent on us, and "yes" without a date proves nothing.
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'specjalist_patient'
+        indexes = [
+            models.Index(
+                fields=['patient', 'module'], name='idx_specjalist_patient_module',
+            ),
+        ]
+        constraints = [
+            # One row per (specialist, patient, module): asking twice is the same
+            # request arriving twice, not a second invitation.
+            models.UniqueConstraint(
+                fields=['specjalist', 'patient', 'module'],
+                name='uniq_specjalist_patient_module',
+            ),
+            # AND ONE ACCEPTED SPECIALIST PER MODULE, which is the rule the old
+            # single FK enforced by accident and the one thing worth keeping from
+            # it: "kto Cię prowadzi" has one answer per module. Pending rows are
+            # exempt (the condition), so two specialists may have asked at once
+            # and the patient picks — accepting one drops the other's link, which
+            # `core/specialist.py` does in the open rather than leaving a row the
+            # database would refuse.
+            models.UniqueConstraint(
+                fields=['patient', 'module'],
+                condition=models.Q(accepted_at__isnull=False),
+                name='uniq_patient_module_accepted',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(module__in=MODULES),
+                name='specjalist_patient_module_known',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.specjalist_id} -> {self.patient_id} ({self.module})'
 
 
 class ParentChild(models.Model):

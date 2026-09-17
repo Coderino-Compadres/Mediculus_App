@@ -10,10 +10,22 @@ import {
   type SpecialistPatient,
 } from '../api/specialist'
 import { usePagination } from '../hooks/usePagination'
+import { entriesNoun } from '../utils/analysis'
 import { entryDateLabel, lastEntryLabel, showsStreak } from '../utils/children'
+import { mealsNoun } from '../utils/meals'
+import {
+  MODULES,
+  MODULE_DIET,
+  moduleLabel,
+  moduleShortLabel,
+  type AppModule,
+} from '../utils/modules'
 import { patientLabel } from '../utils/specialist'
 import { pluralDays } from '../utils/reports'
-import { specialistPatientReportsPath } from '../routes'
+import {
+  specialistPatientDietReportsPath,
+  specialistPatientReportsPath,
+} from '../routes'
 import '../styles/panel.css'
 import './specialistPatients.css'
 
@@ -48,6 +60,41 @@ import './specialistPatients.css'
  * to go round — paginating both would have the two lists turning each other's
  * pages.
  */
+
+/**
+ * A row addresses a patient **in a module**, so that pair is its identity.
+ *
+ * Not `patient.id` on its own any more: one person treated in both modules is
+ * two rows, and a key that ignored the module would have React reusing one
+ * card for both — and, worse, "Zakończ opiekę" on one of them confirming on the
+ * other.
+ */
+function relationshipKey(patient: SpecialistPatient): string {
+  return `${patient.id}:${patient.module}`
+}
+
+/** Where this row's reports live — the module decides, as it does on the API. */
+function reportsPath(patient: SpecialistPatient): string {
+  return patient.module === MODULE_DIET
+    ? specialistPatientDietReportsPath(patient.id)
+    : specialistPatientReportsPath(patient.id)
+}
+
+/**
+ * What this module's diary counts, in words.
+ *
+ * A psychodietitian's row says "8 posiłków" and a psychotherapist's "12 wpisów",
+ * because those are the two diaries and the figures follow the relationship
+ * (see `_ACTIVITY_BUILDERS` in core/specialist.py). One label for both would be
+ * wrong on one of them.
+ */
+function entryNoun(module: AppModule, count: number): string {
+  return module === MODULE_DIET ? mealsNoun(count) : entriesNoun(count)
+}
+
+function lastEntryNoun(module: AppModule): string {
+  return module === MODULE_DIET ? 'ostatni posiłek' : 'ostatni wpis'
+}
 
 const LOAD_ERROR = 'Nie udało się wczytać listy pacjentów.'
 const INVITE_ERROR = 'Nie udało się wysłać zaproszenia. Spróbuj ponownie.'
@@ -89,6 +136,13 @@ function PatientCard({
         {patient.isChild === true && (
           <p className="caseload-card-tag">Pacjent małoletni</p>
         )}
+        {/* WHICH RELATIONSHIP THIS ROW IS, and it carries a word rather than a
+            colour: §13 tells the two specialists apart with a coloured dot, and
+            a dot alone says nothing to a screen reader and nothing at all to
+            somebody who has not been told what the colours mean. */}
+        <p className={`caseload-card-module caseload-card-module-${patient.module}`}>
+          {moduleShortLabel(patient.module)}
+        </p>
       </header>
 
       {/* Said, not left as a blank row. A specialist who saw an empty card would
@@ -107,7 +161,7 @@ function PatientCard({
         <div className="caseload-figures panel-figures">
           <Figure
             value={String(activity.entryCount)}
-            label={activity.entryCount === 1 ? 'wpis' : 'wpisów'}
+            label={entryNoun(patient.module, activity.entryCount)}
           />
           {showsStreak(activity.streakDays) && (
             <Figure
@@ -117,7 +171,7 @@ function PatientCard({
           )}
           <Figure
             value={lastEntryLabel(activity.lastEntryDate, new Date()) ?? '—'}
-            label="ostatni wpis"
+            label={lastEntryNoun(patient.module)}
             title={entryDateLabel(activity.lastEntryDate) ?? undefined}
           />
         </div>
@@ -131,7 +185,7 @@ function PatientCard({
 
       <div className="caseload-card-actions">
         {patient.consentsActive ? (
-          <Link className="panel-link" to={specialistPatientReportsPath(patient.id)}>
+          <Link className="panel-link" to={reportsPath(patient)}>
             Raporty tygodniowe →
           </Link>
         ) : (
@@ -146,8 +200,8 @@ function PatientCard({
         {confirming ? (
           <span className="caseload-card-confirm">
             <span className="caseload-card-confirm-question">
-              Zakończyć opiekę nad {patientLabel(patient)}? Pacjent nie może tego
-              cofnąć sam.
+              Zakończyć opiekę nad {patientLabel(patient)} w module{' '}
+              {moduleLabel(patient.module)}? Pacjent nie może tego cofnąć sam.
             </span>
             <button
               type="button"
@@ -176,6 +230,11 @@ function SpecialistPatients() {
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const [email, setEmail] = useState('')
+  // Which module the invitation is for. No default that means "the usual one":
+  // the psychotherapy module is the one carrying risky-behaviour notes, so a
+  // pre-selected value would make the question easy to miss. The form stays
+  // disabled until it is answered.
+  const [module, setModule] = useState<AppModule | ''>('')
   const [inviting, setInviting] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [invited, setInvited] = useState<string | null>(null)
@@ -214,12 +273,14 @@ function SpecialistPatients() {
     setInviteError(null)
     setInvited(null)
     try {
-      setCaseload(await invitePatient(email.trim()))
+      if (module === '') return
+      setCaseload(await invitePatient(email.trim(), module))
       // Not "na stronie głównej": a minor waiting for a guardian is redirected
       // away from /home, and answers on /link-guardian instead. Naming a screen
       // the patient may never see would send the specialist looking for it.
       setInvited(
-        `Zaproszenie wysłane na ${email.trim()}. Pacjent zobaczy je po zalogowaniu i sam decyduje.`,
+        `Zaproszenie do modułu ${moduleLabel(module)} wysłane na ${email.trim()}. ` +
+          'Pacjent zobaczy je po zalogowaniu i sam decyduje.',
       )
       setEmail('')
     } catch (cause: unknown) {
@@ -234,10 +295,10 @@ function SpecialistPatients() {
   }
 
   async function drop(patient: SpecialistPatient) {
-    setBusyId(patient.id)
+    setBusyId(relationshipKey(patient))
     setActionError(null)
     try {
-      setCaseload(await dropPatient(patient.id))
+      setCaseload(await dropPatient(patient.id, patient.module))
     } catch (cause: unknown) {
       setActionError(
         cause instanceof ApiError && cause.status === 404
@@ -287,11 +348,11 @@ function SpecialistPatients() {
 
           {pages.items.map((patient) => (
             <PatientCard
-              key={patient.id}
+              key={relationshipKey(patient)}
               patient={patient}
-              busy={busyId === patient.id}
-              confirming={confirmingId === patient.id}
-              onAskToDrop={() => setConfirmingId(patient.id)}
+              busy={busyId === relationshipKey(patient)}
+              confirming={confirmingId === relationshipKey(patient)}
+              onAskToDrop={() => setConfirmingId(relationshipKey(patient))}
               onCancelDrop={() => setConfirmingId(null)}
               onDrop={() => void drop(patient)}
             />
@@ -318,13 +379,21 @@ function SpecialistPatients() {
                 czasu nie widzisz żadnych jego danych.
               </p>
               {caseload.pending.map((patient) => (
-                <div key={patient.id} className="caseload-pending-row">
-                  <span>{patientLabel(patient)}</span>
+                <div key={relationshipKey(patient)} className="caseload-pending-row">
+                  <span>
+                    {patientLabel(patient)}
+                    {/* Which module was asked about: two invitations to one
+                        person are two different questions. */}
+                    <span className="caseload-pending-module">
+                      {' · '}
+                      {moduleShortLabel(patient.module)}
+                    </span>
+                  </span>
                   <button
                     type="button"
                     className="panel-button-quiet"
                     onClick={() => void drop(patient)}
-                    disabled={busyId === patient.id}
+                    disabled={busyId === relationshipKey(patient)}
                   >
                     Anuluj
                   </button>
@@ -343,6 +412,24 @@ function SpecialistPatients() {
 
       <form className="caseload-invite panel-card" onSubmit={(event) => void invite(event)} noValidate>
         <h3 className="caseload-invite-heading">Zaproś pacjenta</h3>
+        {/* A radio group rather than a select: two options, and the choice
+            decides which diary this specialist will be able to read — it
+            belongs on the screen rather than behind a tap. */}
+        <fieldset className="caseload-invite-module">
+          <legend>Moduł, w którym prowadzisz pacjenta</legend>
+          {MODULES.map((value) => (
+            <label key={value} className="caseload-invite-module-option">
+              <input
+                type="radio"
+                name="module"
+                value={value}
+                checked={module === value}
+                onChange={() => setModule(value)}
+              />
+              {moduleLabel(value)}
+            </label>
+          ))}
+        </fieldset>
         <label htmlFor="caseload-invite-email">Adres e-mail pacjenta</label>
         <div className="caseload-invite-row">
           <input
@@ -358,7 +445,7 @@ function SpecialistPatients() {
           <button
             type="submit"
             className="panel-button"
-            disabled={inviting || email.trim() === ''}
+            disabled={inviting || email.trim() === '' || module === ''}
           >
             {inviting ? 'Wysyłanie…' : 'Zaproś'}
           </button>
@@ -374,8 +461,9 @@ function SpecialistPatients() {
           </p>
         )}
         <p className="caseload-invite-note panel-note">
-          Pacjent decyduje sam. Po potwierdzeniu widzisz jego raporty tygodniowe —
-          nie widzisz treści dzienniczka.
+          Pacjent decyduje sam. Po potwierdzeniu widzisz jego raporty tygodniowe
+          z wybranego modułu — nie widzisz treści dzienniczka ani raportów
+          z drugiego modułu.
         </p>
       </form>
     </section>
