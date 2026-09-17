@@ -6,6 +6,7 @@ import {
   ROUTES,
   ROUTE_TITLES,
   dietReportDetailPath,
+  dietTechniqueDetailPath,
   journalDetailPath,
   reportDetailPath,
   routeTitle,
@@ -97,6 +98,10 @@ describe('the path builders', () => {
     expect(dietReportDetailPath('week-2026-09-01')).toBe('/diet/reports/week-2026-09-01')
   })
 
+  it('fill in a psychodietetic technique slug', () => {
+    expect(dietTechniqueDetailPath('technika-1')).toBe('/diet/techniques/technika-1')
+  })
+
   it('fill in both params of a specialist reading one patient', () => {
     expect(specialistPatientReportsPath('p-1')).toBe('/specialist/patients/p-1/reports')
     expect(specialistPatientReportPath('p-1', 'week-2026-08-03'))
@@ -116,6 +121,7 @@ describe('the path builders', () => {
       reportDetailPath('week-2026-08-03'),
       dietReportDetailPath('week-2026-09-01'),
       techniqueDetailPath('tipp'),
+      dietTechniqueDetailPath('technika-1'),
       specialistPatientReportsPath('p'),
       specialistPatientReportPath('p', 'w'),
       specialistTechniqueEditPath(1),
@@ -131,6 +137,9 @@ describe('the path builders', () => {
       matchPath(ROUTES.dietReportDetail, dietReportDetailPath('week-2026-09-01')),
     ).not.toBeNull()
     expect(matchPath(ROUTES.techniqueDetail, techniqueDetailPath('tipp'))).not.toBeNull()
+    expect(
+      matchPath(ROUTES.dietTechniqueDetail, dietTechniqueDetailPath('technika-1')),
+    ).not.toBeNull()
     expect(
       matchPath(ROUTES.specialistPatientReport, specialistPatientReportPath('p-1', 'w-1')),
     ).not.toBeNull()
