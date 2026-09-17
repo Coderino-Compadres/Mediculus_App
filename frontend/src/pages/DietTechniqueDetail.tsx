@@ -2,7 +2,7 @@ import { Link, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import { findDietTechnique } from '../utils/dietTechniques'
 import { PLACEHOLDER_NOTICE_TECHNIQUE } from '../data/dietTechniques'
-import type { DietTechniqueStep } from '../types/dietTechnique'
+import type { DietTechniqueLink, DietTechniqueStep } from '../types/dietTechnique'
 import { ROUTES } from '../routes'
 import './dietTechniques.css'
 
@@ -10,9 +10,9 @@ import './dietTechniques.css'
  * One psychodietetic technique — §12, the detail. Read-only: there is nothing
  * to save here.
  *
- * The text comes from `data/dietTechniques.ts`, which holds placeholders until
- * the foundation writes the content. Read that file's header before editing any
- * of it — in particular before giving a placeholder a plausible name.
+ * The text comes from `data/dietTechniques.ts`, which transcribes the client's
+ * own "Techniki psychodietetyczne" — read that file's header, and the markdown
+ * it points at, before editing a word of it. Her wording is not ours to improve.
  *
  * A TECHNIQUE THAT IS STILL A PLACEHOLDER SAYS SO HERE, not only on the list.
  * This address is what gets copied into a message, and somebody who opens it
@@ -32,6 +32,46 @@ export const DISCLAIMER =
  * repeating the line — a correction to the wording is not a broken screen.
  */
 export const NOT_FOUND = 'Nie znaleziono takiej techniki.'
+
+/** The heading over the links out. Exported so a test can name it once. */
+export const LINKS_HEADING = 'Gdzie to zrobisz w aplikacji'
+
+/**
+ * Where the app already does the thing the technique describes.
+ *
+ * THREE TECHNIQUES OUT OF FIFTEEN HAVE ONE — the food diary, the emotion diary
+ * and self-monitoring. Everything else in this catalogue is done away from the
+ * phone, and a link on those would invite a patient to open a screen instead of
+ * doing the exercise.
+ *
+ * A SECTION OF ITS OWN, AFTER THE EXAMPLE AND BEFORE THE DISCLAIMER, and not a
+ * sentence inside a step. The steps are the client's words and she will send
+ * corrections to them; the routes are ours and change when the app changes.
+ * Keeping them apart means a correction to her text never touches a route, and
+ * a route rename never edits her text — which is also why `odsylacze` is data
+ * on the entry rather than a link written into `opis`.
+ *
+ * Sage, like every other action in the module, and no card: this is a short way
+ * out of a page you have finished reading, not a third block of content.
+ */
+function TechniqueLinks({ links }: { links: DietTechniqueLink[] }) {
+  return (
+    <section className="diet-technique-links" aria-labelledby="diet-technique-links-heading">
+      <h2 id="diet-technique-links-heading">{LINKS_HEADING}</h2>
+      {/* `role="list"` restated for the reason the other two lists here state
+          it: `list-style: none` makes WebKit drop the implicit list role. */}
+      <ul role="list">
+        {links.map((link) => (
+          // The route is the key: a technique never links to the same screen
+          // twice, and unlike the label it is not a sentence somebody rewords.
+          <li key={link.trasa}>
+            <Link to={link.trasa}>{link.etykieta}</Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
 
 function StepList({ steps }: { steps: DietTechniqueStep[] }) {
   return (
@@ -115,13 +155,27 @@ function DietTechniqueDetail() {
               module's ochre, the moment in the neutral one. Ochre is this
               module's "state" colour — the chip you picked, the hour you
               entered — and how long something takes is the nearer of the two to
-              that role. Neither is a verdict and neither is red. */}
-          <p className="diet-technique-chips">
-            <span className="diet-technique-chip diet-technique-chip-time">
-              {technique.czasTrwania}
-            </span>
-            <span className="diet-technique-chip">{technique.momentZastosowania}</span>
-          </p>
+              that role. Neither is a verdict and neither is red.
+
+              A CHIP ONLY FOR A FIELD THAT EXISTS, and no row of chips at all
+              when neither does — which is every technique the client sent, so
+              this is the path that actually runs today rather than a defensive
+              branch. An empty chip is a 5px-by-24px outlined pill under the
+              title: visible, meaningless, and impossible to tell from a chip
+              whose text failed to load. */}
+          {(technique.czasTrwania !== undefined ||
+            technique.momentZastosowania !== undefined) && (
+            <p className="diet-technique-chips">
+              {technique.czasTrwania !== undefined && (
+                <span className="diet-technique-chip diet-technique-chip-time">
+                  {technique.czasTrwania}
+                </span>
+              )}
+              {technique.momentZastosowania !== undefined && (
+                <span className="diet-technique-chip">{technique.momentZastosowania}</span>
+              )}
+            </p>
+          )}
         </div>
         <HeaderMenu />
       </header>
@@ -144,7 +198,56 @@ function DietTechniqueDetail() {
       <section className="diet-techniques-card" aria-labelledby="diet-technique-steps-heading">
         <h2 id="diet-technique-steps-heading">Kroki</h2>
         <StepList steps={technique.kroki} />
+        {/* The sentence the author wrote after her list — inside this card,
+            under the steps, because it is the last thing in her "Jak wykonać"
+            and it comments on the steps above it.
+
+            OUTSIDE THE <ol> ON PURPOSE. As a list item it took a marker, and
+            the two techniques that have one showed exactly what that costs:
+            HALT's circles spelled "H A L T 5", and the food diary numbered a
+            caveat among the seven things to write down.
+
+            WHICH SENTENCES GET TO BE NOTES IS A DATA DECISION AND A CAREFUL
+            ONE — the test is whether a sentence closes a thought or is an
+            instruction, not whether it follows a list. See `notka` in
+            types/dietTechnique.ts; a third technique has the same shape and is
+            deliberately not one.
+
+            SET APART, BUT NOT AS A WARNING. A rule above it and quieter ink —
+            no ochre, no ⓘ. The module's ochre means "this is where the work
+            stands" (the notice about content in preparation, the duration
+            chip) and the icon belongs to the disclaimer at the foot of the
+            screen; either one here would tell a reader to be careful, which is
+            not what "Nie służy on do oceniania ani karania się" says. It closes
+            the thought the steps open. */}
+        {technique.notka !== undefined && (
+          <p className="diet-technique-note">{technique.notka}</p>
+        )}
       </section>
+
+      {/* THE EXAMPLE IS A CARD OF ITS OWN, AFTER THE STEPS. Every one of the
+          client's fifteen techniques ends on a "Przykład: …" paragraph, and it
+          is the most practical part of what she wrote — a worked case rather
+          than an instruction. It is deliberately neither folded into the last
+          step (the `<ol>` would number it, telling a reader to perform it) nor
+          lifted into the introduction (she wrote it to be read after the steps,
+          and moving it up inverts her order). Appears with the field and
+          disappears with it. */}
+      {technique.przyklad !== undefined && (
+        <section className="diet-techniques-card" aria-labelledby="diet-technique-example-heading">
+          <h2 id="diet-technique-example-heading">Przykład</h2>
+          <p className="diet-technique-example">{technique.przyklad}</p>
+        </section>
+      )}
+
+      {/* `?.length` rather than `!== undefined`, unlike the scalar guards above:
+          `odsylacze` is an array, so the type allows a present-but-empty one,
+          and that state would render the "Gdzie to zrobisz w aplikacji" heading
+          over an empty <ul> — the heading over nothing that this screen's tests
+          call worse than no heading at all. The shipped data has no such entry
+          and the data test forbids more than two links, but neither forbids
+          zero. */}
+      {technique.odsylacze?.length ? <TechniqueLinks links={technique.odsylacze} /> : null}
 
       {/* TODO(klientka): this is where "Czy to pomogło?" — the three buttons
           "Pomogło / Trochę / Nie tym razem" — would go. It is left out on
