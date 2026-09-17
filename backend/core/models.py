@@ -501,15 +501,16 @@ class Hydration(models.Model):
     still the only place the boundary itself is decided; nothing here computes
     it.
 
-    `drink` holds one of `core.drinks.DRINKS`, the Polish name as written. Only
-    'Woda' counts towards the daily goal -- everything else is recorded and
-    deliberately not converted, which is the client's rule and not a rounding
-    we have not got round to (see core/drinks.py).
+    `drink` holds the Polish name as written -- one of `core.drinks.DRINKS`, or
+    a name the patient typed. Every drink counts towards the daily goal at the
+    volume recorded, tea and coffee included: the client reversed §08's "nie
+    przeliczane na wodę" on 2026-09-17 (see core/hydration.py, which holds the
+    reasoning). Nothing branches on the name to build a total.
 
-    `amount_ml` is NULL for every drink but water. The mockup's "Inne napoje"
-    card offers a chip and no quantity, so a serving of tea is recorded as
-    having happened and nothing more; inventing 250 ml for it would put a number
-    in a clinical record that nobody entered.
+    `amount_ml` is NULL only on rows written before serving sizes existed;
+    `add_entry` now stores `DEFAULT_SERVING_ML` for a chip tapped without a
+    quantity, so a cup of tea is a glass-sized serving rather than a row with no
+    number. See core/drinks.py on why inventing that default is defensible.
 
     `id_medical` is the same logical, application-level reference `diary` uses:
     this table is in medical_db and `patient` is in user_db, so Postgres

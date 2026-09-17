@@ -12,18 +12,21 @@
  * in the column. These names are short, stable and already the label; a key plus
  * a label map would be two things to keep in step for nothing.
  *
- * THE ONE RULE THAT MATTERS HERE is that only water counts. "Herbata, kawa i
- * napary są zapisywane, ale nie przeliczane na wodę — decyzja merytoryczna
- * zostaje po stronie specjalisty" (§08 of the mockups). So there is no
- * coefficient in this file and there must not be one: `Woda z cytryną` sitting
- * among the others is the client's call, not a rounding nobody got to.
+ * EVERY DRINK COUNTS TOWARDS THE GOAL, at the volume it was drunk. §08 said the
+ * opposite — "Herbata, kawa i napary są zapisywane, ale nie przeliczane na wodę
+ * — decyzja merytoryczna zostaje po stronie specjalisty" — and the client
+ * reversed it on 2026-09-17; `core/hydration.py` holds the reasoning. What must
+ * still never appear here is a per-drink *coefficient*: 250 ml of tea is 250 ml,
+ * not a fraction of a glass. `test_drinks.NoDrinkIsWeightedTests` checks this
+ * file for one.
  */
 
-/** The one drink the daily goal counts. */
+/** Water's own name, and the drink the two serving buttons record. A name only:
+ *  nothing decides what counts by comparing against it. */
 export const WATER = 'Woda'
 
-/** Recorded, listed back, and deliberately never added to the water total.
- *  The order is the order §08 draws the chips in. */
+/** The other chips §08 draws, in the order it draws them. Counted towards the
+ *  goal like water. */
 export const OTHER_DRINKS = [
   'Herbata',
   'Kawa',
@@ -55,11 +58,16 @@ export function formatGlasses(glasses: number): string {
 /**
  * "szklanka / szklanki / szklanek", which Polish needs and English does not.
  *
- * Only whole numbers take the singular and the 2-4 form; a fractional count
- * ("1,6") takes the genitive plural, the same way Polish says "1,5 litra".
+ * A fractional count takes the **genitive singular** — "9,6 szklanki", the same
+ * way Polish says "1,5 litra" and not "1,5 litrów". This used to return the
+ * genitive plural ("9,6 szklanek") while citing "1,5 litra" as its reason, which
+ * is the singular: the comment was right and the code disagreed with it.
+ *
+ * Whole numbers follow the ordinary rule — 1 takes the nominative singular, 2-4
+ * the plural, everything else the genitive plural.
  */
 export function pluralGlasses(glasses: number): string {
-  if (!Number.isInteger(glasses)) return 'szklanek'
+  if (!Number.isInteger(glasses)) return 'szklanki'
   const last = glasses % 10
   const teens = glasses % 100
   if (glasses === 1) return 'szklanka'

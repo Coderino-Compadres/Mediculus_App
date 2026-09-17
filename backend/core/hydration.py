@@ -13,13 +13,21 @@ WHAT §08 OF THE MOCKUPS DECIDES, and what is therefore not open here:
   judgement — the payload is the amount, the goal, and the last seven days.
   `progress` is capped at 1.0 for the bar's sake and the raw `glasses` is sent
   alongside it, so a day over the goal still says what it actually was.
-* **Other drinks are recorded and never converted.** `water_ml` sums only
-  `drink == WATER`; a serving of tea appears in `entries` and in nothing else —
-  now including its size, since every drink may carry one. That filter, in
-  `build_hydration_day` and in `_week`, is the *only* thing keeping the client's
-  rule true: it used to be additionally guaranteed by non-water servings having
-  no amount to add, and that guarantee is gone. Do not compute the total
-  anywhere else.
+* **Every drink counts, water and everything else alike.** `liquid_ml` sums
+  every serving of the day whatever its `drink`, so a cup of tea moves the bar
+  exactly as far as the same volume of water does. The figure is a volume of
+  liquid drunk, which is why it is `liquid_ml` and not `water_ml`, and why the
+  report says "Płyny" rather than "Woda".
+
+  **THIS REVERSES §08 OF THE MOCKUPS**, which said "Herbata, kawa i napary są
+  zapisywane, ale nie przeliczane na wodę — decyzja merytoryczna zostaje po
+  stronie specjalisty", and it is a product decision rather than a refactor: it
+  was taken deliberately (2026-09-17) and the wording here is the record of it,
+  because the old rule is written down in enough places that somebody will
+  otherwise read one of them and "fix" this back. `WATER` survives as a drink
+  *name* — the "+ Szklanka" button still records water — and means nothing to
+  the total any more. Two places compute the figure, `build_hydration_day` and
+  `liquid_by_day`; do not add a third.
 * The screen shows **today**, and today alone, plus a seven-day bar chart. There
   is no history screen for hydration and no way to write into a past day.
 
@@ -63,36 +71,35 @@ class HydrationEntrySerializer(serializers.Serializer):
 
     `drink` defaults to water so the commonest call is `{"amount_ml": 250}`.
 
-    **EVERY DRINK MAY CARRY AN AMOUNT, AND NONE BUT WATER HAS TO.** It used to be
-    the other way round — an amount on anything but water was a 400 — and that
-    refusal was doing two jobs at once. One was real: recording a size for a cup
-    of tea is information a patient may want kept. The other was structural, and
-    is the part that had to be replaced rather than dropped: while nothing but
-    water could carry an amount, no drink could *possibly* reach `water_ml`, so
-    the client's "nie przeliczamy na wodę" rule held by construction. It no
-    longer does. What holds it now is that both places computing the figure
-    filter on `drink == WATER` — `build_hydration_day` and `_week`, and nothing
-    else in this module touches the total. **Those two filters are the whole of
-    the rule**; `test_hydration_api.WaterIsTheOnlyOneCountedTests` is what fails
-    if either is loosened.
+    **EVERY DRINK MAY CARRY AN AMOUNT, AND NONE BUT WATER HAS TO.** An amount on
+    anything but water used to be a 400, and lifting that was what made
+    recording the size of a cup of tea possible at all. It also removed the
+    structure the old "nie przeliczamy na wodę" rule leaned on — with no number
+    on a tea there was nothing that *could* be added — and since that rule is
+    gone too (see the module header), what is left here is the plain reading:
+    an amount is how much was drunk, of whatever it was.
 
     Water still *requires* an amount, because a glass of water of no size moves
-    the one figure this screen exists for by nothing.
+    the one figure this screen exists for by nothing. Every other drink falls
+    back to `DEFAULT_SERVING_ML`, so a chip tapped once is a serving with a size
+    rather than a row the total has to skip.
 
     **`drink` IS FREE TEXT, NOT A `ChoiceField`**, so a patient can record a
-    drink the artboard does not list. It was a closed vocabulary until §08's
-    chips turned out to be the commonest drinks rather than all of them, and
-    opening it is safe for a specific reason: what keeps the client's "nie
-    przeliczamy na wodę" rule true is the **amount** rule below, not the name
-    list. Anything that is not `WATER` may carry no amount, so no name a patient
-    invents can reach `water_ml`, which sums amounts on water alone.
+    drink the artboard does not list — §08's chips turned out to be the
+    commonest drinks rather than all of them. Nothing about the total depends on
+    the name any more: a drink a patient invents counts like any other, which is
+    the point.
 
     A typed name goes through `normalize_drink`, which folds it onto the
     canonical spelling when it matches a chip — otherwise a list would show
-    "herbata" and "Herbata" as two drinks. The one name it refuses is water's
-    own, because this form asks for no amount and water is meaningless without
-    one; the refusal lands under `drink`, the input that produced it, rather
-    than under `amount_ml`, which the custom-drink form does not render.
+    "herbata" and "Herbata" as two drinks. Water's own name is folded like any
+    other: typing "woda" here records exactly what "+ Szklanka" records. The one
+    name refused is the empty one — a blank `drink` means the custom form was
+    submitted with nothing in it, and the refusal lands under `drink`, the input
+    that produced it, rather than under `amount_ml`, which that form does not
+    render. (This paragraph used to say water's name was refused. It was not
+    true after the rule in the module header was reversed; see `validate_drink`
+    below, which has said so all along.)
     """
 
     drink = serializers.CharField(
@@ -139,7 +146,7 @@ def serialize_entry(entry):
     }
 
 
-def glasses_for(water_ml):
+def glasses_for(liquid_ml):
     """Millilitres as glasses, to one decimal.
 
     One decimal rather than a whole number because "Własna ilość" exists: 400 ml
@@ -148,9 +155,9 @@ def glasses_for(water_ml):
 
     Public because `core/diet_reports.py` renders the same figure for a day
     inside a weekly report: a report and the hydration screen must not be able
-    to disagree about how much water Tuesday held.
+    to disagree about how much Tuesday held.
     """
-    return round(water_ml / GLASS_ML, 1)
+    return round(liquid_ml / GLASS_ML, 1)
 
 
 def _week_start(today):
@@ -162,7 +169,7 @@ def build_hydration_day(id_medical, today):
     """Everything `pages/DietHydration.tsx` draws, for one patient's today.
 
     Two queries: today's servings (which the screen lists and can undo) and the
-    water total per day over the last seven (which is the chart). The chart is
+    total per day over the last seven (which is the chart). The chart is
     aggregated in the database rather than by loading a week of rows — nothing
     on screen needs an individual serving from Tuesday.
     """
@@ -170,7 +177,11 @@ def build_hydration_day(id_medical, today):
         Hydration.objects.filter(id_medical=id_medical, entry_date=today)
         .order_by('-created_at', '-id_hydration')
     )
-    water_ml = sum(e.amount_ml or 0 for e in entries)
+    # Every serving, whatever it was: the total is a volume of liquid drunk (see
+    # the module header). `entries` is already exactly that list, because the
+    # screen lists every serving under the bar, so the sum has nothing to
+    # filter out.
+    liquid_ml = sum(e.amount_ml or 0 for e in entries)
 
     return {
         'date': today.isoformat(),
@@ -186,31 +197,31 @@ def build_hydration_day(id_medical, today):
         # input caps itself at what the serializer will accept, rather than the
         # screen holding its own 40 and finding out by a 400.
         'max_drink_name': MAX_DRINK_NAME,
-        'water_ml': water_ml,
-        'glasses': glasses_for(water_ml),
+        'liquid_ml': liquid_ml,
+        'glasses': glasses_for(liquid_ml),
         # Capped for the bar and uncapped in `glasses`: past the goal the bar is
         # simply full, and the day still says what it was.
-        'progress': min(1.0, round(water_ml / (DAILY_TARGET_GLASSES * GLASS_ML), 3)),
+        'progress': min(1.0, round(liquid_ml / (DAILY_TARGET_GLASSES * GLASS_ML), 3)),
         'entries': [serialize_entry(e) for e in entries],
         'week': _week(id_medical, today),
     }
 
 
-def water_by_day(id_medical, start, end):
-    """Water per calendar day over a range, as `{date: millilitres}`.
+def liquid_by_day(id_medical, start, end):
+    """Liquid drunk per calendar day over a range, as `{date: millilitres}`.
 
-    **ONE OF THE TWO PLACES IN THIS MODULE THAT COMPUTE THE WATER FIGURE**, and
-    therefore one of the two that carry the client's "nie przeliczamy na wodę"
-    rule: the `drink=WATER` filter below is the whole of it. Nothing else may
-    sum `amount_ml` — see the module docstring, and
-    `test_hydration_api.WaterIsTheOnlyOneCountedTests`, which is written with
-    litre-sized amounts of tea so a bug that added them would be unmissable
-    rather than a rounding.
+    **ONE OF THE TWO PLACES IN THIS MODULE THAT COMPUTE THE FIGURE**, the other
+    being `build_hydration_day`; nothing else may sum `amount_ml`. There is no
+    `drink` filter and that is the rule rather than an omission — see the module
+    header, and `test_hydration_api.EveryDrinkCountsTests`, which is written
+    with litre-sized amounts of tea so a filter creeping back would be
+    unmissable rather than a rounding.
 
-    Days with no water are **absent** rather than zero, unlike `_week` below.
-    The chart needs seven columns and a missing key would shift its labels; a
-    weekly report needs to tell "nobody wrote it down" from "drank nothing", and
-    an absent key is how it does. `core/diet_reports.py` is the caller.
+    Days with nothing recorded are **absent** rather than zero, unlike `_week`
+    below. The chart needs seven columns and a missing key would shift its
+    labels; a weekly report needs to tell "nobody wrote it down" from "drank
+    nothing", and an absent key is how it does. `core/diet_reports.py` is the
+    caller.
 
     Aggregated in the database rather than by loading the rows: a report spans
     every completed week the patient has, which is a year of servings for an
@@ -221,7 +232,7 @@ def water_by_day(id_medical, start, end):
         for row in (
             Hydration.objects
             .filter(
-                id_medical=id_medical, drink=WATER,
+                id_medical=id_medical,
                 entry_date__gte=start, entry_date__lte=end,
             )
             .values('entry_date')
@@ -233,12 +244,11 @@ def water_by_day(id_medical, start, end):
 def first_entry_date(id_medical):
     """The earliest day this patient recorded any serving on, or None.
 
-    **Any drink, not water alone**, which is the one place this module counts a
-    cup of tea: the question is when the patient started keeping this diary, and
-    somebody whose first act was to log a coffee started then. That also matches
-    `firstEntryDate` in `utils/dietReport.ts`, which filters on `waterMl > 0`
-    only because the seven-day chart is the one shape it has — see
-    `core/diet_reports.py`, which latches the week anchor from this.
+    Any drink, which is no longer the exception it once was here: the question
+    is when the patient started keeping this diary, and somebody whose first act
+    was to log a coffee started then. `firstEntryDate` in `utils/dietReport.ts`
+    reads the same way — see `core/diet_reports.py`, which latches the week
+    anchor from this.
 
     An exact `MIN` rather than a scan, for the reason that module gives: the
     anchor must not depend on how much history happens to be in hand.
@@ -253,23 +263,24 @@ def first_entry_date(id_medical):
 
 
 def _week(id_medical, today):
-    """The last seven days' water, oldest first, with the empty ones present.
+    """The last seven days' totals, oldest first, with the empty ones present.
 
     A day nobody drank on is `0`, not a gap: the chart draws seven columns and a
-    missing key would silently shift the labels. Only water is counted, for the
-    same reason the total is — the client's rule is that other drinks are not
-    converted, and a chart that added them would be doing exactly that.
+    missing key would silently shift the labels. Every drink counts here for the
+    same reason the day's own figure counts them — the chart and the number
+    above it are the same measurement over different spans, and the two
+    disagreeing is the bug this shape exists to prevent.
     """
     start = _week_start(today)
-    totals = water_by_day(id_medical, start, today)
+    totals = liquid_by_day(id_medical, start, today)
     days = []
     for offset in range(WEEK_DAYS):
         day = start + datetime.timedelta(days=offset)
-        water_ml = totals.get(day) or 0
+        liquid_ml = totals.get(day) or 0
         days.append({
             'date': day.isoformat(),
-            'water_ml': water_ml,
-            'glasses': glasses_for(water_ml),
+            'liquid_ml': liquid_ml,
+            'glasses': glasses_for(liquid_ml),
         })
     return days
 
@@ -298,8 +309,9 @@ def add_entry(id_medical, data, today):
         # for water all along — so the two acts now write the same number.
         #
         # BE CLEAR THAT THIS IS A NUMBER NOBODY TYPED. It goes into a clinical
-        # record, and for water it moves the goal bar, so it is the sort of
-        # default this project is otherwise careful not to invent (see the
+        # record and it moves the goal bar — for every drink now, not only for
+        # water — so it is the sort of default this project is otherwise
+        # careful not to invent (see the
         # diary's sliders, which wrote a 0 nobody chose). It is defensible only
         # because a *serving* is the unit the screen is built in and the patient
         # is told: `pages/DietHydration.tsx` says "Bez podanej ilości zapisujemy

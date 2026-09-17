@@ -83,7 +83,7 @@ import datetime
 
 from . import activity as activity_rules
 from . import sleep as sleep_rules
-from .hydration import glasses_for, water_by_day
+from .hydration import glasses_for, liquid_by_day
 from .meals import load_history as load_meal_history
 from .meals import first_entry_date as first_meal_date
 from .reports import EMOTION_ORDER, average_rated, format_week_range
@@ -453,14 +453,14 @@ def build_diet_reports(id_medical, first_entry, today):
     span_end = weeks[0][1]
 
     meals_by_date = {day['date']: day for day in load_meal_history(id_medical)}
-    water_by_date = water_by_day(id_medical, span_start, span_end)
+    liquid_by_date = liquid_by_day(id_medical, span_start, span_end)
     activity_by_date = activity_rules.load_history(id_medical, span_start, span_end)
     sleep_by_date = sleep_rules.load_history(id_medical, span_start, span_end)
 
     reports = []
     for week_start, week_end in weeks:
         days = [
-            _build_day(day, meals_by_date, water_by_date, activity_by_date, sleep_by_date)
+            _build_day(day, meals_by_date, liquid_by_date, activity_by_date, sleep_by_date)
             for day in diet_week_days(week_start)
         ]
         report = build_report(week_start, week_end, days)
@@ -473,12 +473,12 @@ def build_diet_reports(id_medical, first_entry, today):
     return reports
 
 
-def _build_day(day, meals_by_date, water_by_date, activity_by_date, sleep_by_date):
+def _build_day(day, meals_by_date, liquid_by_date, activity_by_date, sleep_by_date):
     """One day of a report — everything the four diaries hold about it.
 
-    **NOTHING IS SUMMED AND EVERY FIELD MAY BE NULL.** A day with no water row
-    is `hydration: None`, not zero millilitres: "nobody wrote it down" and "this
-    person drank nothing" are different claims and the module is only ever
+    **NOTHING IS SUMMED AND EVERY FIELD MAY BE NULL.** A day with no hydration
+    row is `hydration: None`, not zero millilitres: "nobody wrote it down" and
+    "this person drank nothing" are different claims and the module is only ever
     entitled to the first. The same rule the diary applies to an untouched
     slider.
     """
@@ -486,19 +486,20 @@ def _build_day(day, meals_by_date, water_by_date, activity_by_date, sleep_by_dat
 
     meals = _by_hour(meals_by_date.get(key, {}).get('meals', []))
 
-    # A day nobody recorded a serving on is absent from `water_by_day`, and a
-    # day holding only tea has a row of 0 -- which is not a serving of water and
-    # must not make the day count as written-on. `hasHydration` in
+    # A day nobody recorded a serving on is absent from `liquid_by_day`. A day
+    # holding only tea is a day with a serving on it now, so it counts as
+    # written-on like any other -- that is the change of 2026-09-17, and it is
+    # why the `> 0` below no longer has a second job. `hasHydration` in
     # utils/dietReport.ts reads it the same way.
-    water_ml = water_by_date.get(day, 0)
+    liquid_ml = liquid_by_date.get(day, 0)
     hydration = None
-    if water_ml > 0:
+    if liquid_ml > 0:
         hydration = {
             'date': key,
-            'water_ml': water_ml,
+            'liquid_ml': liquid_ml,
             # The hydration screen's own figure, from the same function, so a
             # report and that screen cannot disagree about a day.
-            'glasses': glasses_for(water_ml),
+            'glasses': glasses_for(liquid_ml),
         }
 
     activity = activity_by_date.get(key)

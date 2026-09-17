@@ -446,11 +446,17 @@
   cursor: pointer;
 }
 
-.supplement-submit:hover:not(:disabled) {
+.supplement-submit:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--color-sage-hover);
 }
 
-.supplement-submit:disabled {
+/* Both spellings look the same, because to a sighted person they mean the same
+   thing. They differ underneath: a missing name is `aria-disabled`, so the
+   button keeps its place in the focus order and can say why it is not ready
+   (see the note in DietSupplements.tsx); a save in flight is a real
+   `disabled`. */
+.supplement-submit:disabled,
+.supplement-submit[aria-disabled='true'] {
   opacity: 0.5;
   cursor: default;
 }

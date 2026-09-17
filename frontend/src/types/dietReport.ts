@@ -26,7 +26,7 @@ import type { TimeOfDay } from '../utils/timeOfDay'
  * That distinction is worth a file boundary.
  *
  * WHAT IT IS BUILT FROM IS ONLY WHAT EXISTS. Meals (`DietMeal`: kind, hour,
- * description), the water figure per day (`HydrationDayTotal`), the activity
+ * description), the hydration figure per day (`HydrationDayTotal`), the activity
  * day and the sleep night — all four are real tables now, `diet_activity`,
  * `diet_activity_day` and `diet_sleep` having arrived with migration 0018.
  *
@@ -105,7 +105,8 @@ export interface DietReportDay {
   date: string
   /** In the order they were eaten; the ones with no hour come last. */
   meals: DietMeal[]
-  /** Water only, as the hydration screen's own week chart reports it. Null when
+  /** Everything drunk that day, as the hydration screen's own week chart
+   *  reports it — tea and coffee included since 2026-09-17. Null when
    *  the day holds no serving at all. */
   hydration: HydrationDayTotal | null
   /**

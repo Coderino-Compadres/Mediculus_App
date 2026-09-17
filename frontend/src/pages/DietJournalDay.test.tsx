@@ -176,6 +176,66 @@ describe('a day with nothing in it', () => {
 
     expect(screen.queryByText(/nie masz jeszcze/i)).toBeNull()
   })
+
+  /** Which day it was, even with nothing on it. A day that holds meals names
+   *  itself in the heading; an empty one used to fall back to the generic
+   *  "Dzienniczek dnia", leaving somebody who arrived from a link with nothing
+   *  to check the date against. */
+  it('still says which day it is', async () => {
+    params = { date: '2026-01-01' }
+    fetchDietJournalDay.mockRejectedValue(new ApiError(404, null))
+
+    renderWithProviders(<DietJournalDay />)
+    await screen.findByText(/nie ma zapisanych posiłków/i)
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: /czwartek, 1 stycznia/i }),
+    ).toBeInTheDocument()
+  })
+})
+
+/**
+ * A date that is not a date.
+ *
+ * The server answers 404 to '2026-13-45' exactly as it answers 404 to a real
+ * but quiet day, so the screen has to tell them apart itself — otherwise a
+ * typo in the address bar reads as "you wrote nothing that day", which is a
+ * claim about the patient rather than about the URL.
+ */
+describe('an address that names no day', () => {
+  it('says the address is wrong, not that the day is empty', async () => {
+    params = { date: '2026-13-45' }
+    fetchDietJournalDay.mockRejectedValue(new ApiError(404, null))
+
+    renderWithProviders(<DietJournalDay />)
+
+    expect(await screen.findByText(/nie wskazuje na żaden dzień/i)).toBeInTheDocument()
+    expect(screen.queryByText(/nie ma zapisanych posiłków/i)).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Nieznany dzień' })).toBeInTheDocument()
+  })
+
+  it('does not invent a date for a heading it cannot spell', async () => {
+    params = { date: 'bzdura' }
+    fetchDietJournalDay.mockRejectedValue(new ApiError(404, null))
+
+    renderWithProviders(<DietJournalDay />)
+    await screen.findByText(/nie wskazuje na żaden dzień/i)
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Dzienniczek dnia' }),
+    ).toBeInTheDocument()
+  })
+
+  it('still offers the way back to the list', async () => {
+    params = { date: '2026-13-45' }
+    fetchDietJournalDay.mockRejectedValue(new ApiError(404, null))
+
+    renderWithProviders(<DietJournalDay />)
+    await screen.findByText(/nie wskazuje na żaden dzień/i)
+
+    expect(screen.getByRole('link', { name: /Wróć do listy dni/i }))
+      .toHaveAttribute('href', ROUTES.dietJournals)
+  })
 })
 
 describe('when the request fails for another reason', () => {

@@ -53,7 +53,7 @@ from django.utils import timezone
 
 from core.account import RISKY_DAYS_FOR_ATTENTION, last_report_needs_attention
 from core.diary import MOOD_LABELS
-from core.drinks import BOTTLE_ML, GLASS_ML, OTHER_DRINKS, WATER
+from core.drinks import BOTTLE_ML, DEFAULT_SERVING_ML, GLASS_ML, OTHER_DRINKS, WATER
 from core.meals import streak_days as diet_streak_days
 from core.supplements import MAX_SUPPLEMENTS
 from core.models import (Diary, DietActivity, DietActivityDay, DietMeal,
@@ -746,15 +746,21 @@ class Command(BaseCommand):
             if left:
                 self._serving(id_medical, day, left)
                 written += 1
-        # Every chip the screen offers, recorded today and counting towards
-        # nothing -- the client's rule, and the state the screen's own note
-        # describes. All five rather than two, because the rule is easiest to
-        # see broken when the list is long: if any of these ever moved the
-        # water figure, a day holding all five would show it plainly.
+        # Every chip the screen offers, recorded today. They carry a size like
+        # any other serving and count towards the goal -- the client reversed
+        # §08's "nie przeliczane na wodę" on 2026-09-17, and `add_entry` writes
+        # `DEFAULT_SERVING_ML` for a chip tapped without a quantity.
+        #
+        # THE `amount_ml=None` THEY USED TO GET WAS WHAT THE APP WROTE THEN, and
+        # leaving it would have seeded rows the app can no longer produce: the
+        # hydration screen would show five drinks under a bar none of them
+        # moved, which is the old rule surviving in the demo data alone. All
+        # five rather than two, because a day holding all of them shows plainly
+        # whether they count.
         for drink in OTHER_DRINKS:
             Hydration.objects.create(
                 id_medical=id_medical, entry_date=today, drink=drink,
-                amount_ml=None,
+                amount_ml=DEFAULT_SERVING_ML,
             )
             written += 1
         return written

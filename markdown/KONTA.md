@@ -2,7 +2,7 @@
 
 **Dla kogo:** dla osób zakładających i obsługujących konta — pacjentów, rodziców
 i opiekunów, specjalistów oraz zespołu fundacji.
-**Stan na:** 16 września 2026.
+**Stan na:** 17 września 2026.
 
 Ten dokument odpowiada na cztery pytania: **jakie są rodzaje kont**, **jak każde
 z nich założyć**, **co się w nim widzi** i **co zrobić, gdy coś nie działa**.
@@ -187,11 +187,18 @@ Moduł dietetyczny (w budowie):
   **nie liczy jedzenia**: nie ma kalorii, makro ani wagi. Posiłek to zdjęcie
   i opis.
 - **Nawodnienie** — szklanka (250 ml), butelka (500 ml) albo własna ilość, plus
-  wykres 7 dni. Napoje inne niż woda są zapisywane, ale **nie są przeliczane na
-  wodę** — o tym decyduje specjalista, nie aplikacja. Cel dzienny jest punktem
-  odniesienia, a nie oceną: po jego przekroczeniu pasek jest po prostu pełny,
-  bez gratulacji, a dnia poniżej celu nic nie nazywa nieudanym. Wpisy z dzisiaj
-  można wycofać, starsze już nie.
+  wykres 7 dni. **Każdy napój liczy się tak samo**, w tej ilości, w jakiej został
+  wypity: 250 ml herbaty przesuwa pasek dokładnie tak jak 250 ml wody. Licznik
+  mówi więc o wypitych **płynach**, nie o samej wodzie. Czego aplikacja nie
+  robi, to **przelicznik na napój** — kawa nie jest „połową szklanki"; taka
+  ocena zostaje po stronie specjalisty. Cel dzienny jest punktem odniesienia,
+  a nie oceną: po jego przekroczeniu pasek jest po prostu pełny, bez gratulacji,
+  a dnia poniżej celu nic nie nazywa nieudanym. Wpisy z dzisiaj można wycofać,
+  starsze już nie.
+
+  > Do 17 września 2026 obowiązywała reguła odwrotna — napoje inne niż woda były
+  > zapisywane, ale nie wliczane do licznika (§08 makiet). Zmieniła to decyzja
+  > klientki z tego dnia; uzasadnienie jest w nagłówku `backend/core/hydration.py`.
 
 ### Rodzic lub opiekun
 
@@ -305,9 +312,11 @@ specjalisty.
   o tym **przed** przyjęciem, bo zgoda bez tego zdania nie jest świadoma.
 - Zakończenie opieki aplikacja potwierdza dwa razy — pacjent tego nie odwróci,
   musiałby dostać nowe zaproszenie i przyjąć je ponownie.
-- Jeden pacjent może mieć dziś **jednego specjalistę**. To znane ograniczenie:
-  pacjent chodzący jednocześnie do psychoterapeuty i psychodietetyka nie jest
-  jeszcze do wyrażenia.
+- **Jeden specjalista na moduł.** Pacjent może mieć jednocześnie psychoterapeutę
+  i psychodietetyka, bo zaproszenie dotyczy konkretnego modułu i tylko on jest
+  nim objęty: psychodietetyk widzi raporty żywieniowe i **nie widzi**
+  psychoterapeutycznych, a psychoterapeuta odwrotnie. Dwóch specjalistów w tym
+  samym module nadal nie da się wyrazić.
 
 ### Formularze zaproszeń mówią mało — i to celowo
 
@@ -400,7 +409,8 @@ Zebrane w jednym miejscu, żeby nie było niespodzianek:
   sygnałem: wykrzyknikiem „Ostatni raport wymaga uwagi" (patrz punkt 4);
 - **nie pozwala pacjentowi odciąć specjalisty** od raportów;
 - **nie usuwa kont** i nie zmienia adresów e-mail;
-- **nie obsługuje dwóch specjalistów** dla jednego pacjenta.
+- **nie obsługuje dwóch specjalistów w jednym module** — psychoterapeuta
+  i psychodietetyk równocześnie są już możliwi, dwaj psychoterapeuci nie.
 
 ---
 

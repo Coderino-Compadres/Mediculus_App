@@ -5,7 +5,7 @@ import MealEmotions from '../components/MealEmotions'
 import LoadError from '../components/LoadError'
 import { ApiError } from '../api/client'
 import { fetchDietJournalDay } from '../api/diet'
-import { fromIsoDate, toIsoDate } from '../utils/days'
+import { fromIsoDate, isValidIsoDate, toIsoDate } from '../utils/days'
 import { mealHeading, pluralMeals } from '../utils/meals'
 import type { DietJournalDay as DietDayRecord, DietMeal } from '../types/diet'
 import { ROUTES } from '../routes'
@@ -55,6 +55,16 @@ const LOAD_ERROR = 'Nie udało się wczytać dzienniczka.'
  * diary.
  */
 const NOT_FOUND = 'Na ten dzień nie ma zapisanych posiłków.'
+
+/**
+ * Said when the date in the address is not a date at all.
+ *
+ * The server answers 404 to '2026-13-45' exactly as it answers 404 to a real
+ * day nobody wrote in, so this is the one thing the screen has to work out for
+ * itself. Worth the few lines: told the wrong way round, a mistyped URL claims
+ * the patient skipped a day they did not skip.
+ */
+const BAD_DATE = 'Ten adres nie wskazuje na żaden dzień. Sprawdź go albo wróć do listy dni.'
 
 /** "wtorek, 8 września" — the weekday included, the month lowercase, as
  *  Polish spells it. Deliberately not `text-transform: capitalize`. */
@@ -112,6 +122,11 @@ function DietJournalDay() {
    *  reader's own calendar day (`utils/days.ts`), never as `Date` objects. */
   const isToday = date === toIsoDate(new Date())
 
+  /** Whether the address names a real calendar day at all. The 404 for
+   *  '2026-13-45' and the 404 for a quiet Tuesday are the same 404, so this is
+   *  the only thing that can tell the empty state from the wrong address. */
+  const dateIsReal = isValidIsoDate(date)
+
   // The house pattern: a promise chain with a `cancelled` flag rather than an
   // `async` effect body.
   useEffect(() => {
@@ -160,8 +175,18 @@ function DietJournalDay() {
         </Link>
         <div className="diet-day-header-titles">
           <p className="diet-day-module-label">DIETETYKA I PSYCHODIETETYKA</p>
+          {/* The date, not just "Dzienniczek dnia", as soon as one can be
+              spelled — including on a day with no meals, which is where it was
+              missing: an empty day that does not say *which* day leaves a
+              reader who arrived from a link with nothing to check it against.
+              Falls back to the generic title only while loading, and for an
+              address that names no day at all. */}
           <h1>
-            {state.status === 'ready' ? dayLabel(state.day.date) : 'Dzienniczek dnia'}
+            {state.status === 'ready'
+              ? dayLabel(state.day.date)
+              : dateIsReal && state.status !== 'loading'
+                ? dayLabel(date)
+                : 'Dzienniczek dnia'}
           </h1>
         </div>
         <HeaderMenu />
@@ -186,8 +211,8 @@ function DietJournalDay() {
       {/* No retry: the day will not appear on a second attempt. */}
       {state.status === 'missing' && (
         <section className="diet-day-empty">
-          <h2>Pusty dzień</h2>
-          <p>{NOT_FOUND}</p>
+          <h2>{dateIsReal ? 'Pusty dzień' : 'Nieznany dzień'}</h2>
+          <p>{dateIsReal ? NOT_FOUND : BAD_DATE}</p>
           <Link className="diet-day-empty-link" to={ROUTES.dietJournals}>
             Wróć do listy dni
           </Link>

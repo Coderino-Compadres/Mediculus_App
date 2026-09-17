@@ -80,11 +80,11 @@ function dayLabel(iso: string): string {
 function entryLabel(entry: HydrationEntry, glassMl: number, bottleMl: number): string {
   if (entry.amountMl === null) return entry.drink
   // THE DRINK IS CHECKED BEFORE THE AMOUNT, and it has to be: the two serving
-  // names below belong to water's own buttons, and this function used to reach
-  // them for anything carrying a number — which was safe only while nothing but
-  // water could carry one. Now that every drink can, a 250 ml tea would have
-  // been listed as "Szklanka · 250 ml", i.e. as water, on the one screen whose
-  // whole rule is that other drinks are not water.
+  // names below belong to water's own buttons, so a 250 ml tea reaching them
+  // would be listed as "Szklanka · 250 ml" and read as water. Every drink
+  // counts towards the goal now, which changes the arithmetic and not this —
+  // the list under the bar is a record of what was drunk, and what it was is
+  // the part only it can say.
   if (entry.drink !== WATER) return `${entry.drink} · ${entry.amountMl} ml`
   if (entry.amountMl === glassMl) return `Szklanka · ${entry.amountMl} ml`
   if (entry.amountMl === bottleMl) return `Butelka · ${entry.amountMl} ml`

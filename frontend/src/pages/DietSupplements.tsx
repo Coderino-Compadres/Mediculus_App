@@ -465,11 +465,21 @@ function SupplementForm({
       </label>
       <p className="supplement-note">{REMINDER_NOTE}</p>
 
+      {/* Why `aria-disabled` and not `disabled` for the missing name, the same
+          way components/Stepper.tsx does it: a `disabled` button leaves the
+          focus order entirely, so somebody on a screen reader tabs past the one
+          control they are looking for and is told nothing about why nothing
+          happens. Left reachable and announced, with the reason named beside
+          it. `busy` is still a real `disabled` — that one is a moment long and
+          the answer is simply to wait. The submit handler already refuses a
+          blank name, so nothing gets through this. */}
       <div className="supplement-form-actions">
         <button
           type="submit"
           className="supplement-submit"
-          disabled={busy || nameMissing}
+          disabled={busy}
+          aria-disabled={busy || nameMissing}
+          aria-describedby={nameMissing ? 'supplement-submit-blocked' : undefined}
         >
           {editing ? 'Zapisz zmiany' : 'Dodaj do listy'}
         </button>
@@ -482,6 +492,12 @@ function SupplementForm({
           Anuluj
         </button>
       </div>
+
+      {nameMissing && (
+        <p className="supplement-note" id="supplement-submit-blocked">
+          Wpisz nazwę, żeby zapisać pozycję. Reszta pól jest opcjonalna.
+        </p>
+      )}
     </form>
   )
 }
@@ -634,7 +650,7 @@ function DietSupplements() {
               <h2>Nic tu jeszcze nie ma</h2>
               <p>
                 Jeśli przyjmujesz suplementy albo leki, możesz je tu zapisać razem
-                z dawką i godziną. Nic nie jest wymagane — wystarczy nazwa.
+                z dawką i godziną. Poza nazwą nic nie jest wymagane.
               </p>
             </section>
           ) : (

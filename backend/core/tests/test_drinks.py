@@ -6,9 +6,10 @@ time in `frontend/src/utils/drinks.ts` and nothing but this file stops the two
 from drifting. A name spelled differently on one side is a chip the server
 answers 400 to, with the screen unable to say why.
 
-The other half is the rule the names encode: only water counts. If a coefficient
-for tea ever appears in either module, `WaterIsTheOnlyOneCountedTests` is what
-says the client decided otherwise.
+The other half is the rule the names do *not* encode any more: since 2026-09-17
+every drink counts, at the volume it was drunk. What must still never appear is
+a per-drink coefficient — 250 ml of tea is 250 ml, not "0,7 of a glass" — and
+`NoDrinkIsWeightedTests` is what says so.
 
 No database is touched.
 """
@@ -42,15 +43,22 @@ class VocabularyTests(SimpleTestCase):
         self.assertEqual(DRINKS, (WATER,) + OTHER_DRINKS)
 
     def test_water_with_lemon_is_one_of_the_others(self):
-        """The client's own list puts it under "Inne napoje". Reading that as an
-        oversight and counting it as water would answer a clinical question this
-        app is not entitled to answer."""
+        """It is one of §08's "Inne napoje" chips, which is now a statement
+        about where it is drawn and nothing else: it counts towards the goal
+        like every other drink."""
         self.assertIn('Woda z cytryną', OTHER_DRINKS)
 
 
-class WaterIsTheOnlyOneCountedTests(SimpleTestCase):
-    """"Herbata, kawa i napary są zapisywane, ale nie przeliczane na wodę —
-    decyzja merytoryczna zostaje po stronie specjalisty." (mockups §08)"""
+class NoDrinkIsWeightedTests(SimpleTestCase):
+    """Every drink counts at its own volume — none is scaled up or down.
+
+    §08's "nie przeliczane na wodę" was reversed on 2026-09-17: tea now reaches
+    the total. What was never on the table, and still is not, is *weighting* it
+    — a table saying a coffee is worth 0,7 of a glass would be the clinical
+    judgement the app has no business making, and it would be as wrong now as
+    when nothing counted at all. So the assertion below outlived the rule that
+    prompted it.
+    """
 
     def test_the_module_holds_no_conversion_factor_of_any_kind(self):
         source = (Path(__file__).resolve().parent.parent / 'drinks.py').read_text(
@@ -61,8 +69,8 @@ class WaterIsTheOnlyOneCountedTests(SimpleTestCase):
                 # A coefficient would have to name the drink it applies to.
                 self.assertNotRegex(
                     source, rf"{re.escape(name)}'\s*:\s*[\d.]",
-                    'a per-drink number here would be a conversion the client '
-                    'said not to make',
+                    'a per-drink number here would weight one drink against '
+                    'another, which is a clinical judgement, not arithmetic',
                 )
 
     def test_the_same_holds_on_the_frontend(self):
