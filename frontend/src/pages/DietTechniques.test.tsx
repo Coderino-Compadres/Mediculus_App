@@ -10,11 +10,11 @@ import type { DietTechnique } from '../types/dietTechnique'
 /**
  * "Techniki psychodietetyczne" — §12, the list.
  *
- * **NOTHING HERE ASSUMES THERE ARE TEN.** The catalogue is placeholders until
- * the foundation writes the content, and the number of entries is meant to
- * change by editing one array — so every assertion about the list is against
- * the fixture it was given, and the one test that reads the shipped data asks
- * it how many it holds.
+ * **NOTHING HERE ASSUMES A NUMBER OF ROWS.** It was ten placeholders, it is the
+ * client's fifteen today, and the number of entries is meant to change by
+ * editing one array — so every assertion about the list is against the fixture
+ * it was given, and the two tests that read the shipped data ask it what it
+ * holds rather than telling it.
  *
  * As everywhere in this module, half of what is pinned is absence: no tabs, no
  * search, no coloured dot, nothing that counts food, and no question about
@@ -32,14 +32,20 @@ vi.mock('../data/dietTechniques', () => ({
   },
   PLACEHOLDER_NOTICE_LIST: 'Treść technik przygotowuje fundacja.',
   PLACEHOLDER_NOTICE_TECHNIQUE: 'Treść tej techniki przygotowuje fundacja.',
-  PLACEHOLDER_TECHNIQUES: [],
 }))
 
+/**
+ * A row's worth of technique.
+ *
+ * **NO `czasTrwania` AND NO `momentZastosowania` BY DEFAULT**, because that is
+ * what the catalogue actually ships: the client's file gives neither for any of
+ * her fifteen. A fixture that always had both would have left the meta line's
+ * every-field-missing path — the one that runs on every row today — tested by
+ * nothing at all. The tests that care about the line put them back.
+ */
 function technique(overrides: Partial<DietTechnique> & Pick<DietTechnique, 'id'>): DietTechnique {
   return {
     nazwa: `Technika ${overrides.id}`,
-    czasTrwania: 'czas do uzupełnienia',
-    momentZastosowania: 'moment do uzupełnienia',
     wprowadzenie: 'Wprowadzenie.',
     kroki: [{ opis: 'Krok.' }],
     dostepnosc: 'ogolna',
@@ -102,6 +108,44 @@ describe('the list', () => {
     expect(within(row).getByText(/5 minut · przed jedzeniem/)).toBeInTheDocument()
   })
 
+  it('draws a row with nothing but its name when it has neither', () => {
+    /** THE CASE THAT ACTUALLY SHIPS. The client's file gives no duration and no
+     *  moment for any of the fifteen, so this is every row in the catalogue
+     *  today. The two things that must not appear: the word "undefined", and a
+     *  lone middle dot — a separator with nothing on either side of it, which a
+     *  screen reader announces as "middle dot" and a reader reads as a field
+     *  that failed to load. */
+    data.techniques = [technique({ id: 'a', nazwa: 'Technika A' })]
+
+    renderList()
+
+    const row = rows()[0]
+
+    expect(within(row).getByText('Technika A')).toBeInTheDocument()
+    expect(row.textContent).not.toMatch(/undefined/)
+    expect(row.textContent).not.toMatch(/·/)
+  })
+
+  it('drops the separator when only one of the two is there', () => {
+    /** Not a state the catalogue is in, and cheap to keep honest: a dot needs
+     *  something on both sides of it to be a separator. */
+    data.techniques = [
+      technique({ id: 'a', nazwa: 'Tylko czas', czasTrwania: '5 minut' }),
+      technique({ id: 'b', nazwa: 'Tylko moment', momentZastosowania: 'przed jedzeniem' }),
+    ]
+
+    renderList()
+
+    const [first, second] = rows()
+
+    expect(within(first).getByText('5 minut')).toBeInTheDocument()
+    expect(within(second).getByText('przed jedzeniem')).toBeInTheDocument()
+    for (const row of [first, second]) {
+      expect(row.textContent).not.toMatch(/·/)
+      expect(row.textContent).not.toMatch(/undefined/)
+    }
+  })
+
   it('opens a technique at its own address', () => {
     data.techniques = [technique({ id: 'technika-1' })]
 
@@ -158,6 +202,24 @@ describe('the list', () => {
     expect(rows().map((row) => row.textContent)).toEqual(
       published.map((entry) => expect.stringContaining(entry.nazwa)),
     )
+  })
+
+  it('shows no notice about content in preparation, because nothing is', async () => {
+    /** THE HALF OF THE PROMISE THAT ONLY THE REAL DATA CAN KEEP. The notice is
+     *  driven by the entries (`catalogueHasPlaceholders`), so filling the last
+     *  placeholder in takes it off the list with no flag to remember — and this
+     *  is the assertion that the shipped catalogue actually reached that state.
+     *  The fixture-driven test above proves the mechanism; this one proves it
+     *  happened. */
+    const actual = await vi.importActual<typeof import('../data/dietTechniques')>(
+      '../data/dietTechniques',
+    )
+    data.techniques = [...actual.DIET_TECHNIQUES]
+
+    renderList()
+
+    expect(screen.queryByText(/przygotowuje fundacja/)).not.toBeInTheDocument()
+    expect(actual.DIET_TECHNIQUES.filter((entry) => entry.zastepczy)).toHaveLength(0)
   })
 
   it('draws nothing but the empty state when the data file ships no techniques', () => {
@@ -276,6 +338,20 @@ describe('what the screen refuses to show', () => {
   })
 
   it('counts no food', () => {
+    /** The module's qualitative rule (CLAUDE.md §3), asked of what the screen
+     *  renders.
+     *
+     *  ⚠️ **THIS RUNS ON FIXTURES, NOT ON THE CLIENT'S TEXT, AND THAT IS
+     *  DELIBERATE — DO NOT "IMPROVE" IT INTO A SWEEP OF THE REAL CATALOGUE.**
+     *  Widening it to `DIET_TECHNIQUES` would fail immediately, on technique 13
+     *  ("Małe cele"), which reads: "Przez najbliższy tydzień do każdego obiadu
+     *  dodam **porcję** warzyw." That is the client's own worked example and it
+     *  is not a breach of the qualitative rule — "porcja" there means "some",
+     *  not a measured amount, and nothing in this module asks a patient to weigh
+     *  it. The rule this pattern enforces is about what *the app* says, and the
+     *  app says none of these words; what the foundation's dietitian writes in
+     *  her own material is hers. If the sweep is ever widened, the pattern has
+     *  to be narrowed first — see §9 of the content report. */
     renderList()
 
     expect(document.body.textContent).not.toMatch(/kcal|kalori|białk|tłuszcz|węglowodan|gram|porcj/i)
