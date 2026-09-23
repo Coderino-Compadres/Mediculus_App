@@ -92,12 +92,15 @@ describe('PasswordChangeRequired — what it says', () => {
     expect(screen.queryByLabelText('Obecne hasło')).not.toBeInTheDocument()
   })
 
-  it('says plainly that a lost password cannot be resent', () => {
-    /** There is no mail out of this deployment and no password reset, so the
-     *  only honest answer is the one on screen: ask for the account again. */
+  it('points at the reset link for somebody who lost the password they were given', () => {
+    /** This is where a specialist who cannot find the note is standing, and
+     *  core/password_reset.py is what gets them out of it. The screen used to
+     *  say the password could not be resent at all. */
     render()
 
-    expect(screen.getByText(/nie wysyła żadnej poczty/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /link do ustawienia nowego hasła/i })).toHaveAttribute(
+      'href', ROUTES.passwordReset,
+    )
   })
 
   it('offers signing out, so nobody is trapped on a form they cannot fill in', () => {

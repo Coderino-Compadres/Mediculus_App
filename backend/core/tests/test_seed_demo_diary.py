@@ -19,24 +19,29 @@ import io
 import re
 from pathlib import Path
 
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import check_password, make_password
 from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from core.drinks import WATER
 from core.drinks import DEFAULT_SERVING_ML, OTHER_DRINKS
+from core.consents import has_active_consents
 from core.management.commands.seed_demo_diary import (ACTIVITY_SHAPES,
+                                                      DEMO_SPECIALIST_PASSWORD,
+                                                      DEMO_SPECIALISTS,
                                                       ALL_SUPPLEMENT_SHAPES,
                                                       DIET_DAYS, MEAL_DAYS,
                                                       SUPPLEMENT_SHAPES,
                                                       WATER_ML_BY_DAY,
                                                       last_completed_week_start)
+from core.modules import MODULE_DIET, MODULE_PSYCHOTHERAPY
 from core.supplements import MAX_SUPPLEMENTS
 from core.meals import streak_days
 from core.models import (DietMealEmotion,
                          Diary, DietActivity, DietActivityDay, DietMeal,
-                         DietSleep, Hydration, Patient, Supplement,
+                         DietSleep, Hydration, Patient, Specjalist,
+                         SpecjalistPatient, Supplement,
                          SupplementIntake, User, UserRole)
 
 #: `PAGE_SIZE` read out of the frontend, the same cross-language guard
@@ -804,3 +809,160 @@ class ReportsAreVisibleTests(SeedDemoDiaryTests):
         call_command('seed_demo_diary', 'test@wp.pl=3', '--meal-days', '8', stdout=output)
 
         self.assertIn(f'usunięto {written} poprzednich posiłków', output.getvalue())
+
+
+class SpecialistsTests(SeedDemoDiaryTests):
+    """`--specialists` — the half that writes credentials rather than data.
+
+    Worth its own class for the reason the flag exists: everything else this
+    command does writes rows into an account somebody already made, while this
+    makes accounts that can be logged into. The three properties below are the
+    ones a demo actually depends on, and each is a protection that a real
+    specialist account keeps — so if one of them ever starts failing, the
+    question to ask is whether the waiver moved somewhere it should not be.
+    """
+
+    def specialist(self, email):
+        return User.objects.filter(email=email).first()
+
+    def test_it_writes_nothing_unless_asked(self):
+        self.seed()
+
+        self.assertIsNone(self.specialist('psycholog@wp.pl'))
+        self.assertIsNone(self.specialist('dietetyk@wp.pl'))
+        self.assertEqual(
+            SpecjalistPatient.objects.filter(patient=self.patient).count(), 0)
+
+    def test_it_creates_one_account_per_module(self):
+        self.seed('--specialists')
+
+        for shape in DEMO_SPECIALISTS:
+            user = self.specialist(shape['email'])
+            self.assertIsNotNone(user, shape['email'])
+            self.assertEqual(user.name, shape['name'])
+            self.assertTrue(
+                Specjalist.objects.filter(user=user).exists(), shape['email'])
+
+        self.assertEqual(
+            {link.module for link
+             in SpecjalistPatient.objects.filter(patient=self.patient)},
+            {MODULE_PSYCHOTHERAPY, MODULE_DIET},
+        )
+
+    def test_the_password_is_the_documented_one(self):
+        self.seed('--specialists')
+
+        for shape in DEMO_SPECIALISTS:
+            self.assertTrue(
+                check_password(
+                    DEMO_SPECIALIST_PASSWORD,
+                    self.specialist(shape['email']).password_hash),
+                shape['email'],
+            )
+
+    def test_the_accounts_can_actually_reach_the_panel(self):
+        """Both gates cleared, which is what separates this from a real account.
+
+        A demo account held on the consent screen or on the password form is a
+        demo that stops at a screen nobody came to see — and both of those are
+        the *correct* state for an account `core/colleagues.py` created.
+        """
+        self.seed('--specialists')
+
+        for shape in DEMO_SPECIALISTS:
+            user = self.specialist(shape['email'])
+            self.assertFalse(user.must_change_password, shape['email'])
+            self.assertTrue(has_active_consents(user), shape['email'])
+
+    def test_the_patient_is_accepted_rather_than_merely_invited(self):
+        self.seed('--specialists')
+
+        for link in SpecjalistPatient.objects.filter(patient=self.patient):
+            self.assertIsNotNone(link.accepted_at, link.module)
+
+    def test_running_it_twice_neither_duplicates_nor_moves_the_acceptance(self):
+        self.seed('--specialists')
+        before = {
+            link.module: (link.pk, link.accepted_at)
+            for link in SpecjalistPatient.objects.filter(patient=self.patient)
+        }
+
+        self.seed('--specialists')
+
+        links = SpecjalistPatient.objects.filter(patient=self.patient)
+        self.assertEqual(links.count(), len(DEMO_SPECIALISTS))
+        self.assertEqual(
+            {link.module: (link.pk, link.accepted_at) for link in links}, before)
+
+    def test_it_replaces_whoever_was_accepted_in_that_module(self):
+        """The rule `uniq_patient_module_accepted` enforces, met head-on.
+
+        Without going through `accept_invitation` this is where a hand-written
+        INSERT would have raised — and on a shared dev database a patient with
+        a specialist already is the ordinary case, not the edge one.
+        """
+        other = User.objects.create(
+            email='ktos.inny@example.com', password_hash='x')
+        previous = Specjalist.objects.create(user=other, specjalization='X')
+        SpecjalistPatient.objects.create(
+            specjalist=previous, patient=self.patient,
+            module=MODULE_PSYCHOTHERAPY, accepted_at=timezone.now(),
+        )
+
+        self.seed('--specialists')
+
+        accepted = SpecjalistPatient.objects.filter(
+            patient=self.patient, module=MODULE_PSYCHOTHERAPY,
+            accepted_at__isnull=False,
+        )
+        self.assertEqual(accepted.count(), 1)
+        self.assertEqual(
+            accepted.first().specjalist.user.email, 'psycholog@wp.pl')
+
+    def test_it_can_run_without_touching_either_diary(self):
+        """The combination the old guard refused, and the errand it blocked.
+
+        The two specialists arrived after the patient's diaries did, so linking
+        them must not require re-seeding a week somebody did not ask to have
+        overwritten.
+        """
+        self.seed()
+        entries = Diary.objects.filter(
+            id_medical=self.patient.id_medical).count()
+
+        self.seed('--no-diary', '--no-diet', '--specialists')
+
+        self.assertEqual(
+            Diary.objects.filter(id_medical=self.patient.id_medical).count(),
+            entries)
+        self.assertEqual(
+            SpecjalistPatient.objects.filter(patient=self.patient).count(),
+            len(DEMO_SPECIALISTS))
+
+    def test_the_three_flags_together_still_refuse_without_specialists(self):
+        with self.assertRaises(CommandError):
+            call_command(
+                'seed_demo_diary', 'test@wp.pl=1', '--no-diary', '--no-diet',
+                stdout=io.StringIO())
+
+    def test_it_does_not_erase_a_withdrawal_it_restores_over(self):
+        """A restore is a fresh grant, never a wipe — `core/consents.py`'s rule.
+
+        The seed has to be able to hand back an account somebody withdrew from,
+        because a locked demo account is useless. What it must not do is make
+        the withdrawal disappear: RODO art. 7(1) puts the burden of proving
+        consent on us, and a register that forgets is not proof of anything.
+        """
+        self.seed('--specialists')
+        user = self.specialist('psycholog@wp.pl')
+        withdrawn = timezone.now()
+        user.data_consent_withdrawn_at = withdrawn
+        user.services_consent_withdrawn_at = withdrawn
+        user.save()
+
+        self.seed('--specialists')
+
+        user.refresh_from_db()
+        self.assertEqual(user.data_consent_withdrawn_at, withdrawn)
+        self.assertEqual(user.services_consent_withdrawn_at, withdrawn)
+        self.assertTrue(has_active_consents(user))

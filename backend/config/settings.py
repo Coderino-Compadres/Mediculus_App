@@ -240,6 +240,14 @@ REST_FRAMEWORK = {
         # 'auth': changing what bounds login guessing must not quietly change
         # what bounds this.
         'password_change': '10/hour',
+        # POST /api/auth/password-reset/ answers 204 whether or not the address
+        # has an account, so it is not an enumeration oracle by itself — but
+        # asked ten thousand times it becomes one anyway, through the mail it
+        # does or does not produce and the time it takes to produce it. Its own
+        # scope, keyed on the submitted address the way 'login_account' is, and
+        # five an hour is a person who cannot find the message rather than a
+        # sweep of the user table.
+        'password_reset': '5/hour',
         # POST /api/specialist/colleagues/ creates a specialist account. Its own
         # scope rather than 'specialist_invite': creating an account is a
         # different act from asking about an address, and the two limits should
@@ -351,8 +359,56 @@ STATIC_URL = 'static/'
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
-}
+# The app sends exactly one kind of message — the password-reset link, see
+# core/password_reset.py — and what carries it is decided by whether EMAIL_HOST
+# is set in the environment. Unset (the default, and every local checkout) the
+# message is printed to the console: `npm run dev` against a local backend shows
+# the link in the terminal, which is all a developer needs and is also the only
+# safe default — a misconfigured deployment that silently mails nobody is better
+# than one that mails through a server nobody vouched for.
+#
+# Lower-case deliberately: Django 6 refuses to start when a deprecated EMAIL_*
+# *setting* is defined alongside MAILERS, and a module-level `EMAIL_HOST` here
+# would be exactly that. The environment variable keeps the conventional name,
+# which is what a deployment's Application Settings will be holding.
+_email_host = os.environ.get('EMAIL_HOST') or ''
+
+if _email_host:
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
+            'OPTIONS': {
+                'host': _email_host,
+                'port': int(os.environ.get('EMAIL_PORT') or 587),
+                'username': os.environ.get('EMAIL_HOST_USER') or '',
+                'password': os.environ.get('EMAIL_HOST_PASSWORD') or '',
+                # STARTTLS on the submission port is the ordinary case; set
+                # EMAIL_USE_SSL for a server that expects TLS from the first
+                # byte (port 465). The two are mutually exclusive and Django
+                # raises if both are on, which is the right way to find out.
+                'use_tls': (os.environ.get('EMAIL_USE_TLS') or 'true').lower() == 'true',
+                'use_ssl': (os.environ.get('EMAIL_USE_SSL') or 'false').lower() == 'true',
+                'timeout': int(os.environ.get('EMAIL_TIMEOUT') or 10),
+            },
+        },
+    }
+else:
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+        },
+    }
+
+# Who the message comes from. A real address on a domain with SPF/DKIM is what
+# keeps it out of spam folders, which for a password reset is the difference
+# between a feature and a support call.
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL') or 'Mediculus <noreply@mediculus.pl>'
+
+# Where the frontend lives, and therefore what a reset link points at.
+#
+# A SETTING RATHER THAN THE REQUEST'S HOST HEADER, and this is the security
+# half of the feature rather than a convenience: a link assembled from `Host`
+# is a link an attacker redirects to their own server by sending one request
+# with a forged header, and the person who clicks it hands over their account.
+# The default is the vite dev server; a deployment sets it to the real origin.
+FRONTEND_BASE_URL = os.environ.get('FRONTEND_BASE_URL') or 'http://localhost:5173'

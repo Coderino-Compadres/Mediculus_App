@@ -55,15 +55,18 @@ from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
 from .serializers import (ConsentScopeSerializer, GuardianLinkSerializer,
                           LoginSerializer, ParentInvitationCreateSerializer,
-                          PasswordChangeSerializer, RegisterSerializer,
+                          PasswordChangeSerializer,
+                          PasswordResetConfirmSerializer,
+                          PasswordResetRequestSerializer, RegisterSerializer,
                           SpecialistColleagueCreateSerializer,
                           SpecialistPatientInviteSerializer, UserSerializer)
 from . import specialist as specialist_rules
 from . import techniques as technique_rules
 from .throttling import (AuthThrottle, GuardianLinkThrottle,
                          LoginAccountThrottle, PasswordChangeThrottle,
-                         ReportPdfThrottle, SpecialistAccountThrottle,
-                         SpecialistInviteThrottle, attempts_warning)
+                         PasswordResetAccountThrottle, ReportPdfThrottle,
+                         SpecialistAccountThrottle, SpecialistInviteThrottle,
+                         attempts_warning)
 
 
 @method_decorator(ensure_csrf_cookie, name='dispatch')
@@ -153,6 +156,72 @@ class LoginView(APIView):
         detail = errors.get('detail') or []
         message = f'{detail[0]} {warning}' if detail else warning
         return {**errors, 'detail': [message]}
+
+
+@method_decorator(csrf_protect, name='dispatch')
+class PasswordResetRequestView(APIView):
+    """POST /api/auth/password-reset/ — mail a link to the address, if it has one.
+
+    **ALWAYS 204, AND THAT IS THE ENDPOINT'S WHOLE POINT.** An address with an
+    account and an address without one get the same status, the same empty body
+    and the same wording on the screen above it. Anything else — a 404, a
+    friendlier message, a field error under the input — would turn this form
+    into a way to ask whether a given person has an account with a mental-health
+    service, which is exactly what `LoginSerializer.INVALID_CREDENTIALS` and
+    `SpecialistInviteThrottle` exist to prevent elsewhere. A malformed *address*
+    is still a 400: that is a statement about the input, not about who exists.
+
+    `csrf_protect` by hand, and `authentication_classes = []`, for the reason
+    spelled out on `RegisterView`: DRF exempts every APIView, and the CSRF check
+    normally lives in the authentication class, which does nothing for a caller
+    with no session.
+
+    Two caps, the pair `LoginView` uses and for the same division of labour:
+    `AuthThrottle` bounds one caller, `PasswordResetAccountThrottle` bounds how
+    often one *address* can be mailed no matter who asks.
+
+    No gate of any kind. An account with withdrawn consents, a minor waiting for
+    a guardian and a specialist still holding a generated password can all use
+    this — it is account administration, like `LogoutView`, and the screens
+    those accounts are held on are all behind the password they have lost.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthThrottle, PasswordResetAccountThrottle]
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@method_decorator(csrf_protect, name='dispatch')
+class PasswordResetConfirmView(APIView):
+    """POST /api/auth/password-reset/confirm/ — set the password the link allows.
+
+    Answers 204 and **does not start a session**. The account has just had every
+    session of its own closed (`PasswordResetConfirmSerializer.save`), and
+    logging the caller straight in would be the one exception to that — from a
+    link that arrived by e-mail, which is a weaker credential than the password
+    it just replaced. The frontend sends them to /login, where the new password
+    is typed once and the usual gates (consents, guardian, password) apply in
+    the usual order.
+
+    Throttled as the request half is: the token is unguessable, but the form is
+    reachable by anyone and `check_password_strength` is not free.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthThrottle]
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class LogoutView(APIView):

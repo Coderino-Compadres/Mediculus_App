@@ -16,9 +16,10 @@ The child-initiated flow in core/guardian.py stays, and what it is *for* has
 narrowed: naming an account that already exists — the further children of a
 parent who has one.
 
-It has to work in a deployment that **sends no mail at all**, so there is no
-activation link and no "we e-mailed you"; the invitation is a code, given to the
-parent in the room.
+It has to work in a deployment whose only outgoing message is the
+password-reset link (core/password_reset.py) — nothing here notifies anybody —
+so there is no activation link and no "we e-mailed you"; the invitation is a
+code, given to the parent in the room.
 
 The code is the whole security boundary, so three things are true of it:
 

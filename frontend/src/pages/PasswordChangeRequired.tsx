@@ -1,5 +1,7 @@
+import { Link } from 'react-router-dom'
 import { fetchCurrentUser } from '../api/auth'
 import { useAuth } from '../auth/authContext'
+import { ROUTES } from '../routes'
 import { useSignOut } from '../hooks/useSignOut'
 import ProfilePasswordForm from '../components/ProfilePasswordForm'
 import '../components/auth.css'
@@ -10,11 +12,11 @@ import './passwordChange.css'
  * a password somebody else generated for it.
  *
  * WHO LANDS HERE. Exactly one kind of account: a specialist's, created by another
- * specialist (`core/colleagues.py`). This deployment sends no mail at all, so the
- * first password is generated, comes back once on the creating screen and is
- * handed over in the room — which makes two things true of it that are true of no
- * other credential in the app. Its holder did not choose it, and at least one
- * other person knows it. What the panel behind this screen opens onto is other
+ * specialist (`core/colleagues.py`). The app does not mail that first password:
+ * it is generated, comes back once on the creating screen and is handed over in
+ * the room — which makes two things true of it that are true of no other
+ * credential in the app. Its holder did not choose it, and at least one other
+ * person knows it. What the panel behind this screen opens onto is other
  * people's clinical records, so "signed in" has to mean more than "was told a
  * password once".
  *
@@ -86,10 +88,14 @@ function PasswordChangeRequired() {
           </button>
         </div>
 
+        {/* The old wording here said the app could not send anything and that a
+            lost temporary password meant a new account. Both stopped being true
+            with core/password_reset.py, and this is the screen the person who
+            needs that link is standing on. */}
         <p className="password-gate-note">
-          Nie mamy jak wysłać Ci nowego hasła — ta wersja aplikacji nie wysyła żadnej
-          poczty. Jeśli zgubisz hasło przekazane przy zakładaniu konta, poproś specjalistę,
-          który je zakładał, o utworzenie konta na nowo.
+          Nie pamiętasz hasła otrzymanego przy zakładaniu konta?{' '}
+          <Link to={ROUTES.passwordReset}>Poproś o link do ustawienia nowego hasła</Link> —
+          wyślemy go na adres e-mail tego konta.
         </p>
       </section>
     </div>

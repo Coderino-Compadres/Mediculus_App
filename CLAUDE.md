@@ -16,6 +16,7 @@ This file provides critical guidance when working with code in this repository[c
 * **Guardian Gate (RODO Art. 8)**: Minors cannot access clinical endpoints until a guardian accepts the link[cite: 1]. Enforced via `_require_patient`[cite: 1].
 * **Consent Gate**: Users must grant both RODO consents to use the app (`HasActiveConsents` permission)[cite: 1].
 * **Password Gate**: Accounts with generated passwords (e.g., specialists created by colleagues) must change them on first login[cite: 1].
+* **Password Reset** (`core/password_reset.py`): `POST /api/auth/password-reset/` always answers 204 — it must never reveal whether an address has an account — and mails a signed, one-hour token; `/confirm/` sets the new password, clears `must_change_password` and closes every session of that account. The token is stateless and stored nowhere: it carries a fingerprint of the current `password_hash`, so changing the password is what makes it single-use. Links are built from `FRONTEND_BASE_URL`, never from the `Host` header. This is the only mail the app sends; with `EMAIL_HOST` unset it goes to the console.
 * **Role Restrictions**: Being a specialist or guardian grants no automatic access to patient data; permissions are granted strictly via accepted invitations[cite: 1].
 
 ## 3. Core Modules & Business Logic

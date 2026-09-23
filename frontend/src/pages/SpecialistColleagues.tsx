@@ -36,11 +36,15 @@ import './specialist.css'
  * here instead.
  *
  * THE PASSWORD IS SHOWN ONCE AND THE SCREEN SAYS SO, exactly like a guardian
- * invitation code and for the same reason: this deployment sends no mail at all,
- * so a credential travels as something handed over in the room. It is stored as
- * a hash, so nothing can read it back afterwards — not this screen, not the
- * roster, not the database. There is no password reset here either, which is why
- * the wording is as blunt as it is.
+ * invitation code and for the same reason: a credential the app does not mail
+ * travels as something handed over in the room. It is stored as a hash, so
+ * nothing can read it back afterwards — not this screen, not the roster, not the
+ * database, which is why the wording is as blunt as it is.
+ *
+ * Losing it is no longer a dead end, though: the account can ask for a
+ * password-reset link from /login (pages/PasswordReset.tsx), which is mailed to
+ * its own address and clears the same gate this password holds it on. The
+ * temporary password itself is still never mailed and still never readable.
  *
  * THE NEW ACCOUNT GRANTS NO CONSENTS, and the screen says that too. Consent is
  * the act of the person it belongs to (RODO art. 7), so a colleague cannot tick
@@ -183,8 +187,9 @@ function SpecialistColleagues() {
       <p className="reports-intro">
         Konto specjalisty zakłada inny specjalista — nie da się go utworzyć
         w formularzu rejestracji. Hasło zobaczysz raz i przekazujesz je
-        osobiście: aplikacja nie wysyła wiadomości. Osoba, dla której zakładasz
-        konto, ustawia własne hasło przy pierwszym logowaniu.
+        osobiście: nie wysyłamy go e-mailem. Osoba, dla której zakładasz konto,
+        ustawia własne hasło przy pierwszym logowaniu, a jeśli je zgubi, może
+        poprosić z ekranu logowania o link do ustawienia nowego.
       </p>
 
       {created && (

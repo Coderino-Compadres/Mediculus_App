@@ -19,6 +19,8 @@ import DietProfile from './pages/DietProfile'
 import LinkGuardian from './pages/LinkGuardian'
 import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
+import PasswordReset from './pages/PasswordReset'
+import PasswordResetConfirm from './pages/PasswordResetConfirm'
 import ParentHome from './pages/ParentHome'
 import SpecialistHome from './pages/SpecialistHome'
 import SpecialistPatientReports from './pages/SpecialistPatientReports'
@@ -268,6 +270,16 @@ function App() {
               </GuestOnly>
             }
           />
+          {/* Both halves of the reset are reachable without a session, which is
+              the state everyone using them is in. Not wrapped in GuestOnly,
+              unlike /login and /register: a link opened in a browser that still
+              holds a session is the ordinary case (the phone is logged in, the
+              password is the thing that was forgotten), and bouncing it to the
+              home screen would strand the one person the link was sent to. The
+              confirmation clears that session anyway — see
+              pages/PasswordResetConfirm.tsx. */}
+          <Route path={ROUTES.passwordReset} element={<PasswordReset />} />
+          <Route path={ROUTES.passwordResetConfirm} element={<PasswordResetConfirm />} />
           <Route
             path={ROUTES.consents}
             element={

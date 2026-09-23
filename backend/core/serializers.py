@@ -14,10 +14,12 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from .authentication import end_all_sessions
 from . import colleagues
 from . import guardian
 from .consents import SCOPES, consent_state, has_active_consents
 from . import parent_invitations
+from . import password_reset
 from .specialist import invite, treated_patient
 from .models import (ParentChild, Patient, Specjalist, SpecjalistPatient, User,
                      UserRole)
@@ -485,8 +487,8 @@ class RegisterSerializer(serializers.Serializer):
     )
     #: A guardian account cannot be created without one. Says where the code
     #: comes from, because somebody who has not been given one cannot act on
-    #: "podaj kod" alone — and the app has no way to send them one (this
-    #: deployment sends no mail at all).
+    #: "podaj kod" alone — and the app has no way to send them one (the only
+    #: message it sends is the password-reset link).
     INVITATION_REQUIRED = (
         'Konto rodzica lub opiekuna zakłada się na kod otrzymany od '
         'specjalisty prowadzącego dziecko. Poproś o niego specjalistę.'
@@ -757,14 +759,19 @@ class PasswordChangeSerializer(serializers.Serializer):
     def save(self):
         """Writes the new hash, and clears the flag that demanded it.
 
-        Other sessions of this account deliberately survive. Django's usual
-        answer (`update_session_auth_hash`) invalidates them because its sessions
-        carry a hash of the password; ours carry `core_user_id` and nothing more
-        (see core/authentication.py), so there is no hash to go stale. Signing
-        the other devices out is a real feature — the one you want after "I think
-        somebody knows my password" — but it needs a way to enumerate an
-        account's sessions, which this deployment does not have, and doing half
-        of it silently would be worse than not claiming it.
+        Other sessions of this account deliberately survive, and that is now a
+        choice rather than a limitation: `authentication.end_all_sessions` can
+        enumerate them, and `PasswordResetConfirmSerializer` calls it. The
+        difference between the two forms is what the caller has proved. Here
+        they typed the current password, so they are the owner and their other
+        devices are their own — closing them would be a surprise nobody asked
+        for. A reset is the opposite case: the password is the thing that was
+        lost, and the sessions it left open are the ones to end.
+
+        Django's usual answer (`update_session_auth_hash`) does nothing for us
+        either way: it works because its sessions carry a hash of the password,
+        and ours carry `core_user_id` and nothing more (see
+        core/authentication.py).
         """
         self.user.password_hash = make_password(self.validated_data['new_password'])
         # And the account is no longer holding a password somebody else chose
@@ -779,6 +786,127 @@ class PasswordChangeSerializer(serializers.Serializer):
             update_fields=['password_hash', 'must_change_password', 'updated_at'],
         )
         return self.user
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """The "nie pamiętam hasła" form. POST /api/auth/password-reset/.
+
+    One field, and the validation stops at the address being an address. What it
+    deliberately does **not** do is check whether an account exists: the view
+    answers 204 either way (see `PasswordResetRequestView`), so a serializer
+    that refused an unknown address would undo the whole point in one line.
+    """
+
+    email = serializers.EmailField(
+        max_length=255,
+        error_messages={
+            'blank': 'Podaj adres e-mail.',
+            'required': 'Podaj adres e-mail.',
+            'invalid': 'Podaj poprawny adres e-mail.',
+        },
+    )
+
+    def save(self):
+        """Sends the link if there is an account to send it to, and says nothing.
+
+        No return value on purpose — see `password_reset.request_reset`, which
+        this is a one-line wrapper around precisely so the view has nothing to
+        branch on.
+        """
+        password_reset.request_reset(self.validated_data['email'])
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """The screen the mailed link opens. POST /api/auth/password-reset/confirm/.
+
+    NO CURRENT PASSWORD, WHICH IS THE DIFFERENCE FROM `PasswordChangeSerializer`
+    and the reason the two are not one class with an optional field. There the
+    current password is the proof of who is at the keyboard; here the proof is
+    the token, and asking for a password the person has by definition forgotten
+    would be a form nobody can submit. Everything else about the new password —
+    the confirmation field, Django's validators run *with* the user — is the
+    same, and is the same code.
+
+    ONE REFUSAL FOR EVERY BAD TOKEN. Expired, forged, already used, or belonging
+    to an account deleted since: `resolve_token` tells none of them apart and
+    neither does this. A message that distinguished them would confirm to a
+    stranger that a token they half-guessed was real.
+    """
+
+    # `required=False, allow_blank=True` so that a missing token is refused by
+    # `validate` below rather than by the field. The difference is where the
+    # message lands: a field error would be keyed 'token', and no input on the
+    # screen carries the token — it comes out of the URL — so the one message
+    # the user needs would be attached to a field that does not exist and shown
+    # nowhere. Under `detail` it renders above the form, which is where a
+    # statement about the whole link belongs.
+    token = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, trim_whitespace=True,
+    )
+    new_password = serializers.CharField(
+        write_only=True, trim_whitespace=False,
+        error_messages={'blank': 'Podaj nowe hasło.', 'required': 'Podaj nowe hasło.'},
+    )
+    new_password_confirm = serializers.CharField(
+        write_only=True, trim_whitespace=False,
+        error_messages={'blank': 'Powtórz nowe hasło.', 'required': 'Powtórz nowe hasło.'},
+    )
+
+    INVALID_TOKEN = (
+        'Link do ustawienia hasła jest nieprawidłowy lub wygasł. '
+        'Poproś o nowy link i otwórz go w ciągu godziny.'
+    )
+
+    def validate(self, attrs):
+        # The token first: a 400 about password strength on a dead link would
+        # send somebody off to think up a better password for a form that was
+        # never going to accept one.
+        user = password_reset.resolve_token(attrs.get('token'))
+        if user is None:
+            raise serializers.ValidationError({'detail': self.INVALID_TOKEN})
+
+        if attrs.get('new_password') != attrs.get('new_password_confirm'):
+            raise serializers.ValidationError(
+                {'new_password_confirm': 'Hasła nie są identyczne.'}
+            )
+
+        try:
+            check_password_strength(attrs['new_password'], user)
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({'new_password': exc.detail}) from exc
+
+        attrs['user'] = user
+        return attrs
+
+    def save(self):
+        """Writes the new hash, clears the password gate, signs every device out.
+
+        THE FLAG IS CLEARED HERE TOO, like `PasswordChangeSerializer.save`, and
+        this is the way in that `core/colleagues.py` says its flow does not have:
+        a specialist whose generated password was lost — the one credential in
+        this app that somebody else also knew — can now get an account of their
+        own back without a colleague minting a second one.
+
+        AND EVERY SESSION GOES. Unlike the profile form, where the caller proved
+        who they are with the current password and signing their other devices
+        out would be a surprise, a reset is the ordinary answer to "somebody may
+        have my password". Leaving a session alive would leave exactly the
+        access the reset was performed to end. `end_all_sessions` is what can do
+        this now; the note in `PasswordChangeSerializer.save` about there being
+        no way to enumerate an account's sessions is what it replaces.
+        """
+        user = self.validated_data['user']
+        user.password_hash = make_password(self.validated_data['new_password'])
+        user.must_change_password = False
+        user.save(
+            update_fields=['password_hash', 'must_change_password', 'updated_at'],
+        )
+        # After the save, so a session that is re-created between the two reads
+        # the new password's world. Note that the token that got us here is
+        # already dead at this point: it carries a fingerprint of the hash that
+        # has just been replaced.
+        end_all_sessions(user)
+        return user
 
 
 class ConsentScopeSerializer(serializers.Serializer):

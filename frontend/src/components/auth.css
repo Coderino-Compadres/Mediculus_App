@@ -238,6 +238,24 @@
   cursor: not-allowed;
 }
 
+/* The "Nie pamiętam hasła" line under the login button. Quieter than
+   `.auth-switch`, which separates whole screens with a rule above it: this one
+   belongs to the form it sits in. */
+.auth-secondary-link {
+  text-align: center;
+  margin: 0;
+  font-size: 14px;
+}
+
+.auth-secondary-link a {
+  color: var(--color-graphite-muted);
+  text-decoration: underline;
+}
+
+.auth-secondary-link a:hover {
+  color: var(--color-sage-hover);
+}
+
 .auth-switch {
   text-align: center;
   margin-top: 24px;

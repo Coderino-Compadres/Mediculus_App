@@ -38,6 +38,15 @@ the run and the weekly report's "brak wpisu" line was unreachable from a seeded
 database. An empty day is a real state of a real diary and §02 is explicit that
 it "nie jest brakiem"; the demo has to be able to show one.
 
+IT CAN ALSO WRITE THE TWO DEMO SPECIALIST ACCOUNTS (`--specialists`), one per
+module, each with the seeded patient already accepted on their caseload. That
+half is opt-in rather than part of the default run, and the line between them is
+the line between data and credentials: everything above writes rows into an
+account that already exists, while this writes an account somebody can log into,
+with a password `core/colleagues.py` would never issue. See
+DEMO_SPECIALIST_PASSWORD for which protections it steps over and why they do not
+apply to a laptop on a projector.
+
 WHAT IT DOES NOT SEED, because nothing can read it back: a meal photo. That
 would be the first file this deployment ever stored, and where it lives, how
 long it is kept and which consent covers it are all unanswered — see
@@ -47,19 +56,25 @@ long it is kept and which consent covers it are all unanswered — see
 import datetime
 
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
 from core.account import RISKY_DAYS_FOR_ATTENTION, last_report_needs_attention
+from core.colleagues import SPECIALIST_ROLE
+from core.consents import has_active_consents
 from core.diary import MOOD_LABELS
 from core.drinks import BOTTLE_ML, DEFAULT_SERVING_ML, GLASS_ML, OTHER_DRINKS, WATER
 from core.meals import streak_days as diet_streak_days
+from core.modules import MODULE_DIET, MODULE_PSYCHOTHERAPY, module_label
+from core.specialist import accept_invitation, invite
 from core.supplements import MAX_SUPPLEMENTS
 from core.models import (Diary, DietActivity, DietActivityDay, DietMeal,
                          DietMealEmotion,
-                         DietSleep, Hydration, MoodScale, Patient, Supplement,
-                         SupplementHour, SupplementIntake, User)
+                         DietSleep, Hydration, MoodScale, Patient, Specjalist,
+                         Supplement, SupplementHour, SupplementIntake, User,
+                         UserRole)
 
 #: The week the entries land in: the most recent one that has ended, i.e. the one
 #: the newest report covers. Anything written into the current week would be
@@ -305,6 +320,58 @@ ACTIVITY_SHAPES = (
 )
 
 
+#: The password every demo specialist account is given.
+#:
+#: **A FIXED, KNOWN CREDENTIAL — WHICH IS THE ONE THING `core/colleagues.py`
+#: DELIBERATELY REFUSES TO PRODUCE**, and the reason this whole section sits
+#: behind an opt-in flag on a command that will not run with DEBUG=False.
+#:
+#: A real specialist account is created with a *generated* password and is then
+#: held on the password form until its owner replaces it
+#: (`must_change_password`, see the header of core/colleagues.py), because what
+#: such an account opens onto is other people's clinical records. None of that
+#: reasoning survives contact with a demo: the account is opened in front of a
+#: room by whoever is presenting, so the credential has to be typeable off a
+#: slide — and everything it can reach was fabricated by this same command.
+#:
+#: So the three gates a real account meets are all stepped over here on purpose,
+#: and each one is set explicitly in `_seed_specialists` rather than left to a
+#: default, so that a reader can see which protection is being waived and why.
+DEMO_SPECIALIST_PASSWORD = 'Haslo123!'
+
+#: The two accounts, one per module.
+#:
+#: ONE SPECIALIST PER MODULE RATHER THAN ONE DOING BOTH, because that is the
+#: arrangement the app is built around and the only one that shows it: since
+#: migration 0022 `specjalist_patient.module` lets a patient have a
+#: psychotherapist *and* a psychodietitian at once, and §13 of the diet mockups
+#: draws both, told apart by a coloured dot. A single account holding both
+#: relationships would demo a screen the product does not have.
+#:
+#: The addresses follow the seeded patient's own shape (`test@wp.pl`) so that a
+#: presenter reads them off the slide without a second convention to remember.
+#: Nothing looks these up by anything but the address, so renaming one here is
+#: the whole change.
+DEMO_SPECIALISTS = (
+    {
+        'email': 'psycholog@wp.pl',
+        'name': 'Anna',
+        'surname': 'Zielińska',
+        'date_of_birth': datetime.date(1984, 4, 18),
+        'specialization': 'Psychoterapia',
+        'module': MODULE_PSYCHOTHERAPY,
+    },
+    {
+        'email': 'dietetyk@wp.pl',
+        'name': 'Marek',
+        'surname': 'Lewandowski',
+        'date_of_birth': datetime.date(1987, 9, 2),
+        'specialization': 'Psychodietetyka',
+        'module': MODULE_DIET,
+    },
+)
+
+
 def last_completed_week_start(today):
     """The Monday of the most recent week that has ended, in settings.TIME_ZONE."""
     this_monday = today - datetime.timedelta(days=today.weekday())
@@ -317,7 +384,9 @@ class Command(BaseCommand):
         'weekly report (and the guardian panel\'s attention marker) has '
         'something to show. Example: seed_demo_diary maly2@wp.pl=3 '
         'najmniejszy@wp.pl=2 — the number is how many days carry a risky-'
-        f'behaviour note, and the marker needs {RISKY_DAYS_FOR_ATTENTION}.'
+        f'behaviour note, and the marker needs {RISKY_DAYS_FOR_ATTENTION}. '
+        'Add --specialists to also create the two demo specialist accounts '
+        'and put every seeded patient on both caseloads.'
     )
 
     def add_arguments(self, parser):
@@ -344,6 +413,15 @@ class Command(BaseCommand):
                  'somebody\'s own writing is deleted and fabricated demo text '
                  'is put in its place. With it, FLAGGED_DAYS may be left off '
                  'the address.',
+        )
+        parser.add_argument(
+            '--specialists', action='store_true',
+            help='Also create the two demo specialist accounts (one per '
+                 'module) with a fixed, known password and put every seeded '
+                 'patient on both caseloads, already accepted. OFF BY DEFAULT '
+                 'and opt-in on purpose: this writes accounts somebody can log '
+                 'into, which is a larger act than writing diary rows, and the '
+                 'password it sets is one core/colleagues.py refuses to create.',
         )
         parser.add_argument(
             '--meal-days', type=int, default=MEAL_DAYS, metavar='N',
@@ -377,9 +455,14 @@ class Command(BaseCommand):
         if not 1 <= entries <= DAYS_IN_WEEK:
             raise CommandError(f'--entries has to be between 1 and {DAYS_IN_WEEK}.')
 
-        if options['no_diary'] and options['no_diet']:
+        # ...unless the specialists are what is being asked for. Linking an
+        # account that already has its diaries is a real errand — the two demo
+        # specialists arrived after the patient did — and refusing it would
+        # only push somebody into re-seeding a week they did not want touched.
+        if options['no_diary'] and options['no_diet'] and not options['specialists']:
             raise CommandError(
-                '--no-diary and --no-diet together leave nothing to write.'
+                '--no-diary and --no-diet together leave nothing to write '
+                '(add --specialists to write only the specialist accounts).'
             )
 
         scale = self._scale(options)
@@ -405,6 +488,86 @@ class Command(BaseCommand):
                 patient = self._seed(email, flagged, entries, week_start)
             if not options['no_diet']:
                 self._seed_diet(email, patient, scale)
+            if options['specialists']:
+                self._seed_specialists(email, patient)
+
+    def _seed_specialists(self, email, patient):
+        """The two demo specialist accounts, with `patient` accepted on both.
+
+        WHY THE LINK IS MADE THROUGH `core/specialist.py` RATHER THAN BY WRITING
+        THE ROW. `invite` + `accept_invitation` are the two functions the app
+        itself runs when a specialist asks and a patient agrees, so what this
+        leaves behind is a state the product can actually reach — including the
+        part that is easy to forget: accepting replaces whoever was accepted in
+        that module, which the database also insists on
+        (`uniq_patient_module_accepted`). A hand-written INSERT would have hit
+        that constraint the first time this ran against a patient who already
+        had a specialist, which on a shared dev database is most of them.
+
+        Both functions are idempotent, so re-running this is re-running it: the
+        invitation is fetched rather than duplicated and an already-accepted
+        relationship keeps the moment it was accepted, instead of the seed
+        quietly moving the date every time somebody prepares a demo.
+
+        WHAT IS OVERWRITTEN ON AN EXISTING ACCOUNT, and it is worth knowing
+        before pointing this at an address somebody is using: the name, the
+        surname, the date of birth, the specialization and — the one that
+        matters — the password. That is the point of the flag (a demo account
+        whose password nobody remembers is not a demo account), but it also
+        means these addresses must stay demo addresses.
+
+        WHAT IS NOT OVERWRITTEN: a consent register that is already in force.
+        Consents are only granted here when they are not currently held, and a
+        withdrawal is never erased — a fresh grant dated now is exactly how
+        `core/consents.py` restores one, so the record of both events survives.
+        """
+        role = UserRole.objects.filter(name=SPECIALIST_ROLE).first()
+        now = timezone.now()
+
+        for shape in DEMO_SPECIALISTS:
+            with transaction.atomic(using='default'):
+                user = User.objects.filter(email=shape['email']).first()
+                created = user is None
+                if user is None:
+                    user = User(email=shape['email'])
+
+                user.name = shape['name']
+                user.surname = shape['surname']
+                user.date_of_birth = shape['date_of_birth']
+                # `user_role` is a nullable column looked up by name from data
+                # mock_data.sql seeds, and nothing authorizes on it — a database
+                # without the row yields `role: null` rather than a failure, so
+                # a missing row is not worth stopping a demo for.
+                if role is not None:
+                    user.user_role = role
+
+                # The three waivers, spelled out. See DEMO_SPECIALIST_PASSWORD.
+                user.password_hash = make_password(DEMO_SPECIALIST_PASSWORD)
+                user.must_change_password = False
+                if not has_active_consents(user):
+                    user.data_consent_at = now
+                    user.services_consent_at = now
+
+                user.save()
+
+                specjalist, _ = Specjalist.objects.update_or_create(
+                    user=user,
+                    defaults={'specjalization': shape['specialization']},
+                )
+                link = invite(specjalist, patient, shape['module'])
+                accept_invitation(patient, link.pk)
+
+            self.stdout.write(
+                f'{shape["email"]}: {"utworzono" if created else "zaktualizowano"} '
+                f'konto specjalisty ({shape["specialization"]}) — moduł '
+                f'„{module_label(shape["module"])}", pacjent {email} przypisany '
+                f'i zaakceptowany.'
+            )
+
+        self.stdout.write(
+            f'  → hasło do obu kont: {DEMO_SPECIALIST_PASSWORD} '
+            '(konta demonstracyjne, bez wymuszonej zmiany hasła)'
+        )
 
     def _scale(self, options):
         """How much of each thing to write, validated before anything is.
