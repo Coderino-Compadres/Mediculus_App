@@ -11,6 +11,20 @@ urlpatterns = [
     path('auth/register/', views.RegisterView.as_view(), name='register'),
     path('auth/login/', views.LoginView.as_view(), name='login'),
     path('auth/logout/', views.LogoutView.as_view(), name='logout'),
+    # The way back into an account whose password is gone. Under auth/ rather
+    # than account/, and that is the distinction the prefix carries everywhere
+    # here: account/ is what a session can do to itself, auth/ is what a visitor
+    # with no session may ask for. `/confirm/` is a second endpoint rather than
+    # a field on the first, because the two are answered on different days by a
+    # person holding different things — an address, then a token.
+    path(
+        'auth/password-reset/',
+        views.PasswordResetRequestView.as_view(), name='password-reset',
+    ),
+    path(
+        'auth/password-reset/confirm/',
+        views.PasswordResetConfirmView.as_view(), name='password-reset-confirm',
+    ),
     path('auth/me/', views.MeView.as_view(), name='me'),
     path('auth/guardian/', views.GuardianLinkView.as_view(), name='guardian-link'),
     path(

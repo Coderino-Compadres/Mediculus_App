@@ -21,12 +21,18 @@ worth keeping rather than a gap to close — an endpoint that could mint the fir
 professional account would be an endpoint that can mint the tenth.
 
 THE PASSWORD IS SHOWN ONCE AND THE SCREEN SAYS SO, the same shape as a guardian
-invitation code and for the same reason: this deployment sends no mail at all,
-so a credential travels as something handed over in the room. It is stored as a
-hash (`make_password`, like every other `user.password_hash`), so nothing can
-read it back — a specialist who loses it has no way to recover it, and the new
-account has no password reset either. That is the one rough edge of this flow
-and it is deliberate: the alternative is storing a readable credential.
+invitation code and for the same reason: a credential the app does not mail
+travels as something handed over in the room. It is stored as a hash
+(`make_password`, like every other `user.password_hash`), so nothing can read it
+back — this screen cannot show it again, and neither can anybody with the
+database.
+
+A SPECIALIST WHO LOSES THE NOTE IS NO LONGER STUCK, which is what changed:
+`core/password_reset.py` mails a link to the account's own address, and setting
+a password through it clears `must_change_password` exactly as the form below
+does. The generated password is still not mailed and still cannot be read back;
+what the reset gives the account is a way to replace it without a colleague
+creating a second one.
 
 AND IT HAS TO BE REPLACED AT FIRST LOGIN. `must_change_password` is set here and
 nowhere else, `core.permissions.HasOwnPassword` refuses the account everything

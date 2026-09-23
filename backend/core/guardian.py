@@ -78,7 +78,8 @@ def pending_invitation_count(guardian):
     so the app can *show* a guardian that a child is waiting on every screen they
     have, rather than only on the card that answers it. That is a real gap rather
     than a nicety: a minor's account is blocked until this is answered, nothing
-    can notify anybody out of band (this deployment sends no mail), and a
+    can notify anybody out of band (the one message this deployment sends is the
+    password-reset link), and a
     guardian sitting on their profile had no way to know.
 
     Deliberately a count and not the payload of `pending_invitations`: the names

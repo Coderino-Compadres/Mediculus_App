@@ -223,6 +223,16 @@ export interface LinkGuardianInput {
   guardianEmail: string
 }
 
+export interface PasswordResetRequestInput {
+  email: string
+}
+
+export interface PasswordResetConfirmInput {
+  token: string
+  password: string
+  confirmPassword: string
+}
+
 export interface RegisterInput {
   accountType: string
   firstName: string
@@ -264,6 +274,20 @@ export const REGISTER_FIELDS: Record<string, string> = {
 
 export const GUARDIAN_FIELDS: Record<string, string> = {
   guardian_email: 'guardianEmail',
+}
+
+export const PASSWORD_RESET_FIELDS: Record<string, string> = {
+  email: 'email',
+}
+
+export const PASSWORD_RESET_CONFIRM_FIELDS: Record<string, string> = {
+  new_password: 'password',
+  new_password_confirm: 'confirmPassword',
+  // No `token` entry, and none is needed: the backend reports every problem
+  // with the link under `detail` rather than as a field error, precisely
+  // because no input on this screen carries the token — it comes out of the
+  // URL. `detail` renders above the form (see toApiError in api/client.ts),
+  // which is where a statement about the whole link belongs.
 }
 
 /** Re-keys an ApiError's field errors for the form that produced them. */
@@ -450,6 +474,40 @@ export async function cancelGuardianInvitation(): Promise<AuthUser> {
     method: 'DELETE',
   })
   return toAuthUser(payload)
+}
+
+/**
+ * Asks for a link that sets a new password, and tells the caller nothing.
+ *
+ * Resolves for an address with an account and for one without — the backend
+ * answers 204 to both on purpose (see `PasswordResetRequestView`), and a client
+ * that distinguished them would put back the enumeration oracle the endpoint was
+ * built to avoid. The screen says "jeśli konto istnieje…" for the same reason.
+ */
+export async function requestPasswordReset(input: PasswordResetRequestInput): Promise<void> {
+  await apiRequest<void>('/api/auth/password-reset/', {
+    method: 'POST',
+    body: { email: input.email },
+  })
+}
+
+/**
+ * Sets the new password the mailed token allows.
+ *
+ * Answers 204 and starts no session: the token arrived by e-mail, which is a
+ * weaker thing to hold than the password it replaces, and the account's own
+ * sessions have just been closed server-side. The caller sends the user to
+ * /login afterwards.
+ */
+export async function confirmPasswordReset(input: PasswordResetConfirmInput): Promise<void> {
+  await apiRequest<void>('/api/auth/password-reset/confirm/', {
+    method: 'POST',
+    body: {
+      token: input.token,
+      new_password: input.password,
+      new_password_confirm: input.confirmPassword,
+    },
+  })
 }
 
 export async function logout(): Promise<void> {

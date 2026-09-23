@@ -5,6 +5,7 @@ import FormField from '../components/FormField'
 import { useAuthForm } from '../hooks/useAuthForm'
 import { useAuth } from '../auth/authContext'
 import { LOGIN_FIELDS, login } from '../api/auth'
+import { ROUTES } from '../routes'
 import { validateEmail, validatePassword } from '../utils/validation'
 
 const INFO_TILE_ID = 'login-info-tile'
@@ -100,6 +101,14 @@ function Login() {
         <button type="submit" className="auth-submit" disabled={submitting}>
           {submitting ? 'Logowanie…' : 'Zaloguj się'}
         </button>
+
+        {/* Under the button rather than beside the password field: the login
+            cap is 15 attempts an hour per account, and somebody guessing at a
+            password they cannot recall should meet the way out before they
+            spend them — see WARN_AT_ATTEMPTS_LEFT in core/throttling.py. */}
+        <p className="auth-secondary-link">
+          <Link to={ROUTES.passwordReset}>Nie pamiętam hasła</Link>
+        </p>
       </form>
     </AuthLayout>
   )

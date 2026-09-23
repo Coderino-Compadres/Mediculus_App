@@ -504,9 +504,9 @@ export interface CreatedColleague {
    *
    * Stored as a hash like every other, so nothing can read it back — not this
    * API, not the roster, not the database. The screen has to show it while it
-   * has it and say so; there is no password reset in this deployment, so an
-   * account whose password is lost has to be created again under another
-   * address.
+   * has it and say so. An account whose temporary password is lost is not lost
+   * with it: it can ask for a reset link from /login, which is mailed to its own
+   * address (see api/auth.ts `requestPasswordReset`).
    */
   password: string
   specialist: Colleague

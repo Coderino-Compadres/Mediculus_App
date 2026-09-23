@@ -11,6 +11,14 @@ export const ROUTES = {
    *  is held — the only screen it may reach once its consents are in force.
    *  See pages/PasswordChangeRequired.tsx. */
   passwordChange: '/password-change',
+  /** "Nie pamiętam hasła" — the form that asks for a link. See
+   *  pages/PasswordReset.tsx. */
+  passwordReset: '/password-reset',
+  /** Where the link in that message lands, with the token in the path. The
+   *  token is not a query parameter on purpose: a path segment is what
+   *  `core.password_reset.RESET_PATH` builds and what a mail client is least
+   *  likely to mangle. See pages/PasswordResetConfirm.tsx. */
+  passwordResetConfirm: '/password-reset/:token',
   /** The guardian's own landing screen — see pages/ParentHome.tsx. */
   parentHome: '/parent',
   /** The specialist's landing screen — see pages/SpecialistHome.tsx. */
@@ -224,6 +232,8 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.linkGuardian]: 'Powiązanie z opiekunem',
   [ROUTES.consents]: 'Wymagane zgody',
   [ROUTES.passwordChange]: 'Ustaw własne hasło',
+  [ROUTES.passwordReset]: 'Nie pamiętam hasła',
+  [ROUTES.passwordResetConfirm]: 'Ustawienie nowego hasła',
   [ROUTES.modules]: 'Wybór modułu',
   [ROUTES.parentHome]: 'Panel rodzica',
   [ROUTES.specialistHome]: 'Panel specjalisty',

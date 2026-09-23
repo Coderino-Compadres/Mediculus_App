@@ -102,20 +102,17 @@ def submitted_email(request):
     return email.strip().lower()
 
 
-class LoginAccountThrottle(SimpleRateThrottle):
-    """Per-account cap on password attempts, keyed on the address submitted.
-
-    The per-IP cap does not stop password guessing: a botnet gives every attempt
-    its own address and its own budget. What actually bounds it is a counter on
-    the account being attacked, which no amount of client diversity can spread.
+class SubmittedEmailThrottle(SimpleRateThrottle):
+    """Counts against the address in the request body, not against the caller.
 
     Keyed on the *submitted* address, not on a user that was found — see
     `submitted_email`. The digest is there for the same reason the ident is
     hashed, and more so: an e-mail identifies a person directly, and the cache
     key may end up in a table.
-    """
 
-    scope = 'login_account'
+    Subclasses differ only in `scope`, which is what keeps two policies that
+    happen to share a mechanism from sharing a number.
+    """
 
     def get_cache_key(self, request, view):
         email = submitted_email(request)
@@ -126,6 +123,17 @@ class LoginAccountThrottle(SimpleRateThrottle):
         return self.cache_format % {
             'scope': self.scope, 'ident': _digest(ACCOUNT_KEY_SALT, email),
         }
+
+
+class LoginAccountThrottle(SubmittedEmailThrottle):
+    """Per-account cap on password attempts, keyed on the address submitted.
+
+    The per-IP cap does not stop password guessing: a botnet gives every attempt
+    its own address and its own budget. What actually bounds it is a counter on
+    the account being attacked, which no amount of client diversity can spread.
+    """
+
+    scope = 'login_account'
 
     def reset(self, request):
         """Forget the attempts against this address.
@@ -138,6 +146,24 @@ class LoginAccountThrottle(SimpleRateThrottle):
         key = self.get_cache_key(request, None)
         if key is not None:
             self.cache.delete(key)
+
+
+class PasswordResetAccountThrottle(SubmittedEmailThrottle):
+    """Per-address cap on asking for a reset link, keyed on the address asked for.
+
+    Not on the caller, which is the whole point: the request carries no session,
+    so a per-IP cap alone bounds one attacker's machine and not the number of
+    messages one person's mailbox receives. Whoever asks, this is what says how
+    often a given address can be mailed — a form somebody hammers is a form that
+    mails a stranger five times an hour, and a mail nobody asked for is the one
+    thing a reset flow can do to a person who is not even using it.
+
+    It also bounds the two leaks the 204 cannot close on its own: a mail that
+    arrives only for an address with an account, and a response that is slower
+    for one (see `request_reset` in core/password_reset.py).
+    """
+
+    scope = 'password_reset'
 
 
 class ReportPdfThrottle(UserRateThrottle):
@@ -217,8 +243,9 @@ class PasswordChangeThrottle(UserRateThrottle):
 
 # How many attempts have to be left before the response starts saying so. Below
 # this the warning is worth more than the silence: a person who has forgotten
-# which password they used gets a chance to stop and think, and there is no
-# password reset in this deployment to rescue them afterwards.
+# which password they used gets a chance to stop and think — and, since
+# core/password_reset.py exists, to use the link under the form instead of
+# spending the rest of the hour's attempts.
 WARN_AT_ATTEMPTS_LEFT = 5
 
 

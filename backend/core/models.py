@@ -270,9 +270,10 @@ class ParentInvitation(models.Model):
     with a family needs the other direction: name the parent's address, name the
     child, and hand over a code the parent finishes registration with.
 
-    Why a code and not a link in an e-mail: this deployment sends no mail at all
-    (see CLAUDE.md), so an activation link has nothing to travel on. The code is
-    given to the parent in the consulting room.
+    Why a code and not a link in an e-mail: the only message this deployment
+    sends is the password-reset link (core/password_reset.py), and an invitation
+    is a different thing to trust a mailbox with — the specialist is sitting with
+    the family, so the code is given to the parent in the consulting room.
 
     WHAT IS NOT STORED IS THE POINT. `code_hash` holds the code the way
     `user.password_hash` holds a password -- hashed, so a database dump does not

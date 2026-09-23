@@ -454,3 +454,80 @@ Naprawy sprawdzone także w działającej aplikacji: karta zaproszenia pojawia s
 i przyjęcie z niej działa („Dorota Dietetyczka może teraz czytać Twoje raporty…”), licznik
 pokazuje „1 dzień z rzędu”, nawodnienie „3,6 szklanki”, pusty dzień „czwartek, 1 stycznia”,
 a `/diet/journals/2026-13-45` — „Nieznany dzień”. Dane po weryfikacji posprzątane.
+
+---
+
+## 7. Zegar 24-godzinny
+
+Osobne zadanie, wykonane po naprawach: doprowadzenie do tego, żeby **nigdzie w aplikacji
+nie pojawiało się „am" ani „pm"**. Przegląd wykazał trzy warstwy, z czego problem był
+tylko w jednej.
+
+### Backend — był już czysty
+
+Każda godzina wychodzi z serwera jako napis zbudowany przez `strftime('%H:%M')`:
+`core/meals.py`, `core/activity.py`, `core/sleep.py`, `core/supplements.py`. Nigdzie nie ma
+`%I` ani `%p`. Oba generatory PDF biorą gotowy napis, więc dokumenty też były poprawne.
+
+### Formatowanie w przeglądarce — dwa miejsca, teraz jedna definicja
+
+Tylko dwa ekrany formatowały czas same: godzina wpisu nawodnienia i godzina zapisania wpisu
+w dzienniczku psychoterapeutycznym. Oba używały `toLocaleTimeString('pl-PL', …)`, co w
+praktyce daje 24h — ale nigdzie nie było powiedziane, że *ma* dawać.
+
+Powstał `utils/clock.ts` z jedną funkcją `clockTime()`, używaną w obu miejscach. Prosi
+o `hourCycle: 'h23'`, a nie o `hour12: false`, i to nie jest drobiazg: `hour12: false`
+w części silników wybiera cykl h24, w którym północ zapisuje się jako **24:00**, a pół
+godziny po niej jako 24:30. Aplikacja pokazuje posiłki jedzone późno w nocy, więc to realna
+różnica. `h23` daje 00:00–23:59.
+
+### Pola formularzy — tu był prawdziwy problem
+
+`<input type="time">` renderuje **przeglądarka, według swojego locale, nie locale strony**.
+Na Chrome ustawionym na angielski pole pokazuje „02:46 PM", a `<html lang="pl">` tego nie
+zmienia — sprawdzone zrzutem ekranu, dwa pola obok siebie z `lang="pl"` i `lang="en-US"`
+wyglądały identycznie, oba z „PM".
+
+Dotyczyło to czterech pól: godzina posiłku, godzina suplementu, zaśnięcie i przebudzenie.
+Wartość zapisywana zawsze była 24-godzinna, więc dane i raporty były poprawne — AM/PM
+widziała tylko osoba wpisująca.
+
+Zastąpił je `components/TimeField.tsx`: pole tekstowe z maską HH:MM, `inputMode="numeric"`
+i walidacją 00:00–23:59. Kontrakt wartości jest ten sam co natywnego pola (`'HH:MM'` albo
+`''`), więc wszystkie cztery ekrany przyjęły je bez zmian w logice.
+
+Co to kosztuje, powiedziane wprost: **nie ma już natywnego zegarka-pickera**. Na telefonie
+zostaje klawiatura numeryczna. To jest cena gwarancji 24h i decyzja świadoma, a nie
+przeoczenie.
+
+Trzy zachowania warte odnotowania:
+
+- **cyfra 3 lub większa na początku otwiera godzinę jednocyfrową** — wpisanie `9` daje od
+  razu `09:`, tak jak robiło to pole natywne;
+- **Backspace kasuje po jednej cyfrze, aż do pustego pola.** Pierwsza wersja dokładała
+  dwukropek po każdym kasowaniu, przez co `14:` przeżywało dowolną liczbę Backspace'ów
+  i godziny nie dało się wyczyścić z klawiatury. Złapał to test, zanim cokolwiek pojechało
+  dalej; rozwiązaniem jest `inputType` ze zdarzenia, a nie porównywanie długości ze stanem
+  Reacta, który przy szybkim pisaniu bywa o jeden render do tyłu;
+- **błędna godzina zostaje na ekranie**, oznaczona i wyjaśniona, zamiast być po cichu
+  skasowana albo poprawiona — ta sama reguła, którą reszta aplikacji stosuje do wartości,
+  których nikt nie wybrał.
+
+### Sprawdzone
+
+`TimeField.test.tsx` (15 testów) i `clock.test.ts` (6) pinują regułę, w tym to, że przez całą
+dobę nie pada „am" ani „pm" i że północ to `00:00`, nie `24:00`.
+
+W działającej aplikacji, **na przeglądarce z locale `en-US`** — czyli w warunkach, w których
+stary komponent pokazywał „02:46 PM":
+
+| Sprawdzone | Wynik |
+|---|---|
+| pole godziny posiłku | `15:03`, `type="text"`, `inputMode="numeric"` |
+| wpisywanie `9` → `093` → `0930` | `09:` → `09:3` → `09:30` |
+| godzina `25:70` | zostaje na ekranie, `aria-invalid`, komunikat o zakresie 00:00–23:59 |
+| powrót do `14:30` | komunikat znika, `aria-invalid="false"` |
+| zapis posiłku end-to-end | w bazie `eaten_at = 14:30:00` |
+| sen `23:20` → `06:45` | `7 h 25 min` — przejście przez północ nadal liczone poprawnie |
+| godzina suplementu `2100` | `21:00` |
+| `input[type="time"]` w całym `src/` | brak |

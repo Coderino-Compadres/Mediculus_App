@@ -64,6 +64,14 @@ describe('Login', () => {
       'href', ROUTES.register,
     )
   })
+
+  it('offers the way out of a forgotten password, before the attempts run out', () => {
+    renderScreen()
+
+    expect(screen.getByRole('link', { name: /nie pamiętam hasła/i })).toHaveAttribute(
+      'href', ROUTES.passwordReset,
+    )
+  })
 })
 
 describe('Login — the info button', () => {
