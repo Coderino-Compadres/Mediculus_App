@@ -53,14 +53,14 @@ const DAY_PAYLOAD = {
   min_amount_ml: 10,
   max_amount_ml: 2000,
   max_drink_name: 40,
-  water_ml: 1000,
+  liquid_ml: 1000,
   glasses: 4,
   progress: 0.667,
   entries: [
     { id: 'a', drink: 'Woda', amount_ml: 250, at: '2026-09-11T14:20:00+02:00' },
     { id: 'b', drink: 'Herbata', amount_ml: null, at: null },
   ],
-  week: [{ date: '2026-09-11', water_ml: 1000, glasses: 4 }],
+  week: [{ date: '2026-09-11', liquid_ml: 1000, glasses: 4 }],
 }
 
 beforeEach(() => {
@@ -96,7 +96,7 @@ describe('fetchHydration', () => {
     expect(day.minAmountMl).toBe(10)
     expect(day.maxAmountMl).toBe(2000)
     expect(day.maxDrinkName).toBe(40)
-    expect(day.waterMl).toBe(1000)
+    expect(day.liquidMl).toBe(1000)
     expect(day.glasses).toBe(4)
     expect(day.progress).toBe(0.667)
   })
@@ -113,30 +113,30 @@ describe('fetchHydration', () => {
 
   it('a zero stays a zero', async () => {
     apiRequest.mockResolvedValue({
-      ...DAY_PAYLOAD, water_ml: 0, glasses: 0, progress: 0, entries: [],
-      week: [{ date: '2026-09-11', water_ml: 0, glasses: 0 }],
+      ...DAY_PAYLOAD, liquid_ml: 0, glasses: 0, progress: 0, entries: [],
+      week: [{ date: '2026-09-11', liquid_ml: 0, glasses: 0 }],
     })
 
     const day = await fetchHydration()
 
     expect(day.glasses).toBe(0)
     expect(day.progress).toBe(0)
-    expect(day.week[0].waterMl).toBe(0)
+    expect(day.week[0].liquidMl).toBe(0)
   })
 
   it('maps the week without reordering it', async () => {
     apiRequest.mockResolvedValue({
       ...DAY_PAYLOAD,
       week: [
-        { date: '2026-09-10', water_ml: 500, glasses: 2 },
-        { date: '2026-09-11', water_ml: 1000, glasses: 4 },
+        { date: '2026-09-10', liquid_ml: 500, glasses: 2 },
+        { date: '2026-09-11', liquid_ml: 1000, glasses: 4 },
       ],
     })
 
     const { week } = await fetchHydration()
 
     expect(week.map((day) => day.date)).toEqual(['2026-09-10', '2026-09-11'])
-    expect(week[0]).toEqual({ date: '2026-09-10', waterMl: 500, glasses: 2 })
+    expect(week[0]).toEqual({ date: '2026-09-10', liquidMl: 500, glasses: 2 })
   })
 })
 
@@ -907,7 +907,7 @@ const REPORT_PAYLOAD = {
     {
       date: '2026-08-26',
       meals: [REPORT_MEAL],
-      hydration: { date: '2026-08-26', water_ml: 500, glasses: 2 },
+      hydration: { date: '2026-08-26', liquid_ml: 500, glasses: 2 },
       sleep: SLEEP_PAYLOAD,
       activity: ACTIVITY_DAY_PAYLOAD,
       empty: false,
@@ -982,7 +982,7 @@ describe('fetchDietReports', () => {
     const [wednesday, thursday] = report.days
 
     expect(wednesday.meals[0].description).toBe('Owsianka.')
-    expect(wednesday.hydration).toEqual({ date: '2026-08-26', waterMl: 500, glasses: 2 })
+    expect(wednesday.hydration).toEqual({ date: '2026-08-26', liquidMl: 500, glasses: 2 })
     expect(wednesday.sleep?.fellAsleepAt).toBe('23:40')
     expect(wednesday.activity?.steps).toBe(6400)
     expect(wednesday.empty).toBe(false)

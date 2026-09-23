@@ -11,6 +11,7 @@ import type { DayMood, HomeDashboard, TodayEntry } from '../types/dashboard'
 import { ROUTES } from '../routes'
 import HeaderMenu from '../components/HeaderMenu'
 import SpecialistInvitationCard from '../components/SpecialistInvitation'
+import { pluralDays } from '../utils/reports'
 import './home.css'
 
 /**
@@ -294,7 +295,7 @@ function Home() {
         {dashboard && (
           <div className="home-streak">
             <span className="home-streak-count">{dashboard.streakDays}</span>
-            <span className="home-streak-label">dni z rzędu</span>
+            <span className="home-streak-label">{pluralDays(dashboard.streakDays)} z rzędu</span>
           </div>
         )}
       </section>

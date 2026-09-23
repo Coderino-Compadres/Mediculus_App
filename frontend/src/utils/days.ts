@@ -24,6 +24,25 @@ export function fromIsoDate(iso: string): Date {
   return new Date(`${iso}T00:00:00`)
 }
 
+/**
+ * Whether a string names a real calendar day — the guard for an ISO date that
+ * came out of a URL rather than out of the API.
+ *
+ * Both halves are needed. The pattern alone accepts '2026-13-45'; `Date` alone
+ * accepts it too, by rolling it over into 2027. So the day is parsed and then
+ * written back out, and the two spellings have to match: a date that rolled
+ * over comes back as a different string and is refused.
+ *
+ * Why a screen cares: the day endpoint answers 404 both for a day with no meals
+ * and for a date that could never have had any, so without this the two read
+ * identically and a typo in the address bar says "you wrote nothing that day".
+ */
+export function isValidIsoDate(iso: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return false
+  const parsed = fromIsoDate(iso)
+  return !Number.isNaN(parsed.getTime()) && toIsoDate(parsed) === iso
+}
+
 /** Local midnight `days` away from `date`; `days` may be negative. */
 export function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days)

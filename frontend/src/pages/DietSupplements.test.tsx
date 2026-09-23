@@ -143,7 +143,7 @@ describe('an empty list', () => {
   it('says that only the name is needed', async () => {
     await renderScreen()
 
-    expect(screen.getByText(/wystarczy nazwa/)).toBeInTheDocument()
+    expect(screen.getByText(/Poza nazwą nic nie jest wymagane/)).toBeInTheDocument()
   })
 })
 
@@ -235,18 +235,37 @@ describe('adding one', () => {
     expect(screen.getByRole('heading', { name: 'Nowa pozycja' })).toBeInTheDocument()
   })
 
-  it('cannot be submitted without a name and can be with nothing else', async () => {
+  /**
+   * Blocked without a name — but blocked the way Stepper blocks, with
+   * `aria-disabled` rather than `disabled`.
+   *
+   * The difference is the whole point of the assertion: a `disabled` button
+   * leaves the focus order, so a screen reader walks past the one control the
+   * reader is looking for and is told nothing. Left reachable, announced as
+   * unavailable, and pointed at the sentence that says why. Pressing it anyway
+   * has to do nothing, which is the last step here.
+   */
+  it('cannot be submitted without a name, and says so instead of vanishing', async () => {
     createSupplement.mockResolvedValue([supplement({ name: 'Magnez' })])
 
     await renderScreen()
     await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
 
-    expect(screen.getByRole('button', { name: 'Dodaj do listy' })).toBeDisabled()
+    const submit = screen.getByRole('button', { name: 'Dodaj do listy' })
+    expect(submit).toHaveAttribute('aria-disabled', 'true')
+    expect(submit).not.toBeDisabled()
+    expect(screen.getByText(/Wpisz nazwę, żeby zapisać pozycję/)).toBeInTheDocument()
+
+    // Reachable, so it can be pressed — and pressing it writes nothing.
+    await userEvent.click(submit)
+    expect(createSupplement).not.toHaveBeenCalled()
 
     await userEvent.type(screen.getByLabelText('Nazwa'), 'Magnez')
-    expect(screen.getByRole('button', { name: 'Dodaj do listy' })).toBeEnabled()
+    const ready = screen.getByRole('button', { name: 'Dodaj do listy' })
+    expect(ready).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.queryByText(/Wpisz nazwę, żeby zapisać pozycję/)).toBeNull()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+    await userEvent.click(ready)
 
     expect(createSupplement).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Magnez' }),

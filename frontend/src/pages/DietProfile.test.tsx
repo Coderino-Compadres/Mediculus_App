@@ -159,7 +159,7 @@ beforeEach(() => {
     date: '2026-09-09',
     glassMl: 250, bottleMl: 500, targetGlasses: 8,
     minAmountMl: 10, maxAmountMl: 3000, maxDrinkName: 40,
-    waterMl: 0, glasses: 0, progress: 0, entries: [], week: [],
+    liquidMl: 0, glasses: 0, progress: 0, entries: [], week: [],
   })
   fetchDietReports.mockResolvedValue([])
   fetchDietHistory.mockResolvedValue([])

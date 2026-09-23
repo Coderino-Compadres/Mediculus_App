@@ -3,9 +3,11 @@
 Three groups of decisions are worth pinning here, and each one is a rule the
 client stated rather than a default this project reached for:
 
-* **Other drinks are recorded and never converted into water.** A week of tea is
-  not a hydrated week on this screen. If somebody ever "fixes" that with a
-  coefficient, `OtherDrinkTests` is what says no.
+* **Every drink counts towards the goal, at the volume drunk.** The client
+  reversed §08's "nie przeliczane na wodę" on 2026-09-17; a cup of tea now fills
+  the bar like the same volume of water. `EveryDrinkCountsTests` is what fails
+  if a `drink == WATER` filter is ever put back, and nothing may weight one
+  drink against another — see `test_drinks.NoDrinkIsWeightedTests`.
 * **The goal is a point of reference, not a verdict.** Past it the bar is simply
   full; nothing congratulates, nothing counts a streak, nothing reports a
   deficit. `GoalTests` sweeps the payload for a value a day could fail.
@@ -74,12 +76,17 @@ class HydrationTestCase(TestCase):
         return self.client.post(self.url(), body, format='json')
 
     def glass(self, patient=None, on=None, amount_ml=GLASS_ML, drink=WATER):
-        """A serving written straight into the table, dated as asked."""
+        """A serving written straight into the table, dated as asked.
+
+        Every drink carries its amount, water or not: that is what `add_entry`
+        writes now, and a helper that kept NULLing tea would be testing a row
+        shape the app stopped producing.
+        """
         return Hydration.objects.create(
             id_medical=(patient or self.patient).id_medical,
             entry_date=on or self.today,
             drink=drink,
-            amount_ml=amount_ml if drink == WATER else None,
+            amount_ml=amount_ml,
         )
 
     def day(self):
@@ -93,7 +100,7 @@ class EmptyDayTests(HydrationTestCase):
     def test_nothing_drunk_is_zero_rather_than_an_error(self):
         day = self.day()
 
-        self.assertEqual(day['water_ml'], 0)
+        self.assertEqual(day['liquid_ml'], 0)
         self.assertEqual(day['glasses'], 0)
         self.assertEqual(day['entries'], [])
 
@@ -126,7 +133,7 @@ class DrinkingTests(HydrationTestCase):
         response = self.drink(amount_ml=GLASS_ML)
 
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data['day']['water_ml'], GLASS_ML)
+        self.assertEqual(response.data['day']['liquid_ml'], GLASS_ML)
         self.assertEqual(response.data['day']['glasses'], 1)
 
     def test_the_answer_carries_the_whole_day_so_the_screen_recomputes_nothing(self):
@@ -135,8 +142,8 @@ class DrinkingTests(HydrationTestCase):
         response = self.drink(amount_ml=BOTTLE_ML)
         day = response.data['day']
 
-        self.assertEqual(day['water_ml'], BOTTLE_ML)
-        self.assertEqual(day['week'][-1]['water_ml'], BOTTLE_ML)
+        self.assertEqual(day['liquid_ml'], BOTTLE_ML)
+        self.assertEqual(day['week'][-1]['liquid_ml'], BOTTLE_ML)
         self.assertEqual(len(day['entries']), 1)
 
     def test_water_is_the_default_so_the_commonest_call_is_one_field(self):
@@ -148,7 +155,7 @@ class DrinkingTests(HydrationTestCase):
         self.drink(amount_ml=GLASS_ML)
         self.drink(amount_ml=BOTTLE_ML)
 
-        self.assertEqual(self.day()['water_ml'], GLASS_ML + BOTTLE_ML)
+        self.assertEqual(self.day()['liquid_ml'], GLASS_ML + BOTTLE_ML)
 
     def test_a_custom_amount_is_reported_back_as_the_fraction_it_is(self):
         """400 ml is 1,6 glasses. Rounding it to 2 would report more than was
@@ -172,7 +179,8 @@ class DrinkingTests(HydrationTestCase):
         along, so the two acts write the same number.
 
         WORTH KNOWING THAT THIS IS A NUMBER NOBODY TYPED. It enters a clinical
-        record and, on water, moves the goal bar — the sort of default this
+        record and moves the goal bar, whatever was drunk — the sort of default
+        this
         project is otherwise careful not to invent. It holds only because the
         screen says so above the chips; `DietHydration.test.tsx` pins that
         sentence, and if it goes this default goes with it.
@@ -195,7 +203,7 @@ class DrinkingTests(HydrationTestCase):
         row = Hydration.objects.get()
         self.assertEqual(row.drink, WATER)
         self.assertEqual(row.amount_ml, DEFAULT_SERVING_ML)
-        self.assertEqual(self.day()['water_ml'], DEFAULT_SERVING_ML)
+        self.assertEqual(self.day()['liquid_ml'], DEFAULT_SERVING_ML)
 
     def test_a_given_amount_still_wins_over_the_default(self):
         self.drink(drink='Herbata', amount_ml=300)
@@ -212,9 +220,8 @@ class DrinkingTests(HydrationTestCase):
         """The vocabulary is the quick way in, not the whole of what may be drunk.
 
         It was a closed `ChoiceField` until the chips turned out to be the
-        commonest drinks rather than all of them. What made opening it safe is
-        that the client's "nie przeliczamy na wodę" rule rests on the **amount**
-        rule, not on the name list — see the next test.
+        commonest drinks rather than all of them. Nothing keys on the name now,
+        so an invented drink counts towards the goal like any other.
         """
         response = self.drink(drink='Sok pomarańczowy')
 
@@ -268,8 +275,8 @@ class DrinkingTests(HydrationTestCase):
 
 
 class OtherDrinkTests(HydrationTestCase):
-    """"Herbata, kawa i napary są zapisywane, ale nie przeliczane na wodę —
-    decyzja merytoryczna zostaje po stronie specjalisty." (mockups §08)"""
+    """The "Inne napoje" chips: recorded, listed back, and counted like water
+    since 2026-09-17 — see `EveryDrinkCountsTests` for the total itself."""
 
     def test_a_drink_is_recorded(self):
         response = self.drink(drink='Herbata')
@@ -284,14 +291,14 @@ class OtherDrinkTests(HydrationTestCase):
 
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]['drink'], 'Kawa')
-        # A glass, like every serving that gave no size — and still counted
-        # towards nothing, which is the assertion above this one.
+        # A glass, like every serving that gave no size — and it counts, which
+        # is what `EveryDrinkCountsTests` is about.
         self.assertEqual(entries[0]['amount_ml'], DEFAULT_SERVING_ML)
 
 
 
     def test_an_amount_on_another_drink_still_has_to_be_a_sane_number(self):
-        """The bounds are about a number typed by hand, not about water."""
+        """The bounds are about a number typed by hand, whatever it measures."""
         for amount in (MIN_AMOUNT_ML - 1, MAX_AMOUNT_ML + 1, 0):
             with self.subTest(amount=amount):
                 self.assertEqual(
@@ -306,34 +313,78 @@ class OtherDrinkTests(HydrationTestCase):
         self.assertEqual(Hydration.objects.get().amount_ml, DEFAULT_SERVING_ML)
 
 
-class WaterIsTheOnlyOneCountedTests(HydrationTestCase):
-    """The client's rule, now that it is held by two filters and nothing else.
+class EveryDrinkCountsTests(HydrationTestCase):
+    """Tea and coffee fill the bar exactly as water does.
 
-    "Herbata, kawa i napary są zapisywane, ale nie przeliczane na wodę —
-    decyzja merytoryczna zostaje po stronie specjalisty." (§08)
+    THE CLIENT REVERSED §08 ON 2026-09-17. The mockups had said "Herbata, kawa i
+    napary są zapisywane, ale nie przeliczane na wodę — decyzja merytoryczna
+    zostaje po stronie specjalisty", and the previous shape of this class
+    defended that. It is the opposite rule now: the figure is a volume of liquid
+    drunk, whatever it was.
 
-    THIS CLASS EXISTS BECAUSE THE STRUCTURAL GUARANTEE WAS GIVEN UP. While no
-    drink but water could carry an amount, the rule could not be broken: there
-    was no number on a cup of tea to add. Amounts on every drink are useful —
-    somebody may want to record 300 ml of herbal tea — but they mean the rule
-    now rests entirely on `build_hydration_day` and `_week` filtering on
-    `drink == WATER`. A third place computing the total, or either filter
-    loosened, and a patient's tea starts filling their water bar.
+    THE CLASS IS KEPT, POINTING THE OTHER WAY, on purpose. The old rule is still
+    written into §08 and into a pile of comments somebody will read one day, so
+    what is needed is not the absence of the old tests but a test that fails
+    loudly if a `drink == WATER` filter is reinstated by a well-meaning reader.
 
-    Every assertion below is deliberately about a *large* amount, so a bug that
-    added them would be unmissable rather than a rounding.
+    Two separate queries produce the figure — `build_hydration_day` for the day
+    and `liquid_by_day` for the chart — so each gets its own assertion: a day
+    that counts the tea says nothing about the chart under it, and it was
+    exactly that pair disagreeing that gave the screen two different numbers for
+    one day.
+
+    Every assertion is deliberately about a *large* amount, so a filter creeping
+    back would be unmissable rather than a rounding.
     """
 
+    def test_a_litre_of_tea_fills_the_days_figure(self):
+        self.drink(drink='Herbata', amount_ml=2000)
 
-    def test_it_moves_no_column_on_the_week_either(self):
-        """`_week` is the second filter, and it is a separate query — a fix
-        applied to the day's total alone would leave the chart wrong."""
+        day = self.day()
+        self.assertEqual(day['liquid_ml'], 2000)
+        self.assertEqual(day['glasses'], 8)
+        # Well past six glasses, so the bar is full and stays there.
+        self.assertEqual(day['progress'], 1.0)
+        self.assertEqual(len(day['entries']), 1)
+
+    def test_a_mixed_day_adds_the_two_together(self):
+        """The day a patient actually has.
+
+        The amounts give three different answers, so a filter dropped back in
+        reads as an obviously wrong total rather than a plausible one: water
+        alone is 1 glass, tea alone 8, the two together 9.
+        """
+        self.drink(amount_ml=GLASS_ML)
+        self.drink(drink='Herbata', amount_ml=2000)
+
+        day = self.day()
+        self.assertEqual(day['liquid_ml'], GLASS_ML + 2000)
+        self.assertEqual(day['glasses'], 9)
+
+    def test_a_drink_the_chips_never_offered_counts_too(self):
+        """Nothing keys on the name, so a drink a patient invents is a drink."""
+        self.drink(drink='Sok pomarańczowy', amount_ml=GLASS_ML)
+
+        self.assertEqual(self.day()['liquid_ml'], GLASS_ML)
+
+    def test_it_moves_the_column_on_the_week_as_well(self):
+        """`liquid_by_day` is the second query — the chart under the bar.
+
+        The regression this pins is the one the screen actually showed: the day
+        counting one set of servings and the chart another, so the same Thursday
+        read 4 glasses above and 3 below.
+        """
         self.drink(drink='Kawa', amount_ml=2000)
 
-        today = [d for d in self.day()['week'] if d['date'] == self.today.isoformat()]
+        day = self.day()
+        today = [d for d in day['week'] if d['date'] == self.today.isoformat()]
         self.assertEqual(len(today), 1)
-        self.assertEqual(today[0]['water_ml'], 0)
-        self.assertEqual(today[0]['glasses'], 0)
+        self.assertEqual(today[0]['liquid_ml'], 2000)
+        self.assertEqual(today[0]['glasses'], 8)
+        # The two figures for the same day, which must always be the same one.
+        self.assertEqual(today[0]['liquid_ml'], day['liquid_ml'])
+        self.assertEqual(today[0]['glasses'], day['glasses'])
+
 
 class GoalTests(HydrationTestCase):
     """"Po przekroczeniu celu pasek po prostu jest pełny. Nie ma gratulacji,
@@ -371,7 +422,7 @@ class WeekTests(HydrationTestCase):
         self.glass(on=yesterday, amount_ml=BOTTLE_ML)
         self.glass(amount_ml=GLASS_ML)
 
-        week = {d['date']: d['water_ml'] for d in self.day()['week']}
+        week = {d['date']: d['liquid_ml'] for d in self.day()['week']}
 
         self.assertEqual(week[yesterday.isoformat()], BOTTLE_ML)
         self.assertEqual(week[self.today.isoformat()], GLASS_ML)
@@ -383,7 +434,7 @@ class WeekTests(HydrationTestCase):
         week = self.day()['week']
 
         self.assertNotIn(old.isoformat(), [d['date'] for d in week])
-        self.assertEqual(sum(d['water_ml'] for d in week), 0)
+        self.assertEqual(sum(d['liquid_ml'] for d in week), 0)
 
     def test_only_today_is_listed_as_entries(self):
         self.glass(on=self.today - datetime.timedelta(days=1))
@@ -400,7 +451,7 @@ class UndoTests(HydrationTestCase):
         response = self.client.delete(self.entry_url(entry.pk))
 
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(self.day()['water_ml'], 0)
+        self.assertEqual(self.day()['liquid_ml'], 0)
 
     def test_a_past_serving_cannot(self):
         """Yesterday's glass is as immutable as yesterday's diary entry, or the
@@ -436,7 +487,7 @@ class IsolationTests(HydrationTestCase):
 
         day = self.day()
 
-        self.assertEqual(day['water_ml'], GLASS_ML)
+        self.assertEqual(day['liquid_ml'], GLASS_ML)
         self.assertEqual(len(day['entries']), 1)
 
     def test_an_unknown_id_medical_is_an_empty_day_rather_than_an_error(self):
@@ -444,7 +495,7 @@ class IsolationTests(HydrationTestCase):
         an id nobody owns from one nobody has written against."""
         day = build_hydration_day(uuid.uuid4(), self.today)
 
-        self.assertEqual(day['water_ml'], 0)
+        self.assertEqual(day['liquid_ml'], 0)
         self.assertEqual(len(day['week']), WEEK_DAYS)
 
 

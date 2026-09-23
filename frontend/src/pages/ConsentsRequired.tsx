@@ -60,6 +60,33 @@ function missingConsents(user: AuthUser): ConsentDefinition[] {
   return CONSENTS.filter((consent) => !stateOf(user, consent.id).active)
 }
 
+/**
+ * Whether this account has *never* granted the consent, as against having
+ * withdrawn one it once gave.
+ *
+ * TWO ACCOUNTS MEET THIS SCREEN AND ONLY ONE OF THEM WITHDREW ANYTHING. The
+ * screen was written for the withdrawal — art. 7(3) is what it exists for — and
+ * everything on it said so: "Wycofana", "Przywróć tę zgodę", "Twoje wpisy
+ * czekają na miejscu". Then `core/colleagues.py` started creating specialist
+ * accounts with no consent timestamps at all, deliberately (a colleague cannot
+ * consent on somebody's behalf, art. 7), and `has_active_consents` treats those
+ * exactly like a withdrawal — correctly, because the gate's question is whether
+ * a basis is in force, not how it came not to be.
+ *
+ * What is correct for the gate is wrong for the sentence: an account on its
+ * first login is told it withdrew something, that its entries are waiting, and
+ * is offered to "przywrócić" a consent it never gave. `granted_at` is the only
+ * thing that tells the two apart — a withdrawal always has one.
+ */
+function neverGranted(user: AuthUser, id: ConsentDefinition['id']) {
+  return stateOf(user, id).grantedAt === null
+}
+
+/** True when nothing on this account was ever granted — a brand-new account. */
+function isFirstLogin(user: AuthUser) {
+  return CONSENTS.every((consent) => neverGranted(user, consent.id))
+}
+
 function ConsentsRequired() {
   const { user, setUser } = useAuth()
   const signOutAndLeave = useSignOut()
@@ -71,6 +98,7 @@ function ConsentsRequired() {
   if (!user) return null
 
   const missing = missingConsents(user)
+  const firstLogin = isFirstLogin(user)
 
   async function restore(scope: ConsentWithdrawalScope) {
     setBusy(scope)
@@ -100,15 +128,35 @@ function ConsentsRequired() {
         <p className="consents-lead">
           {/* Said plainly and early, because it is the thing somebody in this
               situation most needs to know and the thing the older "wycofanie
-              kończy konto" wording got wrong. */}
-          <strong>Nic nie zostało usunięte.</strong> Twoje wpisy czekają na miejscu i wrócą
-          w tym samym stanie, jeśli przywrócisz zgody.
+              kończy konto" wording got wrong.
+
+              Two sentences rather than one, because two different accounts read
+              this line: somebody who withdrew a consent needs to hear that
+              their record survived it, and somebody logging into an account a
+              colleague created has no record yet and was never asked. Telling
+              the second that "Twoje wpisy czekają na miejscu" is a statement
+              about nothing. */}
+          {firstLogin ? (
+            <>
+              <strong>To konto jest nowe.</strong> Zgód nie może udzielić za Ciebie nikt
+              inny — także osoba, która zakładała konto. Dlatego prosimy o nie tutaj, przy
+              pierwszym logowaniu.
+            </>
+          ) : (
+            <>
+              <strong>Nic nie zostało usunięte.</strong> Twoje wpisy czekają na miejscu i
+              wrócą w tym samym stanie, jeśli przywrócisz zgody.
+            </>
+          )}
         </p>
 
         <div className="consents-list">
           {CONSENTS.map((consent) => {
             const { active, withdrawnAt } = stateOf(user!, consent.id)
-            const withdrawnOn = active ? null : consentDateLabel(withdrawnAt ?? '')
+            const never = neverGranted(user!, consent.id)
+            // Only a consent that was actually withdrawn has a date to name.
+            const withdrawnOn =
+              active || never ? null : consentDateLabel(withdrawnAt ?? '')
             const scope: ConsentWithdrawalScope =
               consent.id === CONSENT_IDS.data ? 'data' : 'services'
 
@@ -123,7 +171,7 @@ function ConsentsRequired() {
                         : 'consent-item-status consent-item-status-missing'
                     }
                   >
-                    {active ? 'Udzielona' : 'Wycofana'}
+                    {active ? 'Udzielona' : never ? 'Jeszcze nieudzielona' : 'Wycofana'}
                   </span>
                 </div>
                 {/* Verbatim from utils/consents.ts — the same sentence the
@@ -140,7 +188,11 @@ function ConsentsRequired() {
                     disabled={busy !== null}
                     onClick={() => void restore(scope)}
                   >
-                    {busy === scope ? 'Zapisywanie…' : 'Przywróć tę zgodę'}
+                    {busy === scope
+                      ? 'Zapisywanie…'
+                      : never
+                        ? 'Udzielam tej zgody'
+                        : 'Przywróć tę zgodę'}
                   </button>
                 )}
               </div>
@@ -162,7 +214,11 @@ function ConsentsRequired() {
               disabled={busy !== null}
               onClick={() => void restore('all')}
             >
-              {busy === 'all' ? 'Zapisywanie…' : 'Przywróć obie zgody'}
+              {busy === 'all'
+                ? 'Zapisywanie…'
+                : firstLogin
+                  ? 'Udzielam obu zgód'
+                  : 'Przywróć obie zgody'}
             </button>
           )}
           {/* At the same weight as the buttons above, on purpose. A screen that
@@ -179,9 +235,10 @@ function ConsentsRequired() {
         </div>
 
         <p className="consents-note">
-          Zgody możesz wycofać ponownie w każdej chwili — w profilu, w sekcji „Twoje dane
-          i zgody”. Jeśli zamiast tego chcesz trwale usunąć konto wraz z danymi, napisz do
-          Fundacji Mediculus.
+          {/* "ponownie" is only true of an account that withdrew one. */}
+          {firstLogin ? 'Zgody możesz wycofać' : 'Zgody możesz wycofać ponownie'} w każdej
+          chwili — w profilu, w sekcji „Twoje dane i zgody”. Jeśli zamiast tego chcesz
+          trwale usunąć konto wraz z danymi, napisz do Fundacji Mediculus.
         </p>
       </section>
     </div>

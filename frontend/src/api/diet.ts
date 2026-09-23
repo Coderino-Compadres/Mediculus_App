@@ -242,7 +242,7 @@ interface HydrationEntryPayload {
 
 interface HydrationDayTotalPayload {
   date: string
-  water_ml: number
+  liquid_ml: number
   glasses: number
 }
 
@@ -255,7 +255,7 @@ interface HydrationDayPayload {
   min_amount_ml: number
   max_amount_ml: number
   max_drink_name: number
-  water_ml: number
+  liquid_ml: number
   glasses: number
   progress: number
   entries: HydrationEntryPayload[]
@@ -280,13 +280,13 @@ function toEntry(payload: HydrationEntryPayload): HydrationEntry {
   }
 }
 
-/** One day's water figure — a column of the seven-day chart, and the same shape
- *  a weekly report carries for a day. Named rather than inlined because both
- *  read it: two copies would be two answers about how much water Tuesday held. */
+/** One day's figure — a column of the seven-day chart, and the same shape a
+ *  weekly report carries for a day. Named rather than inlined because both read
+ *  it: two copies would be two answers about how much Tuesday held. */
 function toDayTotal(day: HydrationDayTotalPayload): HydrationDayTotal {
   return {
     date: day.date,
-    waterMl: day.water_ml,
+    liquidMl: day.liquid_ml,
     glasses: day.glasses,
   }
 }
@@ -300,7 +300,7 @@ function toDay(payload: HydrationDayPayload): HydrationDay {
     minAmountMl: payload.min_amount_ml,
     maxAmountMl: payload.max_amount_ml,
     maxDrinkName: payload.max_drink_name,
-    waterMl: payload.water_ml,
+    liquidMl: payload.liquid_ml,
     glasses: payload.glasses,
     progress: payload.progress,
     entries: payload.entries.map(toEntry),

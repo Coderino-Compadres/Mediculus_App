@@ -14,6 +14,22 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => navigate }
 })
 
+/**
+ * The invitation card the screen carries above everything else, stubbed to
+ * "nobody asked" — the state it is in for almost every patient almost always.
+ *
+ * It is here because the card makes a request of its own, and a card left
+ * unstubbed fails that request and draws its own alert, which would land in the
+ * middle of the assertions below about this screen staying quiet. Its own
+ * behaviour is covered in components/SpecialistInvitation.test.tsx; that it
+ * appears on *this* screen at all is asserted separately, further down.
+ */
+vi.mock('../api/specialist', () => ({
+  fetchSpecialistInvitations: vi.fn().mockResolvedValue([]),
+  acceptSpecialistInvitation: vi.fn(),
+  rejectSpecialistInvitation: vi.fn(),
+}))
+
 /** Both requests this screen makes. `emptyDietDay` stays real: it is the value
  *  the screen starts from and falls back to, and stubbing it would hide the one
  *  thing worth knowing about a failed load here — that the screen keeps drawing
@@ -44,7 +60,7 @@ function hydrationDay(overrides: Partial<HydrationDay> = {}): HydrationDay {
     minAmountMl: 10,
     maxAmountMl: 2000,
     maxDrinkName: 40,
-    waterMl: 0,
+    liquidMl: 0,
     glasses: 0,
     progress: 0,
     entries: [],
@@ -199,6 +215,30 @@ describe('the day once it holds a meal', () => {
     expect(screen.getByText('dni z rzędu')).toBeInTheDocument()
   })
 
+  /** The label is declined, because the first day anybody uses the app is a
+   *  streak of exactly 1 — so "1 dni z rzędu" was the one form every new
+   *  patient met. `pluralDays` has been in utils/reports.ts all along; this
+   *  screen simply was not calling it. */
+  it('declines the streak label — "1 dzień", not "1 dni"', async () => {
+    fetchDietDay.mockResolvedValue(dietDay({ mealCount: 1, streakDays: 1 }))
+
+    renderWithProviders(<DietHome />)
+
+    expect(await screen.findByText('dzień z rzędu')).toBeInTheDocument()
+    expect(screen.queryByText('dni z rzędu')).toBeNull()
+  })
+
+  /** The card belongs on this screen and not only on the psychotherapy home:
+   *  an invitation into *this* module is answered by patients who may never
+   *  open the other one. Its own states are components/SpecialistInvitation. */
+  it('carries the specialist invitation card', async () => {
+    const { fetchSpecialistInvitations } = await import('../api/specialist')
+
+    renderWithProviders(<DietHome />)
+
+    await waitFor(() => expect(fetchSpecialistInvitations).toHaveBeenCalled())
+  })
+
   it('keeps the inviting empty day when the request fails', async () => {
     /** A failed load must not put "nie udało się wczytać" over a screen whose
      *  other half is fine — and an empty day is a state the app can stand
@@ -217,7 +257,7 @@ describe('the day once it holds a meal', () => {
 describe('nawodnienie', () => {
   it('shows what the server holds rather than a number spelled into the screen', async () => {
     fetchHydration.mockResolvedValue(
-      hydrationDay({ waterMl: 1000, glasses: 4, progress: 0.667 }),
+      hydrationDay({ liquidMl: 1000, glasses: 4, progress: 0.667 }),
     )
 
     renderWithProviders(<DietHome />)

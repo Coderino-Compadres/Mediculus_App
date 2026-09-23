@@ -333,34 +333,41 @@ class DayTests(DietReportTestCase):
         self.assertIsNone(second['sleep'])
         self.assertIsNone(second['activity'])
 
-    def test_a_day_with_no_water_is_null_and_never_zero(self):
+    def test_a_day_with_nothing_drunk_is_null_and_never_zero(self):
         """"Nobody wrote it down" and "drank nothing" are different claims."""
         self.meal(self.first)
 
         self.assertIsNone(self.day_at(0)['hydration'])
 
-    def test_water_is_reported_as_the_hydration_screen_counts_it(self):
+    def test_hydration_is_reported_as_the_hydration_screen_counts_it(self):
         self.meal(self.first)
         self.water(self.first, amount_ml=400)
 
         hydration = self.day_at(0)['hydration']
 
-        self.assertEqual(hydration['water_ml'], 400)
+        self.assertEqual(hydration['liquid_ml'], 400)
         self.assertEqual(hydration['glasses'], 1.6)
 
-    def test_a_day_holding_only_tea_reports_no_water(self):
-        """The client's rule: other drinks are recorded and never converted."""
+    def test_a_day_holding_only_tea_reports_it_like_any_other_drink(self):
+        """The reverse of what this test asserted before 2026-09-17, when the
+        client's rule was that other drinks are never converted. Tea counts now,
+        so a report that dropped it would be hiding a day the patient wrote."""
         self.meal(self.first)
         self.water(self.first, amount_ml=1000, drink='Herbata')
 
-        self.assertIsNone(self.day_at(0)['hydration'])
+        hydration = self.day_at(0)['hydration']
 
-    def test_a_day_holding_only_tea_is_not_a_day_with_an_entry_by_itself(self):
+        self.assertEqual(hydration['liquid_ml'], 1000)
+        self.assertEqual(hydration['glasses'], 4)
+
+    def test_a_day_holding_only_tea_is_a_day_with_an_entry(self):
+        """It follows from the line above, and it is the visible half: the
+        regularity chips and `days_with_entry` are built off the same day."""
         self.meal(self.first)
         self.water(self.first + datetime.timedelta(days=1),
                    amount_ml=1000, drink='Herbata')
 
-        self.assertTrue(self.day_at(1)['empty'])
+        self.assertFalse(self.day_at(1)['empty'])
 
     def test_a_night_belongs_to_the_morning_it_ended_on(self):
         """Nothing in the data says so, so the convention is pinned here too."""

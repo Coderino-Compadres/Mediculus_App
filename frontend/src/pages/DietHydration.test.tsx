@@ -46,18 +46,18 @@ function day(overrides: Partial<HydrationDay> = {}): HydrationDay {
     minAmountMl: 10,
     maxAmountMl: 2000,
     maxDrinkName: 40,
-    waterMl: 1000,
+    liquidMl: 1000,
     glasses: 4,
     progress: 0.667,
     entries: [],
     week: [
-      { date: '2026-09-05', waterMl: 1000, glasses: 4 },
-      { date: '2026-09-06', waterMl: 1250, glasses: 5 },
-      { date: '2026-09-07', waterMl: 750, glasses: 3 },
-      { date: '2026-09-08', waterMl: 1500, glasses: 6 },
-      { date: '2026-09-09', waterMl: 0, glasses: 0 },
-      { date: '2026-09-10', waterMl: 1750, glasses: 7 },
-      { date: '2026-09-11', waterMl: 1000, glasses: 4 },
+      { date: '2026-09-05', liquidMl: 1000, glasses: 4 },
+      { date: '2026-09-06', liquidMl: 1250, glasses: 5 },
+      { date: '2026-09-07', liquidMl: 750, glasses: 3 },
+      { date: '2026-09-08', liquidMl: 1500, glasses: 6 },
+      { date: '2026-09-09', liquidMl: 0, glasses: 0 },
+      { date: '2026-09-10', liquidMl: 1750, glasses: 7 },
+      { date: '2026-09-11', liquidMl: 1000, glasses: 4 },
     ],
     ...overrides,
   }
@@ -159,7 +159,7 @@ describe('today', () => {
   it('renders a fractional count with a Polish comma', async () => {
     /** 400 ml is 1,6 glasses. Rounding that up would report back more than was
      *  entered, on a figure a specialist may read. */
-    fetchHydration.mockResolvedValue(day({ waterMl: 400, glasses: 1.6 }))
+    fetchHydration.mockResolvedValue(day({ liquidMl: 400, glasses: 1.6 }))
 
     renderWithProviders(<DietHydration />)
 
@@ -177,7 +177,7 @@ describe('today', () => {
 describe('recording a serving', () => {
   it('a glass sends the amount the server named', async () => {
     renderWithProviders(<DietHydration />)
-    recordDrink.mockResolvedValue(day({ waterMl: 1250, glasses: 5 }))
+    recordDrink.mockResolvedValue(day({ liquidMl: 1250, glasses: 5 }))
 
     await userEvent.click(await screen.findByRole('button', { name: /\+ Szklanka/ }))
 
@@ -186,7 +186,7 @@ describe('recording a serving', () => {
 
   it('a bottle sends its own', async () => {
     renderWithProviders(<DietHydration />)
-    recordDrink.mockResolvedValue(day({ waterMl: 1500, glasses: 6 }))
+    recordDrink.mockResolvedValue(day({ liquidMl: 1500, glasses: 6 }))
 
     await userEvent.click(await screen.findByRole('button', { name: /\+ Butelka/ }))
 
@@ -197,7 +197,7 @@ describe('recording a serving', () => {
     /** Three figures move when one glass is recorded. Patching them here is how
      *  one day would end up with two versions of itself. */
     renderWithProviders(<DietHydration />)
-    recordDrink.mockResolvedValue(day({ waterMl: 1250, glasses: 5, progress: 0.833 }))
+    recordDrink.mockResolvedValue(day({ liquidMl: 1250, glasses: 5, progress: 0.833 }))
 
     await userEvent.click(await screen.findByRole('button', { name: /\+ Szklanka/ }))
 
@@ -227,7 +227,7 @@ describe('a custom amount', () => {
 
   it('sends what was typed', async () => {
     renderWithProviders(<DietHydration />)
-    recordDrink.mockResolvedValue(day({ waterMl: 1400, glasses: 5.6 }))
+    recordDrink.mockResolvedValue(day({ liquidMl: 1400, glasses: 5.6 }))
 
     await userEvent.click(await screen.findByRole('button', { name: /Własna/ }))
     await userEvent.type(screen.getByLabelText(/Ile wypiłaś/), '400')
@@ -276,26 +276,32 @@ describe('inne napoje', () => {
     expect(recordDrink).toHaveBeenCalledWith(null, 'Herbata')
   })
 
-  it('keeps them off the water count, whatever the card says about it', async () => {
+  it('lets them move the counter, because every drink counts now', async () => {
     /**
-     * THE NOTE ABOVE THE CHIPS IS GONE. It said "nie przeliczamy na wodę", was
-     * reworded to "wliczają się w dzienny licznik szklanek" — the opposite
-     * claim — and then removed outright in 02659e6. What this test pins is the
-     * behaviour rather than any of the three wordings: a drink that is not
-     * water is sent with its own name and the water count does not move.
+     * THE RULE TURNED ROUND ON 2026-09-17. A tea used to be recorded and left
+     * out of the figure ("nie przeliczane na wodę", §08); it counts at its own
+     * volume now, and `core/hydration.py` carries the client's reversal.
      *
-     * TODO(klientka): whether the card should say so again, and in which of the
-     * two directions. Today a counter that does not move after a tap is left to
-     * be worked out, which is what the original sentence existed to prevent.
+     * THE ASSERTION IS ON THE ANSWER, NOT ON ARITHMETIC HERE. The screen adds
+     * nothing up — the server sends the day back and the screen draws it — so
+     * what this pins is that a serving is sent with its own name and that the
+     * count the answer carries is the count on screen. The previous version of
+     * this test asserted the figure was *unchanged* while mocking a response in
+     * which it was unchanged, so it would have passed either way.
+     *
+     * THE NOTE ABOVE THE CHIPS IS STILL GONE. It said "nie przeliczamy na
+     * wodę", was reworded to the opposite claim and then removed outright in
+     * 02659e6; the reversal makes the second wording the true one, but whether
+     * the card says anything at all is still the klientka's call.
      */
-    recordDrink.mockResolvedValue(day())
+    recordDrink.mockResolvedValue(day({ liquidMl: 1250, glasses: 5, progress: 0.833 }))
     renderWithProviders(<DietHydration />)
     await screen.findByText('4')
 
     await userEvent.click(screen.getByRole('button', { name: 'Herbata' }))
 
     expect(recordDrink).toHaveBeenCalledWith(null, 'Herbata')
-    await waitFor(() => expect(screen.getByText('4')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('5')).toBeInTheDocument())
   })
 })
 
@@ -607,7 +613,7 @@ describe('what the screen must not say', () => {
   it('never congratulates and never counts a streak', async () => {
     /** "Po przekroczeniu celu pasek po prostu jest pełny. Nie ma gratulacji,
      *  serii ani komunikatu o niedoborze." (mockups §08) */
-    fetchHydration.mockResolvedValue(day({ waterMl: 2500, glasses: 10, progress: 1 }))
+    fetchHydration.mockResolvedValue(day({ liquidMl: 2500, glasses: 10, progress: 1 }))
 
     renderWithProviders(<DietHydration />)
     await screen.findByText('10')
@@ -616,7 +622,7 @@ describe('what the screen must not say', () => {
   })
 
   it('and never says a day fell short', async () => {
-    fetchHydration.mockResolvedValue(day({ waterMl: 0, glasses: 0, progress: 0 }))
+    fetchHydration.mockResolvedValue(day({ liquidMl: 0, glasses: 0, progress: 0 }))
 
     renderWithProviders(<DietHydration />)
     await screen.findByText('0')
@@ -625,7 +631,7 @@ describe('what the screen must not say', () => {
   })
 
   it('shows the day over the goal as what it was', async () => {
-    fetchHydration.mockResolvedValue(day({ waterMl: 2500, glasses: 10, progress: 1 }))
+    fetchHydration.mockResolvedValue(day({ liquidMl: 2500, glasses: 10, progress: 1 }))
 
     renderWithProviders(<DietHydration />)
 

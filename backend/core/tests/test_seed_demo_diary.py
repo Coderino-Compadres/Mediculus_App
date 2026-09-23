@@ -25,7 +25,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from core.drinks import WATER
-from core.drinks import OTHER_DRINKS
+from core.drinks import DEFAULT_SERVING_ML, OTHER_DRINKS
 from core.management.commands.seed_demo_diary import (ACTIVITY_SHAPES,
                                                       ALL_SUPPLEMENT_SHAPES,
                                                       DIET_DAYS, MEAL_DAYS,
@@ -218,7 +218,21 @@ class DietHalfTests(SeedDemoDiaryTests):
         self.assertTrue(any(total < 1500 for total in totals))
         self.assertTrue(any(total > 1500 for total in totals))
 
-    def test_the_other_drinks_are_recorded_with_no_amount(self):
+    def test_the_other_drinks_are_recorded_with_a_serving_size(self):
+        """A chip is a serving, and a serving has a size.
+
+        This asserted `amount_ml is None` until 2026-09-17, which was right
+        while §08's rule held: tea was recorded and counted towards nothing, so
+        a size would have been a number with nowhere to go. The client reversed
+        that rule (see the header of `core/hydration.py`), and the seed followed
+        it — a demo day whose five drinks sat under a bar none of them moved
+        would be the old rule surviving in the fixture after it had gone
+        everywhere else.
+
+        The size is `DEFAULT_SERVING_ML`, which is what `add_entry` writes for a
+        chip tapped without a quantity — so the seeded row is one the app itself
+        could have produced. That is the property worth pinning here.
+        """
         self.seed()
 
         others = Hydration.objects.filter(
@@ -227,7 +241,7 @@ class DietHalfTests(SeedDemoDiaryTests):
 
         self.assertTrue(others.exists())
         for row in others:
-            self.assertIsNone(row.amount_ml)
+            self.assertEqual(row.amount_ml, DEFAULT_SERVING_ML)
 
     def test_the_supplement_list_is_the_artboard_s_three_rows(self):
         self.seed()

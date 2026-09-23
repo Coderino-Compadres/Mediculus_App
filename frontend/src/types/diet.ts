@@ -29,9 +29,9 @@ import type { SleepQuality, WakeFeeling } from '../utils/sleep'
 /**
  * One thing the patient recorded drinking today.
  *
- * `amountMl` is null for every drink but water: the mockups' "Inne napoje" card
- * offers a chip and no quantity, and inventing 250 ml for a cup of tea would put
- * a number nobody entered into a clinical record.
+ * `amountMl` is null only on rows written before servings carried a size. A chip
+ * tapped without a quantity is stored as a glass now, and it counts towards the
+ * goal like any other serving — see `liquidMl`.
  */
 export interface HydrationEntry {
   id: string
@@ -50,11 +50,11 @@ export interface HydrationEntry {
   at: string | null
 }
 
-/** One column of the "Ostatnie 7 dni" chart. Water only, by the client's rule. */
+/** One column of the "Ostatnie 7 dni" chart: everything drunk that day. */
 export interface HydrationDayTotal {
   /** 'YYYY-MM-DD'. */
   date: string
-  waterMl: number
+  liquidMl: number
   glasses: number
 }
 
@@ -88,7 +88,16 @@ export interface HydrationDay {
   /** How long a typed drink name may be — read off the payload rather than
    *  spelled into the input, like the two bounds above. */
   maxDrinkName: number
-  waterMl: number
+  /**
+   * Everything drunk today, in millilitres — tea and coffee included.
+   *
+   * It was `waterMl` and counted water alone, which is what §08 asked for
+   * ("Herbata, kawa i napary są zapisywane, ale nie przeliczane na wodę"). The
+   * client reversed that on 2026-09-17; `core/hydration.py` carries the
+   * reasoning, and the name changed with the meaning so that nothing here reads
+   * as a water figure any more.
+   */
+  liquidMl: number
   glasses: number
   /** 0..1, for the bar's width. */
   progress: number

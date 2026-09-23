@@ -3,11 +3,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import HeaderMenu from '../components/HeaderMenu'
 import MealEmotions from '../components/MealEmotions'
+import SpecialistInvitationCard from '../components/SpecialistInvitation'
 import { deleteMeal, emptyDietDay, fetchDietDay, fetchHydration } from '../api/diet'
 import { ApiError } from '../api/client'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
 import { formatGlasses, pluralGlasses } from '../utils/drinks'
 import { mealHeading, pluralMeals } from '../utils/meals'
+import { pluralDays } from '../utils/reports'
 import type { DietDay, DietMeal, HydrationDay } from '../types/diet'
 import { dietMealEditPath, ROUTES } from '../routes'
 import './dietHome.css'
@@ -421,6 +423,14 @@ function DietHome() {
         </p>
       )}
 
+      {/* The same card pages/Home.tsx carries, and here for a reason that screen
+          does not have: a psychodietitian's invitation names *this* module, and
+          a patient who uses only this one never opens the psychotherapy home at
+          all. Left off this screen, such an invitation is one nobody can answer
+          — the patient never sees it and the specialist sees only silence.
+          Draws nothing when there is no invitation, which is almost always. */}
+      <SpecialistInvitationCard />
+
       <section className="diet-welcome">
         <div>
           {/* The mockup writes "Dobry dzień, Anno". Kept as "Dzień dobry" — the
@@ -432,7 +442,7 @@ function DietHome() {
         </div>
         <div className="diet-streak">
           <span className="diet-streak-count">{day.streakDays}</span>
-          <span className="diet-streak-label">dni z rzędu</span>
+          <span className="diet-streak-label">{pluralDays(day.streakDays)} z rzędu</span>
         </div>
       </section>
 

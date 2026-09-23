@@ -255,7 +255,7 @@ function DaySummary({ day }: { day: DietReportDay }) {
                     figure is the server's own, formatted and not recomputed. */}
                 <ul className="diet-report-facts">
                   <Fact
-                    label="Woda"
+                    label="Płyny"
                     value={`${formatGlasses(day.hydration.glasses)} ${pluralGlasses(
                       day.hydration.glasses,
                     )}`}
@@ -510,14 +510,24 @@ function DietReportDetail() {
  * must not be holding different papers — and the only way to keep it is for
  * there to be one implementation.
  *
- * `backTo` and `subtitle` are the whole of the difference. `onDownload` is
- * optional because the two screens fetch the file from different URLs (a
- * patient's own report, or one of their specialist's patients').
+ * `backTo`, `subtitle` and `readerIsSubject` are the whole of the difference.
+ * `onDownload` is optional because the two screens fetch the file from
+ * different URLs (a patient's own report, or one of their specialist's
+ * patients').
+ *
+ * `readerIsSubject` exists because one sentence on this page addresses the
+ * person reading it as the person who wrote the diaries, and on the
+ * specialist's copy that is somebody else — a psychodietitian was being told
+ * that the report holds "to, co zapisałaś lub zapisałeś", about a week they did
+ * not write. Everything else here is about the week rather than to the reader,
+ * which is why it is one flag and not a second set of strings; the header's
+ * `subtitle` already marks the same distinction for the same reason.
  */
 export function DietReportBody({
   report,
   backTo = ROUTES.dietReports,
   subtitle,
+  readerIsSubject = true,
   onDownload,
   downloading = false,
   downloadError,
@@ -525,6 +535,7 @@ export function DietReportBody({
   report: DietWeeklyReport
   backTo?: string
   subtitle?: string | null
+  readerIsSubject?: boolean
   onDownload?: () => void
   downloading?: boolean
   downloadError?: string | null
@@ -705,8 +716,11 @@ export function DietReportBody({
       </section>
 
       <p className="diet-report-footnote">
-        Raport zawiera tylko to, co zapisałaś lub zapisałeś w dzienniczkach w tym tygodniu.
-        Dni bez wpisu nie są niczym złym — po prostu ich tu nie ma.
+        {readerIsSubject
+          ? 'Raport zawiera tylko to, co zapisałaś lub zapisałeś w dzienniczkach w tym ' +
+            'tygodniu. Dni bez wpisu nie są niczym złym — po prostu ich tu nie ma.'
+          : 'Raport zawiera tylko to, co pacjent zapisał w dzienniczkach w tym tygodniu. ' +
+            'Dni bez wpisu nie są niczym złym — po prostu ich tu nie ma.'}
       </p>
     </div>
   )

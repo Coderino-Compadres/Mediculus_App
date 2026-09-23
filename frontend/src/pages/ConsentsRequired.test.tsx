@@ -66,6 +66,24 @@ const LOCKED_MIXED_ZONES: AuthUser = {
   },
 }
 
+/**
+ * A brand-new account: no consent was ever granted, so neither was withdrawn.
+ *
+ * `core/colleagues.py` creates exactly this — a specialist account made by a
+ * colleague, with no consent timestamps, because nobody may consent on
+ * somebody else's behalf (art. 7). `has_active_consents` treats it like a
+ * withdrawal and sends it to this screen, which is right for the gate and wrong
+ * for every sentence the screen used to say to it.
+ */
+const NEVER_GRANTED: AuthUser = {
+  ...TEST_USER,
+  consents: {
+    active: false,
+    data: { grantedAt: null, withdrawnAt: null, active: false },
+    services: { grantedAt: null, withdrawnAt: null, active: false },
+  },
+}
+
 const RESTORED: AuthUser = { ...TEST_USER }
 
 beforeEach(() => {
@@ -100,6 +118,42 @@ describe('ConsentsRequired — what it says', () => {
 
     expect(screen.getByText(/Nic nie zostało usunięte/)).toBeInTheDocument()
     expect(screen.getByText(/wrócą w tym samym stanie|czekają na miejscu/)).toBeInTheDocument()
+  })
+
+  it('does not tell a new account that it withdrew anything', () => {
+    /** The first screen a specialist account ever sees. It had been told, in
+     *  four places at once, that it withdrew consents it was never asked for
+     *  and that entries it does not have are waiting. */
+    render(NEVER_GRANTED)
+
+    expect(screen.getByText(/To konto jest nowe/)).toBeInTheDocument()
+    expect(screen.queryByText(/Nic nie zostało usunięte/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Wycofana')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Jeszcze nieudzielona')).toHaveLength(CONSENTS.length)
+  })
+
+  it('asks a new account to give the consents rather than to restore them', () => {
+    render(NEVER_GRANTED)
+
+    expect(screen.getAllByRole('button', { name: 'Udzielam tej zgody' })).toHaveLength(
+      CONSENTS.length,
+    )
+    expect(screen.getByRole('button', { name: 'Udzielam obu zgód' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Przywróć/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('still says "przywróć" to an account that really did withdraw', () => {
+    /** The other half of the same distinction: the wording that was already
+     *  right must not follow the new one. */
+    render(LOCKED)
+
+    expect(screen.getAllByText('Wycofana')).toHaveLength(CONSENTS.length)
+    expect(screen.getAllByRole('button', { name: 'Przywróć tę zgodę' })).toHaveLength(
+      CONSENTS.length,
+    )
+    expect(screen.queryByText(/To konto jest nowe/)).not.toBeInTheDocument()
   })
 
   it('quotes both consents in the wording the registration form used', () => {

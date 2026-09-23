@@ -161,6 +161,7 @@ function SpecialistPatientDietReport() {
       report={report}
       backTo={backTo}
       subtitle={name}
+      readerIsSubject={false}
       onDownload={() => void downloadPdf(report)}
       downloading={downloading}
       downloadError={pdfError}

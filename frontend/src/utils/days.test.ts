@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, fromIsoDate, startOfWeek, toIsoDate } from './days'
+import { addDays, fromIsoDate, isValidIsoDate, startOfWeek, toIsoDate } from './days'
 
 /**
  * The frontend half of `core/days.py`. Every function here is about the
@@ -108,5 +108,33 @@ describe('startOfWeek', () => {
 
   it('ignores the time of day it was given', () => {
     expect(toIsoDate(startOfWeek(new Date(2026, 7, 9, 23, 59)))).toBe('2026-08-03')
+  })
+})
+
+/**
+ * The guard for an ISO date that came out of a URL.
+ *
+ * The rollover cases are the whole reason it exists: `new Date` accepts
+ * '2026-13-45' by quietly walking it into 2027, so a screen that trusted it
+ * would spell a heading for a day the patient never had.
+ */
+describe('isValidIsoDate', () => {
+  it('accepts a real calendar day', () => {
+    expect(isValidIsoDate('2026-09-17')).toBe(true)
+    expect(isValidIsoDate('2024-02-29')).toBe(true) // a leap day
+  })
+
+  it('refuses a date that only rolls over into a real one', () => {
+    expect(isValidIsoDate('2026-13-45')).toBe(false)
+    expect(isValidIsoDate('2026-02-30')).toBe(false)
+    expect(isValidIsoDate('2025-02-29')).toBe(false) // 2025 is not a leap year
+    expect(isValidIsoDate('2026-00-10')).toBe(false)
+  })
+
+  it('refuses anything that is not the shape at all', () => {
+    expect(isValidIsoDate('bzdura')).toBe(false)
+    expect(isValidIsoDate('')).toBe(false)
+    expect(isValidIsoDate('2026-9-17')).toBe(false) // unpadded
+    expect(isValidIsoDate('2026-09-17T12:00:00')).toBe(false)
   })
 })

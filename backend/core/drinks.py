@@ -11,19 +11,17 @@ is the reason a value lives here instead of being spelled into a view:
   psychodietitian setting it per patient is the obvious next step and is a column
   on `patient`, not an edit to this line.
 
-* **Other drinks are recorded and not converted.** "Herbata, kawa i napary są
-  zapisywane, ale nie przeliczane na wodę — decyzja merytoryczna zostaje po
-  stronie specjalisty." So `OTHER_DRINKS` exists as a vocabulary and nothing
-  anywhere multiplies it by a coefficient. `Woda z cytryną` sitting in that list
-  rather than counting as water is the client's call, not an oversight.
+* **Every drink counts towards the goal, at the volume it was drunk.** §08 said
+  the opposite — "Herbata, kawa i napary są zapisywane, ale nie przeliczane na
+  wodę — decyzja merytoryczna zostaje po stronie specjalisty" — and that was
+  reversed on 2026-09-17 by the client. Nothing multiplies anything by a
+  coefficient either way: 250 ml of tea is 250 ml, the same as 250 ml of water.
 
-  **A patient may now also type a name of their own**, which does not weaken
-  that rule — it relies on it. A custom drink carries no amount, exactly like
-  the five chips, so it *cannot* reach `water_ml`, which sums only servings
-  whose drink is `WATER`. The vocabulary stayed closed for as long as it did
-  because a `ChoiceField` is the cheapest way to be sure of that; what makes it
-  safe to open is that the amount rule, not the name list, is what keeps the
-  water total water.
+  `OTHER_DRINKS` survives as a **vocabulary**, which is all it ever was — the
+  chips §08 draws, in the order it draws them. It no longer marks a drink as
+  uncounted, so a name being in that tuple or typed by the patient makes no
+  difference to the total. `core/hydration.py` holds the reversal in full; this
+  list is not where the rule lives.
 
 * **The goal is a point of reference, never a verdict.** "Po przekroczeniu celu
   pasek po prostu jest pełny. Nie ma gratulacji, serii ani komunikatu o
@@ -37,11 +35,14 @@ for no gain. `frontend/src/utils/drinks.ts` declares the same strings and
 `test_drinks.py` compares them character for character — nothing else does.
 """
 
-#: The one drink that counts towards the daily goal.
+#: Water's own name, and the default for a serving that names no drink (the
+#: "+ Szklanka" and "+ Butelka" buttons). It stopped being the one drink that
+#: counts on 2026-09-17 — every drink does now — so this constant is a *name*
+#: and nothing else. Nothing may branch on it to decide what enters a total.
 WATER = 'Woda'
 
-#: Recorded, listed back, and deliberately never added to the water total.
-#: The order is the order the chips are drawn in on §08's artboard.
+#: The other chips §08's artboard draws, in the order it draws them. Counted
+#: towards the goal like water since 2026-09-17.
 OTHER_DRINKS = ('Herbata', 'Kawa', 'Napar ziołowy', 'Woda z cytryną', 'Kompot')
 
 #: The names the screen offers as buttons. **Not** everything the column may
@@ -107,7 +108,8 @@ BOTTLE_ML = 500
 #: glass alone.
 #:
 #: IT IS A NUMBER NOBODY TYPED, which is the thing to weigh before touching it:
-#: it enters a clinical record, and on water it moves the goal bar. This project
+#: it enters a clinical record, and it moves the goal bar — for every drink now,
+#: not only for water. This project
 #: is otherwise careful not to invent one (the diary's sliders wrote a 0 nobody
 #: chose, and that was a defect). What makes it defensible here is that a
 #: *serving* is the unit the whole screen is built in, and that the patient is

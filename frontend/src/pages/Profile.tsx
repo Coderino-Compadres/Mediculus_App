@@ -12,7 +12,9 @@ import { hasPatientProfile } from '../api/auth'
 import { useAuth } from '../auth/authContext'
 import { useAccountProfile } from '../hooks/useAccountProfile'
 import { useSignOut } from '../hooks/useSignOut'
+import { entriesNoun } from '../utils/analysis'
 import { fullName } from '../utils/profile'
+import { pluralDays } from '../utils/reports'
 import { roleLabel } from '../utils/roles'
 import type { AccountClosureReason, AccountProfile } from '../types/profile'
 // The page frame, the confirmation frame and the collapsible sections. auth.css
@@ -129,11 +131,11 @@ function ClinicalSections({ profile }: { profile: AccountProfile }) {
       <section className="profile-counters" aria-label="Twoja aktywność">
         <div className="profile-counter">
           <span className="profile-counter-value">{profile.activity.entryCount}</span>
-          <span className="profile-counter-label">wpisów</span>
+          <span className="profile-counter-label">{entriesNoun(profile.activity.entryCount)}</span>
         </div>
         <div className="profile-counter">
           <span className="profile-counter-value">{profile.activity.streakDays}</span>
-          <span className="profile-counter-label">dni z rzędu</span>
+          <span className="profile-counter-label">{pluralDays(profile.activity.streakDays)} z rzędu</span>
         </div>
       </section>
 

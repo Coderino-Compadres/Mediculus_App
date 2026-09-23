@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
-import DietReportDetail from './DietReportDetail'
+import DietReportDetail, { DietReportBody } from './DietReportDetail'
 import { ROUTES } from '../routes'
 import { ApiError } from '../api/client'
 import { addDays, fromIsoDate, toIsoDate } from '../utils/days'
@@ -91,7 +91,7 @@ function fixture(overrides: { awakenings?: number } = {}): DietWeeklyReport {
       // before the late snack. (The history screen orders the other way, being
       // a list somebody scrolls.)
       meals: [BREAKFAST, LATE_SNACK],
-      hydration: { date: wednesday, waterMl: 500, glasses: 2 },
+      hydration: { date: wednesday, liquidMl: 500, glasses: 2 },
       sleep: {
         date: wednesday,
         fellAsleepAt: '23:10',
@@ -213,6 +213,24 @@ describe('DietReportDetail', () => {
     const note = screen.getByText(/Raport zawiera tylko to/)
 
     expect(note).toHaveTextContent('zapisałaś lub zapisałeś')
+    expect(note).toHaveTextContent('Dni bez wpisu nie są niczym złym')
+  })
+
+  it('stops addressing the reader as the author on the specialist copy', () => {
+    // The same document, read by the person who did not write it
+    // (pages/SpecialistPatientDietReport.tsx renders exactly this). The note is
+    // the one sentence on the page written in the second person, so it is the
+    // one sentence that has to change when the reader is not the subject.
+    renderWithProviders(
+      <DietReportBody report={fixture()} readerIsSubject={false} />,
+    )
+
+    const note = screen.getByText(/Raport zawiera tylko to/)
+
+    expect(note).toHaveTextContent('co pacjent zapisał')
+    expect(note).not.toHaveTextContent('zapisałaś lub zapisałeś')
+    // The rest of the sentence is about the week, not about the reader, so it
+    // is the same on both copies.
     expect(note).toHaveTextContent('Dni bez wpisu nie są niczym złym')
   })
 })
@@ -455,6 +473,24 @@ describe('Zestawienie tygodnia', () => {
     for (const group of groups) {
       expect(group.querySelector('dd')).not.toBeNull()
     }
+  })
+
+  it('calls the hydration figure "Płyny", because it is not water alone', async () => {
+    /**
+     * The row said "Woda" while the number behind it counted water only, and
+     * both halves changed together on 2026-09-17: the figure now includes tea
+     * and coffee (`core/hydration.py`), so a row still labelled "Woda" would be
+     * a specialist reading a volume of tea as a volume of water.
+     */
+    await renderReport()
+
+    const hydration = groupsIn('środa, 26 sierpnia')[1]
+
+    expect(hydration.querySelector('dt')?.textContent).toBe('Nawodnienie')
+    expect(hydration).toHaveTextContent('Płyny')
+    expect(hydration).not.toHaveTextContent('Woda')
+    // The figure itself is the server's, drawn as it came: 500 ml is 2 glasses.
+    expect(hydration).toHaveTextContent('2 szklanki')
   })
 
   it('lets the meals span the row and keeps the short diaries in columns', async () => {

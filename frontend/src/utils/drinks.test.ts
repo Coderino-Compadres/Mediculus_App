@@ -17,15 +17,17 @@ import {
  */
 
 describe('the vocabulary', () => {
-  it('counts water and nothing else', () => {
-    /** "Herbata, kawa i napary są zapisywane, ale nie przeliczane na wodę."
-     *  (mockups §08) — so there is no coefficient in that module and there must
-     *  not be one. */
+  it('keeps water a name rather than a rule', () => {
+    /** §08's "Herbata, kawa i napary są zapisywane, ale nie przeliczane na
+     *  wodę" was reversed on 2026-09-17: every drink counts at the volume
+     *  drunk. `WATER` survives as the name the serving buttons record, and as
+     *  the one name that must not be duplicated among the chips. */
     expect(WATER).toBe('Woda')
     expect(OTHER_DRINKS).not.toContain(WATER)
   })
 
-  it('puts water with lemon among the others, which is the client\'s call', () => {
+  it('puts water with lemon among the chips, where the artboard draws it', () => {
+    /** Which says where it is drawn and no longer what it counts for. */
     expect(OTHER_DRINKS).toContain('Woda z cytryną')
   })
 
@@ -67,9 +69,13 @@ describe('pluralGlasses', () => {
     expect(pluralGlasses(22)).toBe('szklanki')
   })
 
-  it('a fractional count takes the genitive, like "1,5 litra"', () => {
-    expect(pluralGlasses(1.6)).toBe('szklanek')
-    expect(pluralGlasses(2.5)).toBe('szklanek')
+  it('a fractional count takes the genitive SINGULAR, like "1,5 litra"', () => {
+    // "1,5 litra", not "1,5 litrów" — so "szklanki", not "szklanek". The screen
+    // showed "9,6 szklanek" until this was fixed.
+    expect(pluralGlasses(1.6)).toBe('szklanki')
+    expect(pluralGlasses(2.5)).toBe('szklanki')
+    expect(pluralGlasses(9.6)).toBe('szklanki')
+    expect(pluralGlasses(0.5)).toBe('szklanki')
   })
 })
 
