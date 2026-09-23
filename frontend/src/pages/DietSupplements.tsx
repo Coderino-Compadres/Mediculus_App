@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
 import Pagination from '../components/Pagination'
+import TimeField from '../components/TimeField'
 import {
   createSupplement,
   deleteSupplement,
@@ -389,11 +390,10 @@ function SupplementForm({
             >
               Godzina {index + 1}
             </label>
-            <input
+            <TimeField
               id={`supplement-hour-${index}`}
-              type="time"
               value={hour}
-              onChange={(event) => setHour(index, event.target.value)}
+              onChange={(next) => setHour(index, next)}
             />
             <button
               type="button"

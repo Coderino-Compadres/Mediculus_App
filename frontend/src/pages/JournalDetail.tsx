@@ -4,6 +4,7 @@ import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
 import { ApiError } from '../api/client'
 import { fetchJournalEntry } from '../api/diary'
+import { clockTime } from '../utils/clock'
 import { EMOTION_COLORS, STRES, type EmotionName } from '../utils/emotions'
 import { MOOD_OPTIONS } from '../utils/moods'
 import { placeLabel } from '../utils/triggers'
@@ -125,10 +126,8 @@ function JournalDetail() {
     month: 'long',
     year: 'numeric',
   })
-  const savedAtLabel = new Date(entry.savedAt).toLocaleTimeString('pl-PL', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  // 24-hour, like every other time in the app — see utils/clock.ts.
+  const savedAtLabel = clockTime(entry.savedAt) ?? ''
   const place = placeLabel(entry.situationReaction)
   const timeOfDay = timeOfDayLabel(entry.timeOfDay)
 

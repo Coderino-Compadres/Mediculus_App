@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import LoadError from './LoadError'
 import Stepper from './Stepper'
+import TimeField from './TimeField'
 import { ApiError } from '../api/client'
 import { emptySleepNight, fetchSleepNight, saveSleepNight } from '../api/diet'
 import { useCurrentDay } from '../hooks/useCurrentDay'
@@ -196,24 +197,22 @@ function DietSleepPanel({ today }: { today: Date }) {
         <div className="diet-as-hours">
           <div className="diet-as-field">
             <label htmlFor="sleep-fell-asleep">Zaśnięcie</label>
-            <input
+            <TimeField
               id="sleep-fell-asleep"
-              type="time"
               className="diet-as-time-input"
               value={draft.fellAsleepAt ?? ''}
               readOnly={!editable}
-              onChange={(event) => editTime('fellAsleepAt', event.target.value)}
+              onChange={(next) => editTime('fellAsleepAt', next)}
             />
           </div>
           <div className="diet-as-field">
             <label htmlFor="sleep-woke-up">Przebudzenie</label>
-            <input
+            <TimeField
               id="sleep-woke-up"
-              type="time"
               className="diet-as-time-input"
               value={draft.wokeUpAt ?? ''}
               readOnly={!editable}
-              onChange={(event) => editTime('wokeUpAt', event.target.value)}
+              onChange={(next) => editTime('wokeUpAt', next)}
             />
           </div>
         </div>

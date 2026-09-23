@@ -1,0 +1,11 @@
+/* The message under a time that is not a time. The field itself is styled by
+   whoever placed it — TimeField takes a `className` and the four screens each
+   pass their own, exactly as they did to `type="time"` — so nothing here
+   touches the input. */
+
+.time-field-error {
+  margin: 6px 0 0;
+  color: var(--color-error);
+  font-size: 13px;
+  line-height: 1.4;
+}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import EmotionSelector from '../components/EmotionSelector'
 import HeaderMenu from '../components/HeaderMenu'
+import TimeField from '../components/TimeField'
 import { createMeal, fetchDietDay, updateMeal } from '../api/diet'
 import { ApiError } from '../api/client'
 import { MEAL_KINDS } from '../utils/meals'
@@ -306,12 +307,11 @@ function DietMealForm() {
           <label className="visually-hidden" htmlFor="meal-time">
             {HOUR_FIELD_LABEL}
           </label>
-          <input
+          <TimeField
             id="meal-time"
-            type="time"
             className="diet-meal-time-input"
             value={time}
-            onChange={(event) => setTime(event.target.value)}
+            onChange={setTime}
           />
         </div>
         <p className="diet-meal-hint">

@@ -13,6 +13,7 @@ import {
   pluralGlasses,
   weekdayLabel,
 } from '../utils/drinks'
+import { clockTime } from '../utils/clock'
 import { fromIsoDate } from '../utils/days'
 import type { DrinkName } from '../utils/drinks'
 import type { HydrationDay, HydrationEntry } from '../types/diet'
@@ -91,13 +92,10 @@ function entryLabel(entry: HydrationEntry, glassMl: number, bottleMl: number): s
   return `Woda · ${entry.amountMl} ml`
 }
 
-/** "16:20" from the moment the server recorded, in the reader's own clock. */
+/** "16:20" from the moment the server recorded, in the reader's own clock —
+ *  24-hour, like every other time in the app (`utils/clock.ts`). */
 function entryTime(entry: HydrationEntry): string | null {
-  if (!entry.at) return null
-  const at = new Date(entry.at)
-  return Number.isNaN(at.getTime())
-    ? null
-    : at.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
+  return clockTime(entry.at)
 }
 
 /**
