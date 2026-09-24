@@ -17,7 +17,6 @@ vi.mock('../data/dietTechniques', () => ({
   },
   PLACEHOLDER_NOTICE_LIST: '',
   PLACEHOLDER_NOTICE_TECHNIQUE: '',
-  PLACEHOLDER_TECHNIQUES: [],
 }))
 
 const { catalogueHasPlaceholders, findDietTechnique, publishedDietTechniques } =

@@ -371,6 +371,128 @@
   white-space: pre-line;
 }
 
+/* The sentence the author wrote after her list, under the steps and inside the
+   steps' own card.
+
+   TOLD APART FROM A STEP BY A RULE AND BY QUIETER INK, AND BY NOTHING ELSE.
+   No ochre and no icon: in this module ochre means "this is where the work
+   stands" (.diet-techniques-pending, .diet-technique-chip-time) and the ⓘ
+   belongs to .diet-techniques-disclaimer at the foot of the screen — either
+   would read as a caution, and none of the three notes is one. They close a
+   thought: what to do if the answer to HALT is no, when to use the hunger
+   scale, what the food diary is not for.
+
+   --color-graphite-muted on --color-surface is 5.70:1, well over the 4.5:1 that
+   14px needs, so "quieter" here is a difference in weight rather than a text
+   that is harder to read. The rule is --color-divider, the same hairline the
+   disclaimer's border uses; it is decoration and carries no meaning of its own,
+   so 1.4.11 does not apply to it. `pre-line` for the same reason the step text
+   has it — a newline in the client's copy is part of what she wrote. */
+.diet-technique-note {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-divider);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-graphite-muted);
+  white-space: pre-line;
+}
+
+/* The example, under its own heading on its own card. `pre-line` like the step
+   text and the introduction: two of the client's examples are written as two
+   lines ("Myśl: …" / "Nowa myśl: …") and the break is part of what they say. */
+.diet-technique-example {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-graphite);
+  margin: 0;
+  white-space: pre-line;
+}
+
+/* "Gdzie to zrobisz w aplikacji" — the way out to the screen that does the
+   thing, on the three techniques that have one.
+
+   NOT A CARD, unlike the introduction, the steps and the example. Those three
+   are the client's text; this is navigation, and giving it the same white panel
+   would make a list of links read as a fourth block of her content. It sits on
+   the page like the intro paragraph does, with only its heading to hold it
+   together.
+
+   NO NEW COLOUR TOKEN. Sage is what an action wears everywhere in this module —
+   the row arrow above uses --color-sage, the "back" links use it, and these are
+   the same kind of thing. The weight is --color-sage-hover rather than
+   --color-sage, because these links sit on the page and not on a white card:
+   #4f7a64 on #f0edf6 measures 4.22:1, under the 4.5:1 that 14px needs, while
+   #416754 on the same lavender is 5.51:1. That is already the module's pairing
+   for text on the page — .diet-techniques-module-label wears it. The underline
+   is what carries the link-ness for anyone who cannot see the hue at all
+   (1.4.1). */
+.diet-technique-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diet-technique-links h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 0;
+}
+
+.diet-technique-links ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 44px of target (WCAG 2.5.8) FROM REAL HEIGHT, not from a stretched ::after.
+   .diet-techniques-back-link above does use an overlay, and may: it is a lone
+   link in a line of prose, with 16px of page gap above it and nothing
+   interactive anywhere near. These are a column of two. 14px at line-height 1.5
+   is a 21px row, so a 44px overlay centred on it runs 11.5px past the row at
+   each end — further than the 4px between rows. Two of them overlapped by
+   19px, the later one won hit-testing, and the bottom of "Zapisz posiłek w
+   dzienniczku" opened the history screen instead; the first link's overlay
+   reached into the <h2> as well.
+
+   So the <li> is a flex line and the <a> is a real 44px box inside it with its
+   text centred. Rows become 44px + 4px of gap instead of 21px + 4px, which
+   pushes only the disclaimer below them down — this section is the last
+   content on the screen. The <a> is a flex item, so it is as wide as its text
+   rather than as wide as the row: a link whose target runs on into empty space
+   is what caused the overlap to begin with, and these labels are long enough
+   that the narrower box is still far past what 2.5.8 asks for. */
+.diet-technique-links li {
+  display: flex;
+}
+
+.diet-technique-links a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: var(--font-weight-semibold);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-sage-hover);
+}
+
+/* The resting colour has taken --color-sage-hover (see the section comment),
+   so hover darkens to the page's ink rather than to a fourth green. */
+.diet-technique-links a:hover {
+  color: var(--color-graphite);
+}
+
+.diet-technique-links a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-control);
+}
+
 /* The line at the foot of one technique. The same shape as the analysis
    screen's note banner, because it does the same job: a quiet sentence about
    what the screen is, not a warning. */

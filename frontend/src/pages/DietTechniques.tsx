@@ -18,13 +18,13 @@ import './dietTechniques.css'
  * `components/techniqueCatalogue.css` dress a different catalogue and sharing
  * them is how two screens end up being changed as one by accident.
  *
- * THE CONTENT IS NOT WRITTEN YET. The foundation writes it; both mockup sets
- * say so on the artboard. What is in `data/dietTechniques.ts` today is ten
- * placeholders that read as placeholders in every field, and the notice below
- * says that out loud rather than leaving a patient to work it out. It is driven
- * by the entries themselves (`catalogueHasPlaceholders`), so it goes away in the
- * same edit that fills the last one in — nobody has to remember a flag. See that
- * file for how to swap the real thing in.
+ * THE CONTENT IS THE CLIENT'S OWN, transcribed in `data/dietTechniques.ts` from
+ * `markdown/techniki-psychodietetyczne.md`. Read the second before editing the
+ * first. The notice about content in preparation is still wired up below and
+ * shows nothing today: it is driven by the entries themselves
+ * (`catalogueHasPlaceholders`), so it left on its own in the edit that replaced
+ * the last placeholder, and it comes back on its own if a technique is ever
+ * recorded ahead of its text.
  *
  * WHAT THIS SCREEN DELIBERATELY DOES NOT DO:
  *   - **no tabs, no categories, no search.** Both mockup sets are explicit:
@@ -75,17 +75,27 @@ export const EMPTY =
   'Nie ma tu jeszcze żadnej techniki. Pojawią się, kiedy fundacja przygotuje opisy.'
 
 function TechniqueRow({ technique }: { technique: DietTechnique }) {
+  /* The artboard's meta line: how long it takes and when to reach for it, in
+     that order, separated by the module's middle dot. Both are printed exactly
+     as the data holds them — nothing here formats a duration, because a
+     duration here is text (see DietTechnique).
+
+     BUILT FROM WHATEVER IS THERE, AND OMITTED ENTIRELY WHEN NOTHING IS. The
+     client's fifteen techniques carry neither field, so the naive version of
+     this line rendered "undefined · undefined" under every row, and the
+     careful-looking version rendered a bare "·" — a middle dot alone under a
+     technique's name, which a screen reader reads out as "middle dot". Joining
+     the fields that exist means one field renders alone without its separator
+     and no field renders no element at all. */
+  const meta = [technique.czasTrwania, technique.momentZastosowania]
+    .filter((part): part is string => part !== undefined)
+    .join(' · ')
+
   return (
     <li className="diet-techniques-row">
       <Link className="diet-techniques-link" to={dietTechniqueDetailPath(technique.id)}>
         <span className="diet-techniques-name">{technique.nazwa}</span>
-        {/* The artboard's meta line: how long it takes and when to reach for
-            it, in that order, separated by the module's middle dot. Both are
-            printed exactly as the data holds them — nothing here formats a
-            duration, because a duration here is text (see DietTechnique). */}
-        <span className="diet-techniques-meta">
-          {technique.czasTrwania} · {technique.momentZastosowania}
-        </span>
+        {meta !== '' && <span className="diet-techniques-meta">{meta}</span>}
         <span className="diet-techniques-arrow" aria-hidden="true">
           →
         </span>
