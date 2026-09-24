@@ -47,7 +47,7 @@ function Pagination({ page, pageCount, from, to, total, onChange, unit }: Pagina
         onClick={() => onChange(page - 1)}
         disabled={page <= 1}
       >
-        ← Poprzednia
+        ← <span className="pagination-step-word">Poprzednia</span>
       </button>
 
       {/* Polite: the rows below have already changed, and this describes them
@@ -68,7 +68,7 @@ function Pagination({ page, pageCount, from, to, total, onChange, unit }: Pagina
         onClick={() => onChange(page + 1)}
         disabled={page >= pageCount}
       >
-        Następna →
+        <span className="pagination-step-word">Następna</span> →
       </button>
     </nav>
   )

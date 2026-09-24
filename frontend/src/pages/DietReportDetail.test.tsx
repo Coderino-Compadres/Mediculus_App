@@ -199,7 +199,9 @@ describe('DietReportDetail', () => {
     await renderReport()
 
     expect(screen.getByText('DIETETYKA I PSYCHODIETETYKA')).toBeInTheDocument()
-    expect(screen.getByText('26 sierpnia – 1 września 2026')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('banner')).getByText('26 sierpnia – 1 września 2026'),
+    ).toBeInTheDocument()
     // One screen back, which is the list — not the module home.
     expect(screen.getByRole('link', { name: 'Wróć do raportów' })).toHaveAttribute(
       'href',
@@ -897,6 +899,20 @@ describe('what this screen refuses to show', () => {
     const text = document.body.textContent ?? ''
     expect(text).not.toContain('Udostępnij')
     expect(text).not.toContain('Wyślij')
+  })
+
+  it('puts "Pobierz PDF" in the psychotherapy report’s own hero card', async () => {
+    /** The two modules' downloads are one design: the lavender button this
+     *  replaced sat on the lavender page and was barely visible. */
+    await renderReport()
+
+    const button = screen.getByRole('button', { name: 'Pobierz PDF' })
+    expect(button).toHaveClass('report-hero-button')
+
+    const hero = button.closest('.report-hero') as HTMLElement
+    expect(hero).not.toBeNull()
+    expect(within(hero).getByText('RAPORT TYGODNIOWY')).toBeInTheDocument()
+    expect(within(hero).getByText('2 z 7 dni z wpisem')).toBeInTheDocument()
   })
 
   it('promises no reader it cannot deliver', async () => {

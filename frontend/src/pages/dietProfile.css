@@ -72,6 +72,14 @@
   position: relative;
 }
 
+/* Titles take the free width, so the menu toggle ends up at the header's right
+   edge — as on every other diet screen. Without it the toggle sat right after
+   "Profil" and its right-anchored dropdown opened across the title. */
+.diet-profile-header-titles {
+  flex-grow: 1;
+  min-width: 0;
+}
+
 .diet-profile-module-label {
   font-weight: var(--font-weight-semibold);
   font-size: 12px;

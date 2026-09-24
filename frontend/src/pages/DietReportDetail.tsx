@@ -28,6 +28,7 @@ import {
 import type { DietMeal } from '../types/diet'
 import type { DietReportDay, DietWeeklyReport } from '../types/dietReport'
 import { ROUTES } from '../routes'
+import './reportDetail.css'
 import './dietReport.css'
 
 /**
@@ -541,6 +542,7 @@ export function DietReportBody({
   downloadError?: string | null
 }) {
   const { mealGrid } = report
+  const filledDays = report.days.filter((day) => !day.empty).length
 
   /**
    * "Zestawienie tygodnia", one day at a time.
@@ -585,22 +587,34 @@ export function DietReportBody({
         <HeaderMenu />
       </header>
 
-      {onDownload && (
-        <div className="diet-report-download">
-          <button
-            type="button"
-            className="diet-report-download-button"
-            onClick={onDownload}
-            disabled={downloading}
-          >
-            {downloading ? 'Przygotowywanie…' : 'Pobierz PDF'}
-          </button>
-          {downloadError && (
-            <p className="diet-report-download-error" role="alert">
-              {downloadError}
-            </p>
-          )}
-        </div>
+      {/* The psychotherapy report's own hero card and "Pobierz PDF" — the same
+          classes from reportDetail.css, so the two modules' downloads cannot
+          drift apart. The lavender button this replaced sat on the lavender
+          page and was barely visible. */}
+      <section className="report-hero">
+        <p className="report-hero-label">RAPORT TYGODNIOWY</p>
+        <h2 className="report-hero-range">{report.rangeLabel}</h2>
+        <p className="report-hero-meta">
+          {filledDays} z {report.days.length} dni z wpisem
+        </p>
+        {onDownload && (
+          <div className="report-hero-actions">
+            <button
+              type="button"
+              className="report-hero-button"
+              onClick={onDownload}
+              disabled={downloading}
+            >
+              {downloading ? 'Przygotowywanie…' : 'Pobierz PDF'}
+            </button>
+          </div>
+        )}
+      </section>
+
+      {downloadError && (
+        <p className="report-pdf-status report-pdf-status-error" role="alert">
+          {downloadError}
+        </p>
       )}
 
       <section className="diet-report-card" aria-labelledby="diet-report-days-heading">

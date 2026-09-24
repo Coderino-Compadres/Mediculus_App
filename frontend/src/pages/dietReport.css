@@ -199,6 +199,10 @@
    which is what a fifth column ("Bez godziny") does on the narrowest screens. */
 .diet-report-grid-scroll {
   overflow-x: auto;
+  /* Contains the cells' .visually-hidden text, which is `position: absolute`:
+     without a positioned ancestor it escapes this scroll box and widens the
+     whole page — see .analysis-bar-column. */
+  position: relative;
 }
 
 .diet-report-grid {
@@ -460,47 +464,6 @@
   border-radius: var(--radius-tile);
   padding: 14px 18px;
   margin: 0 auto;
-}
-
-/* "Pobierz PDF", the screen's one action. Centred and quiet, like the
-   psychotherapy report's: it saves a file, it does not change anything, and a
-   report is not a form.
-
-   `margin: 0 auto 20px`, not `margin: 0 0 20px` — the trap dietJournals.css
-   records. The centring lives on `.diet-report-page > *` at the same
-   specificity, so a bare `0` in the shorthand wins by source order and zeroes
-   the auto margins: on any viewport wider than 640px the whole download block
-   slid to the left edge while every card around it stayed in the column. The
-   `align-items: center` below centres the button *inside* the block, which is
-   why it looked deliberate rather than broken. */
-.diet-report-download {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  margin: 0 auto 20px;
-}
-
-.diet-report-download-button {
-  font: inherit;
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-graphite);
-  background: var(--color-lavender);
-  border: none;
-  border-radius: var(--radius-tile);
-  padding: 10px 20px;
-  cursor: pointer;
-}
-
-.diet-report-download-button:disabled {
-  opacity: 0.6;
-  cursor: progress;
-}
-
-.diet-report-download-error {
-  font-size: 13px;
-  color: var(--color-error);
-  margin: 0;
 }
 
 /* Whose week it is — only on a specialist's copy, where the reader is not the
