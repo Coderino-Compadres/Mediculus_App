@@ -73,10 +73,16 @@ CREATE TABLE IF NOT EXISTS "user" (
 CREATE TABLE IF NOT EXISTS specjalist (
     id_user UUID PRIMARY KEY,
     specjalization TEXT,
+    -- Which module the account works in (core/modules.py). Shapes the
+    -- specialist's own panel only; access to patients is specjalist_patient's.
+    module TEXT NOT NULL DEFAULT 'psychotherapy',
 
     CONSTRAINT fk_specjalist_user
         FOREIGN KEY (id_user)
-        REFERENCES "user" (id_user)
+        REFERENCES "user" (id_user),
+
+    CONSTRAINT specjalist_module_known
+        CHECK (module IN ('psychotherapy', 'diet'))
 );
 
 -- ----------------------------

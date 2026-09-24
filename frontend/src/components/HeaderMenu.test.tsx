@@ -388,4 +388,41 @@ describe('inside the diet module', () => {
       'href', ROUTES.specialistHome,
     )
   })
+
+  it('gives a psychodietitian the diet catalogue in place of the DBT one', async () => {
+    renderWithProviders(<HeaderMenu />, {
+      user: {
+        ...TEST_USER, isPatient: false, isSpecialist: true, role: 'specjalista',
+        specialistModule: 'diet',
+      },
+      route: ROUTES.specialistHome,
+    })
+    await openMenu()
+
+    expect(screen.getByRole('link', { name: 'Techniki psychodietetyczne' })).toHaveAttribute(
+      'href', ROUTES.dietTechniques,
+    )
+    expect(screen.queryByRole('link', { name: 'Moje techniki' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Techniki terapeutyczne' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps the DBT editor and catalogue in a psychotherapist’s menu', async () => {
+    renderWithProviders(<HeaderMenu />, {
+      user: {
+        ...TEST_USER, isPatient: false, isSpecialist: true, role: 'specjalista',
+        specialistModule: 'psychotherapy',
+      },
+      route: ROUTES.specialistHome,
+    })
+    await openMenu()
+
+    expect(screen.getByRole('link', { name: 'Moje techniki' })).toHaveAttribute(
+      'href', ROUTES.specialistTechniques,
+    )
+    expect(
+      screen.queryByRole('link', { name: 'Techniki psychodietetyczne' }),
+    ).not.toBeInTheDocument()
+  })
 })

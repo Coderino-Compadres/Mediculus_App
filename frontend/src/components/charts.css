@@ -77,7 +77,19 @@
 .analysis-heatmap-scroll,
 .analysis-heat-legend {
   --heatmap-max-width: 420px;
-  max-width: var(--heatmap-max-width);
+  /* The row-label column, and the 4px border-spacing after it: everything left
+     of the first square. */
+  --heatmap-label-width: 68px;
+  --heatmap-lead: calc(var(--heatmap-label-width) + 4px);
+  /* Centring the table centred the labels *and* the squares, which put the
+     grid itself ~36px right of the card's middle and the legend, spanning the
+     same box, under nothing in particular. A mirror of the label column on the
+     right centres the squares instead — but only where the card has width to
+     spare: on a phone it shrinks to 0, so the cells never get smaller for it.
+     (`100%` resolves against the card at each use, in max-width and padding
+     alike.) */
+  --heatmap-balance: clamp(0px, calc(100% - var(--heatmap-max-width)), var(--heatmap-lead));
+  max-width: calc(var(--heatmap-max-width) + var(--heatmap-balance));
   margin-inline: auto;
 }
 
@@ -85,6 +97,11 @@
    scrolls inside its card rather than stretching the page. */
 .analysis-heatmap-scroll {
   overflow-x: auto;
+  /* Contains the cells' .visually-hidden text, which is `position: absolute`:
+     without a positioned ancestor it escapes this scroll box and widens the
+     whole page — see .analysis-bar-column. */
+  position: relative;
+  padding-inline-end: var(--heatmap-balance);
 }
 
 /* `fixed`, not the default `auto`: auto layout sizes each column from its own
@@ -98,7 +115,11 @@
   border-collapse: separate;
   border-spacing: 4px;
   width: 100%;
-  min-width: 300px;
+  /* 290, not the 300 this was: a card on a 390px phone has 293px inside, and
+     300 made the map scroll by 7px there and clip the Sunday column for a gain
+     of under half a pixel a cell. 290 still leaves the cells at ~26.6px, where
+     the 8px hatch below reads as stripes. */
+  min-width: 290px;
 }
 
 /* Under fixed layout only the first row's widths count, and the first row is
@@ -106,7 +127,7 @@
    cell, not on the `tbody th` that visibly holds the labels. Wide enough for
    "Południe" (~53px measured) plus room for a font that loads wider. */
 .analysis-heatmap thead td {
-  width: 68px;
+  width: var(--heatmap-label-width);
 }
 
 /* Zostaje 11px, kiedy pozostałe plakietki w aplikacji poszły na 12px: tabela
@@ -141,14 +162,14 @@
    to say ~35px on a phone):
 
      viewport   table    cell      scrolls?
-      320px     300px    28,00px   yes  (min-width floor, container scrolls)
-      360px     300px    28,00px   yes
-      390px     310px    29,42px   no
-      414px     334px    32,85px   no
-      640px     420px    45,14px   no   (--heatmap-max-width cap)
+      320px     290px    26,57px   yes  (min-width floor, container scrolls)
+      360px     290px    26,57px   yes
+      390px     293px    27,00px   no
+      414px     318px    30,57px   no
+      640px     420px    45,20px   no   (--heatmap-max-width cap)
 
-   So a phone is 28-29,4px, not ~35px, and the widest a cell ever gets is
-   45,1px. The 68px label column and the 4px border-spacing are what the seven
+   (Re-measured on the diet analysis card, 24px padding each side.) So a phone
+   is 26,6-30,6px, not ~35px, and the widest a cell ever gets is 45,2px. The 68px label column and the 4px border-spacing are what the seven
    day columns are left over from: (table - 68 - 9x4) / 7. */
 .analysis-heat-cell {
   display: block;
@@ -231,6 +252,10 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  /* Under the squares, not under the table: the lead is the label column plus
+     the border-spacing before it, and the 4px on each side is the spacing
+     outside the first and the last square. */
+  padding-inline: calc(var(--heatmap-lead) + 4px) calc(var(--heatmap-balance) + 4px);
   margin-top: 14px;
   font-family: var(--font-body);
   font-size: 12px;
@@ -428,6 +453,10 @@
    does with the same problem. */
 .emotion-cross-scroll {
   overflow-x: auto;
+  /* Contains the cells' .visually-hidden text, which is `position: absolute`:
+     without a positioned ancestor it escapes this scroll box and widens the
+     whole page — see .analysis-bar-column. */
+  position: relative;
 }
 
 .emotion-cross {

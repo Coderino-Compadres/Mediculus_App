@@ -22,6 +22,10 @@
   border-radius: 20px;
   padding: 22px 20px;
   box-shadow: var(--shadow-card);
+  /* The rows decide their layout from the panel's own width, not the
+     viewport's — it sits in a page column and inside the auth card, both far
+     narrower than the window. See the @container rule at the end. */
+  container-type: inline-size;
 }
 
 .crisis-lines-heading {
@@ -151,14 +155,21 @@
   outline-color: var(--color-sage-hover);
 }
 
-/* On a narrow phone the longest name ('Dziecięcy Telefon Zaufania Rzecznika
-   Praw Dziecka') squeezes the number into two lines next to it; stacking keeps
-   the digits whole and large, which is the part that matters. */
-@media (max-width: 380px) {
+/* Number above the name once the panel is narrow. Side by side, "800 12 12 12"
+   took half the row and left the longest name ('Dziecięcy Telefon Zaufania
+   Rzecznika Praw Dziecka') one word per line with its badge broken in two —
+   on every phone, because this used to be a viewport query at 380px while the
+   panel itself is ~310px wide inside a 390px screen. Stacking keeps the digits
+   whole and large, which is the part that matters. */
+@container (max-width: 440px) {
   .crisis-line {
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: 2px;
+  }
+
+  .crisis-line-number {
+    min-height: 40px;
   }
 }
 

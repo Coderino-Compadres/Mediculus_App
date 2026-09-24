@@ -54,6 +54,7 @@ NEW_COLLEAGUE = {
     'surname': 'Terapeutka',
     'date_of_birth': '1985-02-01',
     'specialization': 'psychoterapia poznawczo-behawioralna',
+    'module': 'psychotherapy',
 }
 
 
@@ -423,6 +424,35 @@ class RefusalTests(ColleagueTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('specialization', response.data)
         self.assertFalse(User.objects.filter(email='nowa.terapeutka@example.com').exists())
+
+    def test_the_module_is_required(self):
+        """It decides which panel the colleague lands on, so nobody gets one by
+        default."""
+        body = {key: value for key, value in NEW_COLLEAGUE.items() if key != 'module'}
+        response = self.client.post(
+            reverse('core:specialist-colleagues'), body, format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('module', response.data)
+        self.assertFalse(User.objects.filter(email='nowa.terapeutka@example.com').exists())
+
+    def test_an_unknown_module_is_refused(self):
+        response = self.create(module='cardiology')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('module', response.data)
+
+    def test_the_module_is_stored_and_listed(self):
+        response = self.create(module='diet')
+
+        self.assertEqual(response.status_code, 201)
+        specjalist = Specjalist.objects.get(user__email='nowa.terapeutka@example.com')
+        self.assertEqual(specjalist.module, 'diet')
+        self.assertEqual(response.data['specialist']['module'], 'diet')
+        self.assertEqual(
+            response.data['specialist']['module_label'], 'Dietetyka i psychodietetyka',
+        )
 
     def test_a_minor_cannot_hold_a_specialist_account(self):
         minor = (timezone.localdate() - datetime.timedelta(days=365 * 15)).isoformat()

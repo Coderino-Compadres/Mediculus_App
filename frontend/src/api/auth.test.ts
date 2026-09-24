@@ -104,6 +104,8 @@ describe('login', () => {
       // them as a guardian.
       pendingGuardianInvitations: null,
       mustChangePassword: false,
+      // Not a specialist, so there is no module to name.
+      specialistModule: null,
       consents: {
         active: true,
         data: { grantedAt: '2026-06-18T09:31:02Z', withdrawnAt: null, active: true },

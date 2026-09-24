@@ -63,6 +63,15 @@
   text-transform: none;
 }
 
+/* The date and the "N dni z oznaczeniem" marker share a line only while both
+   fit. The marker is nowrap, so without wrapping here it was the date that
+   gave way — "7 – 13 / września / 2026", three lines on a phone. Wrapping the
+   row moves the marker under the date instead. */
+.report-row .journal-row-top {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
 .report-row-badge {
   flex-shrink: 0;
   width: 32px;

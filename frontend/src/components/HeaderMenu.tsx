@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { useSignOut } from '../hooks/useSignOut'
 import { ROUTES, routeTitle } from '../routes'
-import { isGuardian, isSpecialist, waitingChildren } from '../api/auth'
+import { isDietSpecialist, isGuardian, isSpecialist, waitingChildren } from '../api/auth'
 import { roleLabel } from '../utils/roles'
 import { waitingLabel } from '../utils/children'
 import type { AuthUser } from '../api/auth'
@@ -169,6 +169,21 @@ const SPECIALIST_ITEMS: MenuItem[] = [
 ]
 
 /**
+ * A psychodietitian's menu: the same panel, with the diet module's catalogue
+ * where the DBT editor and the DBT catalogue were. The DBT catalogue is the
+ * psychotherapy module's to write (the backend refuses a psychodietitian there),
+ * and the diet one has no editor at all — its content comes from the
+ * foundation, see data/dietTechniques.ts.
+ */
+const DIET_SPECIALIST_ITEMS: MenuItem[] = [
+  { label: 'Strona główna', to: ROUTES.specialistHome },
+  { label: routeTitle(ROUTES.specialistParentAccounts), to: ROUTES.specialistParentAccounts },
+  { label: routeTitle(ROUTES.specialistColleagues), to: ROUTES.specialistColleagues },
+  { label: 'Techniki psychodietetyczne', to: ROUTES.dietTechniques },
+  { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
+]
+
+/**
  * What this account may navigate to.
  *
  * Matches App.tsx's redirects — the two have to agree, or the menu offers a link
@@ -179,7 +194,7 @@ const SPECIALIST_ITEMS: MenuItem[] = [
 function menuItems(user: AuthUser | null, pathname: string): MenuItem[] {
   const patientItems = isDietRoute(pathname) ? DIET_ITEMS : PATIENT_ITEMS
   if (!user) return patientItems
-  if (isSpecialist(user)) return SPECIALIST_ITEMS
+  if (isSpecialist(user)) return isDietSpecialist(user) ? DIET_SPECIALIST_ITEMS : SPECIALIST_ITEMS
   return isGuardian(user) ? guardianItems(user) : patientItems
 }
 

@@ -49,6 +49,7 @@ import RouteChange from './components/RouteChange'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/authContext'
 import {
+  isDietSpecialist,
   isGuardian,
   isSpecialist,
   needsConsents,
@@ -182,6 +183,17 @@ function RequireSpecialist({ children }: { children: ReactNode }) {
   const gate = gateRouteFor(user)
   if (gate) return <Navigate to={gate} replace />
   return isSpecialist(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
+}
+
+/**
+ * The DBT technique editor — the psychotherapy module's. A psychodietitian is
+ * sent to the diet module's catalogue instead, which is what their panel and
+ * menu offer; the backend refuses them the editor's writes regardless.
+ */
+function RequireTechniqueAuthor({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  if (user && isDietSpecialist(user)) return <Navigate to={ROUTES.dietTechniques} replace />
+  return <RequireSpecialist>{children}</RequireSpecialist>
 }
 
 /**
@@ -374,25 +386,25 @@ function App() {
           <Route
             path={ROUTES.specialistTechniques}
             element={
-              <RequireSpecialist>
+              <RequireTechniqueAuthor>
                 <SpecialistTechniques />
-              </RequireSpecialist>
+              </RequireTechniqueAuthor>
             }
           />
           <Route
             path={ROUTES.specialistTechniqueNew}
             element={
-              <RequireSpecialist>
+              <RequireTechniqueAuthor>
                 <SpecialistTechniqueForm />
-              </RequireSpecialist>
+              </RequireTechniqueAuthor>
             }
           />
           <Route
             path={ROUTES.specialistTechniqueEdit}
             element={
-              <RequireSpecialist>
+              <RequireTechniqueAuthor>
                 <SpecialistTechniqueForm />
-              </RequireSpecialist>
+              </RequireTechniqueAuthor>
             }
           />
           <Route
@@ -544,7 +556,7 @@ function App() {
           <Route
             path={ROUTES.dietTechniques}
             element={
-              <RequireAuth>
+              <RequireAuth allowSpecialist>
                 <DietTechniques />
               </RequireAuth>
             }
@@ -552,7 +564,7 @@ function App() {
           <Route
             path={ROUTES.dietTechniqueDetail}
             element={
-              <RequireAuth>
+              <RequireAuth allowSpecialist>
                 <DietTechniqueDetail />
               </RequireAuth>
             }

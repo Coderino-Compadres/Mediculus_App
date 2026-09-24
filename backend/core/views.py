@@ -1575,6 +1575,13 @@ PARENT_INVITATION_NOT_FOUND = (
 
 TECHNIQUE_NOT_FOUND = 'Nie znaleziono takiej techniki.'
 
+#: The DBT catalogue is the psychotherapy module's. A psychodietitian's panel
+#: shows the diet catalogue instead (Specjalist.module), and the API refuses
+#: the same thing the panel no longer offers.
+TECHNIQUE_WRONG_MODULE = (
+    'Katalog technik terapeutycznych prowadzą specjaliści modułu psychoterapii.'
+)
+
 
 def _require_specialist(request):
     """The `specjalist` row behind the session, or a refusal.
@@ -1595,6 +1602,14 @@ def _require_specialist(request):
     specjalist = specialist_rules.specjalist_for(request.user)
     if specjalist is None:
         raise PermissionDenied(SPECIALIST_REFUSAL)
+    return specjalist
+
+
+def _require_technique_author(request):
+    """A specialist who may write into the DBT catalogue, or a refusal."""
+    specjalist = _require_specialist(request)
+    if specjalist.module != MODULE_PSYCHOTHERAPY:
+        raise PermissionDenied(TECHNIQUE_WRONG_MODULE)
     return specjalist
 
 
@@ -1986,7 +2001,7 @@ class SpecialistTechniquesView(APIView):
         ])
 
     def post(self, request):
-        specjalist = _require_specialist(request)
+        specjalist = _require_technique_author(request)
         serializer = technique_rules.TechniqueSerializer(
             data=request.data, context={'specjalist': specjalist},
         )
@@ -2014,7 +2029,7 @@ class SpecialistTechniqueView(APIView):
     """
 
     def put(self, request, id_technique):
-        specjalist = _require_specialist(request)
+        specjalist = _require_technique_author(request)
         technique = technique_rules.find_for_specjalist(specjalist, id_technique)
         if technique is None:
             raise NotFound(TECHNIQUE_NOT_FOUND)
@@ -2025,7 +2040,7 @@ class SpecialistTechniqueView(APIView):
         return Response(technique_rules.serialize_technique(serializer.save()))
 
     def delete(self, request, id_technique):
-        specjalist = _require_specialist(request)
+        specjalist = _require_technique_author(request)
         technique = technique_rules.find_for_specjalist(specjalist, id_technique)
         if technique is None:
             raise NotFound(TECHNIQUE_NOT_FOUND)

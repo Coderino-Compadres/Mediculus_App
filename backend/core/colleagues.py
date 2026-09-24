@@ -70,6 +70,7 @@ from django.db import transaction
 
 from .consents import has_active_consents
 from .models import Specjalist, User, UserRole
+from .modules import module_label
 from .parent_invitations import CODE_ALPHABET
 
 #: The role name a specialist account carries.
@@ -106,7 +107,8 @@ PASSWORD_GROUP_LENGTH = 4
 #: not log in": a freshly created account has granted nothing yet (see the module
 #: header), and silence would read as the account never having been created.
 COLLEAGUE_SUMMARY_FIELDS = (
-    'name', 'surname', 'email', 'specialization', 'created_at', 'consents_active',
+    'name', 'surname', 'email', 'specialization', 'module', 'module_label',
+    'created_at', 'consents_active',
 )
 
 
@@ -125,7 +127,7 @@ def generate_password():
     return '-'.join(groups)
 
 
-def create_account(*, email, name, surname, date_of_birth, specialization):
+def create_account(*, email, name, surname, date_of_birth, specialization, module):
     """Create a specialist account. Returns (specjalist row, plaintext password).
 
     The plaintext exists in this return value and nowhere else — the caller hands
@@ -160,7 +162,7 @@ def create_account(*, email, name, surname, date_of_birth, specialization):
             must_change_password=True,
         )
         specjalist = Specjalist.objects.create(
-            user=user, specjalization=specialization,
+            user=user, specjalization=specialization, module=module,
         )
     return specjalist, password
 
@@ -181,6 +183,8 @@ def serialize_colleague(specjalist):
         # `specjalist.specjalization`: /api/account/profile/ already sends it as
         # `approach`, so the wire has never mirrored that typo.
         'specialization': specjalist.specjalization,
+        'module': specjalist.module,
+        'module_label': module_label(specjalist.module),
         'created_at': user.created_at.isoformat() if user.created_at else None,
         'consents_active': has_active_consents(user),
     }

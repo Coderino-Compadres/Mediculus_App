@@ -21,6 +21,8 @@
  * file for one.
  */
 
+import { weekdayShortLabel } from './days'
+
 /** Water's own name, and the drink the two serving buttons record. A name only:
  *  nothing decides what counts by comparing against it. */
 export const WATER = 'Woda'
@@ -75,22 +77,8 @@ export function pluralGlasses(glasses: number): string {
   return 'szklanek'
 }
 
-/**
- * The seven weekday abbreviations the chart labels its columns with.
- *
- * Indexed by `Date.getDay()`, i.e. Sunday first. Written out rather than taken
- * from `toLocaleDateString('pl-PL', { weekday: 'short' })`, which returns
- * "pon.", "niedz.", "sob." — trimming those to two characters gives "Po", "Ni"
- * and "So", and §08 writes Pn, Nd and Sb.
- */
-const WEEKDAYS = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb']
-
-/** "Pn", "Wt" … — the label under one column of the seven-day chart.
- *
- *  Parsed as local midnight (`T00:00:00`, no `Z`) so the label names the day the
- *  server named. `new Date('2026-09-09')` is parsed as UTC midnight, which west
- *  of Warsaw is the previous day — the same class of bug that moved the weekly
- *  report's cutoff to the backend. */
+/** "Pn", "Wt" … — the label under one column of the seven-day chart. The
+ *  app's one set of weekday labels, from utils/days.ts. */
 export function weekdayLabel(iso: string): string {
-  return WEEKDAYS[new Date(`${iso}T00:00:00`).getDay()]
+  return weekdayShortLabel(iso)
 }

@@ -141,6 +141,24 @@ class RegistrationTests(SpecialistTestCase):
         # specialist is not a minor waiting for anybody.
         self.assertIsNone(response.data['is_child'])
         self.assertIsNone(response.data['guardian_status'])
+        self.assertEqual(response.data['specialist_module'], 'psychotherapy')
+
+    def test_me_names_a_psychodietitian_s_module(self):
+        """Which panel to draw — the diet catalogue rather than the DBT editor."""
+        specjalist = self.make_specialist()
+        specjalist.module = 'diet'
+        specjalist.save()
+        self.sign_in(specjalist.user)
+
+        response = self.client.get(reverse('core:me'))
+
+        self.assertEqual(response.data['specialist_module'], 'diet')
+
+    def test_me_has_no_specialist_module_for_a_patient(self):
+        patient = self.make_patient()
+        self.sign_in(patient.user)
+
+        self.assertIsNone(self.client.get(reverse('core:me')).data['specialist_module'])
 
     def test_a_new_specialist_sees_an_empty_panel_and_nobody_else_s_data(self):
         """The property the whole panel rests on: the role grants nothing.

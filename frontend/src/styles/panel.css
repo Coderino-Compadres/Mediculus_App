@@ -43,10 +43,30 @@
   position: relative;
 }
 
+/* At the right edge of the panel's column, where every patient screen has it
+   (.home-header), rather than in the corner of the window: on a wide screen
+   that corner is far from the centred cards and the toggle read as lost.
+   Stretched across the page and capped like the column, then centred with auto
+   margins — not with a transform, which would become the containing block of
+   the menu's `position: fixed` backdrop and shrink it to this strip. The padding
+   is the page's own gutter. */
 .panel-menu {
   position: absolute;
   top: 20px;
-  right: 20px;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: calc(var(--panel-width) + 40px);
+  margin-inline: auto;
+  padding-inline: 20px;
+  display: flex;
+  justify-content: flex-end;
+  /* The strip spans the header's width; only the toggle takes clicks. */
+  pointer-events: none;
+}
+
+.panel-menu > * {
+  pointer-events: auto;
 }
 
 /* The greeting block: logo, "Cześć, X", the panel's name, and one line saying
@@ -399,7 +419,8 @@
 
   .panel-menu {
     top: 16px;
-    right: 16px;
+    max-width: none;
+    padding-inline: 16px;
   }
 
   .panel-card {

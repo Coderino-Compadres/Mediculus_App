@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import { useAuth } from '../auth/authContext'
+import { isSpecialist } from '../api/auth'
 import { catalogueHasPlaceholders, publishedDietTechniques } from '../utils/dietTechniques'
 import { PLACEHOLDER_NOTICE_LIST } from '../data/dietTechniques'
 import type { DietTechnique } from '../types/dietTechnique'
@@ -105,6 +107,8 @@ function TechniqueRow({ technique }: { technique: DietTechnique }) {
 function DietTechniques() {
   // Order is the data file's order; nothing sorts it and nothing counts it.
   const techniques = publishedDietTechniques()
+  const { user } = useAuth()
+  const specialist = user !== null && isSpecialist(user)
 
   return (
     <div className="diet-techniques-page">
@@ -112,10 +116,14 @@ function DietTechniques() {
         {/* The arrow the whole module has and the psychotherapy catalogue does
             not: /diet screens are entered from the module's home and several of
             them have no other way back. Same label as its siblings. */}
+        {/* A specialist reads this catalogue from their panel, and /diet is a
+            patient's home they would only be bounced out of. */}
         <Link
           className="diet-techniques-back"
-          to={ROUTES.diet}
-          aria-label="Wróć do strony głównej modułu dietetycznego"
+          to={specialist ? ROUTES.specialistHome : ROUTES.diet}
+          aria-label={
+            specialist ? 'Wróć do panelu' : 'Wróć do strony głównej modułu dietetycznego'
+          }
         >
           ←
         </Link>

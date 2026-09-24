@@ -487,3 +487,37 @@ class PanelListTests(TechniqueTestCase):
 
         self.assertEqual(
             self.client.get(reverse('core:specialist-techniques')).status_code, 403)
+
+
+class ModuleTests(TechniqueTestCase):
+    """The DBT catalogue is the psychotherapy module's. A psychodietitian's panel
+    shows the diet catalogue instead, and the API refuses what the panel no
+    longer offers — writing, correcting and withdrawing alike."""
+
+    def test_a_psychodietitian_cannot_write_into_the_dbt_catalogue(self):
+        self.specjalist.module = 'diet'
+        self.specjalist.save()
+
+        response = self.create()
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Technique.objects.exists())
+
+    def test_a_psychodietitian_cannot_correct_or_withdraw_one_either(self):
+        self.create()
+        technique = Technique.objects.get()
+        self.specjalist.module = 'diet'
+        self.specjalist.save()
+        url = reverse('core:specialist-technique', args=[technique.pk])
+
+        self.assertEqual(
+            self.client.put(url, self.body(intro='Zmienione.'), format='json').status_code,
+            403,
+        )
+        self.assertEqual(self.client.delete(url).status_code, 403)
+        self.assertTrue(Technique.objects.filter(pk=technique.pk).exists())
+
+    def test_a_psychotherapist_still_can(self):
+        self.assertEqual(self.specjalist.module, 'psychotherapy')
+
+        self.assertEqual(self.create().status_code, 201)

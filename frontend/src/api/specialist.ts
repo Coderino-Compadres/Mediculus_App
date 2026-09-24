@@ -442,6 +442,8 @@ interface ColleaguePayload {
   surname: string | null
   email: string | null
   specialization: string | null
+  module?: string | null
+  module_label?: string | null
   created_at: string | null
   consents_active: boolean
 }
@@ -454,6 +456,8 @@ export interface Colleague {
   email: string | null
   /** `specjalist.specjalization` — what the patient reads next to their name. */
   specialization: string | null
+  /** Which module the account works in, named in words; null on an older backend. */
+  moduleLabel: string | null
   createdAt: string | null
   /**
    * Whether this account's own RODO consents are in force.
@@ -473,6 +477,7 @@ function toColleague(payload: ColleaguePayload): Colleague {
     surname: payload.surname,
     email: payload.email,
     specialization: payload.specialization,
+    moduleLabel: payload.module_label ?? null,
     createdAt: payload.created_at,
     consentsActive: payload.consents_active,
   }
@@ -496,6 +501,8 @@ export interface NewColleague {
   lastName: string
   dateOfBirth: string
   specialization: string
+  /** Which panel the new account lands on; required, with no default. */
+  module: AppModule
 }
 
 export interface CreatedColleague {
@@ -531,6 +538,7 @@ export async function createColleague(input: NewColleague): Promise<CreatedColle
         surname: input.lastName,
         date_of_birth: input.dateOfBirth,
         specialization: input.specialization,
+        module: input.module,
       },
     },
   )
@@ -544,4 +552,5 @@ export const COLLEAGUE_FIELDS: Record<string, string> = {
   surname: 'lastName',
   date_of_birth: 'dateOfBirth',
   specialization: 'specialization',
+  module: 'module',
 }

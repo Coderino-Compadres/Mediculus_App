@@ -556,3 +556,41 @@ describe('every screen in the diet module is reachable', () => {
     })
   }
 })
+
+describe('a psychodietitian and the technique screens', () => {
+  /** The DBT editor is the psychotherapy module's (the backend refuses a
+   *  psychodietitian's writes there). Their panel offers the diet catalogue,
+   *  and an address typed or bookmarked into the editor lands on it too. */
+  const DIETITIAN: AuthUser = {
+    ...TEST_USER,
+    role: 'specjalista',
+    isPatient: false,
+    isSpecialist: true,
+    isChild: null,
+    specialistModule: 'diet',
+  }
+
+  it('is sent from the DBT editor to the diet catalogue', async () => {
+    for (const route of [ROUTES.specialistTechniques, ROUTES.specialistTechniqueNew]) {
+      mockedFetchUser.mockResolvedValueOnce(DIETITIAN)
+      const { unmount } = renderAt(route)
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Techniki psychodietetyczne' }),
+      ).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('can open the diet catalogue, with the way back leading to the panel', async () => {
+    mockedFetchUser.mockResolvedValueOnce(DIETITIAN)
+
+    renderAt(ROUTES.dietTechniques)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Techniki psychodietetyczne' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Wróć do panelu' })).toHaveAttribute(
+      'href', ROUTES.specialistHome,
+    )
+  })
+})
