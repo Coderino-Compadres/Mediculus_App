@@ -214,7 +214,8 @@
   font-size: 14px;
   color: var(--color-graphite-muted);
   margin: 0;
-  text-transform: capitalize;
+  /* No text-transform: the line is "24 września", and capitalize upper-cases
+     every word — "24 Września". Polish months are lower case. */
 }
 
 .home-streak {

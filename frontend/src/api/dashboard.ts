@@ -4,6 +4,7 @@
  */
 
 import { apiRequest } from './client'
+import { weekdayShortLabel } from '../utils/days'
 import { EMOTION_COLORS, type EmotionName } from '../utils/emotions'
 import type { DayMood, EmotionRating, HomeDashboard, TodayEntry } from '../types/dashboard'
 
@@ -31,8 +32,6 @@ interface HomeDashboardPayload {
      back is a matter of restoring this line and its mapping. */
 }
 
-/** Indexed by Date.getDay(), i.e. starting on Sunday. */
-const WEEKDAY_LABELS = ['Ndz', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob']
 
 /**
  * The backend sends canonical names from `core/emotions.py`, but it is the only
@@ -47,14 +46,9 @@ function toEmotionName(value: string | null): EmotionName | null {
   return null
 }
 
-/**
- * 'YYYY-MM-DD' as a local calendar day. `new Date(iso)` would read it as UTC
- * midnight, which lands on the previous day for anyone west of Greenwich.
- */
+/** The app's one set of weekday labels — see utils/days.ts. */
 function weekdayLabel(iso: string): string {
-  const [year, month, day] = iso.split('-').map(Number)
-  if (!year || !month || !day) return iso
-  return WEEKDAY_LABELS[new Date(year, month - 1, day).getDay()]
+  return weekdayShortLabel(iso)
 }
 
 function toEmotionRating(payload: EmotionRatingPayload): EmotionRating | null {

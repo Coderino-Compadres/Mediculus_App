@@ -137,10 +137,13 @@ describe('weekday labels', () => {
     expect(result.week[0].dayLabel).toBe('Wt')
   })
 
+  // The app's one set of labels (utils/days.ts) — the same two letters as the
+  // analysis and the diet charts, not a home-screen spelling of its own.
   it.each([
-    ['2026-08-23', 'Ndz'],
-    ['2026-08-24', 'Pon'],
-    ['2026-08-29', 'Sob'],
+    ['2026-08-23', 'Nd'],
+    ['2026-08-24', 'Pn'],
+    ['2026-08-27', 'Cz'],
+    ['2026-08-29', 'Sb'],
   ])('labels %s as %s', async (date, label) => {
     mockedRequest.mockResolvedValueOnce(payload({ week: week([{ date }]) }))
 

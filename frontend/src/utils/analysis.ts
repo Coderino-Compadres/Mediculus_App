@@ -96,7 +96,7 @@ export const WEEKDAYS = [
   { short: 'Śr', full: 'Środa', phrase: 'w środy' },
   { short: 'Cz', full: 'Czwartek', phrase: 'w czwartki' },
   { short: 'Pt', full: 'Piątek', phrase: 'w piątki' },
-  { short: 'So', full: 'Sobota', phrase: 'w soboty' },
+  { short: 'Sb', full: 'Sobota', phrase: 'w soboty' },
   { short: 'Nd', full: 'Niedziela', phrase: 'w niedziele' },
 ] as const
 

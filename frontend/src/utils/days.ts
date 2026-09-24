@@ -25,6 +25,20 @@ export function fromIsoDate(iso: string): Date {
 }
 
 /**
+ * The two-letter weekday labels, indexed by `Date.getDay()` (Sunday first) —
+ * one set for every chart and chip in the app. §08 of the mockups writes
+ * Pn, Nd and Sb. There used to be three: "Pon/Czw/Ndz" on the home screen,
+ * "So" in the analysis and "Sb" in the diet module, side by side in one app.
+ */
+export const WEEKDAY_SHORT_LABELS = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb'] as const
+
+/** "Pn", "Wt" … for an ISO date, read as the local calendar day. */
+export function weekdayShortLabel(iso: string): string {
+  const date = fromIsoDate(iso)
+  return Number.isNaN(date.getTime()) ? iso : WEEKDAY_SHORT_LABELS[date.getDay()]
+}
+
+/**
  * Whether a string names a real calendar day — the guard for an ISO date that
  * came out of a URL rather than out of the API.
  *
