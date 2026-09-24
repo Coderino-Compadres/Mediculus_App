@@ -149,6 +149,7 @@ class UserSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     is_patient = serializers.SerializerMethodField()
     is_specialist = serializers.SerializerMethodField()
+    specialist_module = serializers.SerializerMethodField()
     consents = serializers.SerializerMethodField()
     is_child = serializers.SerializerMethodField()
     guardian_status = serializers.SerializerMethodField()
@@ -159,6 +160,10 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'name', 'surname', 'date_of_birth', 'role',
             'is_patient', 'is_specialist', 'is_child', 'guardian_status',
+            # The module a specialist account works in, or None for everybody
+            # else: which panel the specialist sees (the DBT editor or the diet
+            # catalogue). Never an access decision — see Specjalist.module.
+            'specialist_module',
             # How many children are waiting on this guardian's answer. Here
             # rather than behind its own endpoint because it is what makes the
             # waiting *visible*: the header badge is drawn on every screen a
@@ -256,7 +261,20 @@ class UserSerializer(serializers.ModelSerializer):
         account whose role says 'specjalista' with no row behind it would be sent
         to a panel that answers it 403 on every request.
         """
-        return Specjalist.objects.filter(user=user).exists()
+        return self._specjalist(user) is not None
+
+    def get_specialist_module(self, user):
+        specjalist = self._specjalist(user)
+        return specjalist.module if specjalist is not None else None
+
+    def _specjalist(self, user):
+        """The `specjalist` row, looked up once per serialization — `_patient`'s
+        twin, for the two fields that read it."""
+        if not hasattr(self, '_specjalists'):
+            self._specjalists = {}
+        if user.pk not in self._specjalists:
+            self._specjalists[user.pk] = Specjalist.objects.filter(user=user).first()
+        return self._specjalists[user.pk]
 
     def get_is_child(self, user):
         # None means either "not a patient at all" (a guardian) or a patient row
@@ -1303,6 +1321,16 @@ class SpecialistColleagueCreateSerializer(serializers.Serializer):
             'required': SPECIALIZATION_REQUIRED,
         },
     )
+    #: Which module the new account works in. Required rather than defaulted,
+    #: for the invitation form's reason: a default is a choice nobody made, and
+    #: it decides which panel the colleague lands on.
+    module = serializers.ChoiceField(
+        choices=MODULES,
+        error_messages={
+            'required': 'Wskaż moduł, w którym pracuje specjalista.',
+            'invalid_choice': 'Nieznany moduł.',
+        },
+    )
 
     def validate_email(self, value):
         return free_email(value)
@@ -1322,6 +1350,7 @@ class SpecialistColleagueCreateSerializer(serializers.Serializer):
                 surname=validated_data['surname'].strip(),
                 date_of_birth=validated_data['date_of_birth'],
                 specialization=validated_data['specialization'].strip(),
+                module=validated_data['module'],
             )
         except IntegrityError as exc:
             # validate_email lost a race with a concurrent create for the same

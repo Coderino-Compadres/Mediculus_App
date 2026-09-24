@@ -56,7 +56,7 @@ class PasswordGateTestCase(TestCase):
         UserRole.objects.get_or_create(name=SPECIALIST_ROLE)
         self.specjalist, self.given_password = create_account(
             email='nowa.terapeutka@example.com', name='Nowa', surname='Terapeutka',
-            date_of_birth='1985-02-01', specialization='DBT',
+            date_of_birth='1985-02-01', specialization='DBT', module='psychotherapy',
         )
         self.user = self.specjalist.user
         # The account this file is about arrives holding *both* refusals. The

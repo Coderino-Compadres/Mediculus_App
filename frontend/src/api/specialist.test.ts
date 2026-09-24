@@ -329,6 +329,8 @@ describe('specialist accounts', () => {
     surname: 'Terapeutka',
     email: 'anna@wp.pl',
     specialization: 'psychoterapia poznawczo-behawioralna',
+    module: 'psychotherapy',
+    module_label: 'Psychoterapia',
     created_at: '2026-09-01T09:00:00+02:00',
     consents_active: false,
   }
@@ -345,6 +347,7 @@ describe('specialist accounts', () => {
       surname: 'Terapeutka',
       email: 'anna@wp.pl',
       specialization: 'psychoterapia poznawczo-behawioralna',
+      moduleLabel: 'Psychoterapia',
       createdAt: '2026-09-01T09:00:00+02:00',
       consentsActive: false,
     }])
@@ -376,6 +379,7 @@ describe('specialist accounts', () => {
       lastName: 'Terapeutka',
       dateOfBirth: '1985-02-01',
       specialization: 'psychoterapia poznawczo-behawioralna',
+      module: 'psychotherapy',
     })
 
     expect(mockedRequest).toHaveBeenCalledWith('/api/specialist/colleagues/', {
@@ -386,6 +390,7 @@ describe('specialist accounts', () => {
         surname: 'Terapeutka',
         date_of_birth: '1985-02-01',
         specialization: 'psychoterapia poznawczo-behawioralna',
+        module: 'psychotherapy',
       },
     })
   })
@@ -403,6 +408,7 @@ describe('specialist accounts', () => {
       lastName: 'Terapeutka',
       dateOfBirth: '1985-02-01',
       specialization: 'psychoterapia poznawczo-behawioralna',
+      module: 'psychotherapy',
     })
 
     expect(created.password).toBe('ABCD-EFGH-JKMN-PQRT')
@@ -412,7 +418,7 @@ describe('specialist accounts', () => {
   it('maps every field the form can be refused on', async () => {
     // A field missing here means a Django error lands nowhere visible.
     expect(Object.keys(COLLEAGUE_FIELDS).sort()).toEqual([
-      'date_of_birth', 'email', 'name', 'specialization', 'surname',
+      'date_of_birth', 'email', 'module', 'name', 'specialization', 'surname',
     ])
   })
 })

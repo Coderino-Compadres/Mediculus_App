@@ -4,6 +4,7 @@
  */
 
 import { ApiError, apiRequest, type FieldErrors } from './client'
+import { isAppModule, MODULE_DIET, type AppModule } from '../utils/modules'
 
 /** As `core.serializers.UserSerializer` returns it. */
 export interface UserPayload {
@@ -17,6 +18,7 @@ export interface UserPayload {
   is_patient?: boolean
   /** Whether a `specjalist` row exists — see `isSpecialist`. */
   is_specialist?: boolean
+  specialist_module?: string | null
   is_child: boolean | null
   /** null when the question does not apply: only a minor patient needs a guardian. */
   guardian_status?: GuardianStatus | null
@@ -79,6 +81,13 @@ export interface AuthUser {
    * actually enforces it.
    */
   mustChangePassword: boolean
+  /**
+   * Which module a specialist account works in, or null for everybody else.
+   * It picks the specialist's panel — the diet catalogue rather than the DBT
+   * editor — and grants nothing: which patients a specialist reads is decided
+   * per accepted invitation, on the backend.
+   */
+  specialistModule: AppModule | null
   /**
    * When each consent was granted, as a full ISO instant; null means never.
    *
@@ -167,6 +176,9 @@ export function toAuthUser(payload: UserPayload): AuthUser {
     // refuses on its own regardless, so the worst a stale client does is draw a
     // screen and collect a 403.
     mustChangePassword: payload.must_change_password ?? false,
+    // Null on a backend a release behind, which reads as the psychotherapy
+    // panel every specialist had before the column existed.
+    specialistModule: isAppModule(payload.specialist_module) ? payload.specialist_module : null,
     consents: payload.consents
       ? {
           active: payload.consents.active,
@@ -422,6 +434,11 @@ export function isGuardian(user: AuthUser): boolean {
  */
 export function isSpecialist(user: AuthUser): boolean {
   return user.isSpecialist
+}
+
+/** A specialist of the diet module — whose panel shows the diet catalogue. */
+export function isDietSpecialist(user: AuthUser): boolean {
+  return user.isSpecialist && user.specialistModule === MODULE_DIET
 }
 
 /**

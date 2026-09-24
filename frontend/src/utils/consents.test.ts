@@ -23,6 +23,7 @@ const USER: AuthUser = {
   // null, not 0: the question applies to a guardian and this is a patient.
   pendingGuardianInvitations: null,
   mustChangePassword: false,
+  specialistModule: null,
   consents: {
     active: true,
     data: { grantedAt: '2026-03-09T21:15:00Z', withdrawnAt: null, active: true },

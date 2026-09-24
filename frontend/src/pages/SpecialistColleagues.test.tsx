@@ -52,6 +52,7 @@ const ME = {
   surname: 'Testowy',
   email: 'test@wp.pl',
   specialization: 'DBT',
+  moduleLabel: 'Psychoterapia',
   createdAt: '2026-06-01T09:00:00+02:00',
   consentsActive: true,
 }
@@ -62,6 +63,7 @@ const CREATED = {
   surname: 'Terapeutka',
   email: 'anna@wp.pl',
   specialization: 'psychoterapia poznawczo-behawioralna',
+  moduleLabel: 'Psychoterapia',
   createdAt: '2026-09-01T09:00:00+02:00',
   consentsActive: false,
 }
@@ -84,6 +86,7 @@ async function fillForm() {
   await userEvent.type(screen.getByLabelText(/adres e-mail/i), 'anna@wp.pl')
   await userEvent.type(screen.getByLabelText(/data urodzenia/i), '1985-02-01')
   await userEvent.type(screen.getByLabelText(/specjalizacja/i), 'psychoterapia')
+  await userEvent.selectOptions(screen.getByLabelText('Moduł'), 'psychotherapy')
 }
 
 describe('SpecialistColleagues — what the screen says before anything is typed', () => {
@@ -95,12 +98,12 @@ describe('SpecialistColleagues — what the screen says before anything is typed
     ).toBeInTheDocument()
   })
 
-  it('asks for the five things the backend requires', async () => {
+  it('asks for the six things the backend requires', async () => {
     renderScreen()
 
     await screen.findByLabelText('Imię')
     for (const label of [
-      'Imię', 'Nazwisko', /adres e-mail/i, /data urodzenia/i, /specjalizacja/i,
+      'Imię', 'Nazwisko', /adres e-mail/i, /data urodzenia/i, /specjalizacja/i, 'Moduł',
     ]) {
       expect(screen.getByLabelText(label)).toBeInTheDocument()
     }
@@ -123,6 +126,45 @@ describe('SpecialistColleagues — what the screen says before anything is typed
     await fillForm()
 
     expect(submit).toBeEnabled()
+  })
+})
+
+describe('SpecialistColleagues — the module', () => {
+  it('preselects no module, so the button waits for one', async () => {
+    renderScreen()
+
+    const select = (await screen.findByLabelText('Moduł')) as HTMLSelectElement
+    expect(select.value).toBe('')
+    expect(screen.getByRole('option', { name: 'Psychoterapia' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: 'Dietetyka i psychodietetyka' }),
+    ).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Imię'), 'Anna')
+    await userEvent.type(screen.getByLabelText('Nazwisko'), 'Terapeutka')
+    await userEvent.type(screen.getByLabelText(/adres e-mail/i), 'anna@wp.pl')
+    await userEvent.type(screen.getByLabelText(/data urodzenia/i), '1985-02-01')
+    await userEvent.type(screen.getByLabelText(/specjalizacja/i), 'psychodietetyka')
+
+    expect(screen.getByRole('button', { name: /utwórz konto specjalisty/i })).toBeDisabled()
+  })
+
+  it('sends the module that was picked', async () => {
+    mockedCreate.mockResolvedValue({ password: 'ABCD-EFGH-JKMN-PQRT', specialist: CREATED })
+    renderScreen()
+
+    await screen.findByLabelText('Imię')
+    await fillForm()
+    await userEvent.selectOptions(screen.getByLabelText('Moduł'), 'diet')
+    await userEvent.click(screen.getByRole('button', { name: /utwórz konto specjalisty/i }))
+
+    expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ module: 'diet' }))
+  })
+
+  it('names each account’s module on the roster', async () => {
+    renderScreen()
+
+    expect(await screen.findByText('DBT · Psychoterapia')).toBeInTheDocument()
   })
 })
 

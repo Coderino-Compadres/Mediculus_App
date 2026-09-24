@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import FormField from '../components/FormField'
+import SelectField from '../components/SelectField'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
 import Pagination from '../components/Pagination'
@@ -18,6 +19,7 @@ import { usePagination } from '../hooks/usePagination'
 import { linkedSinceLabel } from '../utils/children'
 import { colleagueLabel } from '../utils/specialist'
 import { ROUTES } from '../routes'
+import { isAppModule, MODULE_LABELS, MODULES } from '../utils/modules'
 import './journals.css'
 import '../components/auth.css'
 import '../styles/panel.css'
@@ -82,7 +84,13 @@ const EMPTY_FORM = {
   email: '',
   dateOfBirth: '',
   specialization: '',
+  module: '',
 }
+
+// Every module, in the app's own order and words. No preselected one: the
+// module decides which panel the colleague lands on, so it is a choice somebody
+// makes rather than one a default makes for them.
+const MODULE_OPTIONS = MODULES.map((module) => ({ value: module, label: MODULE_LABELS[module] }))
 
 // Keeps the native picker from offering a future date at all; the backend still
 // checks it, and also refuses a date that makes the person a minor.
@@ -127,7 +135,7 @@ function SpecialistColleagues() {
     }
   }, [attempt])
 
-  function change(event: React.ChangeEvent<HTMLInputElement>) {
+  function change(event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     const { name, value } = event.target
     setValues((current) => ({ ...current, [name]: value }))
   }
@@ -136,6 +144,10 @@ function SpecialistColleagues() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
+    // Unreachable through the button, which stays disabled until every field
+    // is filled; here so the type below is a module rather than a string.
+    if (!isAppModule(values.module)) return
+    const module = values.module
     setSaving(true)
     setErrors({})
     setFormError(null)
@@ -147,6 +159,7 @@ function SpecialistColleagues() {
         lastName: values.lastName.trim(),
         dateOfBirth: values.dateOfBirth,
         specialization: values.specialization.trim(),
+        module,
       })
       setCreated(result)
       setColleagues((current) => [result.specialist, ...current])
@@ -286,6 +299,20 @@ function SpecialistColleagues() {
               error={errors.specialization}
               disabled={saving}
             />
+            {/* Which panel the account opens onto — a psychodietitian's has the
+                diet catalogue where a psychotherapist's has the DBT editor.
+                Access to patients is not decided here: that is still one
+                accepted invitation per module. */}
+            <SelectField
+              id="module"
+              label="Moduł"
+              placeholder="Wybierz moduł"
+              options={MODULE_OPTIONS}
+              value={values.module}
+              onChange={change}
+              error={errors.module || null}
+              disabled={saving}
+            />
             {formError && (
               <p className="panel-error" role="alert">
                 {formError}
@@ -314,8 +341,12 @@ function SpecialistColleagues() {
                       {colleague.id === user?.id && ' · to Ty'}
                     </p>
                     <p className="specialist-list-meta">{colleague.email}</p>
-                    {colleague.specialization && (
-                      <p className="specialist-list-meta">{colleague.specialization}</p>
+                    {(colleague.specialization || colleague.moduleLabel) && (
+                      <p className="specialist-list-meta">
+                        {[colleague.specialization, colleague.moduleLabel]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
                     )}
                     <p className="specialist-list-meta">
                       {colleague.consentsActive

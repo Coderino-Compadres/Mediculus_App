@@ -83,4 +83,22 @@ describe('SpecialistHome', () => {
       expect(document.querySelector(`a[href="${route}"]`)).toBeNull()
     }
   })
+
+  it('offers a psychotherapist the DBT technique editor', async () => {
+    renderScreen({ ...SPECIALIST, specialistModule: 'psychotherapy' })
+
+    expect(await screen.findByRole('link', { name: /moje techniki/i })).toHaveAttribute(
+      'href', ROUTES.specialistTechniques,
+    )
+    expect(document.querySelector(`a[href="${ROUTES.dietTechniques}"]`)).toBeNull()
+  })
+
+  it('offers a psychodietitian the diet catalogue instead of the DBT editor', async () => {
+    renderScreen({ ...SPECIALIST, specialistModule: 'diet' })
+
+    expect(
+      await screen.findByRole('link', { name: /techniki psychodietetyczne/i }),
+    ).toHaveAttribute('href', ROUTES.dietTechniques)
+    expect(document.querySelector(`a[href="${ROUTES.specialistTechniques}"]`)).toBeNull()
+  })
 })

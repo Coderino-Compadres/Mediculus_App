@@ -3,6 +3,7 @@ import mediculusLogo from '../assets/mediculus-logo.jpeg'
 import HeaderMenu from '../components/HeaderMenu'
 import SpecialistPatients from '../components/SpecialistPatients'
 import { useAuth } from '../auth/authContext'
+import { isDietSpecialist } from '../api/auth'
 import { ROUTES, routeTitle } from '../routes'
 // styles/panel.css is the frame, the greeting block, the sections and every
 // control, shared with /parent. It replaced four stylesheets here — the
@@ -51,6 +52,7 @@ import './specialist.css'
  */
 function SpecialistHome() {
   const { user } = useAuth()
+  const dietSpecialist = user !== null && isDietSpecialist(user)
   const firstName = user?.firstName ?? ''
 
   return (
@@ -102,16 +104,32 @@ function SpecialistHome() {
           </span>
         </Link>
 
-        <Link className="specialist-tool" to={ROUTES.specialistTechniques}>
-          <span className="specialist-tool-title">{routeTitle(ROUTES.specialistTechniques)}</span>
-          <span className="specialist-tool-text">
-            Dodaj technikę do katalogu „Techniki terapeutyczne”. Każda dodana
-            technika jest od razu widoczna dla wszystkich pacjentów aplikacji.
-          </span>
-          <span className="specialist-tool-arrow" aria-hidden="true">
-            →
-          </span>
-        </Link>
+        {/* A psychodietitian gets the diet module's catalogue, read-only: the
+            DBT editor is the psychotherapy module's, and the diet techniques
+            have no editor — their content comes from the foundation. */}
+        {dietSpecialist ? (
+          <Link className="specialist-tool" to={ROUTES.dietTechniques}>
+            <span className="specialist-tool-title">Techniki psychodietetyczne</span>
+            <span className="specialist-tool-text">
+              Katalog technik modułu dietetycznego, tak jak widzą go pacjenci.
+              Treść technik przygotowuje fundacja.
+            </span>
+            <span className="specialist-tool-arrow" aria-hidden="true">
+              →
+            </span>
+          </Link>
+        ) : (
+          <Link className="specialist-tool" to={ROUTES.specialistTechniques}>
+            <span className="specialist-tool-title">{routeTitle(ROUTES.specialistTechniques)}</span>
+            <span className="specialist-tool-text">
+              Dodaj technikę do katalogu „Techniki terapeutyczne”. Każda dodana
+              technika jest od razu widoczna dla wszystkich pacjentów aplikacji.
+            </span>
+            <span className="specialist-tool-arrow" aria-hidden="true">
+              →
+            </span>
+          </Link>
+        )}
       </section>
 
       {/* Says what the panel does not do, rather than what it might. The

@@ -78,6 +78,12 @@ class Specjalist(models.Model):
         related_name='specjalist_profile',
     )
     specjalization = models.TextField(null=True, blank=True)
+    # Which module this account works in — one of core.modules.MODULES. It
+    # shapes the specialist's own panel (a psychodietitian gets the diet
+    # catalogue, not the DBT editor) and authorizes nothing about patients:
+    # which reports are readable is still `specjalist_patient.module`, per
+    # accepted invitation. See migration 0023.
+    module = models.TextField(default='psychotherapy')
 
     class Meta:
         db_table = 'specjalist'

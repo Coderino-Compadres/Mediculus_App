@@ -18,6 +18,7 @@ This file provides critical guidance when working with code in this repository[c
 * **Password Gate**: Accounts with generated passwords (e.g., specialists created by colleagues) must change them on first login[cite: 1].
 * **Password Reset** (`core/password_reset.py`): `POST /api/auth/password-reset/` always answers 204 — it must never reveal whether an address has an account — and mails a signed, one-hour token; `/confirm/` sets the new password, clears `must_change_password` and closes every session of that account. The token is stateless and stored nowhere: it carries a fingerprint of the current `password_hash`, so changing the password is what makes it single-use. Links are built from `FRONTEND_BASE_URL`, never from the `Host` header. This is the only mail the app sends; with `EMAIL_HOST` unset it goes to the console.
 * **Role Restrictions**: Being a specialist or guardian grants no automatic access to patient data; permissions are granted strictly via accepted invitations[cite: 1].
+* **Specialist Module**: `specjalist.module` (`psychotherapy`/`diet`, chosen when a colleague creates the account) only picks the specialist's own panel — a psychodietitian gets the read-only diet catalogue instead of the DBT editor, whose writes the API refuses them. Access to patients is still `specjalist_patient.module`, per accepted invitation.
 
 ## 3. Core Modules & Business Logic
 * **Reports**: Generated dynamically once a week from diary entries; never stored in the database[cite: 1]. Psychotherapy weeks run Monday-Sunday[cite: 1].
