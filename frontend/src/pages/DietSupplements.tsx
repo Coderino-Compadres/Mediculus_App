@@ -37,7 +37,7 @@ import './dietSupplements.css'
  * "Nie ma gratulacji, serii ani komunikatu o niedoborze." So there is no "2 z 3"
  * anywhere, no bar, no percentage and nothing that names a day as incomplete —
  * among these patients are people with eating disorders, and this is a screen
- * opened every morning. `takenToday` is a checkbox and nothing else, and the
+ * opened every morning. Each hour badge is a checkbox and nothing else, and the
  * only place a count appears at all is the list's accessible description, where
  * it says what the ticks already say visually. `DietSupplements.test.tsx` sweeps
  * for the rest.
@@ -159,10 +159,12 @@ function fieldErrors(error: unknown): FieldErrors {
 /**
  * One row of the list.
  *
- * The name is a heading and the checkbox is labelled by it, so a screen reader
- * says "Witamina D3, pole wyboru" rather than reading an unnamed control. The
- * hour is a badge on the artboard and stays one; it is text, not a colour-only
- * signal.
+ * THE HOUR BADGES ARE THE CHECKBOXES — one per hour, so a preparation taken
+ * at 8:00 and 17:00 is ticked twice a day, each dose on its own badge, rather
+ * than once for both. A preparation with no fixed hour gets one badge, "Dziś".
+ * Each is named by the preparation and its hour ("Sertralina, 8:00"), so a
+ * screen reader never reads an unnamed control, and the checked state is a
+ * filled badge *and* a drawn tick rather than colour alone.
  */
 function SupplementRow({
   supplement,
@@ -173,7 +175,7 @@ function SupplementRow({
 }: {
   supplement: Supplement
   busy: boolean
-  onToggle: (taken: boolean) => void
+  onToggle: (hour: string | null, taken: boolean) => void
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -184,15 +186,6 @@ function SupplementRow({
 
   return (
     <li className="supplement-row">
-      <input
-        type="checkbox"
-        className="supplement-check"
-        id={`supplement-taken-${supplement.id}`}
-        aria-labelledby={nameId}
-        checked={supplement.takenToday}
-        disabled={busy}
-        onChange={(event) => onToggle(event.target.checked)}
-      />
       <div className="supplement-body">
         <h3 id={nameId} className="supplement-name">
           {supplement.name}
@@ -254,16 +247,69 @@ function SupplementRow({
           at 12:00, which is one position and two badges, never two positions
           sharing a name. Nothing counts them: "2 ×" next to a medicine would
           be the module scoring a regimen. */}
-      {supplement.hours.length > 0 && (
-        <span className="supplement-hours">
-          {supplement.hours.map((hour) => (
-            <span key={hour} className="supplement-hour">
-              {hour}
-            </span>
-          ))}
-        </span>
-      )}
+      <span className="supplement-hours">
+        {supplement.hours.length > 0 ? (
+          supplement.hours.map((hour) => (
+            <HourCheck
+              key={hour}
+              id={`supplement-taken-${supplement.id}-${hour}`}
+              label={hour}
+              name={supplement.name}
+              checked={supplement.takenHours.includes(hour)}
+              busy={busy}
+              onChange={(taken) => onToggle(hour, taken)}
+            />
+          ))
+        ) : (
+          <HourCheck
+            id={`supplement-taken-${supplement.id}`}
+            label="Dziś"
+            name={supplement.name}
+            checked={supplement.takenToday}
+            busy={busy}
+            onChange={(taken) => onToggle(null, taken)}
+          />
+        )}
+      </span>
     </li>
+  )
+}
+
+/**
+ * One hour badge that is also its checkbox. The label is the 44px hit area and
+ * the badge inside it is what is drawn, so the artboard's small badge stays
+ * small without leaving a finger a target smaller than a fingertip.
+ */
+function HourCheck({
+  id,
+  label,
+  name,
+  checked,
+  busy,
+  onChange,
+}: {
+  id: string
+  label: string
+  name: string
+  checked: boolean
+  busy: boolean
+  onChange: (taken: boolean) => void
+}) {
+  return (
+    <label className="supplement-hour-check" htmlFor={id}>
+      <input
+        type="checkbox"
+        className="visually-hidden"
+        id={id}
+        aria-label={`${name}, ${label}`}
+        checked={checked}
+        disabled={busy}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="supplement-hour" aria-hidden="true">
+        {label}
+      </span>
+    </label>
   )
 }
 
@@ -679,9 +725,9 @@ function DietSupplements() {
                     key={supplement.id}
                     supplement={supplement}
                     busy={busy}
-                    onToggle={(taken) =>
+                    onToggle={(hour, taken) =>
                       void run(
-                        () => setSupplementTaken(supplement.id, taken),
+                        () => setSupplementTaken(supplement.id, hour, taken),
                         'Nie udało się zapisać odhaczenia.',
                       )
                     }

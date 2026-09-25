@@ -768,7 +768,7 @@ class SupplementHour(models.Model):
         ]
         constraints = [
             # The same hour twice is a double-submitted form, not a second
-            # dose — the same choice `uq_supplement_intake_day` makes.
+            # dose — the same choice `uq_supplement_intake_dose` makes.
             models.UniqueConstraint(
                 fields=['supplement', 'hour'], name='uq_supplement_hour',
             ),
@@ -779,9 +779,16 @@ class SupplementHour(models.Model):
 
 
 class SupplementIntake(models.Model):
-    """"Odhacz, kiedy weźmiesz" — one tick, for one preparation, on one day.
+    """"Odhacz, kiedy weźmiesz" — one tick, for one dose of a preparation, on one day.
 
-    A row per (supplement, day) rather than a boolean on `supplement`, which is
+    A DOSE IS ONE OF THE PREPARATION'S HOURS, so a probiotic taken at 06:45 and
+    12:00 is two ticks a day, each on its own hour badge — ticking the morning
+    one must not say the midday one was taken too. A preparation with no fixed
+    hour has one dose a day, and its tick is the row whose `hour` is NULL. The
+    unique constraint is `NULLS NOT DISTINCT` so that NULL is one tick too
+    rather than as many as there are taps.
+
+    A row per (supplement, day, hour) rather than a boolean on `supplement`, which is
     the same argument `hydration` makes for a row per serving: a column would be
     a running value two taps can race, it could not be undone in a way that
     leaves the earlier days intact, and it could not answer "did I take it on
@@ -810,14 +817,20 @@ class SupplementIntake(models.Model):
     # The calendar day it was taken on, in settings.TIME_ZONE. Only today is
     # tickable; the view is what passes today in.
     entry_date = models.DateField()
+    # Which of the preparation's hours this tick is for; NULL on a preparation
+    # with no fixed hour, whose one daily dose has no hour to name. Not a
+    # foreign key to `supplement_hour`: editing the hours rewrites those rows
+    # (`replace_hours`), and today's ticks must not vanish with them.
+    hour = models.TimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'supplement_intake'
         constraints = [
             models.UniqueConstraint(
-                fields=['supplement', 'entry_date'],
-                name='uq_supplement_intake_day',
+                fields=['supplement', 'entry_date', 'hour'],
+                name='uq_supplement_intake_dose',
+                nulls_distinct=False,
             ),
         ]
 
