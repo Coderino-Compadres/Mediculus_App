@@ -1,0 +1,165 @@
+/**
+ * The administrator's panel — the few things its screens need that the shared
+ * panel frame (styles/panel.css) and the list rows (specialist.css) do not
+ * already draw. Everything else is those two files, on purpose: the panel is a
+ * third panel, not a third design.
+ */
+
+/* The number of accounts waiting, next to the section heading. */
+.admin-count {
+  display: inline-block;
+  min-width: 24px;
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ochre-soft);
+  color: var(--color-caution);
+  font-family: var(--font-body);
+  font-size: 13px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.admin-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-actions,
+.admin-confirm {
+  margin-top: 12px;
+}
+
+.admin-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The one irreversible button in the app: the account is deleted. Red is for
+   something that cannot be taken back, which this is (see panel.css on why
+   the panels otherwise refuse in ochre). */
+.admin-danger {
+  background: var(--color-error);
+}
+
+.admin-danger:hover:not(:disabled) {
+  background: #963a35;
+}
+
+.admin-name-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-underline-offset: 3px;
+}
+
+.admin-name-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.admin-figures-note {
+  margin-top: 12px;
+}
+
+/* Account state, as small quiet tags under a row. */
+.admin-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.admin-flag {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-lavender);
+  color: var(--color-graphite-muted);
+}
+
+.admin-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--color-graphite-muted);
+}
+
+.admin-search input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: var(--radius-control);
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface);
+  font: inherit;
+  color: var(--color-graphite);
+}
+
+.admin-search input:focus-visible {
+  outline: none;
+  border-color: var(--color-sage);
+  box-shadow: var(--focus-ring);
+}
+
+/* A definition list laid out as label / value rows. */
+.admin-facts {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: 8px 20px;
+  margin: 0;
+}
+
+.admin-fact {
+  display: contents;
+}
+
+.admin-fact dt {
+  font-size: 13px;
+  color: var(--color-graphite-muted);
+}
+
+.admin-fact dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-graphite);
+  overflow-wrap: anywhere;
+}
+
+.admin-subheading {
+  font-family: var(--font-heading);
+  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  color: var(--color-graphite);
+  margin: 20px 0 8px;
+}
+
+.admin-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-links li {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  color: var(--color-graphite);
+}
+
+@media (max-width: 600px) {
+  .admin-facts {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .admin-fact dd {
+    margin-bottom: 8px;
+  }
+}

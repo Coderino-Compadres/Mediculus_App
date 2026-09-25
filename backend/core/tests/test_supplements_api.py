@@ -469,7 +469,9 @@ class AccessTests(SupplementTestCase):
     def test_a_specialist_is_refused_too(self):
         """A specialist reads reports, and this is not one."""
         user = self.make_user('spec@example.com', role='specjalista')
-        Specjalist.objects.create(user=user, specjalization='Psychodietetyka')
+        Specjalist.objects.create(
+            user=user, specjalization='Psychodietetyka', approved_at=timezone.now(),
+        )
         self.sign_in(user)
 
         self.assertEqual(self.client.get(self.url()).status_code, 403)

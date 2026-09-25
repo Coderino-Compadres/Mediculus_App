@@ -106,6 +106,9 @@ describe('login', () => {
       mustChangePassword: false,
       // Not a specialist, so there is no module to name.
       specialistModule: null,
+      // Neither a specialist waiting for approval nor an administrator.
+      specialistApproved: null,
+      isAdmin: false,
       consents: {
         active: true,
         data: { grantedAt: '2026-06-18T09:31:02Z', withdrawnAt: null, active: true },

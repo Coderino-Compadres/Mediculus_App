@@ -34,6 +34,7 @@ DIAGRAMMED_MODELS = [
     models.Technique, models.Raport, models.Hydration, models.DietMeal,
     models.Supplement, models.SupplementHour, models.SupplementIntake,
     models.DietActivity, models.DietActivityDay, models.DietSleep,
+    models.Administrator, models.AdminAuditLog,
 ]
 
 #: Columns the diagram is known to be missing, as of the last time this test was
@@ -210,6 +211,12 @@ class ErdDriftTests(SimpleTestCase):
 
     def test_diet_sleep_matches(self):
         self.assert_table_matches(models.DietSleep)
+
+    def test_administrator_matches(self):
+        self.assert_table_matches(models.Administrator)
+
+    def test_admin_audit_log_matches(self):
+        self.assert_table_matches(models.AdminAuditLog)
 
     def test_the_dropped_column_is_gone_from_the_diagram_too(self):
         """0006 removed diary.overall_feeling; CLAUDE.md says the diagram was

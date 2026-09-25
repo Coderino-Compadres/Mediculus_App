@@ -4,7 +4,8 @@
 INSERT INTO user_role (id_user_role, name) VALUES
     ('a0000000-0000-0000-0000-000000000001', 'patient'),
     ('a0000000-0000-0000-0000-000000000002', 'specjalista'),
-    ('a0000000-0000-0000-0000-000000000003', 'rodzic')
+    ('a0000000-0000-0000-0000-000000000003', 'rodzic'),
+    ('a0000000-0000-0000-0000-000000000004', 'admin')
 ON CONFLICT (id_user_role) DO NOTHING;
 
 INSERT INTO "user" (id_user, id_user_role, email, password_hash, name, surname, date_of_birth) VALUES
@@ -57,9 +58,26 @@ UPDATE "user" SET
     services_consent_at = CURRENT_TIMESTAMP
 WHERE id_user = 'b0000000-0000-0000-0000-000000000001';
 
-INSERT INTO specjalist (id_user, specjalization) VALUES
-    ('b0000000-0000-0000-0000-000000000001', 'Psychoterapia'),
-    ('b0000000-0000-0000-0000-000000000002', 'Dietetyka')
+-- approved_at is set because both are established accounts: a NULL would hold
+-- them on the "czeka na weryfikację" screen until an administrator confirmed
+-- them (backend/core/admin_panel.py), which is the path for a *new* account.
+INSERT INTO specjalist (id_user, specjalization, approved_at) VALUES
+    ('b0000000-0000-0000-0000-000000000001', 'Psychoterapia', CURRENT_TIMESTAMP),
+    ('b0000000-0000-0000-0000-000000000002', 'Dietetyka', CURRENT_TIMESTAMP)
+ON CONFLICT (id_user) DO NOTHING;
+
+-- Demo administrator, meant to actually be logged into: admin@wp.pl / Haslo123!
+--
+-- The same bootstrap argument as the specialist above: nothing in the app can
+-- create an administrator (`manage.py create_admin` does, from the server's
+-- shell), so a fresh database needs this row to have a way into the panel.
+-- An administrator is nobody else -- no patient, specjalist or guardian row.
+INSERT INTO "user" (id_user, id_user_role, email, password_hash, name, surname, date_of_birth, data_consent_at, services_consent_at) VALUES
+    ('b0000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000004', 'admin@wp.pl', 'pbkdf2_sha256$1500000$kCb20CO2XUI5mL8XtPpCE6$0j30lRad1AqdqXNSx/mTlMGQj55wsfUyjH8dTX0WttE=', 'Admin', 'Mediculus', '1990-01-01', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT (id_user) DO NOTHING;
+
+INSERT INTO administrator (id_user) VALUES
+    ('b0000000-0000-0000-0000-000000000009')
 ON CONFLICT (id_user) DO NOTHING;
 
 INSERT INTO patient (id_user, id_medical, is_child) VALUES

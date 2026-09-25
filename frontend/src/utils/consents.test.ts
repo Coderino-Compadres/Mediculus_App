@@ -24,6 +24,8 @@ const USER: AuthUser = {
   pendingGuardianInvitations: null,
   mustChangePassword: false,
   specialistModule: null,
+  specialistApproved: null,
+  isAdmin: false,
   consents: {
     active: true,
     data: { grantedAt: '2026-03-09T21:15:00Z', withdrawnAt: null, active: true },

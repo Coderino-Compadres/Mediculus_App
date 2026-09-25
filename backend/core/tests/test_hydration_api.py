@@ -520,7 +520,9 @@ class AccessTests(HydrationTestCase):
 
     def test_a_specialist_is_refused_too(self):
         specialist = self.make_user('terapeutka@example.com', role='specjalista')
-        Specjalist.objects.create(user=specialist, specjalization='DBT')
+        Specjalist.objects.create(
+            user=specialist, specjalization='DBT', approved_at=timezone.now(),
+        )
         self.sign_in(specialist)
 
         self.assertEqual(self.client.get(self.url()).status_code, 403)

@@ -76,14 +76,66 @@ CREATE TABLE IF NOT EXISTS specjalist (
     -- Which module the account works in (core/modules.py). Shapes the
     -- specialist's own panel only; access to patients is specjalist_patient's.
     module TEXT NOT NULL DEFAULT 'psychotherapy',
+    -- When an administrator confirmed the account; NULL while it waits, and a
+    -- waiting account is refused the whole panel (backend/core/admin_panel.py).
+    -- A rejection deletes the account, so there is no "rejected" value.
+    approved_at TIMESTAMPTZ,
+    -- Who created the account from the colleagues screen; NULL for the ones
+    -- seeded by SQL. SET NULL: the creator leaving does not undo the account.
+    id_created_by UUID,
 
     CONSTRAINT fk_specjalist_user
         FOREIGN KEY (id_user)
         REFERENCES "user" (id_user),
 
+    CONSTRAINT fk_specjalist_created_by
+        FOREIGN KEY (id_created_by)
+        REFERENCES "user" (id_user)
+        ON DELETE SET NULL,
+
     CONSTRAINT specjalist_module_known
         CHECK (module IN ('psychotherapy', 'diet'))
 );
+
+-- ----------------------------
+-- ADMINISTRATOR
+-- Who may open the administrator's panel. Like specjalist, the row is what
+-- authorizes, never the role name. Created by `manage.py create_admin` only.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS administrator (
+    id_user UUID PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_administrator_user
+        FOREIGN KEY (id_user)
+        REFERENCES "user" (id_user)
+        ON DELETE CASCADE
+);
+
+-- ----------------------------
+-- ADMIN_AUDIT_LOG
+-- What each administrator looked at or decided, and when (RODO art. 5(2)).
+-- admin_email and target_label are copies on purpose: a rejected specialist's
+-- account is deleted, and the entry has to keep saying whose it was.
+-- Mirrors core/migrations/0025_admin_panel.py.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id_admin_audit_log UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id_admin UUID,
+    admin_email VARCHAR(255) NOT NULL,
+    action TEXT NOT NULL,
+    target_id UUID,
+    target_label TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_admin_audit_log_admin
+        FOREIGN KEY (id_admin)
+        REFERENCES "user" (id_user)
+        ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at
+    ON admin_audit_log (created_at);
 
 -- ----------------------------
 -- PATIENT

@@ -130,6 +130,14 @@ def all_urls(
         ('post', reverse('core:specialist-techniques')),
         ('put', reverse('core:specialist-technique', args=[1])),
         ('delete', reverse('core:specialist-technique', args=[1])),
+        # The administrator's panel (core/admin_panel.py).
+        ('get', reverse('core:admin-pending-specialists')),
+        ('post', reverse('core:admin-specialist-approve', args=[patient_id])),
+        ('post', reverse('core:admin-specialist-reject', args=[patient_id])),
+        ('get', reverse('core:admin-overview')),
+        ('get', reverse('core:admin-accounts')),
+        ('get', reverse('core:admin-account', args=[patient_id])),
+        ('get', reverse('core:admin-audit-log')),
     ]
 
 

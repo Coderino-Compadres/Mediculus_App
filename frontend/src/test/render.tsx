@@ -19,6 +19,8 @@ export const TEST_USER: AuthUser = {
   pendingGuardianInvitations: null,
   mustChangePassword: false,
   specialistModule: null,
+  specialistApproved: null,
+  isAdmin: false,
   // Both granted, as registration writes them — the ordinary account. A screen
   // testing the "Nieudzielona" state overrides one with null.
   // Both consents in force — the ordinary account. A test about the locked

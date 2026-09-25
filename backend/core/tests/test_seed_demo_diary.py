@@ -903,7 +903,9 @@ class SpecialistsTests(SeedDemoDiaryTests):
         """
         other = User.objects.create(
             email='ktos.inny@example.com', password_hash='x')
-        previous = Specjalist.objects.create(user=other, specjalization='X')
+        previous = Specjalist.objects.create(
+            user=other, specjalization='X', approved_at=timezone.now(),
+        )
         SpecjalistPatient.objects.create(
             specjalist=previous, patient=self.patient,
             module=MODULE_PSYCHOTHERAPY, accepted_at=timezone.now(),

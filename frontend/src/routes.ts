@@ -38,6 +38,20 @@ export const ROUTES = {
   /** Where a specialist creates another specialist's account — the only place
    *  one can be created at all (see pages/SpecialistColleagues.tsx). */
   specialistColleagues: '/specialist/colleagues',
+  /** Where a specialist account waits for an administrator's confirmation —
+   *  the only panel screen it may reach until then. See
+   *  pages/SpecialistPending.tsx. */
+  specialistPending: '/specialist/pending',
+  /** The administrator's panel (core/admin_panel.py): the specialist accounts
+   *  waiting for a decision, and the overview. Polish paths, as agreed with the
+   *  team, and not '/admin', which is Django's own admin on the backend host. */
+  adminHome: '/panel-admina',
+  /** Every account in user_db, read-only — pages/AdminAccounts.tsx. */
+  adminAccounts: '/panel-admina/konta',
+  /** One account and the links it is part of — pages/AdminAccount.tsx. */
+  adminAccount: '/panel-admina/konta/:id',
+  /** What the administrators looked at and decided — pages/AdminAuditLog.tsx. */
+  adminAuditLog: '/panel-admina/dziennik',
   /** The specialist's own techniques, and the form that writes one. */
   specialistTechniques: '/specialist/techniques',
   specialistTechniqueNew: '/specialist/techniques/new',
@@ -180,6 +194,11 @@ export function specialistPatientDietReportPath(
     .replace(':reportId', reportId)
 }
 
+/** Fills in ROUTES.adminAccount's `:id` — the account's `user` id. */
+export function adminAccountPath(id: string): string {
+  return ROUTES.adminAccount.replace(':id', id)
+}
+
 export function specialistTechniqueEditPath(id: number | string): string {
   return ROUTES.specialistTechniqueEdit.replace(':id', String(id))
 }
@@ -243,6 +262,11 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistPatientDietReport]: 'Raport żywieniowy pacjenta',
   [ROUTES.specialistParentAccounts]: 'Konta opiekunów',
   [ROUTES.specialistColleagues]: 'Konta specjalistów',
+  [ROUTES.specialistPending]: 'Konto czeka na weryfikację',
+  [ROUTES.adminHome]: 'Panel administratora',
+  [ROUTES.adminAccounts]: 'Konta w bazie',
+  [ROUTES.adminAccount]: 'Szczegóły konta',
+  [ROUTES.adminAuditLog]: 'Dziennik działań',
   [ROUTES.specialistTechniques]: 'Moje techniki',
   [ROUTES.specialistTechniqueNew]: 'Nowa technika',
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',

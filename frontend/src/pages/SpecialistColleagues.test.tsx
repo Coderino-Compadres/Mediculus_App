@@ -55,6 +55,7 @@ const ME = {
   moduleLabel: 'Psychoterapia',
   createdAt: '2026-06-01T09:00:00+02:00',
   consentsActive: true,
+  approved: true,
 }
 
 const CREATED = {
@@ -66,6 +67,7 @@ const CREATED = {
   moduleLabel: 'Psychoterapia',
   createdAt: '2026-09-01T09:00:00+02:00',
   consentsActive: false,
+  approved: false,
 }
 
 beforeEach(() => {

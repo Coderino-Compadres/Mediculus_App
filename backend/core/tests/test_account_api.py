@@ -54,7 +54,9 @@ class AccountTestCase(TestCase):
 
     def make_specjalist(self, email='terapeutka@example.com', **fields):
         user = self.make_user(email, role='specjalista', **fields)
-        return Specjalist.objects.create(user=user, specjalization='CBT / DBT')
+        return Specjalist.objects.create(
+            user=user, specjalization='CBT / DBT', approved_at=timezone.now(),
+        )
 
     def treat(self, specjalist, patient, module=MODULE_PSYCHOTHERAPY):
         """An accepted relationship — what the care card reads since 0022."""

@@ -246,4 +246,26 @@ urlpatterns = [
         'specialist/techniques/<int:id_technique>/',
         views.SpecialistTechniqueView.as_view(), name='specialist-technique',
     ),
+    # The administrator's panel — core/admin_panel.py. Every route refuses an
+    # account with no `administrator` row (`_require_admin`). Not under Django's
+    # own /admin/, which is outside /api/ and is a different thing entirely.
+    path(
+        'admin/specialists/pending/',
+        views.AdminPendingSpecialistsView.as_view(), name='admin-pending-specialists',
+    ),
+    path(
+        'admin/specialists/<uuid:specialist_id>/approve/',
+        views.AdminSpecialistApproveView.as_view(), name='admin-specialist-approve',
+    ),
+    path(
+        'admin/specialists/<uuid:specialist_id>/reject/',
+        views.AdminSpecialistRejectView.as_view(), name='admin-specialist-reject',
+    ),
+    path('admin/overview/', views.AdminOverviewView.as_view(), name='admin-overview'),
+    path('admin/accounts/', views.AdminAccountsView.as_view(), name='admin-accounts'),
+    path(
+        'admin/accounts/<uuid:user_id>/',
+        views.AdminAccountView.as_view(), name='admin-account',
+    ),
+    path('admin/audit-log/', views.AdminAuditLogView.as_view(), name='admin-audit-log'),
 ]

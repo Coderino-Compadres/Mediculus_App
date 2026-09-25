@@ -58,6 +58,11 @@ class PasswordGateTestCase(TestCase):
             email='nowa.terapeutka@example.com', name='Nowa', surname='Terapeutka',
             date_of_birth='1985-02-01', specialization='DBT', module='psychotherapy',
         )
+        # Approved up front: this file is about the password gate, and an account
+        # still waiting for the administrator (core/admin_panel.py) would meet
+        # that refusal once the password is changed — see test_admin_panel.py.
+        self.specjalist.approved_at = timezone.now()
+        self.specjalist.save(update_fields=['approved_at'])
         self.user = self.specjalist.user
         # The account this file is about arrives holding *both* refusals. The
         # consents are the outer one and are answered first everywhere below,

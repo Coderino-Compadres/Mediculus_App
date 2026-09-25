@@ -40,6 +40,17 @@ vi.mock('./api/diet', async (importOriginal) => ({
   fetchSupplements: vi.fn(() => new Promise(() => {})),
 }))
 
+// The administrator's panel loads its lists on mount; held pending, so each
+// screen renders its loading state instead of reaching for the network.
+vi.mock('./api/admin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api/admin')>()),
+  fetchPendingSpecialists: vi.fn(() => new Promise(() => {})),
+  fetchOverview: vi.fn(() => new Promise(() => {})),
+  fetchAccounts: vi.fn(() => new Promise(() => {})),
+  fetchAccount: vi.fn(() => new Promise(() => {})),
+  fetchAuditLog: vi.fn(() => new Promise(() => {})),
+}))
+
 const { fetchCurrentUser } = await import('./api/auth')
 const mockedFetchUser = vi.mocked(fetchCurrentUser)
 
@@ -592,5 +603,154 @@ describe('a psychodietitian and the technique screens', () => {
     expect(screen.getByRole('link', { name: 'Wróć do panelu' })).toHaveAttribute(
       'href', ROUTES.specialistHome,
     )
+  })
+})
+
+describe('an administrator has their own panel', () => {
+  /** An `administrator` row and nothing else: `manage.py create_admin` refuses
+   *  a patient, a specialist or a guardian. */
+  const ADMIN: AuthUser = {
+    ...TEST_USER,
+    role: 'admin',
+    isPatient: false,
+    isChild: null,
+    isAdmin: true,
+  }
+
+  it('lands on the administrator panel after logging in', async () => {
+    mockedFetchUser.mockResolvedValueOnce(ADMIN)
+
+    renderAt(ROUTES.login)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Panel administratora' }),
+    ).toBeInTheDocument()
+  })
+
+  it('is pushed off the patient app and the specialist panel', async () => {
+    mockedFetchUser.mockResolvedValue(ADMIN)
+
+    for (const route of [ROUTES.modules, ROUTES.home, ROUTES.techniques, ROUTES.specialistHome]) {
+      const { unmount } = renderAt(route)
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Panel administratora' }),
+      ).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('reaches every screen of the panel', async () => {
+    mockedFetchUser.mockResolvedValue(ADMIN)
+
+    for (const [route, heading] of [
+      [ROUTES.adminAccounts, 'Konta w bazie'],
+      ['/panel-admina/konta/abc', 'Szczegóły konta'],
+      [ROUTES.adminAuditLog, 'Dziennik działań'],
+    ]) {
+      const { unmount } = renderAt(route)
+      expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('keeps the profile, like every other kind of account', async () => {
+    mockedFetchUser.mockResolvedValueOnce(ADMIN)
+
+    renderAt(ROUTES.profile)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Profil' })).toBeInTheDocument()
+  })
+
+  it('does not let anybody else onto the panel', async () => {
+    const SPECIALIST: AuthUser = {
+      ...TEST_USER, role: 'specjalista', isPatient: false, isSpecialist: true, isChild: null,
+      specialistApproved: true,
+    }
+    for (const [user, heading] of [
+      [TEST_USER, /Gdzie dzisiaj zaczynamy/i],
+      [SPECIALIST, 'Panel specjalisty'],
+    ] as const) {
+      mockedFetchUser.mockResolvedValueOnce(user)
+      const { unmount } = renderAt(ROUTES.adminHome)
+      expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('meets the consent gate before the panel', async () => {
+    mockedFetchUser.mockResolvedValueOnce({
+      ...ADMIN,
+      consents: { ...ADMIN.consents, active: false },
+    })
+
+    renderAt(ROUTES.adminHome)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /Bez zgód/i }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('a specialist account waiting for the administrator', () => {
+  const PENDING: AuthUser = {
+    ...TEST_USER,
+    role: 'specjalista',
+    isPatient: false,
+    isSpecialist: true,
+    isChild: null,
+    specialistApproved: false,
+  }
+
+  it('lands on the waiting screen rather than the panel', async () => {
+    mockedFetchUser.mockResolvedValueOnce(PENDING)
+
+    renderAt(ROUTES.login)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Konto czeka na weryfikację' }),
+    ).toBeInTheDocument()
+  })
+
+  it('is sent there from every panel screen and from the technique catalogue', async () => {
+    mockedFetchUser.mockResolvedValue(PENDING)
+
+    for (const route of [
+      ROUTES.specialistHome, ROUTES.specialistColleagues, ROUTES.specialistParentAccounts,
+      ROUTES.specialistTechniques, ROUTES.techniques, ROUTES.home,
+    ]) {
+      const { unmount } = renderAt(route)
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Konto czeka na weryfikację' }),
+      ).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('keeps the profile', async () => {
+    mockedFetchUser.mockResolvedValueOnce(PENDING)
+
+    renderAt(ROUTES.profile)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Profil' })).toBeInTheDocument()
+  })
+
+  it('answers its own password first, like any new specialist account', async () => {
+    mockedFetchUser.mockResolvedValueOnce({ ...PENDING, mustChangePassword: true })
+
+    renderAt(ROUTES.specialistPending)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /hasło/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('pushes an approved specialist off the waiting screen', async () => {
+    mockedFetchUser.mockResolvedValueOnce({ ...PENDING, specialistApproved: true })
+
+    renderAt(ROUTES.specialistPending)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Panel specjalisty' }),
+    ).toBeInTheDocument()
   })
 })

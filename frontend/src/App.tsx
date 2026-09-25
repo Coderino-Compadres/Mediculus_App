@@ -31,6 +31,11 @@ import SpecialistParentAccounts from './pages/SpecialistParentAccounts'
 import SpecialistColleagues from './pages/SpecialistColleagues'
 import SpecialistTechniques from './pages/SpecialistTechniques'
 import SpecialistTechniqueForm from './pages/SpecialistTechniqueForm'
+import SpecialistPending from './pages/SpecialistPending'
+import AdminHome from './pages/AdminHome'
+import AdminAccounts from './pages/AdminAccounts'
+import AdminAccount from './pages/AdminAccount'
+import AdminAuditLog from './pages/AdminAuditLog'
 import Home from './pages/Home'
 import DiaryEntry from './pages/DiaryEntry'
 import Journals from './pages/Journals'
@@ -49,12 +54,14 @@ import RouteChange from './components/RouteChange'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/authContext'
 import {
+  isAdmin,
   isDietSpecialist,
   isGuardian,
   isSpecialist,
   needsConsents,
   needsGuardianLink,
   needsPasswordChange,
+  needsSpecialistApproval,
 } from './api/auth'
 import { PLACEHOLDER_ROUTES, ROUTES } from './routes'
 import type { AuthUser } from './api/auth'
@@ -74,7 +81,15 @@ import type { AuthUser } from './api/auth'
  * single account ever needs to be both, this is the line that has to decide.
  */
 function homeRouteFor(user: AuthUser): string {
-  if (isSpecialist(user)) return ROUTES.specialistHome
+  // An administrator is nobody else (`manage.py create_admin` refuses a
+  // patient, a specialist or a guardian), so asking first decides nothing the
+  // other lines would have decided differently.
+  if (isAdmin(user)) return ROUTES.adminHome
+  if (isSpecialist(user)) {
+    // Waiting for the administrator's confirmation: the panel would answer
+    // every request 403, so the account lands on the screen that says why.
+    return needsSpecialistApproval(user) ? ROUTES.specialistPending : ROUTES.specialistHome
+  }
   return isGuardian(user) ? ROUTES.parentHome : ROUTES.modules
 }
 
@@ -120,10 +135,19 @@ function RequireAuth({
   children,
   allowGuardian = false,
   allowSpecialist = false,
+  allowAdmin = false,
+  allowPendingSpecialist = false,
 }: {
   children: ReactNode
   allowGuardian?: boolean
   allowSpecialist?: boolean
+  /** Only /profile: an administrator's identity, consents and password are
+   *  theirs like anybody's, and nothing else under RequireAuth is. */
+  allowAdmin?: boolean
+  /** Only /profile, for the same reason: a specialist waiting for the
+   *  administrator's confirmation keeps its own account screen and nothing
+   *  else. */
+  allowPendingSpecialist?: boolean
 }) {
   const { user, loading } = useAuth()
   if (loading) return <AuthPending />
@@ -151,7 +175,16 @@ function RequireAuth({
   // them 403 and a patient screen added later sends them to their own panel
   // rather than to a refusal it can only word as "coś poszło nie tak".
   if (!allowSpecialist && isSpecialist(user)) {
-    return <Navigate to={ROUTES.specialistHome} replace />
+    return <Navigate to={homeRouteFor(user)} replace />
+  }
+  // The technique catalogues `allowSpecialist` opens are for an account that
+  // writes into one, which a specialist still waiting for the administrator
+  // cannot yet.
+  if (!allowPendingSpecialist && needsSpecialistApproval(user)) {
+    return <Navigate to={ROUTES.specialistPending} replace />
+  }
+  if (!allowAdmin && isAdmin(user)) {
+    return <Navigate to={ROUTES.adminHome} replace />
   }
   return <>{children}</>
 }
@@ -182,7 +215,39 @@ function RequireSpecialist({ children }: { children: ReactNode }) {
   if (!user) return <Navigate to={ROUTES.login} replace />
   const gate = gateRouteFor(user)
   if (gate) return <Navigate to={gate} replace />
+  // The third gate, after the consents and the password: an administrator has
+  // not confirmed this account yet, and `_require_specialist` refuses it every
+  // panel endpoint until one does.
+  if (needsSpecialistApproval(user)) return <Navigate to={ROUTES.specialistPending} replace />
   return isSpecialist(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
+}
+
+/** The waiting screen, and only for a specialist account that is waiting. */
+function RequireSpecialistPending({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <AuthPending />
+  if (!user) return <Navigate to={ROUTES.login} replace />
+  const gate = gateRouteFor(user)
+  if (gate) return <Navigate to={gate} replace />
+  return needsSpecialistApproval(user) ? (
+    <>{children}</>
+  ) : (
+    <Navigate to={homeRouteFor(user)} replace />
+  )
+}
+
+/**
+ * The administrator's panel. Both gates first, as everywhere: the panel is
+ * behind `HasActiveConsents` and `HasOwnPassword` on the backend like every
+ * other endpoint, and what it opens onto is every account in user_db.
+ */
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <AuthPending />
+  if (!user) return <Navigate to={ROUTES.login} replace />
+  const gate = gateRouteFor(user)
+  if (gate) return <Navigate to={gate} replace />
+  return isAdmin(user) ? <>{children}</> : <Navigate to={homeRouteFor(user)} replace />
 }
 
 /**
@@ -330,6 +395,46 @@ function App() {
               <RequireSpecialist>
                 <SpecialistHome />
               </RequireSpecialist>
+            }
+          />
+          <Route
+            path={ROUTES.specialistPending}
+            element={
+              <RequireSpecialistPending>
+                <SpecialistPending />
+              </RequireSpecialistPending>
+            }
+          />
+          <Route
+            path={ROUTES.adminHome}
+            element={
+              <RequireAdmin>
+                <AdminHome />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path={ROUTES.adminAccounts}
+            element={
+              <RequireAdmin>
+                <AdminAccounts />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path={ROUTES.adminAccount}
+            element={
+              <RequireAdmin>
+                <AdminAccount />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path={ROUTES.adminAuditLog}
+            element={
+              <RequireAdmin>
+                <AdminAuditLog />
+              </RequireAdmin>
             }
           />
           <Route
@@ -673,7 +778,7 @@ function App() {
                  specialist's profile is genuinely theirs; only its clinical half
                  (the counters and the care card) is left out, and the screen
                  itself asks for that only when `hasPatientProfile`. */
-              <RequireAuth allowGuardian allowSpecialist>
+              <RequireAuth allowGuardian allowSpecialist allowAdmin allowPendingSpecialist>
                 <Profile />
               </RequireAuth>
             }

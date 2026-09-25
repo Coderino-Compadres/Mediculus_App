@@ -495,7 +495,9 @@ class WhoMayAskTests(DietNineTestCase):
 
     def sign_in_specialist(self):
         user = self.make_user(email='spec@example.com', role='specjalista')
-        Specjalist.objects.create(user=user, specjalization='psychodietetyka')
+        Specjalist.objects.create(
+            user=user, specjalization='psychodietetyka', approved_at=timezone.now(),
+        )
         self.sign_in(user)
 
     def test_a_guardian_is_refused_everywhere(self):

@@ -21,8 +21,8 @@ from .consents import SCOPES, consent_state, has_active_consents
 from . import parent_invitations
 from . import password_reset
 from .specialist import invite, treated_patient
-from .models import (ParentChild, Patient, Specjalist, SpecjalistPatient, User,
-                     UserRole)
+from .models import (Administrator, ParentChild, Patient, Specjalist,
+                     SpecjalistPatient, User, UserRole)
 from .modules import MODULES
 
 # What the registration form's "account type" choice means in the schema. Role
@@ -150,6 +150,8 @@ class UserSerializer(serializers.ModelSerializer):
     is_patient = serializers.SerializerMethodField()
     is_specialist = serializers.SerializerMethodField()
     specialist_module = serializers.SerializerMethodField()
+    specialist_approved = serializers.SerializerMethodField()
+    is_admin = serializers.SerializerMethodField()
     consents = serializers.SerializerMethodField()
     is_child = serializers.SerializerMethodField()
     guardian_status = serializers.SerializerMethodField()
@@ -164,6 +166,14 @@ class UserSerializer(serializers.ModelSerializer):
             # else: which panel the specialist sees (the DBT editor or the diet
             # catalogue). Never an access decision — see Specjalist.module.
             'specialist_module',
+            # Whether an administrator has confirmed this specialist account
+            # (core/admin_panel.py); None for everybody else. False holds the
+            # account on the waiting screen — `_require_specialist` refuses it
+            # the panel regardless.
+            'specialist_approved',
+            # Whether an `administrator` row exists — which panel this account
+            # lands on. The row, not the role, like `is_specialist`.
+            'is_admin',
             # How many children are waiting on this guardian's answer. Here
             # rather than behind its own endpoint because it is what makes the
             # waiting *visible*: the header badge is drawn on every screen a
@@ -266,6 +276,13 @@ class UserSerializer(serializers.ModelSerializer):
     def get_specialist_module(self, user):
         specjalist = self._specjalist(user)
         return specjalist.module if specjalist is not None else None
+
+    def get_specialist_approved(self, user):
+        specjalist = self._specjalist(user)
+        return specjalist.approved_at is not None if specjalist is not None else None
+
+    def get_is_admin(self, user):
+        return Administrator.objects.filter(user=user).exists()
 
     def _specjalist(self, user):
         """The `specjalist` row, looked up once per serialization — `_patient`'s
@@ -1351,6 +1368,7 @@ class SpecialistColleagueCreateSerializer(serializers.Serializer):
                 date_of_birth=validated_data['date_of_birth'],
                 specialization=validated_data['specialization'].strip(),
                 module=validated_data['module'],
+                created_by=self.context.get('created_by'),
             )
         except IntegrityError as exc:
             # validate_email lost a race with a concurrent create for the same
