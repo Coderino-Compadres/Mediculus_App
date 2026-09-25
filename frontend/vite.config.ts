@@ -32,6 +32,8 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
+        // Precached with the app, so the tab icon survives offline too.
+        includeAssets: ['favicon.ico', 'favicon-32x32.png', 'apple-touch-icon.png'],
         manifest: {
           name: 'Mediculus',
           short_name: 'Mediculus',
