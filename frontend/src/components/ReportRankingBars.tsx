@@ -57,8 +57,8 @@ export interface RankingRow {
  * drew counts, on the grounds that §05 names the section for frequency; the
  * product call since is that the bar shows the mean intensity, for the reason
  * above — a feeling rated 1/10 at every meal must not draw a full bar. The rows
- * stay *ordered* by how often (the heading's promise), and the meal count is
- * still on every row. A chip picked but never rated has no average and draws an
+ * are ordered to match, highest average first (`byAverageDescending` in
+ * utils/dietReport.ts), and the meal count is still on every row. A chip picked but never rated has no average and draws an
  * empty bar, with `note` saying why. Both numbers are on both rows either way;
  * `measure` only decides which one the bar draws and which is printed first.
  *

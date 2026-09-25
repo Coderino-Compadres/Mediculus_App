@@ -117,3 +117,18 @@ export function emotionRatingNote(
 export function dietReportPdfFileName(report: { weekStart: string }): string {
   return `raport-zywieniowy-${report.weekStart}.pdf`
 }
+
+/**
+ * Orders "Najczęstsze emocje przy jedzeniu" by the bar it draws: the highest
+ * mean intensity first, so the bars descend. A chip never rated has no average
+ * and goes last rather than being sorted as a zero nobody gave. Ties keep the
+ * server's order (most meals first) — `Array.prototype.sort` is stable.
+ */
+export function byAverageDescending(
+  a: { average?: number | null },
+  b: { average?: number | null },
+): number {
+  if (a.average == null) return b.average == null ? 0 : 1
+  if (b.average == null) return -1
+  return b.average - a.average
+}

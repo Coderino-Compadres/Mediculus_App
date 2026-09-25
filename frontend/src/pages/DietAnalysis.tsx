@@ -17,7 +17,7 @@ import {
   mealDensityColor,
   timesPlural,
 } from '../utils/dietAnalysis'
-import { emotionRatingNote } from '../utils/dietReport'
+import { byAverageDescending, emotionRatingNote } from '../utils/dietReport'
 import { EMOTION_COLORS } from '../utils/emotions'
 import { pluralDays } from '../utils/reports'
 import { TIME_OF_DAY_LABELS } from '../utils/timeOfDay'
@@ -205,7 +205,7 @@ function emotionRows(analysis: DietAnalysisData): RankingRow[] {
     color: EMOTION_COLORS[share.emotion],
     average: share.avgIntensity,
     note: emotionRatingNote(share),
-  }))
+  })).sort(byAverageDescending)
 }
 
 /**

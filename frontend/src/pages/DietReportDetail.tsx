@@ -11,6 +11,7 @@ import { saveBlob } from '../api/reports'
 import { usePagination } from '../hooks/usePagination'
 import { dietDayLabel, dietShortDayLabel } from '../utils/dietWeeks'
 import {
+  byAverageDescending,
   dietReportPdfFileName,
   emotionRatingNote,
   mealSlotLabel,
@@ -120,7 +121,7 @@ function emotionRows(rows: DietWeeklyReport['emotions']['rows']): RankingRow[] {
     color: EMOTION_COLORS[row.emotion],
     average: row.avgIntensity,
     note: emotionRatingNote(row),
-  }))
+  })).sort(byAverageDescending)
 }
 
 /**
