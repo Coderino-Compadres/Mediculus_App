@@ -125,14 +125,37 @@ Zakłada je **inna osoba z kontem specjalisty**, w swoim panelu, w sekcji
    ponownie.**
 3. Nowa osoba loguje się tym hasłem i przechodzi przez dwa ekrany:
    najpierw **udziela obu zgód** (nikt nie może tego zrobić za nią), potem
-   **ustawia własne hasło**. Dopiero wtedy otwiera się panel.
-4. Nowe konto jest puste — nie ma w nim żadnych pacjentów. Pacjenci pojawiają
+   **ustawia własne hasło**.
+4. Na koniec konto musi **zatwierdzić administrator fundacji** (panel
+   administratora). Do tego czasu nowa osoba widzi tylko ekran „Konto czeka na
+   weryfikację" i swój profil — nie może zapraszać pacjentów, wystawiać kodów
+   dla opiekunów, dodawać technik ani zakładać kont kolegom. Jeśli administrator
+   konto **odrzuci, zostaje ono usunięte**; w dzienniku działań zostaje tylko
+   zapis, kogo dotyczyła decyzja. Specjaliści, którzy mieli konta przed
+   wprowadzeniem tego kroku, są zatwierdzeni automatycznie.
+5. Nowe konto jest puste — nie ma w nim żadnych pacjentów. Pacjenci pojawiają
    się dopiero wtedy, gdy każdy z nich przyjmie zaproszenie.
 
 Dlaczego trzeba wymienić hasło: to hasło zostało **wygenerowane, a nie wybrane**
 — osoba, która zakładała konto, je zna, i mogła je widzieć jeszcze ktoś, kto
 zajrzał na kartkę. Panel otwiera się na dokumentację innych ludzi, więc samo
 „jest zalogowany" nie wystarcza.
+
+### Konto administratora
+
+Nie zakłada się go w aplikacji — tworzy je zespół techniczny komendą
+`python manage.py create_admin <e-mail>` na serwerze. Administrator ma osobne
+konto: nie może być jednocześnie pacjentem, specjalistą ani opiekunem.
+Po zalogowaniu (zgody RODO jak każde konto) trafia do **Panelu administratora**,
+gdzie:
+
+- zatwierdza albo odrzuca nowe konta specjalistów,
+- przegląda konta w bazie i powiązania między nimi (tylko do odczytu),
+- widzi **liczby** wpisów pacjentów, ale **nie ich treść**,
+- ma dziennik działań: każde otwarcie konta i każda decyzja są zapisywane.
+
+W lokalnej bazie demonstracyjnej konto administratora to `admin@wp.pl`
+(hasło `Haslo123!`).
 
 ### Pierwsze konto specjalisty w ogóle
 
@@ -423,6 +446,7 @@ ekrany — przekierowanie w przeglądarce nie jest zabezpieczeniem. Gdzie co sie
 |---|---|
 | Rodzaje kont z rejestracji, wymóg kodu dla rodzica, granica pełnoletności | `backend/core/serializers.py` |
 | Konta specjalisty zakładane w panelu | `backend/core/colleagues.py` |
+| Panel administratora: weryfikacja specjalistów, przegląd danych, dziennik | `backend/core/admin_panel.py`, `manage.py create_admin` |
 | Powiązanie dziecko–opiekun | `backend/core/guardian.py` |
 | Kody na konto opiekuna | `backend/core/parent_invitations.py` |
 | Zaproszenia specjalista–pacjent, kartoteka | `backend/core/specialist.py` |
@@ -438,7 +462,7 @@ Testy, które trzeba przejrzeć przy każdej zmianie w tym dokumencie:
 `test_auth_api.py`, `test_guardian_api.py`, `test_specialist_api.py`,
 `test_specialist_accounts.py`, `test_parent_invitation_api.py`,
 `test_consent_gate.py`, `test_password_gate.py`, `test_guardian_gate.py`,
-`test_guardian_children_api.py`.
+`test_guardian_children_api.py`, `test_admin_panel.py`.
 
 Trzy szczegóły, które łatwo przeoczyć przy czytaniu tego dokumentu jako
 specyfikacji:

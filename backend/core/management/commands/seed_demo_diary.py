@@ -554,6 +554,12 @@ class Command(BaseCommand):
                     user=user,
                     defaults={'specjalization': shape['specialization']},
                 )
+                # A demo account the seed vouches for, so it skips the
+                # administrator's confirmation (core/admin_panel.py) the way it
+                # skips the password gate above.
+                if specjalist.approved_at is None:
+                    specjalist.approved_at = now
+                    specjalist.save(update_fields=['approved_at'])
                 link = invite(specjalist, patient, shape['module'])
                 accept_invitation(patient, link.pk)
 

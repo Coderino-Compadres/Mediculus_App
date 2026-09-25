@@ -425,4 +425,40 @@ describe('inside the diet module', () => {
       screen.queryByRole('link', { name: 'Techniki psychodietetyczne' }),
     ).not.toBeInTheDocument()
   })
+
+  it('gives a specialist waiting for the administrator nothing but its own two screens', async () => {
+    renderWithProviders(<HeaderMenu />, {
+      user: {
+        ...TEST_USER, isPatient: false, isSpecialist: true, role: 'specjalista',
+        specialistApproved: false,
+      },
+      route: ROUTES.specialistPending,
+    })
+    await openMenu()
+
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toHaveAttribute(
+      'href', ROUTES.specialistPending,
+    )
+    expect(screen.getByRole('link', { name: 'Profil' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Konta specjalistów' })).not.toBeInTheDocument()
+  })
+
+  it('gives an administrator the panel, the account list and the audit log', async () => {
+    renderWithProviders(<HeaderMenu />, {
+      user: { ...TEST_USER, isPatient: false, isChild: null, role: 'admin', isAdmin: true },
+      route: ROUTES.adminHome,
+    })
+    await openMenu()
+
+    expect(screen.getByRole('link', { name: 'Strona główna' })).toHaveAttribute(
+      'href', ROUTES.adminHome,
+    )
+    expect(screen.getByRole('link', { name: 'Konta w bazie' })).toHaveAttribute(
+      'href', ROUTES.adminAccounts,
+    )
+    expect(screen.getByRole('link', { name: 'Dziennik działań' })).toHaveAttribute(
+      'href', ROUTES.adminAuditLog,
+    )
+    expect(screen.getByText('Administrator')).toBeInTheDocument()
+  })
 })

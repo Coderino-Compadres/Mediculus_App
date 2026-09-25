@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { matchPath } from 'react-router-dom'
 import {
+  adminAccountPath,
   APP_NAME,
   PLACEHOLDER_ROUTES,
   ROUTES,
@@ -125,6 +126,7 @@ describe('the path builders', () => {
       specialistPatientReportsPath('p'),
       specialistPatientReportPath('p', 'w'),
       specialistTechniqueEditPath(1),
+      adminAccountPath('u'),
     ]
 
     for (const path of built) expect(path).not.toContain(':')

@@ -446,6 +446,7 @@ interface ColleaguePayload {
   module_label?: string | null
   created_at: string | null
   consents_active: boolean
+  approved?: boolean
 }
 
 export interface Colleague {
@@ -468,6 +469,11 @@ export interface Colleague {
    * owner to finish" rather than showing a row that looks broken.
    */
   consentsActive: boolean
+  /**
+   * Whether an administrator has confirmed the account (core/admin_panel.py).
+   * True on a backend a release behind, which has no such step.
+   */
+  approved: boolean
 }
 
 function toColleague(payload: ColleaguePayload): Colleague {
@@ -480,6 +486,7 @@ function toColleague(payload: ColleaguePayload): Colleague {
     moduleLabel: payload.module_label ?? null,
     createdAt: payload.created_at,
     consentsActive: payload.consents_active,
+    approved: payload.approved ?? true,
   }
 }
 

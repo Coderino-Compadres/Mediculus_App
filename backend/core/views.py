@@ -22,6 +22,7 @@ from rest_framework.views import APIView
 
 from django.utils import timezone
 
+from . import admin_panel
 from .account import (build_account_profile, build_diet_account_profile,
                       build_linked_children)
 from .authentication import end_session, start_session
@@ -1552,6 +1553,15 @@ def _diet_reports(patient):
 #: for, so naming the patient list here would imply the reports are reachable.
 SPECIALIST_REFUSAL = 'Ta część aplikacji jest dostępna tylko dla konta specjalisty.'
 
+#: What a specialist account meets before an administrator has confirmed it.
+#: Its own sentence rather than SPECIALIST_REFUSAL's: the account *is* a
+#: specialist's, it is waiting, and the frontend shows the waiting screen on
+#: `specialist_approved: false` from /api/auth/me/ rather than parsing this.
+SPECIALIST_PENDING_REFUSAL = (
+    'Konto specjalisty czeka na weryfikację przez administratora. '
+    'Panel będzie dostępny po jej zakończeniu.'
+)
+
 #: What a patient meets on the specialist's own screens, and vice versa. Both
 #: exist because the two roles reach for the same nouns — "zaproszenie",
 #: "raport" — and a generic refusal would leave either side unsure whether they
@@ -1610,6 +1620,12 @@ def _require_specialist(request):
     specjalist = specialist_rules.specjalist_for(request.user)
     if specjalist is None:
         raise PermissionDenied(SPECIALIST_REFUSAL)
+    # The administrator's confirmation (core/admin_panel.py). Here, in the one
+    # funnel every panel endpoint passes through, so a waiting account can
+    # invite nobody, issue no guardian code, write no technique and create no
+    # colleague — and an endpoint added later inherits the refusal.
+    if specjalist.approved_at is None:
+        raise PermissionDenied(SPECIALIST_PENDING_REFUSAL)
     return specjalist
 
 
@@ -1973,8 +1989,10 @@ class SpecialistColleaguesView(APIView):
         return Response(list_colleagues())
 
     def post(self, request):
-        _require_specialist(request)
-        serializer = SpecialistColleagueCreateSerializer(data=request.data)
+        specjalist = _require_specialist(request)
+        serializer = SpecialistColleagueCreateSerializer(
+            data=request.data, context={'created_by': specjalist.user},
+        )
         serializer.is_valid(raise_exception=True)
         specjalist, password = serializer.save()
         return Response(
@@ -2190,3 +2208,121 @@ class SpecialistInvitationRejectView(APIView):
         return Response({
             'invitations': specialist_rules.pending_invitations(patient),
         })
+
+
+# --- the administrator's panel -----------------------------------------------
+
+ADMIN_REFUSAL = 'Ta część aplikacji jest dostępna tylko dla administratora.'
+
+PENDING_SPECIALIST_NOT_FOUND = (
+    'Nie znaleziono konta specjalisty oczekującego na weryfikację.'
+)
+
+ACCOUNT_NOT_FOUND = 'Nie znaleziono takiego konta.'
+
+
+def _require_admin(request):
+    """The session's `user`, if it has an `administrator` row — or a refusal.
+
+    The same shape as `_require_specialist`: the session is the only identity
+    input and the row is what authorizes, never the role name. Everything under
+    /api/admin/ passes through here, behind the default consent and password
+    gates like every other endpoint.
+    """
+    if not admin_panel.is_admin(request.user):
+        raise PermissionDenied(ADMIN_REFUSAL)
+    return request.user
+
+
+class AdminPendingSpecialistsView(APIView):
+    """GET /api/admin/specialists/pending/ — the accounts waiting for a decision."""
+
+    def get(self, request):
+        admin = _require_admin(request)
+        admin_panel.record(admin, admin_panel.ACTION_VIEW_PENDING)
+        return Response(admin_panel.pending_specialists())
+
+
+class AdminSpecialistApproveView(APIView):
+    """POST /api/admin/specialists/<id>/approve/ — let a waiting account in.
+
+    404 for an account that is not waiting — approved already, rejected, or
+    never a specialist — so a second click in another tab is an answer rather
+    than a second decision.
+    """
+
+    def post(self, request, specialist_id):
+        admin = _require_admin(request)
+        specjalist = admin_panel.approve(admin, specialist_id)
+        if specjalist is None:
+            raise NotFound(PENDING_SPECIALIST_NOT_FOUND)
+        return Response(admin_panel.pending_specialists())
+
+
+class AdminSpecialistRejectView(APIView):
+    """POST /api/admin/specialists/<id>/reject/ — delete a waiting account.
+
+    POST rather than DELETE, although it deletes: what the administrator does is
+    decide, and the decision is recorded (core/admin_panel.py) before the row
+    goes. Only a waiting account can be rejected — see `admin_panel.reject`.
+    """
+
+    def post(self, request, specialist_id):
+        admin = _require_admin(request)
+        if not admin_panel.reject(admin, specialist_id):
+            raise NotFound(PENDING_SPECIALIST_NOT_FOUND)
+        return Response(admin_panel.pending_specialists())
+
+
+class AdminOverviewView(APIView):
+    """GET /api/admin/overview/ — how many of everything, naming nobody."""
+
+    def get(self, request):
+        admin = _require_admin(request)
+        admin_panel.record(admin, admin_panel.ACTION_VIEW_OVERVIEW)
+        return Response(admin_panel.overview())
+
+
+class AdminAccountsView(APIView):
+    """GET /api/admin/accounts/?kind=… — every account, identity only.
+
+    `kind` is one of `admin_panel.KINDS`; anything else is a 400 rather than an
+    empty list, which would read as "nobody of that kind".
+    """
+
+    def get(self, request):
+        admin = _require_admin(request)
+        kind = request.query_params.get('kind') or None
+        if kind is not None and kind not in admin_panel.KINDS:
+            raise ValidationError({'kind': ['Nieznany rodzaj konta.']})
+        admin_panel.record(admin, admin_panel.ACTION_VIEW_ACCOUNTS)
+        return Response(admin_panel.list_accounts(kind))
+
+
+class AdminAccountView(APIView):
+    """GET /api/admin/accounts/<id>/ — one account and the links it is part of.
+
+    For a patient, medical_db contributes counts and last dates and nothing
+    else — see `admin_panel._activity`.
+    """
+
+    def get(self, request, user_id):
+        admin = _require_admin(request)
+        detail, user = admin_panel.account_detail(user_id)
+        if detail is None:
+            raise NotFound(ACCOUNT_NOT_FOUND)
+        admin_panel.record(admin, admin_panel.ACTION_VIEW_ACCOUNT, user)
+        return Response(detail)
+
+
+class AdminAuditLogView(APIView):
+    """GET /api/admin/audit-log/ — what the administrators looked at and decided.
+
+    Reading the log is not itself logged: it names administrators and the
+    accounts they opened, never a patient's records, and an entry per look at
+    the log would push the entries it exists for off the screen.
+    """
+
+    def get(self, request):
+        _require_admin(request)
+        return Response(admin_panel.audit_log())

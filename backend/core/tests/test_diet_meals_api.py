@@ -495,7 +495,9 @@ class AccessTests(DietTestCase):
 
     def test_a_specialist_is_refused_too(self):
         user = self.make_user('spec@example.com', role='specjalista')
-        Specjalist.objects.create(user=user, specjalization='Psychodietetyka')
+        Specjalist.objects.create(
+            user=user, specjalization='Psychodietetyka', approved_at=timezone.now(),
+        )
         self.sign_in(user)
 
         for url in (self.day_url(), self.history_url()):

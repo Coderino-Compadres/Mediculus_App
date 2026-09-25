@@ -44,7 +44,7 @@ from core.models import (Patient, Specjalist, SpecjalistPatient, User,
 from core.modules import MODULE_PSYCHOTHERAPY
 from core.permissions import PASSWORD_GATE_REFUSAL
 from core.throttling import SpecialistAccountThrottle
-from core.views import SPECIALIST_REFUSAL
+from core.views import SPECIALIST_PENDING_REFUSAL, SPECIALIST_REFUSAL
 
 PASSWORD = 'TajneHaslo123'
 
@@ -79,6 +79,7 @@ class ColleagueTestCase(TestCase):
 
     def make_specialist(self, email='specjalista@example.com', specjalization='DBT'):
         return Specjalist.objects.create(
+            approved_at=timezone.now(),
             user=self.make_user(email, role=SPECIALIST_ROLE),
             specjalization=specjalization,
         )
@@ -208,6 +209,11 @@ class NewAccountTests(ColleagueTestCase):
             'new_password_confirm': new_password,
         }, format='json')
 
+    def approve_new(self):
+        Specjalist.objects.filter(user__email='nowa.terapeutka@example.com').update(
+            approved_at=timezone.now(),
+        )
+
     def unlock(self):
         """Both gates, in the order the account actually meets them."""
         self.grant_consents()
@@ -300,13 +306,9 @@ class NewAccountTests(ColleagueTestCase):
         self.assertIs(me.data['consents']['active'], True)
         self.assertIs(me.data['must_change_password'], True)
 
-    def test_setting_its_own_password_clears_the_flag_and_opens_the_panel(self):
-        """And the caseload is empty, which is the point of the whole design:
-        creating an account grants its holder nothing about anybody."""
-        patient = Patient.objects.create(
-            user=self.make_user('pacjent@example.com'), is_child=False,
-        )
-        self.assertFalse(SpecjalistPatient.objects.filter(patient=patient).exists())
+    def test_setting_its_own_password_clears_the_flag_but_the_panel_waits(self):
+        """The third gate: past the consents and the password, the account
+        still waits for an administrator (core/admin_panel.py)."""
         self.sign_in_as_new()
 
         changed = self.unlock()
@@ -315,6 +317,22 @@ class NewAccountTests(ColleagueTestCase):
         self.assertEqual(changed.status_code, 204, getattr(changed, 'data', None))
         self.assertFalse(
             User.objects.get(email='nowa.terapeutka@example.com').must_change_password)
+        self.assertEqual(panel.status_code, 403)
+        self.assertEqual(str(panel.data['detail']), SPECIALIST_PENDING_REFUSAL)
+
+    def test_approval_opens_the_panel_onto_an_empty_caseload(self):
+        """And the caseload is empty, which is the point of the whole design:
+        creating an account grants its holder nothing about anybody."""
+        patient = Patient.objects.create(
+            user=self.make_user('pacjent@example.com'), is_child=False,
+        )
+        self.assertFalse(SpecjalistPatient.objects.filter(patient=patient).exists())
+        self.sign_in_as_new()
+        self.unlock()
+        self.approve_new()
+
+        panel = self.client.get(reverse('core:specialist-patients'))
+
         self.assertEqual(panel.status_code, 200)
         self.assertEqual(panel.data, {'patients': [], 'pending': []})
 
@@ -357,11 +375,12 @@ class NewAccountTests(ColleagueTestCase):
         self.assertTrue(user.must_change_password)
         self.assertTrue(check_password(self.given_password, user.password_hash))
 
-    def test_it_can_create_a_further_account_once_it_is_through_both_gates(self):
+    def test_it_can_create_a_further_account_once_it_is_through_every_gate(self):
         """A specialist account is a specialist account however it was made —
         there is no second class of them, and no bootstrap flag anywhere."""
         self.sign_in_as_new()
         self.unlock()
+        self.approve_new()
 
         response = self.client.post(reverse('core:specialist-colleagues'), {
             **NEW_COLLEAGUE, 'email': 'trzecia@example.com',

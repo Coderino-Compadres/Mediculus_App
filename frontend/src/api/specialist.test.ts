@@ -350,6 +350,8 @@ describe('specialist accounts', () => {
       moduleLabel: 'Psychoterapia',
       createdAt: '2026-09-01T09:00:00+02:00',
       consentsActive: false,
+      // No `approved` in the payload: a backend without the approval step.
+      approved: true,
     }])
     expect(rows[0]).not.toHaveProperty('password')
   })

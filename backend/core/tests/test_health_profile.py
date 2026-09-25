@@ -491,6 +491,7 @@ class GateTests(HealthProfileTestCase):
 
     def test_a_specialist_is_refused_on_both_verbs(self):
         Specjalist.objects.create(
+            approved_at=timezone.now(),
             user=self.make_user(email='specjalista@example.com', role='specjalista'),
             specjalization='psychodietetyka',
         )
@@ -503,6 +504,7 @@ class GateTests(HealthProfileTestCase):
         """Being a specialist grants no access to a patient's data — and
         certainly not to writing it."""
         Specjalist.objects.create(
+            approved_at=timezone.now(),
             user=self.make_user(email='specjalista@example.com', role='specjalista'),
             specjalization='psychodietetyka',
         )

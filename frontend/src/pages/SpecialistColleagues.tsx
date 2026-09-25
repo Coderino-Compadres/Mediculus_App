@@ -96,6 +96,17 @@ const MODULE_OPTIONS = MODULES.map((module) => ({ value: module, label: MODULE_L
 // checks it, and also refuses a date that makes the person a minor.
 const TODAY = new Date().toISOString().slice(0, 10)
 
+/**
+ * Where the account stands, in the order it gets there: its owner's first
+ * login (consents, own password), then the administrator's confirmation.
+ */
+function colleagueStatus(colleague: Colleague): string {
+  if (!colleague.consentsActive) return 'Czeka na pierwsze logowanie: zgody RODO i własne hasło'
+  if (!colleague.approved) return 'Czeka na weryfikację przez administratora'
+  const created = linkedSinceLabel(colleague.createdAt)
+  return `Konto aktywne${created ? ` · utworzone ${created}` : ''}`
+}
+
 function SpecialistColleagues() {
   const { user } = useAuth()
   const [colleagues, setColleagues] = useState<Colleague[]>([])
@@ -224,6 +235,10 @@ function SpecialistColleagues() {
             zrobić tego za niego — a potem ustawia własne hasło. Do tego czasu panel
             pozostaje zamknięty: to hasło znasz również Ty.
           </p>
+          <p className="specialist-code-note">
+            Na koniec konto musi zatwierdzić administrator fundacji. Dopóki tego
+            nie zrobi, nowy specjalista nie ma dostępu do panelu.
+          </p>
         </section>
       )}
 
@@ -349,13 +364,7 @@ function SpecialistColleagues() {
                       </p>
                     )}
                     <p className="specialist-list-meta">
-                      {colleague.consentsActive
-                        ? `Konto aktywne${
-                            linkedSinceLabel(colleague.createdAt)
-                              ? ` · utworzone ${linkedSinceLabel(colleague.createdAt)}`
-                              : ''
-                          }`
-                        : 'Czeka na pierwsze logowanie: zgody RODO i własne hasło'}
+                      {colleagueStatus(colleague)}
                     </p>
                   </div>
                 </article>

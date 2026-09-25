@@ -878,7 +878,9 @@ class WhoMayAskTests(DietReportTestCase):
         `patient.id_specjalist` is a single FK, so a patient seeing both a
         psychotherapist and a psychodietitian cannot be expressed at all."""
         user = self.make_user(email='spec@example.com', role='specjalista')
-        Specjalist.objects.create(user=user, specjalization='psychodietetyka')
+        Specjalist.objects.create(
+            user=user, specjalization='psychodietetyka', approved_at=timezone.now(),
+        )
         self.sign_in(user)
 
         self.assertEqual(self.client.get(self.list_url()).status_code, 403)

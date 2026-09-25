@@ -3,7 +3,14 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { useSignOut } from '../hooks/useSignOut'
 import { ROUTES, routeTitle } from '../routes'
-import { isDietSpecialist, isGuardian, isSpecialist, waitingChildren } from '../api/auth'
+import {
+  isAdmin,
+  isDietSpecialist,
+  isGuardian,
+  isSpecialist,
+  needsSpecialistApproval,
+  waitingChildren,
+} from '../api/auth'
 import { roleLabel } from '../utils/roles'
 import { waitingLabel } from '../utils/children'
 import type { AuthUser } from '../api/auth'
@@ -191,9 +198,25 @@ const DIET_SPECIALIST_ITEMS: MenuItem[] = [
  * there, so an account that somehow answered to both questions would at least
  * get one consistent answer.
  */
+// Nothing but the waiting screen and the account's own profile: every panel
+// screen answers an unconfirmed account 403 (see pages/SpecialistPending.tsx).
+const PENDING_SPECIALIST_ITEMS: MenuItem[] = [
+  { label: 'Strona główna', to: ROUTES.specialistPending },
+  { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
+]
+
+const ADMIN_ITEMS: MenuItem[] = [
+  { label: 'Strona główna', to: ROUTES.adminHome },
+  { label: routeTitle(ROUTES.adminAccounts), to: ROUTES.adminAccounts },
+  { label: routeTitle(ROUTES.adminAuditLog), to: ROUTES.adminAuditLog },
+  { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
+]
+
 function menuItems(user: AuthUser | null, pathname: string): MenuItem[] {
   const patientItems = isDietRoute(pathname) ? DIET_ITEMS : PATIENT_ITEMS
   if (!user) return patientItems
+  if (isAdmin(user)) return ADMIN_ITEMS
+  if (needsSpecialistApproval(user)) return PENDING_SPECIALIST_ITEMS
   if (isSpecialist(user)) return isDietSpecialist(user) ? DIET_SPECIALIST_ITEMS : SPECIALIST_ITEMS
   return isGuardian(user) ? guardianItems(user) : patientItems
 }

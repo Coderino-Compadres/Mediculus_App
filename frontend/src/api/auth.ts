@@ -19,6 +19,11 @@ export interface UserPayload {
   /** Whether a `specjalist` row exists — see `isSpecialist`. */
   is_specialist?: boolean
   specialist_module?: string | null
+  /** Whether an administrator has confirmed this specialist account; null for
+   *  everybody else — see `needsSpecialistApproval`. */
+  specialist_approved?: boolean | null
+  /** Whether an `administrator` row exists — see `isAdmin`. */
+  is_admin?: boolean
   is_child: boolean | null
   /** null when the question does not apply: only a minor patient needs a guardian. */
   guardian_status?: GuardianStatus | null
@@ -88,6 +93,14 @@ export interface AuthUser {
    * per accepted invitation, on the backend.
    */
   specialistModule: AppModule | null
+  /**
+   * Whether an administrator has confirmed this specialist account, or null
+   * for every account that is not a specialist's. False holds the account on
+   * the waiting screen; `_require_specialist` refuses it the panel regardless.
+   */
+  specialistApproved: boolean | null
+  /** Whether this account may open the administrator's panel. */
+  isAdmin: boolean
   /**
    * When each consent was granted, as a full ISO instant; null means never.
    *
@@ -179,6 +192,10 @@ export function toAuthUser(payload: UserPayload): AuthUser {
     // Null on a backend a release behind, which reads as the psychotherapy
     // panel every specialist had before the column existed.
     specialistModule: isAppModule(payload.specialist_module) ? payload.specialist_module : null,
+    // Null on a backend a release behind, which has no approval step: nothing
+    // there is waiting, so a specialist is let into the panel as before.
+    specialistApproved: payload.specialist_approved ?? null,
+    isAdmin: payload.is_admin ?? false,
     consents: payload.consents
       ? {
           active: payload.consents.active,
@@ -434,6 +451,24 @@ export function isGuardian(user: AuthUser): boolean {
  */
 export function isSpecialist(user: AuthUser): boolean {
   return user.isSpecialist
+}
+
+/**
+ * Whether this is a specialist's account still waiting for an administrator.
+ *
+ * `=== false` rather than falsy: null means the question does not apply (or a
+ * backend without the step), and neither should be held on the waiting screen.
+ */
+export function needsSpecialistApproval(user: AuthUser): boolean {
+  return user.isSpecialist && user.specialistApproved === false
+}
+
+/**
+ * Whether this is an administrator's account — keyed on the `administrator`
+ * row (`_require_admin` in core/views.py), never on the role name.
+ */
+export function isAdmin(user: AuthUser): boolean {
+  return user.isAdmin
 }
 
 /** A specialist of the diet module — whose panel shows the diet catalogue. */

@@ -108,7 +108,7 @@ PASSWORD_GROUP_LENGTH = 4
 #: header), and silence would read as the account never having been created.
 COLLEAGUE_SUMMARY_FIELDS = (
     'name', 'surname', 'email', 'specialization', 'module', 'module_label',
-    'created_at', 'consents_active',
+    'created_at', 'consents_active', 'approved',
 )
 
 
@@ -127,7 +127,8 @@ def generate_password():
     return '-'.join(groups)
 
 
-def create_account(*, email, name, surname, date_of_birth, specialization, module):
+def create_account(*, email, name, surname, date_of_birth, specialization, module,
+                   created_by=None):
     """Create a specialist account. Returns (specjalist row, plaintext password).
 
     The plaintext exists in this return value and nowhere else — the caller hands
@@ -135,6 +136,11 @@ def create_account(*, email, name, surname, date_of_birth, specialization, modul
     held on the password form until it replaces that password
     (`must_change_password` below), because a generated credential handed over
     in a room is one its owner did not choose and somebody else knows.
+
+    **Not approved either.** `approved_at` stays NULL: a colleague vouches for
+    the person, and an administrator confirms the account (core/admin_panel.py)
+    before `_require_specialist` lets it into the panel. `created_by` is who
+    vouched, which is what the administrator reads when deciding.
 
     **No consent timestamps are written**: see the module header. The new account
     is locked by `HasActiveConsents` until its owner grants them, which is the
@@ -163,6 +169,7 @@ def create_account(*, email, name, surname, date_of_birth, specialization, modul
         )
         specjalist = Specjalist.objects.create(
             user=user, specjalization=specialization, module=module,
+            created_by=created_by,
         )
     return specjalist, password
 
@@ -187,6 +194,9 @@ def serialize_colleague(specjalist):
         'module_label': module_label(specjalist.module),
         'created_at': user.created_at.isoformat() if user.created_at else None,
         'consents_active': has_active_consents(user),
+        # The other half of "why can they not work yet": an account waiting for
+        # the administrator's confirmation (core/admin_panel.py).
+        'approved': specjalist.approved_at is not None,
     }
 
 

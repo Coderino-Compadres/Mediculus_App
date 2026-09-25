@@ -58,6 +58,7 @@ class SpecialistTestCase(TestCase):
 
     def make_specialist(self, email='specjalista@example.com', specjalization='DBT'):
         return Specjalist.objects.create(
+            approved_at=timezone.now(),
             user=self.make_user(email, role='specjalista'),
             specjalization=specjalization,
         )

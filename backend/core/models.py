@@ -84,12 +84,86 @@ class Specjalist(models.Model):
     # which reports are readable is still `specjalist_patient.module`, per
     # accepted invitation. See migration 0023.
     module = models.TextField(default='psychotherapy')
+    # When an administrator confirmed this account, or NULL while it waits.
+    # A colleague creating the account vouches for the person; this is the
+    # foundation's own, final word on it (core/admin_panel.py). Until it is set
+    # the account signs in, grants its consents and replaces its password, and
+    # then meets `_require_specialist`, which refuses it the whole panel. There
+    # is no "rejected" state: a rejection deletes the account. See migration
+    # 0025, which marks every specialist that predates the column as approved.
+    approved_at = models.DateTimeField(null=True, blank=True)
+    # Which account created this one from the colleagues screen — what the
+    # administrator reads when deciding. NULL for the accounts seeded by SQL
+    # and for the ones created before migration 0025; SET NULL rather than a
+    # cascade, because the creator leaving does not undo the account.
+    created_by = models.ForeignKey(
+        User, db_column='id_created_by', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
 
     class Meta:
         db_table = 'specjalist'
 
     def __str__(self):
         return f'{self.user_id} ({self.specjalization})'
+
+
+class Administrator(models.Model):
+    """An account that may use the administrator's panel (core/admin_panel.py).
+
+    The same shape as `Specjalist` and for the same reason: what authorizes is
+    the existence of this row, never the role name on `user`. Nothing in the app
+    creates one — `manage.py create_admin` does, from the server's shell, so no
+    endpoint can mint an administrator. An administrator is nobody else: the
+    command refuses an account that is a patient, a specialist or a guardian.
+    """
+
+    user = models.OneToOneField(
+        User, primary_key=True, db_column='id_user', on_delete=models.CASCADE,
+        related_name='administrator_profile',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'administrator'
+
+    def __str__(self):
+        return str(self.user_id)
+
+
+class AdminAuditLog(models.Model):
+    """One thing an administrator looked at or decided — see core/admin_panel.py.
+
+    Written by the panel's endpoints and by nothing else, and never edited: it
+    is the answer to "who saw this person's account, and when" (RODO art. 5(2),
+    accountability), so a row that could be changed afterwards would prove
+    nothing.
+
+    `admin_email` and `target_label` are copies, on purpose. A rejected
+    specialist's account is deleted, and the entry recording that decision has
+    to keep saying whose account it was; `id_admin` goes NULL rather than taking
+    the log with it if an administrator account is ever removed.
+    """
+
+    id_admin_audit_log = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    admin = models.ForeignKey(
+        User, db_column='id_admin', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    admin_email = models.CharField(max_length=255)
+    # One of core.admin_panel.AUDIT_ACTIONS.
+    action = models.TextField()
+    # The account the action was about, if it was about one.
+    target_id = models.UUIDField(null=True, blank=True)
+    target_label = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'admin_audit_log'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.admin_email}: {self.action}'
 
 
 class Patient(models.Model):
