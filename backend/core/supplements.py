@@ -10,7 +10,9 @@ WHAT §08 DECIDES, and what is therefore not open here:
   częstotliwością, godziną oraz datami rozpoczęcia i zakończenia." Every one of
   those is a column below, and none of them is computed from anything.
 * **"Odhacz, kiedy weźmiesz."** The checkbox is the whole of the recording, so a
-  tick is a row in `supplement_intake` for that supplement and that day — which
+  tick is a row in `supplement_intake` for that supplement, that day and that
+  hour (each hour badge on the list is its own checkbox; a preparation with no
+  fixed hour has one, whose tick has a NULL hour) — which
   makes unticking a delete, and makes ticking twice (a double-tapped checkbox)
   land on one row rather than two. The same argument `hydration` makes for a row
   per serving: a boolean column on the supplement would be a running value two
@@ -47,6 +49,8 @@ when §13 arrives the decision is which of the two reads the other — not a thi
 copy.
 """
 
+from collections import defaultdict
+
 from django.db import transaction
 from django.db.models import F, Min, Prefetch
 from rest_framework import serializers
@@ -66,6 +70,8 @@ LIST_IS_FULL = (
     'Usuń którąś, żeby dodać nową.'
 )
 END_BEFORE_START = 'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.'
+UNKNOWN_HOUR = 'Tej godziny nie ma przy tej pozycji.'
+NO_HOURS = 'Ta pozycja nie ma ustalonej godziny.'
 
 #: How many hours one preparation may carry.
 #:
@@ -206,12 +212,18 @@ def _write_hours(supplement, hours):
     ])
 
 
-def serialize_supplement(supplement, *, taken_today):
+def serialize_supplement(supplement, *, taken):
     """One row, as `frontend/src/types/diet.ts`'s `Supplement` reads it.
 
-    `taken_today` is passed in rather than looked up per row: the screen draws
-    the whole list at once, so the taken set is one query for the day (see
-    `list_supplements`) instead of one per supplement.
+    `taken` is the set of today's ticked hours for this supplement (`None` in
+    it for the no-hour tick), passed in rather than looked up per row: the
+    screen draws the whole list at once, so the ticks are one query for the
+    day (see `list_supplements`) instead of one per supplement.
+
+    `taken_hours` lists only hours still on the row — a tick left behind by an
+    hour the patient has since edited away is not a dose on today's list.
+    `taken_today` is whether anything on the row is ticked: one of its hours,
+    or, with no hours, the NULL tick.
 
     The hour and the two dates travel as they are stored — 'HH:MM' and
     'YYYY-MM-DD' — and the *wording* ("od 12 marca, bezterminowo") is composed
@@ -220,6 +232,7 @@ def serialize_supplement(supplement, *, taken_today):
 
     `id_medical` deliberately never travels, like everywhere else in this API.
     """
+    hours = list(supplement.hours.all())
     return {
         'id': str(supplement.id_supplement),
         'name': supplement.name,
@@ -229,11 +242,16 @@ def serialize_supplement(supplement, *, taken_today):
         # what a null `hour` used to mean — the screen renders nothing rather
         # than an empty badge. `supplement.hours` is prefetched by
         # `list_supplements`, so this costs no query per row.
-        'hours': [h.hour.strftime('%H:%M') for h in supplement.hours.all()],
+        'hours': [h.hour.strftime('%H:%M') for h in hours],
         'start_date': supplement.start_date.isoformat() if supplement.start_date else None,
         'end_date': supplement.end_date.isoformat() if supplement.end_date else None,
         'reminder_enabled': supplement.reminder_enabled,
-        'taken_today': taken_today,
+        'taken_hours': [
+            h.hour.strftime('%H:%M') for h in hours if h.hour in taken
+        ],
+        'taken_today': (
+            any(h.hour in taken for h in hours) if hours else None in taken
+        ),
     }
 
 
@@ -272,20 +290,23 @@ def _order(queryset):
 def list_supplements(id_medical, today):
     """The whole list, each row saying whether it was ticked off today.
 
-    Two queries: the rows, and today's ticks. The second is a set of ids rather
-    than a join, so the payload's `taken_today` is decided in one place and a
+    Two queries: the rows, and today's ticks. The second is a map of ids to
+    ticked hours rather than a join, so the payload's ticks are decided in one
+    place and a
     supplement with no tick today is False rather than absent — the checkbox is
     always drawn, and a missing key would make the screen decide what an unknown
     means.
     """
     supplements = list(_order(Supplement.objects.filter(id_medical=id_medical)))
-    taken = set(
+    taken = defaultdict(set)
+    for id_supplement, hour in (
         SupplementIntake.objects
         .filter(supplement__id_medical=id_medical, entry_date=today)
-        .values_list('supplement_id', flat=True)
-    )
+        .values_list('supplement_id', 'hour')
+    ):
+        taken[id_supplement].add(hour)
     return [
-        serialize_supplement(s, taken_today=s.id_supplement in taken)
+        serialize_supplement(s, taken=taken.get(s.id_supplement, set()))
         for s in supplements
     ]
 
@@ -303,10 +324,33 @@ def find(id_medical, id_supplement):
     ).first()
 
 
-def mark_taken(supplement, day):
-    """Tick one supplement off for one day. Idempotent.
+class IntakeSerializer(serializers.Serializer):
+    """Which dose a tick is for: one of the preparation's hours, or none.
 
-    `get_or_create` against the `(supplement, entry_date)` unique constraint, so
+    ON A PREPARATION WITH HOURS the hour is required and must be one of them —
+    a tick for 15:00 on a row that says 08:00 and 17:00 is a dose the list does
+    not have. ON ONE WITHOUT HOURS it must be absent: its one daily dose has no
+    hour to name, and accepting one would store a tick the list never shows.
+    """
+
+    hour = serializers.TimeField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        hour = attrs.get('hour')
+        hours = {h.hour for h in self.context['supplement'].hours.all()}
+        if hours and hour not in hours:
+            raise serializers.ValidationError({'hour': UNKNOWN_HOUR})
+        if not hours and hour is not None:
+            raise serializers.ValidationError({'hour': NO_HOURS})
+        attrs['hour'] = hour
+        return attrs
+
+
+def mark_taken(supplement, day, hour=None):
+    """Tick one dose of a supplement off for one day. Idempotent.
+
+    `get_or_create` against the `(supplement, entry_date, hour)` unique
+    constraint (NULLS NOT DISTINCT, so the no-hour tick is covered too), so
     a double-tapped checkbox is one row and the second tap is not an error — the
     same decision as accepting a guardian invitation twice.
 
@@ -316,12 +360,12 @@ def mark_taken(supplement, day):
     record of a medicine no more reliable than a memory of one.
     """
     _, created = SupplementIntake.objects.get_or_create(
-        supplement=supplement, entry_date=day,
+        supplement=supplement, entry_date=day, hour=hour,
     )
     return created
 
 
-def unmark_taken(supplement, day):
+def unmark_taken(supplement, day, hour=None):
     """Untick it. True if there was a tick to remove.
 
     A delete rather than a stored "not taken", which is the same choice
@@ -331,6 +375,6 @@ def unmark_taken(supplement, day):
     is not the app's judgement to record.
     """
     deleted, _ = SupplementIntake.objects.filter(
-        supplement=supplement, entry_date=day,
+        supplement=supplement, entry_date=day, hour=hour,
     ).delete()
     return deleted > 0

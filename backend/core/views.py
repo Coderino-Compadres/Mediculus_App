@@ -1274,7 +1274,10 @@ class SupplementView(APIView):
 class SupplementIntakeView(APIView):
     """POST/DELETE /api/diet/supplements/<id>/intake/ — "odhacz, kiedy weźmiesz".
 
-    One tick for today, and taking it back. Both answer with the rebuilt list,
+    One tick for today, and taking it back. The body names the dose —
+    `{"hour": "08:00"}`, one of the preparation's hours, or nothing on a
+    preparation with no fixed hour (`supplements.IntakeSerializer`); DELETE
+    reads the same body. Both answer with the rebuilt list,
     so the checkbox on screen is the state the server holds rather than one the
     browser flipped optimistically.
 
@@ -1301,11 +1304,16 @@ class SupplementIntakeView(APIView):
         supplement = supplement_rules.find(patient.id_medical, id_supplement)
         if supplement is None:
             raise NotFound(SUPPLEMENT_NOT_FOUND)
+        serializer = supplement_rules.IntakeSerializer(
+            data=request.data, context={'supplement': supplement},
+        )
+        serializer.is_valid(raise_exception=True)
+        hour = serializer.validated_data['hour']
         today = timezone.localdate()
         if taken:
-            supplement_rules.mark_taken(supplement, today)
+            supplement_rules.mark_taken(supplement, today, hour)
         else:
-            supplement_rules.unmark_taken(supplement, today)
+            supplement_rules.unmark_taken(supplement, today, hour)
         return Response(supplement_rules.list_supplements(
             patient.id_medical, today,
         ))

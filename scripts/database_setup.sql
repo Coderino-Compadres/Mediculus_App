@@ -645,7 +645,12 @@ CREATE INDEX IF NOT EXISTS idx_supplement_hour_hour ON supplement_hour (hour);
 
 -- ----------------------------
 -- SUPPLEMENT_INTAKE
--- "Odhacz, kiedy weźmiesz": one tick, for one preparation, on one day.
+-- "Odhacz, kiedy weźmiesz": one tick, for one dose of a preparation, on one
+-- day. A dose is one of the preparation's hours (a probiotic at 06:45 and
+-- 12:00 is two ticks a day); a preparation with no fixed hour has one dose a
+-- day, whose tick has a NULL hour. NULLS NOT DISTINCT keeps that one row too.
+--
+-- Mirrors core/migrations/0024_supplement_intake_hour.py.
 --
 -- A row rather than a boolean on `supplement`, for the same reason hydration
 -- stores a row per serving: a column would be a running value two taps can
@@ -670,9 +675,15 @@ CREATE TABLE IF NOT EXISTS supplement_intake (
     -- tickable; the API is what decides which day that is.
     entry_date DATE NOT NULL,
 
+    -- Which of the preparation's hours this tick is for; NULL when it has no
+    -- fixed hour. Not a FOREIGN KEY to supplement_hour: editing the hours
+    -- rewrites those rows, and today's ticks must not go with them.
+    hour TIME,
+
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT uq_supplement_intake_day UNIQUE (id_supplement, entry_date)
+    CONSTRAINT uq_supplement_intake_dose
+        UNIQUE NULLS NOT DISTINCT (id_supplement, entry_date, hour)
 );
 
 -- ----------------------------

@@ -117,7 +117,7 @@ class ListTests(SupplementTestCase):
 
         self.assertEqual(sorted(row), [
             'dose', 'end_date', 'frequency', 'hours', 'id', 'name',
-            'reminder_enabled', 'start_date', 'taken_today',
+            'reminder_enabled', 'start_date', 'taken_hours', 'taken_today',
         ])
 
     def test_it_is_ordered_by_hour(self):
@@ -341,28 +341,31 @@ class IntakeTests(SupplementTestCase):
     def test_ticking_records_today(self):
         row = self.row()
 
-        body = self.client.post(self.intake_url(row.pk), {}, format='json').json()
+        body = self.client.post(self.intake_url(row.pk), {'hour': '21:00'}, format='json').json()
 
         self.assertTrue(body[0]['taken_today'])
+        self.assertEqual(body[0]['taken_hours'], ['21:00'])
         intake = SupplementIntake.objects.get()
         self.assertEqual(intake.entry_date, self.today)
         self.assertEqual(intake.supplement_id, row.pk)
+        self.assertEqual(intake.hour, datetime.time(21, 0))
 
     def test_ticking_twice_is_one_row_and_not_an_error(self):
         """A double-tapped checkbox is one act."""
         row = self.row()
 
-        self.client.post(self.intake_url(row.pk), {}, format='json')
-        response = self.client.post(self.intake_url(row.pk), {}, format='json')
+        self.client.post(self.intake_url(row.pk), {'hour': '21:00'}, format='json')
+        response = self.client.post(self.intake_url(row.pk), {'hour': '21:00'}, format='json')
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(SupplementIntake.objects.count(), 1)
 
     def test_unticking_deletes_the_row_rather_than_storing_a_no(self):
         row = self.row()
-        self.client.post(self.intake_url(row.pk), {}, format='json')
+        self.client.post(self.intake_url(row.pk), {'hour': '21:00'}, format='json')
 
-        body = self.client.delete(self.intake_url(row.pk)).json()
+        body = self.client.delete(
+            self.intake_url(row.pk), {'hour': '21:00'}, format='json').json()
 
         self.assertFalse(body[0]['taken_today'])
         self.assertFalse(SupplementIntake.objects.exists())
@@ -371,7 +374,8 @@ class IntakeTests(SupplementTestCase):
         row = self.row()
 
         self.assertEqual(
-            self.client.delete(self.intake_url(row.pk)).status_code, 200)
+            self.client.delete(
+            self.intake_url(row.pk), {'hour': '21:00'}, format='json').status_code, 200)
 
     def test_a_tick_on_a_past_day_is_left_alone(self):
         """Only today is tickable; yesterday's answer stays yesterday's."""
@@ -390,7 +394,8 @@ class IntakeTests(SupplementTestCase):
         row = self.row()
 
         self.client.post(
-            self.intake_url(row.pk), {'entry_date': '2020-01-01'}, format='json')
+            self.intake_url(row.pk), {'hour': '21:00', 'entry_date': '2020-01-01'},
+            format='json')
 
         self.assertEqual(SupplementIntake.objects.get().entry_date, self.today)
 
@@ -399,7 +404,7 @@ class IntakeTests(SupplementTestCase):
         row = self.row(patient=other)
 
         self.assertEqual(
-            self.client.post(self.intake_url(row.pk), {}, format='json').status_code,
+            self.client.post(self.intake_url(row.pk), {'hour': '21:00'}, format='json').status_code,
             404,
         )
         self.assertFalse(SupplementIntake.objects.exists())
@@ -427,7 +432,8 @@ class NothingIsAVerdictTests(SupplementTestCase):
 
     def test_no_key_counts_or_scores_anything(self):
         row = self.row()
-        self.client.post(self.intake_url(row.pk), {}, format='json')
+        self.client.post(
+            self.intake_url(row.pk), {'hour': '21:00'}, format='json')
 
         for key in self.client.get(self.url()).json()[0]:
             self.assertNotIn(key, self.FORBIDDEN)
@@ -441,7 +447,8 @@ class NothingIsAVerdictTests(SupplementTestCase):
         body = self.client.get(self.url()).json()[0]
 
         self.assertEqual(
-            sorted(key for key in body if 'taken' in key), ['taken_today'])
+            sorted(key for key in body if 'taken' in key),
+            ['taken_hours', 'taken_today'])
 
 
 class AccessTests(SupplementTestCase):
@@ -512,7 +519,7 @@ class HoursTests(SupplementTestCase):
 
     def test_the_same_hour_twice_is_one_hour_rather_than_an_error(self):
         """A double-submitted form, not a second dose — the same choice
-        `uq_supplement_intake_day` makes for a double-tapped checkbox."""
+        `uq_supplement_intake_dose` makes for a double-tapped checkbox."""
         response = self.add(name='Magnez', hours=['21:00', '21:00'])
 
         self.assertEqual(response.status_code, 201)
@@ -626,24 +633,90 @@ class HoursTests(SupplementTestCase):
 
         self.assertEqual([r['name'] for r in body], ['Mój'])
 
-    def test_the_ticking_is_still_one_checkbox_for_the_whole_day(self):
-        """Deliberately unchanged, and worth pinning as a decision rather than
-        leaving as an accident: a tick is a fact about a *day*
-        (`uq_supplement_intake_day`), so a preparation taken twice has one
-        checkbox, not two. Whether each dose should be tickable separately is
-        a question for the client — and answering it means the intake table
-        learns about hours, which is a schema change and a decision about what
-        an untaken dose would mean."""
+    def tick(self, supplement, hour=None, *, method='post'):
+        body = {} if hour is None else {'hour': hour}
+        return getattr(self.client, method)(
+            self.intake_url(supplement.id_supplement), body, format='json')
+
+    def test_each_hour_is_ticked_on_its_own(self):
+        """Ticking the morning dose says nothing about the midday one."""
         supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
 
-        body = self.client.post(
-            self.intake_url(supplement.id_supplement)).json()
+        row = self.tick(supplement, '06:45').json()[0]
 
-        row = body[0]
-        self.assertEqual(row['hours'], ['06:45', '12:00'])
+        self.assertEqual(row['taken_hours'], ['06:45'])
         self.assertIs(row['taken_today'], True)
         self.assertEqual(
             SupplementIntake.objects.filter(supplement=supplement).count(), 1)
+
+    def test_both_hours_ticked_are_two_rows_in_the_order_of_a_day(self):
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+
+        self.tick(supplement, '12:00')
+        row = self.tick(supplement, '06:45').json()[0]
+
+        self.assertEqual(row['taken_hours'], ['06:45', '12:00'])
+        self.assertEqual(
+            SupplementIntake.objects.filter(supplement=supplement).count(), 2)
+
+    def test_unticking_one_hour_leaves_the_other(self):
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+        self.tick(supplement, '06:45')
+        self.tick(supplement, '12:00')
+
+        row = self.tick(supplement, '06:45', method='delete').json()[0]
+
+        self.assertEqual(row['taken_hours'], ['12:00'])
+        self.assertIs(row['taken_today'], True)
+
+    def test_an_hour_the_row_does_not_have_is_refused(self):
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+
+        response = self.tick(supplement, '15:00')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('hour', response.json())
+        self.assertFalse(SupplementIntake.objects.exists())
+
+    def test_a_row_with_hours_needs_one_named(self):
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+
+        self.assertEqual(self.tick(supplement).status_code, 400)
+        self.assertFalse(SupplementIntake.objects.exists())
+
+    def test_a_row_without_hours_is_one_tick_with_no_hour(self):
+        supplement = self.row(name='Bez godziny', hour=None)
+
+        self.tick(supplement)
+        row = self.tick(supplement).json()[0]
+
+        self.assertIs(row['taken_today'], True)
+        self.assertEqual(row['taken_hours'], [])
+        intake = SupplementIntake.objects.get()
+        self.assertIsNone(intake.hour)
+
+        row = self.tick(supplement, method='delete').json()[0]
+        self.assertIs(row['taken_today'], False)
+        self.assertFalse(SupplementIntake.objects.exists())
+
+    def test_a_row_without_hours_refuses_an_hour(self):
+        supplement = self.row(name='Bez godziny', hour=None)
+
+        self.assertEqual(self.tick(supplement, '08:00').status_code, 400)
+        self.assertFalse(SupplementIntake.objects.exists())
+
+    def test_a_tick_for_an_hour_edited_away_is_not_shown(self):
+        """The hours are rewritten on every edit; a tick left behind by one
+        that is gone is not a dose on today's list."""
+        supplement = self.row(name='Probiotyk', hours=['06:45', '12:00'])
+        self.tick(supplement, '12:00')
+        SupplementHour.objects.filter(
+            supplement=supplement, hour=datetime.time(12, 0)).delete()
+
+        row = self.client.get(self.url()).json()[0]
+
+        self.assertEqual(row['taken_hours'], [])
+        self.assertIs(row['taken_today'], False)
 
 
 class SharedLimitTests(SimpleTestCase):

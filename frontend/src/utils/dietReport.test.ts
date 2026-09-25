@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { MEAL_SLOT_UNSPECIFIED, emotionRatingNote, mealSlotLabel } from './dietReport'
+import {
+  MEAL_SLOT_UNSPECIFIED,
+  byAverageDescending,
+  emotionRatingNote,
+  mealSlotLabel,
+} from './dietReport'
 import { TIME_OF_DAY_LABELS, TIME_OF_DAY_VALUES } from './timeOfDay'
 
 /**
@@ -111,5 +116,21 @@ describe('emotionRatingNote', () => {
       expect(note?.toLowerCase()).toContain('natężenie')
       expect(note).not.toMatch(/ocena posiłku|nieoceniony|bez oceny posiłku/i)
     }
+  })
+})
+
+describe('byAverageDescending', () => {
+  it('puts the highest average first and an unrated chip last, keeping ties in order', () => {
+    const rows = [
+      { label: 'Smutek', average: 2 },
+      { label: 'Wstyd', average: null },
+      { label: 'Złość', average: 8.5 },
+      { label: 'Spokój', average: 2 },
+      { label: 'Lęk' },
+    ]
+
+    expect([...rows].sort(byAverageDescending).map((row) => row.label)).toEqual([
+      'Złość', 'Smutek', 'Spokój', 'Wstyd', 'Lęk',
+    ])
   })
 })

@@ -30,6 +30,7 @@ function supplement(overrides: Partial<Supplement> = {}): Supplement {
     startDate: '2026-03-12',
     endDate: null,
     reminderEnabled: true,
+    takenHours: [],
     takenToday: false,
     ...overrides,
   }

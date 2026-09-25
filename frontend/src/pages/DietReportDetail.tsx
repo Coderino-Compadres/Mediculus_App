@@ -11,6 +11,7 @@ import { saveBlob } from '../api/reports'
 import { usePagination } from '../hooks/usePagination'
 import { dietDayLabel, dietShortDayLabel } from '../utils/dietWeeks'
 import {
+  byAverageDescending,
   dietReportPdfFileName,
   emotionRatingNote,
   mealSlotLabel,
@@ -120,7 +121,7 @@ function emotionRows(rows: DietWeeklyReport['emotions']['rows']): RankingRow[] {
     color: EMOTION_COLORS[row.emotion],
     average: row.avgIntensity,
     note: emotionRatingNote(row),
-  }))
+  })).sort(byAverageDescending)
 }
 
 /**
@@ -155,14 +156,15 @@ function EmotionRanking({ emotions }: { emotions: DietWeeklyReport['emotions'] }
         // empty ranking. Passed because the prop is required, and worded as the
         // ordinary answer it would be if it ever were reached.
         emptyText="W tym tygodniu nie ma posiłku z zapisaną emocją."
+        measure="average"
         countLabel={pluralMeals}
       />
       {/* What the numbers are and, just as importantly, what they are not. The
           module's whole premise is that it does not grade food, and a card of
           bars is exactly where a reader might assume otherwise. */}
       <p className="diet-report-card-note">
-        Liczba mówi, przy ilu posiłkach pojawiła się dana emocja. Średnia dotyczy natężenia,
-        które oceniłaś lub oceniłeś na suwaku — nie ocenia jedzenia.
+        Pasek pokazuje średnie natężenie emocji w skali 0–10, które oceniłaś lub oceniłeś na
+        suwaku — nie ocenia jedzenia. Liczba mówi, przy ilu posiłkach pojawiła się dana emocja.
       </p>
     </section>
   )

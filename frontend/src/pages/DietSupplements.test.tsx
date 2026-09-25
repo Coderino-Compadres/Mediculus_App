@@ -14,7 +14,8 @@ const createSupplement = vi.fn<(input: SupplementInput) => Promise<Supplement[]>
 const updateSupplement =
   vi.fn<(id: string, input: SupplementInput) => Promise<Supplement[]>>()
 const deleteSupplement = vi.fn<(id: string) => Promise<void>>()
-const setSupplementTaken = vi.fn<(id: string, taken: boolean) => Promise<Supplement[]>>()
+const setSupplementTaken =
+  vi.fn<(id: string, hour: string | null, taken: boolean) => Promise<Supplement[]>>()
 
 vi.mock('../api/diet', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/diet')>()
@@ -24,7 +25,8 @@ vi.mock('../api/diet', async (importOriginal) => {
     createSupplement: (input: SupplementInput) => createSupplement(input),
     updateSupplement: (id: string, input: SupplementInput) => updateSupplement(id, input),
     deleteSupplement: (id: string) => deleteSupplement(id),
-    setSupplementTaken: (id: string, taken: boolean) => setSupplementTaken(id, taken),
+    setSupplementTaken: (id: string, hour: string | null, taken: boolean) =>
+      setSupplementTaken(id, hour, taken),
   }
 })
 
@@ -52,6 +54,7 @@ function supplement(overrides: Partial<Supplement> = {}): Supplement {
     startDate: '2026-03-12',
     endDate: null,
     reminderEnabled: true,
+    takenHours: [],
     takenToday: false,
     ...overrides,
   }
@@ -182,35 +185,40 @@ describe('a row', () => {
     expect(screen.queryByText(/brak|nieznan|uzupełnij/i)).toBeNull()
   })
 
-  it('has a checkbox named by the preparation it ticks off', async () => {
+  it('makes the hour badge the checkbox, named by the preparation and its hour', async () => {
     fetchSupplements.mockResolvedValue([supplement()])
 
     await renderScreen()
 
-    expect(screen.getByRole('checkbox', { name: 'Witamina D3' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Witamina D3, 08:00' })).not.toBeChecked()
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1)
   })
 })
 
 describe('odhaczanie', () => {
   it('records a tick and redraws from the answer', async () => {
     fetchSupplements.mockResolvedValue([supplement()])
-    setSupplementTaken.mockResolvedValue([supplement({ takenToday: true })])
+    setSupplementTaken.mockResolvedValue([
+      supplement({ takenHours: ['08:00'], takenToday: true }),
+    ])
 
     await renderScreen()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Witamina D3' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Witamina D3, 08:00' }))
 
-    expect(setSupplementTaken).toHaveBeenCalledWith('s1', true)
-    expect(screen.getByRole('checkbox', { name: 'Witamina D3' })).toBeChecked()
+    expect(setSupplementTaken).toHaveBeenCalledWith('s1', '08:00', true)
+    expect(screen.getByRole('checkbox', { name: 'Witamina D3, 08:00' })).toBeChecked()
   })
 
   it('takes a tick back', async () => {
-    fetchSupplements.mockResolvedValue([supplement({ takenToday: true })])
-    setSupplementTaken.mockResolvedValue([supplement({ takenToday: false })])
+    fetchSupplements.mockResolvedValue([
+      supplement({ takenHours: ['08:00'], takenToday: true }),
+    ])
+    setSupplementTaken.mockResolvedValue([supplement()])
 
     await renderScreen()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Witamina D3' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Witamina D3, 08:00' }))
 
-    expect(setSupplementTaken).toHaveBeenCalledWith('s1', false)
+    expect(setSupplementTaken).toHaveBeenCalledWith('s1', '08:00', false)
   })
 
   it('does not flip the box on its own when the write fails', async () => {
@@ -220,9 +228,9 @@ describe('odhaczanie', () => {
     setSupplementTaken.mockRejectedValue(new Error('offline'))
 
     await renderScreen()
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Witamina D3' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Witamina D3, 08:00' }))
 
-    expect(screen.getByRole('checkbox', { name: 'Witamina D3' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Witamina D3, 08:00' })).not.toBeChecked()
     expect(screen.getByRole('alert')).toHaveTextContent(/Nie udało się/)
   })
 })
@@ -613,15 +621,20 @@ describe('several hours for one preparation', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(1)
   })
 
-  it('renders a preparation with no hour without an empty badge', async () => {
+  it('gives a preparation with no hour one "Dziś" badge to tick', async () => {
     fetchSupplements.mockResolvedValue([
       supplement({ name: 'Witamina C', hours: [] }),
     ])
+    setSupplementTaken.mockResolvedValue([
+      supplement({ name: 'Witamina C', hours: [], takenToday: true }),
+    ])
 
     await renderScreen()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Witamina C, Dziś' }))
 
-    expect(screen.getByText('Witamina C')).toBeInTheDocument()
-    expect(document.querySelector('.supplement-hour')).toBeNull()
+    expect(setSupplementTaken).toHaveBeenCalledWith('s1', null, true)
+    expect(screen.getByRole('checkbox', { name: 'Witamina C, Dziś' })).toBeChecked()
+    expect(document.querySelectorAll('.supplement-hour')).toHaveLength(1)
   })
 
   it('counts nothing next to the hours', async () => {
@@ -723,18 +736,24 @@ describe('several hours for one preparation', () => {
     )
   })
 
-  it('still ticks the whole day with one checkbox', async () => {
-    /** Deliberate: a tick is a fact about a day, so a preparation taken twice
-     *  has one checkbox. Whether each dose should be tickable separately is a
-     *  question for the client — and answering it means the intake table
-     *  learning about hours, plus a decision about what an untaken dose
-     *  would mean. */
+  it('ticks each hour on its own', async () => {
+    /** Ticking the morning dose says nothing about the midday one. */
     fetchSupplements.mockResolvedValue([
       supplement({ name: 'Probiotyk', hours: ['06:45', '12:00'] }),
     ])
+    setSupplementTaken.mockResolvedValue([
+      supplement({
+        name: 'Probiotyk', hours: ['06:45', '12:00'],
+        takenHours: ['06:45'], takenToday: true,
+      }),
+    ])
 
     await renderScreen()
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2)
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Probiotyk, 06:45' }))
 
-    expect(screen.getAllByRole('checkbox')).toHaveLength(1)
+    expect(setSupplementTaken).toHaveBeenCalledWith('s1', '06:45', true)
+    expect(screen.getByRole('checkbox', { name: 'Probiotyk, 06:45' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Probiotyk, 12:00' })).not.toBeChecked()
   })
 })

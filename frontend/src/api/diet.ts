@@ -481,6 +481,8 @@ interface SupplementPayload {
   start_date: string | null
   end_date: string | null
   reminder_enabled: boolean
+  /** Optional for the reason `hours` is. */
+  taken_hours?: string[]
   taken_today: boolean
 }
 
@@ -494,6 +496,7 @@ function toSupplement(payload: SupplementPayload): Supplement {
     startDate: payload.start_date,
     endDate: payload.end_date,
     reminderEnabled: payload.reminder_enabled,
+    takenHours: payload.taken_hours ?? [],
     takenToday: payload.taken_today,
   }
 }
@@ -577,7 +580,8 @@ export async function deleteSupplement(id: string): Promise<void> {
  * "Odhacz, kiedy weźmiesz" — and taking the tick back.
  *
  * One function for both directions, because they are one control: a checkbox
- * whose two states are a POST and a DELETE on the same URL. The day is the
+ * whose two states are a POST and a DELETE on the same URL. `hour` names the
+ * dose — one of the row's hours, or null on a preparation with no fixed hour. The day is the
  * server's own (`timezone.localdate()`), so nothing here sends a date — only
  * today is tickable, and a date in the body could not reach a past day anyway.
  *
@@ -586,11 +590,12 @@ export async function deleteSupplement(id: string): Promise<void> {
  */
 export async function setSupplementTaken(
   id: string,
+  hour: string | null,
   taken: boolean,
 ): Promise<Supplement[]> {
   const payload = await apiRequest<SupplementPayload[]>(
     `${SUPPLEMENTS_URL}${id}/intake/`,
-    { method: taken ? 'POST' : 'DELETE' },
+    { method: taken ? 'POST' : 'DELETE', body: hour === null ? {} : { hour } },
   )
   return payload.map(toSupplement)
 }

@@ -435,6 +435,7 @@ describe('suplementy i leki', () => {
     start_date: '2026-03-12',
     end_date: null,
     reminder_enabled: true,
+    taken_hours: [],
     taken_today: false,
   }
 
@@ -450,6 +451,7 @@ describe('suplementy i leki', () => {
       startDate: '2026-03-12',
       endDate: null,
       reminderEnabled: true,
+      takenHours: [],
       takenToday: false,
     }])
     expect(apiRequest).toHaveBeenCalledWith('/api/diet/supplements/')
@@ -518,25 +520,35 @@ describe('suplementy i leki', () => {
     expect(apiRequest).toHaveBeenCalledWith('/api/diet/supplements/s1/', { method: 'DELETE' })
   })
 
-  it('ticks with a POST and unticks with a DELETE on the same URL', async () => {
-    apiRequest.mockResolvedValue([{ ...PAYLOAD, taken_today: true }])
-    await setSupplementTaken('s1', true)
+  it('ticks one hour with a POST and unticks it with a DELETE on the same URL', async () => {
+    apiRequest.mockResolvedValue([{ ...PAYLOAD, taken_hours: ['08:00'], taken_today: true }])
+    await setSupplementTaken('s1', '08:00', true)
     expect(apiRequest).toHaveBeenCalledWith(
-      '/api/diet/supplements/s1/intake/', { method: 'POST' })
+      '/api/diet/supplements/s1/intake/', { method: 'POST', body: { hour: '08:00' } })
 
     apiRequest.mockResolvedValue([PAYLOAD])
-    await setSupplementTaken('s1', false)
+    await setSupplementTaken('s1', '08:00', false)
     expect(apiRequest).toHaveBeenCalledWith(
-      '/api/diet/supplements/s1/intake/', { method: 'DELETE' })
+      '/api/diet/supplements/s1/intake/', { method: 'DELETE', body: { hour: '08:00' } })
+  })
+
+  it('names no hour for a preparation without one', async () => {
+    apiRequest.mockResolvedValue([{ ...PAYLOAD, hours: [], taken_today: true }])
+
+    await setSupplementTaken('s1', null, true)
+
+    expect(apiRequest).toHaveBeenCalledWith(
+      '/api/diet/supplements/s1/intake/', { method: 'POST', body: {} })
   })
 
   it('sends no date with a tick, because only today is tickable', async () => {
     apiRequest.mockResolvedValue([{ ...PAYLOAD, taken_today: true }])
 
-    await setSupplementTaken('s1', true)
+    await setSupplementTaken('s1', '08:00', true)
 
-    const [, options] = apiRequest.mock.calls[0] as [string, Record<string, unknown>]
-    expect(options).not.toHaveProperty('body')
+    const [, options] = apiRequest.mock.calls[0] as [string, { body: object }]
+    expect(options.body).not.toHaveProperty('date')
+    expect(options.body).not.toHaveProperty('entry_date')
   })
 })
 

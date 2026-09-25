@@ -379,8 +379,8 @@ export interface DietSleepNight {
  * the wording lives there and not on the wire, because a Polish declension in
  * two places is two places free to drift.
  *
- * `takenToday` is the checkbox, and it is the *only* thing this shape says about
- * whether a dose was taken. There is no count, no streak and no adherence
+ * `takenHours` (and `takenToday`) are the checkboxes, and they are the *only*
+ * thing this shape says about whether a dose was taken. There is no count, no streak and no adherence
  * figure — nor a "not taken" for any day, because unticking deletes the row and
  * nothing in this app stores that somebody missed a medicine. That absence is
  * the design: a "took 3 of 5" on the screen a patient opens every morning is
@@ -415,14 +415,14 @@ export interface Supplement {
   endDate: string | null
   reminderEnabled: boolean
   /**
-   * Whether it was ticked off **today** — one tick for the whole day, even on
-   * a preparation taken several times.
-   *
-   * That is deliberate rather than an oversight: a tick is a fact about a day
-   * (`uq_supplement_intake_day`), and making each dose tickable separately
-   * would mean the intake table learning about hours *and* a decision about
-   * what an untaken dose means — which is the one thing §08 says this module
-   * must not record.
+   * Which of `hours` were ticked off **today**. Each hour badge is its own
+   * checkbox (`uq_supplement_intake_dose`), so a probiotic at 06:45 and 12:00
+   * is two ticks, not one for the whole day. Only hours still on the row.
+   */
+  takenHours: string[]
+  /**
+   * Whether anything on the row is ticked today: one of its hours, or — on a
+   * preparation with no fixed hour, whose one badge is "Dziś" — that tick.
    */
   takenToday: boolean
 }

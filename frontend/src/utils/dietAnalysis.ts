@@ -28,7 +28,7 @@
  *                     (`WEEK_DAYS` in core/drinks.py) and takes no range.
  *
  * Supplements have no history in either direction: `supplement_intake` records a
- * tick per day, but `GET /api/diet/supplements/` reports only `taken_today`, and
+ * tick per dose per day, but `GET /api/diet/supplements/` reports only today's, and
  * a preparation is a regimen rather than a day's entry — `first_entry_date` in
  * core/diet_reports.py leaves it out of the four diaries deliberately.
  *

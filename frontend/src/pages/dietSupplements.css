@@ -153,64 +153,6 @@
   border-top: 1px solid var(--color-divider);
 }
 
-/* The artboard's 26px box inside a real 44×44 control.
- *
- * The 9px of slack is a *transparent border* rather than a margin, and that is
- * the whole trick: the element's box is 44px (so a finger hits 44px), while
- * `background-clip: content-box` paints only the 26px content box, whose corner
- * radius comes out as 18 − 9 = 9px — the artboard's own. A margin would have
- * left a 26px hit area with dead space around it, and stretching a pseudo-
- * element off the square would have made the touch target depend on
- * `input::after` rendering, which is not something to rest a control on.
- *
- * The square's edge is an inset shadow rather than a border, because the border
- * is now doing the other job. */
-.supplement-check {
-  appearance: none;
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border: 9px solid transparent;
-  border-radius: 18px;
-  background-color: var(--color-surface);
-  background-clip: content-box;
-  box-shadow: inset 0 0 0 1.5px var(--color-border-strong);
-  cursor: pointer;
-  position: relative;
-}
-
-.supplement-check:checked {
-  background-color: var(--color-sage);
-  box-shadow: inset 0 0 0 1.5px var(--color-sage);
-}
-
-/* The tick, drawn rather than typed: a glyph would inherit the font and sit
-   differently on every platform. Positioned against the padding box, i.e.
-   against the 26px square rather than the 44px target. The filled sage
-   background is what actually carries the checked state, so this is decoration
-   on top of it rather than the only signal. */
-.supplement-check:checked::before {
-  content: '';
-  position: absolute;
-  left: 8px;
-  top: 4px;
-  width: 8px;
-  height: 13px;
-  border: solid #fff;
-  border-width: 0 2.5px 2.5px 0;
-  transform: rotate(45deg);
-}
-
-.supplement-check:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1.5px var(--color-sage), var(--focus-ring);
-}
-
-.supplement-check:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
 .supplement-body {
   flex: 1;
   min-width: 0;
@@ -247,21 +189,75 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 4px;
-  margin-top: 8px;
   /* Keeps the badges from eating the name column on a narrow screen: past
      this they wrap among themselves instead. */
   max-width: 45%;
 }
 
+/* The hit area: a real 44px-tall target around the smaller drawn badge, the
+   same trick the old single checkbox played with a transparent border. */
+.supplement-hour-check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
 .supplement-hour {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
-  padding: 5px 10px;
+  padding: 6px 10px;
   border-radius: 9px;
   background: var(--color-supplement-bg);
   color: var(--color-supplement);
+  box-shadow: inset 0 0 0 1.5px var(--color-border-strong);
   font-weight: var(--font-weight-semibold);
   font-size: 12px;
   white-space: nowrap;
+}
+
+/* The empty box inside the badge, so it reads as something to tick. */
+.supplement-hour::before {
+  content: '';
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.supplement-hour-check input:checked + .supplement-hour {
+  background: var(--color-sage);
+  color: #fff;
+  box-shadow: inset 0 0 0 1.5px var(--color-sage);
+}
+
+/* The tick, drawn rather than typed (a glyph would sit differently on every
+   platform). The filled badge carries the checked state; this is on top. */
+.supplement-hour-check input:checked + .supplement-hour::before {
+  width: 5px;
+  height: 10px;
+  margin: 0 3px 2px 4px;
+  border-radius: 0;
+  box-shadow: none;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.supplement-hour-check input:focus-visible + .supplement-hour {
+  box-shadow: inset 0 0 0 1.5px var(--color-sage), var(--focus-ring);
+}
+
+.supplement-hour-check input:disabled + .supplement-hour {
+  opacity: 0.55;
+}
+
+.supplement-hour-check:has(input:disabled) {
+  cursor: default;
 }
 
 /* Row actions */
