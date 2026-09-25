@@ -124,6 +124,12 @@ function DietActivityPanel({ today }: { today: Date }) {
    *  panel still has its data, and only the last act did not happen. */
   const [saveError, setSaveError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  /** What is typed in the step field, or null while it shows the saved count.
+   *  Separate from `day`, so saving an activity (which answers with the whole
+   *  day) cannot overwrite a count typed but not yet saved. */
+  const [stepsDraft, setStepsDraft] = useState<string | null>(null)
+  /** True right after "Zapisz kroki" landed, until the field is typed in. */
+  const [stepsSaved, setStepsSaved] = useState(false)
 
   /**
    * Whether this day may still be written to.
@@ -233,20 +239,30 @@ function DietActivityPanel({ today }: { today: Date }) {
       })
   }
 
+  const stepsValue = stepsDraft ?? (day.steps === null ? '' : String(day.steps))
+  const typedSteps = stepsValue === '' ? null : Number(stepsValue)
+  const stepsChanged = typedSteps !== day.steps
+
   /**
-   * The step count, written when the input loses focus.
+   * The step count, written by "Zapisz kroki" (or Enter in the field).
    *
-   * On blur rather than on every keystroke: the count is one number typed in
-   * one go, and a request per digit would write "6", "64", "640" and "6400" as
-   * four separate answers.
+   * An explicit button rather than a save on blur: the old silent write left
+   * nobody sure whether the number had been kept, and a request per keystroke
+   * would write "6", "64", "640" and "6400" as four separate answers.
    *
    * '' is sent as null, not 0 — which deletes the row on the server. Nobody
    * typing a count and somebody who took no steps are different claims, and
    * only the first is one this screen can make.
    */
   function commitSteps() {
-    saveSteps(day.steps)
-      .then(setDay)
+    if (!editable || !stepsChanged) return
+    setSaveError(null)
+    saveSteps(typedSteps)
+      .then((written) => {
+        setDay(written)
+        setStepsDraft(null)
+        setStepsSaved(true)
+      })
       .catch((cause: unknown) => {
         setSaveError(
           (cause instanceof ApiError && cause.formMessage) || STEPS_ERROR,
@@ -255,8 +271,8 @@ function DietActivityPanel({ today }: { today: Date }) {
   }
 
   function typeSteps(typed: string) {
-    const digits = typed.replace(/\D/g, '').slice(0, MAX_STEP_DIGITS)
-    setDay((current) => ({ ...current, steps: digits === '' ? null : Number(digits) }))
+    setStepsDraft(typed.replace(/\D/g, '').slice(0, MAX_STEP_DIGITS))
+    setStepsSaved(false)
     setSaveError(null)
   }
 
@@ -419,25 +435,47 @@ function DietActivityPanel({ today }: { today: Date }) {
 
       <section className="diet-as-card" aria-labelledby="activity-steps-heading">
         <h2 id="activity-steps-heading">Kroki</h2>
-        <div className="diet-as-field diet-as-field-inline">
-          <label htmlFor="activity-steps">Liczba kroków</label>
-          <input
-            id="activity-steps"
-            type="text"
-            inputMode="numeric"
-            className="diet-as-steps-input"
-            value={day.steps === null ? '' : String(day.steps)}
-            readOnly={!editable}
-            aria-describedby="activity-steps-hint"
-            onChange={(event) => typeSteps(event.target.value)}
-            onBlur={commitSteps}
-          />
-        </div>
-        {/* The mockup's own words. Nothing next to this number compares it with
-            anything: no daily goal, no progress bar, no "wczoraj". */}
-        <p className="diet-as-hint" id="activity-steps-hint">
-          Wpisujesz ręcznie, kiedy chcesz.
-        </p>
+        {/* A form so Enter in the field saves too; the button is what says the
+            number is not kept until it is pressed. */}
+        <form
+          className="diet-as-steps-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            commitSteps()
+          }}
+        >
+          <div className="diet-as-field diet-as-field-inline">
+            <label htmlFor="activity-steps">Liczba kroków</label>
+            <input
+              id="activity-steps"
+              type="text"
+              inputMode="numeric"
+              className="diet-as-steps-input"
+              value={stepsValue}
+              readOnly={!editable}
+              aria-describedby="activity-steps-hint"
+              onChange={(event) => typeSteps(event.target.value)}
+            />
+          </div>
+          {/* The mockup's own words. Nothing next to this number compares it
+              with anything: no daily goal, no progress bar, no "wczoraj". */}
+          <p className="diet-as-hint" id="activity-steps-hint">
+            Wpisujesz ręcznie, kiedy chcesz.
+          </p>
+          <div className="diet-as-steps-actions">
+            <button
+              type="submit"
+              className="diet-as-submit"
+              disabled={!editable || !stepsChanged}
+            >
+              Zapisz kroki
+            </button>
+            {/* A plain receipt, not praise: it says the number was kept. */}
+            <span className="diet-as-hint diet-as-steps-saved" aria-live="polite">
+              {stepsSaved && !stepsChanged ? 'Zapisano.' : ''}
+            </span>
+          </div>
+        </form>
       </section>
 
       <section className="diet-as-card" aria-labelledby="activity-today-heading">

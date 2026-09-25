@@ -387,6 +387,23 @@
   margin: -8px 0 0;
 }
 
+.diet-as-steps-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Full width, like "Zapisz aktywność" above; the receipt sits under it. */
+.diet-as-steps-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diet-as-steps-saved {
+  margin: 0;
+}
+
 /* Sleep hours and the one computed value */
 
 .diet-as-hours {

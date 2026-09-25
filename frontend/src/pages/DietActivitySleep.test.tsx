@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
 import { PAGE_SIZE } from '../hooks/usePagination'
@@ -597,6 +597,59 @@ describe('the step count', () => {
     const field = screen.getByLabelText('Liczba kroków')
     await user.type(field, '6 400 kroków')
     expect(field).toHaveValue('6400')
+  })
+
+  it('is saved by its own button, and only when pressed', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<DietActivitySleep />)
+    const save = await screen.findByRole('button', { name: 'Zapisz kroki' })
+    expect(save).toBeDisabled()
+
+    await user.type(screen.getByLabelText('Liczba kroków'), '6400')
+    await user.tab()
+    expect(mockedSteps).not.toHaveBeenCalled()
+
+    await user.click(save)
+
+    expect(mockedSteps).toHaveBeenCalledWith(6400)
+    expect(await screen.findByText('Zapisano.')).toBeInTheDocument()
+    expect(save).toBeDisabled()
+  })
+
+  it('saves on Enter in the field', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<DietActivitySleep />)
+
+    await user.type(screen.getByLabelText('Liczba kroków'), '6400{Enter}')
+
+    expect(mockedSteps).toHaveBeenCalledWith(6400)
+  })
+
+  it('sends a cleared field as null rather than zero', async () => {
+    mockedActivity.mockImplementation(() =>
+      Promise.resolve(activityDay({ date: TODAY, steps: 6400 })),
+    )
+    const user = userEvent.setup()
+    renderWithProviders(<DietActivitySleep />)
+    const field = screen.getByLabelText('Liczba kroków')
+    await waitFor(() => expect(field).toHaveValue('6400'))
+
+    await user.clear(field)
+    await user.click(screen.getByRole('button', { name: 'Zapisz kroki' }))
+
+    expect(mockedSteps).toHaveBeenCalledWith(null)
+  })
+
+  it('keeps a typed, unsaved count when an activity is saved', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<DietActivitySleep />)
+
+    await user.type(screen.getByLabelText('Liczba kroków'), '6400')
+    await user.click(screen.getByRole('button', { name: 'Spacer' }))
+    await user.click(screen.getByRole('button', { name: 'Zapisz aktywność' }))
+
+    expect(screen.getByLabelText('Liczba kroków')).toHaveValue('6400')
+    expect(screen.getByRole('button', { name: 'Zapisz kroki' })).toBeEnabled()
   })
 
   it('carries no goal, no progress bar and no comparison', () => {
