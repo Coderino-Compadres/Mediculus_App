@@ -249,11 +249,12 @@ function EmotionCards({ analysis }: { analysis: DietAnalysisData }) {
           // Unreachable: the card returns null above rather than drawing an
           // empty ranking. Worded as the ordinary answer it would be anyway.
           emptyText="W tym okresie nie ma posiłku z zapisaną emocją."
+          measure="average"
           countLabel={pluralMeals}
         />
         <p className="diet-analysis-aside">
-          Liczba mówi, przy ilu posiłkach pojawiła się dana emocja. Średnia dotyczy natężenia,
-          które oceniłaś lub oceniłeś na suwaku — nie ocenia jedzenia.
+          Pasek pokazuje średnie natężenie emocji w skali 0–10, które oceniłaś lub oceniłeś na
+          suwaku — nie ocenia jedzenia. Liczba mówi, przy ilu posiłkach pojawiła się dana emocja.
         </p>
       </section>
 

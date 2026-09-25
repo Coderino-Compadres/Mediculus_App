@@ -611,6 +611,20 @@ describe('DietAnalysis — the emotion cards', () => {
     expect(within(card).queryByText(/1 dzień/)).toBeNull()
   })
 
+  it('draws the bar from the average intensity, not from the meal count', async () => {
+    /* Both chips sit on one meal each, so a count-drawn bar would fill both
+       rows. 'Spokój' averaged 6/10 and draws 60 percent; 'Wstyd' was never
+       rated and draws nothing rather than a zero nobody gave. */
+    await renderFelt()
+
+    const fills = emotionCard('Najczęstsze emocje przy jedzeniu').querySelectorAll<HTMLElement>('.report-ranking-fill')
+    const widths = Array.from(fills, (fill) => fill.style.width)
+
+    expect(widths).toContain('60%')
+    expect(widths).toContain('0%')
+    expect(widths).not.toContain('100%')
+  })
+
   it('prints an average only for a chip that was rated', async () => {
     await renderFelt()
 

@@ -13,7 +13,7 @@ export interface RankingRow {
    * null for triggers: a place has no intensity. Undefined and null are the same
    * answer here, so the row falls back to reporting the count alone — and a
    * caller passing `measure="average"` without one would draw empty bars, which
-   * is why the psychotherapy emotions ranking is the only one that does.
+   * is why only the emotions rankings do.
    */
   average?: number | null
   /**
@@ -41,7 +41,7 @@ export interface RankingRow {
  *     day count has no meaningful ceiling to draw against — the ranking is
  *     about order and relative weight, and the exact count is spelled out next
  *     to the label anyway.
- *   - `measure="average"` (the psychotherapy report's emotions) scales against
+ *   - `measure="average"` (both modules' emotions rankings) scales against
  *     the rating scale itself, 0-10. Intensity *has* a fixed ceiling, and
  *     drawing it relative to the top row would make a calm week look exactly
  *     like a desperate one: the strongest feeling would fill the bar whether it
@@ -53,15 +53,14 @@ export interface RankingRow {
  * was on the row the whole time; the bar contradicted it, and a bar is what gets
  * read first.
  *
- * **THE DIET MODULE'S EMOTIONS RANKING GOES BACK TO `measure="count"`, AND THAT
- * IS NOT A RELAPSE INTO THE BUG ABOVE.** What settled the case above is that a
- * length has to draw the thing the section is *about*, and the two sections are
- * about different things: "Najsilniej odczuwane emocje" is about strength, while
- * §05's "Najczęstsze emocje przy jedzeniu" is named for frequency. The reading
- * that misled there — a weak feeling drawing a long bar — cannot arise here,
- * because the length means "how often" and says so in the heading. Both numbers
- * are on both rows either way; `measure` only decides which one the bar draws
- * and, below, which one is printed first.
+ * **THE DIET MODULE'S EMOTIONS RANKING USES `measure="average"` TOO.** It once
+ * drew counts, on the grounds that §05 names the section for frequency; the
+ * product call since is that the bar shows the mean intensity, for the reason
+ * above — a feeling rated 1/10 at every meal must not draw a full bar. The rows
+ * stay *ordered* by how often (the heading's promise), and the meal count is
+ * still on every row. A chip picked but never rated has no average and draws an
+ * empty bar, with `note` saying why. Both numbers are on both rows either way;
+ * `measure` only decides which one the bar draws and which is printed first.
  *
  * `countLabel` renders the count *with* its noun, because the two rankings do
  * not count the same thing: days on a psychotherapy report, meals on a diet one
