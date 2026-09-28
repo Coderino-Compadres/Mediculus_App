@@ -77,19 +77,15 @@ function dayLabel(iso: string): string {
   })
 }
 
-/** "Szklanka · 250 ml", or just the drink for everything without an amount. */
-function entryLabel(entry: HydrationEntry, glassMl: number, bottleMl: number): string {
+/** "Woda · 250 ml", or just the drink for everything without an amount. */
+function entryLabel(entry: HydrationEntry): string {
   if (entry.amountMl === null) return entry.drink
-  // THE DRINK IS CHECKED BEFORE THE AMOUNT, and it has to be: the two serving
-  // names below belong to water's own buttons, so a 250 ml tea reaching them
-  // would be listed as "Szklanka · 250 ml" and read as water. Every drink
-  // counts towards the goal now, which changes the arithmetic and not this —
-  // the list under the bar is a record of what was drunk, and what it was is
-  // the part only it can say.
-  if (entry.drink !== WATER) return `${entry.drink} · ${entry.amountMl} ml`
-  if (entry.amountMl === glassMl) return `Szklanka · ${entry.amountMl} ml`
-  if (entry.amountMl === bottleMl) return `Butelka · ${entry.amountMl} ml`
-  return `Woda · ${entry.amountMl} ml`
+  // Named by the drink, never by the serving: water used to be listed as
+  // "Szklanka" or "Butelka" after the button that poured it, which read as a
+  // container rather than as something drunk — and the rows below the bar are
+  // a record of what was drunk. The amount beside it already says which
+  // button it was.
+  return `${entry.drink} · ${entry.amountMl} ml`
 }
 
 /** "16:20" from the moment the server recorded, in the reader's own clock —
@@ -465,7 +461,7 @@ function EntriesCard({
             return (
               <li key={entry.id} className="hydration-entry">
                 <span className="hydration-entry-label">
-                  {entryLabel(entry, day.glassMl, day.bottleMl)}
+                  {entryLabel(entry)}
                   {time && <span className="hydration-entry-time"> · {time}</span>}
                 </span>
                 <button
@@ -477,7 +473,7 @@ function EntriesCard({
                   Usuń
                   <span className="visually-hidden">
                     {' '}
-                    wpis: {entryLabel(entry, day.glassMl, day.bottleMl)}
+                    wpis: {entryLabel(entry)}
                   </span>
                 </button>
               </li>

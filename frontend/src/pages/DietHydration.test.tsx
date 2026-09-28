@@ -450,6 +450,24 @@ describe('millilitres for a drink that is not water', () => {
   })
 })
 
+describe('water in the list of what was drunk', () => {
+  it('is called "Woda" whichever button poured it', async () => {
+    fetchHydration.mockResolvedValueOnce(
+      day({
+        entries: [
+          { id: 'g', drink: 'Woda', amountMl: 250, at: '2026-09-09T10:00:00+02:00' },
+          { id: 'b', drink: 'Woda', amountMl: 500, at: '2026-09-09T12:00:00+02:00' },
+        ],
+      }),
+    )
+    renderWithProviders(<DietHydration />)
+
+    expect(await screen.findAllByText(/Woda · 250 ml/)).not.toHaveLength(0)
+    expect(screen.getAllByText(/Woda · 500 ml/)).not.toHaveLength(0)
+    expect(screen.queryAllByText(/(Szklanka|Butelka) · /)).toHaveLength(0)
+  })
+})
+
 describe('a drink the chips do not name', () => {
   it('is reachable from the chip row, and only once asked for', async () => {
     /* Not on §08's artboard — five chips is the commonest drinks rather than
@@ -563,7 +581,7 @@ describe('today\'s entries', () => {
     // Twice each: once in the row, once inside the remove button's
     // visually-hidden name, so "Usuń" is not the whole thing a screen reader
     // hears three times over.
-    expect(await screen.findAllByText(/Szklanka · 250 ml/)).toHaveLength(2)
+    expect(await screen.findAllByText(/Woda · 250 ml/)).toHaveLength(2)
     expect(screen.getAllByText(/Herbata/)).not.toHaveLength(0)
     expect(screen.getByText(/14:20/)).toBeInTheDocument()
   })
