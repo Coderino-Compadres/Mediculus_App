@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
-import mediculusLogo from '../assets/mediculus-logo.jpeg'
+// The PNG, not the JPEG the other screens use: its background is transparent,
+// where the JPEG's is a bluish off-white that showed as a box on the white card.
+import mediculusLogo from '../assets/mediculus-logo.png'
 import './auth.css'
 
 interface AuthLayoutProps {
