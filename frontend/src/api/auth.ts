@@ -105,7 +105,8 @@ export interface AuthUser {
   /**
    * The specialist's university, field of study and diploma number, shown
    * read-only on their own profile; null for every account that is not a
-   * specialist's. Nothing edits it after creation — see core/colleagues.py.
+   * specialist's. Only an administrator can correct it after creation — see
+   * core/admin_panel.py `edit_account`.
    */
   specialistQualifications: Qualifications | null
   /** Whether this account may open the administrator's panel. */

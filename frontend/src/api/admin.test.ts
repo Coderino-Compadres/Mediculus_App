@@ -108,7 +108,7 @@ describe('the account list', () => {
 })
 
 describe('one account', () => {
-  it('maps a patient’s counts without any record content', async () => {
+  it('maps a patient’s links, and nothing from their records', async () => {
     mockedRequest.mockResolvedValue({
       id: 'p1', name: 'Zuzia', surname: 'Dieta', email: 'zuzia@wp.pl', kind: 'patient',
       role: 'patient', created_at: null, updated_at: null, date_of_birth: '2012-03-04',
@@ -116,24 +116,14 @@ describe('one account', () => {
       specialist_module: null, is_child: true, specialist: null, guardian: null,
       patient: {
         is_child: true, guardian_status: 'pending', guardians: [], specialists: [],
-        activity: {
-          diary_entries: { count: 3, last: '2026-09-01' },
-          meals: { count: 0, last: null },
-          hydration_entries: { count: 0, last: null },
-          activities: { count: 0, last: null },
-          sleep_nights: { count: 0, last: null },
-          supplements: 0,
-          health_profile: true,
-        },
       },
     })
 
     const account = await fetchAccount('p1')
 
     expect(mockedRequest).toHaveBeenCalledWith('/api/admin/accounts/p1/')
-    expect(account.patient?.activity.diaryEntries).toEqual({ count: 3, last: '2026-09-01' })
-    expect(account.patient?.activity.healthProfile).toBe(true)
     expect(account.patient?.guardianStatus).toBe('pending')
+    expect(account.patient).not.toHaveProperty('activity')
   })
 })
 
@@ -141,7 +131,7 @@ describe('the audit log vocabulary', () => {
   it('has a word for every action the backend records', () => {
     for (const action of [
       'view_overview', 'view_accounts', 'view_account', 'view_pending_specialists',
-      'approve_specialist', 'reject_specialist',
+      'approve_specialist', 'reject_specialist', 'edit_account', 'delete_account',
     ]) {
       expect(auditActionLabel(action)).not.toBe(action)
     }

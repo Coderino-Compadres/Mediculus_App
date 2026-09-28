@@ -1,7 +1,7 @@
-"""The administrator's panel: the final word on a specialist account, and a
-read-only look at who is in the database.
+"""The administrator's panel: the final word on a specialist account, a look
+at who is in the database, and correcting or deleting an account.
 
-TWO JOBS, AND NOTHING ELSE.
+THREE JOBS, AND NOTHING ELSE.
 
 1. **Approving a specialist account.** A colleague creating the account
    (core/colleagues.py) vouches for the person; the administrator is the
@@ -15,11 +15,22 @@ TWO JOBS, AND NOTHING ELSE.
 
 2. **Looking at the data**, read-only, and only user_db's. Accounts, roles, who
    treats whom and who vouches for whom — the identity half of the schema. From
-   medical_db the panel reads **counts and dates only** (how many diary entries,
-   when the last meal was written), never a single entry's content: the
-   pseudonymisation between the two databases is what keeps clinical data
-   unreadable to anybody who is not treating the patient, and an administrator is
-   not. Nothing here writes to medical_db at all.
+   medical_db the panel reads **app-wide totals only** (how many diary entries
+   exist in all), never anything about one patient — not a count, not a date,
+   not a single entry's content. The pseudonymisation between the two databases
+   is what keeps clinical data unreadable to anybody who is not treating the
+   patient, and an administrator is not; how active one named patient is would
+   already be health data about them. Reading never writes to medical_db.
+
+3. **Correcting a specialist, deleting any account** (`edit_account`,
+   `delete_account`). Only a specialist's account is edited here — identity and
+   professional details, the account the foundation vouches for; a patient's,
+   a guardian's or an administrator's data is theirs to change, not the
+   panel's. Any account may be deleted except the administrator's own, and
+   deleting is the one place the panel writes to medical_db: a deleted patient
+   takes every row under their `id_medical` with them (RODO art. 17), because
+   rows left behind would be health data about nobody that nobody could ever be
+   asked about.
 
 WHO IS AN ADMINISTRATOR. Whoever has an `administrator` row, the same convention
 as `specjalist` and `patient`: the role name on `user` is for display. No
@@ -43,8 +54,8 @@ core/guardian.py and core/colleagues.py.
 
 import datetime
 
+from django.apps import apps
 from django.db import transaction
-from django.db.models import Count, Max
 from django.utils import timezone
 
 from .authentication import end_all_sessions
@@ -53,8 +64,10 @@ from .consents import has_active_consents
 from .guardian import STATUS_ACCEPTED, STATUS_NONE, STATUS_PENDING
 from .models import (Administrator, AdminAuditLog, DietActivity, DietMeal,
                      DietSleep, Diary, HealthProfile, Hydration, ParentChild,
-                     Patient, Specjalist, SpecjalistPatient, Supplement, User)
+                     Patient, Specjalist, SpecjalistPatient, Supplement,
+                     Technique, User)
 from .modules import MODULE_DIET, MODULE_PSYCHOTHERAPY, module_label
+from .routers import MEDICAL_MODELS
 
 #: The role name an administrator account carries. Display only — see the
 #: module header.
@@ -82,9 +95,12 @@ ACTION_VIEW_ACCOUNT = 'view_account'
 ACTION_VIEW_PENDING = 'view_pending_specialists'
 ACTION_APPROVE = 'approve_specialist'
 ACTION_REJECT = 'reject_specialist'
+ACTION_EDIT_ACCOUNT = 'edit_account'
+ACTION_DELETE_ACCOUNT = 'delete_account'
 AUDIT_ACTIONS = (
     ACTION_VIEW_OVERVIEW, ACTION_VIEW_ACCOUNTS, ACTION_VIEW_ACCOUNT,
     ACTION_VIEW_PENDING, ACTION_APPROVE, ACTION_REJECT,
+    ACTION_EDIT_ACCOUNT, ACTION_DELETE_ACCOUNT,
 )
 READ_ACTIONS = frozenset({
     ACTION_VIEW_OVERVIEW, ACTION_VIEW_ACCOUNTS, ACTION_VIEW_ACCOUNT,
@@ -372,33 +388,6 @@ def list_accounts(kind=None):
     return rows
 
 
-def _activity(id_medical):
-    """How much a patient has written, table by table — counts and last dates.
-
-    The whole of what the panel reads from medical_db about one person. No row's
-    content leaves this function: `Count` and `Max` over a date are the only
-    things asked of each table.
-    """
-    def summary(model, date_field):
-        result = model.objects.filter(id_medical=id_medical).aggregate(
-            count=Count('pk'), last=Max(date_field),
-        )
-        last = result['last']
-        if isinstance(last, datetime.datetime):
-            last = timezone.localdate(last)
-        return {'count': result['count'], 'last': last.isoformat() if last else None}
-
-    return {
-        'diary_entries': summary(Diary, 'created_at'),
-        'meals': summary(DietMeal, 'entry_date'),
-        'hydration_entries': summary(Hydration, 'entry_date'),
-        'activities': summary(DietActivity, 'entry_date'),
-        'sleep_nights': summary(DietSleep, 'entry_date'),
-        'supplements': Supplement.objects.filter(id_medical=id_medical).count(),
-        'health_profile': HealthProfile.objects.filter(id_medical=id_medical).exists(),
-    }
-
-
 def _guardian_status(links):
     if not links:
         return STATUS_NONE
@@ -412,8 +401,8 @@ def account_detail(user_id):
     or (None, None) if there is no such account.
 
     Every name in here is a user_db identity row the administrator could equally
-    reach from the list; every number about a patient's records comes from
-    `_activity`, which reads no content.
+    reach from the list. Nothing comes from medical_db: not even how many
+    records a patient has — see the module header.
     """
     user = User.objects.select_related('user_role').filter(pk=user_id).first()
     if user is None:
@@ -484,7 +473,6 @@ def account_detail(user_id):
                 }
                 for link in care
             ],
-            'activity': _activity(patient.id_medical),
         }
 
     if kind == KIND_GUARDIAN:
@@ -500,3 +488,166 @@ def account_detail(user_id):
         }
 
     return detail, user
+
+
+# --- correcting and deleting an account -------------------------------------
+
+class NotEditable(Exception):
+    """An account the panel does not edit: anybody's but a specialist's.
+
+    A specialist's account is the one the foundation vouches for, and its
+    details are what the approval was decided on — so the foundation may
+    correct them. A patient's, a guardian's or an administrator's data is the
+    person's own to change from their profile.
+    """
+
+
+class OwnAccount(Exception):
+    """The administrator's own account, which the panel does not delete.
+
+    The request would end the very session making it, and the last
+    administrator deleting themselves would leave nobody to open the panel;
+    `manage.py` on the server is where that decision is made.
+    """
+
+
+#: user_db identity columns an administrator may correct.
+EDITABLE_USER_FIELDS = ('name', 'surname', 'email', 'date_of_birth')
+
+#: `specjalist` columns, keyed by the name the API uses for each.
+EDITABLE_SPECIALIST_FIELDS = {
+    'specialization': 'specjalization',
+    'university': 'university',
+    'field_of_study': 'field_of_study',
+    'diploma_number': 'diploma_number',
+    'module': 'module',
+}
+
+
+def _target(user_id):
+    """(user, kind) for an account, or None if there is no such account."""
+    user = User.objects.select_related('user_role').filter(pk=user_id).first()
+    if user is None:
+        return None
+    admins, specialists, patients = _kind_sets()
+    return user, _kind(user, admins, specialists, patients)
+
+
+def editable_specialist(user_id):
+    """The `user` of a specialist account the panel may edit, None if there is
+    no such account — or raises NotEditable for any other kind."""
+    target = _target(user_id)
+    if target is None:
+        return None
+    user, kind = target
+    if kind != KIND_SPECIALIST:
+        raise NotEditable()
+    return user
+
+
+def edit_account(admin_user, user_id, changes):
+    """Apply already validated `changes` to one specialist's account. Returns
+    the user, or None if there is no such account; raises NotEditable for any
+    account that is not a specialist's.
+
+    `changes` holds only what the form sent — see AdminAccountEditSerializer.
+
+    A changed address signs the account out everywhere. The address is the
+    login and where a password-reset link goes, so a session opened under the
+    old one should not outlive the correction.
+    """
+    user = editable_specialist(user_id)
+    if user is None:
+        return None
+
+    user_fields = [name for name in EDITABLE_USER_FIELDS if name in changes]
+    email_changed = 'email' in changes and changes['email'] != user.email
+    for name in user_fields:
+        setattr(user, name, changes[name])
+
+    specialist_fields = [
+        column for key, column in EDITABLE_SPECIALIST_FIELDS.items() if key in changes
+    ]
+
+    with transaction.atomic(using='default'):
+        if user_fields:
+            user.save(update_fields=[*user_fields, 'updated_at'])
+        if specialist_fields:
+            specjalist = Specjalist.objects.get(user=user)
+            for key, column in EDITABLE_SPECIALIST_FIELDS.items():
+                if key in changes:
+                    setattr(specjalist, column, changes[key])
+            specjalist.save(update_fields=specialist_fields)
+        if email_changed:
+            end_all_sessions(user)
+        record(admin_user, ACTION_EDIT_ACCOUNT, user)
+    return user
+
+
+def _medical_models():
+    """Every medical_db model that files rows under a patient's `id_medical`.
+
+    Found rather than listed, so a table added later is deleted with the rest
+    instead of silently surviving the account: a list here would be one more
+    place to forget.
+    """
+    return [
+        model for model in apps.get_app_config('core').get_models()
+        if model._meta.model_name in MEDICAL_MODELS
+        and any(field.name == 'id_medical' for field in model._meta.fields)
+    ]
+
+
+def delete_account(admin_user, user_id):
+    """Delete one account, and everything that is only about it. Returns the
+    kind of account deleted, or None if there was none.
+
+    What goes, by kind:
+
+    * **patient** — every medical_db row under their `id_medical` (diary,
+      reports, meals, hydration, supplements, activity, sleep, health profile;
+      the rows hanging off those go by cascade), then the account itself, their
+      care links and their guardian links;
+    * **specialist** — the account and their care links: their patients keep
+      their own records and lose only this person's access. The techniques they
+      published stay in the catalogue, with no author, like the app's own —
+      patients may be in the middle of one;
+    * **guardian** — the account and their links. A minor whose only accepted
+      guardian this was is locked again (RODO art. 8) until another accepts;
+    * **administrator** — another one's account and their `administrator` row.
+      Their audit entries stay, with their address as text. An administrator's
+      own account raises OwnAccount instead.
+
+    THE ORDER ACROSS THE TWO DATABASES IS DELIBERATE. Nothing can make the two
+    one transaction, so medical_db goes first: if the user_db half then fails,
+    what is left is an account with no records, which the next attempt finishes
+    deleting. The other way round, a failure would leave health data that no
+    account points at any more — unreachable, and impossible to delete on
+    request because nothing says whose it is.
+
+    The audit entry is written with the `user` row's removal, in the same
+    transaction, and keeps the name and address as text (see `record`).
+    """
+    target = _target(user_id)
+    if target is None:
+        return None
+    user, kind = target
+    if user.pk == admin_user.pk:
+        raise OwnAccount()
+
+    patient = Patient.objects.filter(user=user).first()
+    if patient is not None:
+        with transaction.atomic(using='medical'):
+            for model in _medical_models():
+                model.objects.filter(id_medical=patient.id_medical).delete()
+
+    if kind == KIND_SPECIALIST:
+        Technique.objects.filter(author_id_specjalist=user.pk).update(
+            author_id_specjalist=None,
+        )
+
+    with transaction.atomic(using='default'):
+        record(admin_user, ACTION_DELETE_ACCOUNT, user)
+        end_all_sessions(user)
+        user.delete()
+    return kind

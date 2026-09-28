@@ -6,8 +6,8 @@ Three things are under test, and each has its own class:
 * the specialist account's third gate — waiting for an administrator — and the
   two decisions that end the wait: approval opens the panel, rejection deletes
   the account;
-* the read-only view of the data, which must carry identity and counts and
-  never a single record's content, and the audit log that records every look.
+* the read-only view of the data, which must carry identity and app-wide
+  totals and never anything from medical_db about one patient, and the audit log that records every look.
 """
 
 import datetime
@@ -360,7 +360,7 @@ class PendingSpecialistTests(AdminTestCase):
 
 
 class DataViewTests(AdminTestCase):
-    """Identity from user_db, counts from medical_db, and nothing more."""
+    """Identity from user_db, app-wide totals from medical_db, nothing more."""
 
     def setUp(self):
         super().setUp()
@@ -416,7 +416,7 @@ class DataViewTests(AdminTestCase):
     def test_an_unknown_kind_is_a_400_not_an_empty_list(self):
         self.assertEqual(self.get('admin-accounts', kind='nikt').status_code, 400)
 
-    def test_a_patient_s_detail_has_links_and_counts(self):
+    def test_a_patient_s_detail_has_links_and_no_activity(self):
         data = self.get('admin-account', self.patient.user_id).data
 
         self.assertEqual(data['kind'], 'patient')
@@ -426,13 +426,14 @@ class DataViewTests(AdminTestCase):
         self.assertEqual(
             [row['email'] for row in data['patient']['specialists']],
             ['terapeutka@example.com'])
-        activity = data['patient']['activity']
-        self.assertEqual(activity['diary_entries']['count'], 1)
-        self.assertEqual(activity['meals'], {'count': 1, 'last': '2026-09-01'})
-        self.assertIs(activity['health_profile'], False)
+        # How active one named patient is would already be health data about
+        # them, so not even a count or a date crosses from medical_db.
+        self.assertNotIn('activity', data['patient'])
+        payload = json.dumps(data, default=str)
+        self.assertNotIn('2026-09-01', payload)
 
     def test_no_record_s_content_ever_reaches_the_panel(self):
-        """The pseudonymisation is the point: counts, never content."""
+        """The pseudonymisation is the point: nothing about one patient's records."""
         responses = [
             self.get('admin-overview'),
             self.get('admin-accounts'),

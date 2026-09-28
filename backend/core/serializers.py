@@ -1311,9 +1311,10 @@ class SpecialistColleagueCreateSerializer(serializers.Serializer):
 
     And one of its own: the qualification — university, field of study and
     diploma number — is required. It is what the administrator checks before
-    approving the account (core/admin_panel.py), and it is asked here and only
-    here: nothing edits it afterwards, since a change after approval would
-    bypass the check it was approved on.
+    approving the account (core/admin_panel.py), and it is asked here; after
+    that only an administrator can correct it (`AdminAccountEditSerializer`),
+    never the specialist, whose own change would bypass the check it was
+    approved on.
 
     The address is the one thing this form cannot keep quiet about (`EMAIL_TAKEN`
     — an account cannot be created on an address that has one), and it is worth
@@ -1407,3 +1408,82 @@ class SpecialistColleagueCreateSerializer(serializers.Serializer):
             # validate_email lost a race with a concurrent create for the same
             # address; the unique index is the actual arbiter.
             raise serializers.ValidationError({'email': [EMAIL_TAKEN]}) from exc
+
+
+class AdminAccountEditSerializer(serializers.Serializer):
+    """What an administrator may correct on a specialist's account — see
+    core/admin_panel.py `edit_account`, which refuses every other kind.
+
+    Every field is optional: the body carries what changed and nothing else, so
+    a correction to a surname does not rewrite a diploma number somebody else
+    fixed a minute earlier. The rules are the ones the account was created
+    under, not new ones — the colleagues form's required details, the same
+    address check as registration, the same date checks and adulthood —
+    because an edit that could produce an account the form would refuse is a
+    back door into it.
+
+    Expects `context={'user': <the specialist's user row>}`.
+    """
+
+    name = serializers.CharField(
+        max_length=150, required=False,
+        error_messages={'blank': 'Podaj imię.'},
+    )
+    surname = serializers.CharField(
+        max_length=150, required=False,
+        error_messages={'blank': 'Podaj nazwisko.'},
+    )
+    email = serializers.EmailField(
+        max_length=255, required=False,
+        error_messages={'blank': 'Podaj adres e-mail.', 'invalid': 'Podaj poprawny adres e-mail.'},
+    )
+    date_of_birth = serializers.DateField(
+        required=False,
+        error_messages={'null': 'Podaj datę urodzenia.', 'invalid': 'Podaj poprawną datę urodzenia.'},
+    )
+    # The specialist's own details, with the colleagues form's limits and words.
+    specialization = serializers.CharField(
+        max_length=200, required=False,
+        error_messages={'blank': SPECIALIZATION_REQUIRED},
+    )
+    university = serializers.CharField(
+        max_length=200, required=False, error_messages={'blank': 'Podaj uczelnię.'},
+    )
+    field_of_study = serializers.CharField(
+        max_length=200, required=False,
+        error_messages={'blank': 'Podaj kierunek studiów.'},
+    )
+    diploma_number = serializers.CharField(
+        max_length=50, required=False, error_messages={'blank': 'Podaj numer dyplomu.'},
+    )
+    module = serializers.ChoiceField(
+        choices=MODULES, required=False,
+        error_messages={'invalid_choice': 'Nieznany moduł.'},
+    )
+
+    TRIMMED_FIELDS = ('name', 'surname', 'specialization', 'university', 'field_of_study',
+                      'diploma_number')
+
+    def validate_email(self, value):
+        value = value.lower()
+        # Taken by somebody *else*: keeping the account's own address, or
+        # changing only its case, is not a conflict.
+        if User.objects.filter(email=value).exclude(pk=self.context['user'].pk).exists():
+            raise serializers.ValidationError(EMAIL_TAKEN)
+        return value
+
+    def validate_date_of_birth(self, value):
+        value = checked_date_of_birth(value)
+        if age_on(value, timezone.localdate()) < ADULT_AGE:
+            raise serializers.ValidationError(SPECIALIST_MUST_BE_ADULT)
+        return value
+
+    def validate(self, attrs):
+        for name in self.TRIMMED_FIELDS:
+            if name in attrs:
+                attrs[name] = attrs[name].strip()
+                if not attrs[name]:
+                    raise serializers.ValidationError(
+                        {name: [self.fields[name].error_messages['blank']]},
+                    )
+        return attrs

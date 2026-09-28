@@ -322,9 +322,9 @@ function SpecialistColleagues() {
               disabled={saving}
             />
             {/* The qualification: what the administrator checks before the
-                account may work. Asked here and nowhere else — nothing edits
-                it later, because a change after approval would bypass the
-                check it was approved on. */}
+                account may work. Asked here; later only an administrator may
+                correct it, because the specialist's own change would bypass
+                the check it was approved on. */}
             <FormField
               id="university"
               label="Uczelnia"

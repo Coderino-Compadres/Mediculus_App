@@ -8,6 +8,7 @@ that belong to the request as a whole rather than to one field — the frontend'
 
 import datetime
 
+from django.db import IntegrityError
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.middleware.csrf import get_token
@@ -54,7 +55,9 @@ from .parent_invitations import (list_invitations, revoke,
 from .permissions import CONSENT_EXEMPT, PASSWORD_CHANGE_EXEMPT
 from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
-from .serializers import (ConsentScopeSerializer, GuardianLinkSerializer,
+from .serializers import (EMAIL_TAKEN, AdminAccountEditSerializer,
+                          ConsentScopeSerializer,
+                          GuardianLinkSerializer,
                           LoginSerializer, ParentInvitationCreateSerializer,
                           PasswordChangeSerializer,
                           PasswordResetConfirmSerializer,
@@ -2220,6 +2223,13 @@ PENDING_SPECIALIST_NOT_FOUND = (
 
 ACCOUNT_NOT_FOUND = 'Nie znaleziono takiego konta.'
 
+NOT_EDITABLE_REFUSAL = 'W panelu można zmieniać tylko dane kont specjalistów.'
+
+OWN_ACCOUNT_REFUSAL = (
+    'Nie możesz usunąć własnego konta administratora z panelu — '
+    'robi się to z serwera (manage.py).'
+)
+
 
 def _require_admin(request):
     """The session's `user`, if it has an `administrator` row — or a refusal.
@@ -2300,10 +2310,18 @@ class AdminAccountsView(APIView):
 
 
 class AdminAccountView(APIView):
-    """GET /api/admin/accounts/<id>/ — one account and the links it is part of.
+    """/api/admin/accounts/<id>/ — one account: read it, correct it, delete it.
 
-    For a patient, medical_db contributes counts and last dates and nothing
-    else — see `admin_panel._activity`.
+    GET: the account and the links it is part of — user_db only; nothing about
+    a patient comes from medical_db, not even a count.
+
+    PATCH: correct a specialist's identity fields or professional details —
+    only the fields sent. Any other kind of account answers 403. Answers with
+    the account as GET would.
+
+    DELETE: any account and everything that is only about it, a patient's
+    medical records included — see `admin_panel.delete_account`. 204. The
+    administrator's own account answers 403.
     """
 
     def get(self, request, user_id):
@@ -2313,6 +2331,37 @@ class AdminAccountView(APIView):
             raise NotFound(ACCOUNT_NOT_FOUND)
         admin_panel.record(admin, admin_panel.ACTION_VIEW_ACCOUNT, user)
         return Response(detail)
+
+    def patch(self, request, user_id):
+        admin = _require_admin(request)
+        try:
+            target = admin_panel.editable_specialist(user_id)
+        except admin_panel.NotEditable:
+            raise PermissionDenied(NOT_EDITABLE_REFUSAL)
+        if target is None:
+            raise NotFound(ACCOUNT_NOT_FOUND)
+        serializer = AdminAccountEditSerializer(
+            data=request.data, context={'user': target},
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            admin_panel.edit_account(admin, user_id, serializer.validated_data)
+        except IntegrityError:
+            # The address check lost a race with another account taking it;
+            # the unique index is the arbiter.
+            raise ValidationError({'email': [EMAIL_TAKEN]})
+        detail, _ = admin_panel.account_detail(user_id)
+        return Response(detail)
+
+    def delete(self, request, user_id):
+        admin = _require_admin(request)
+        try:
+            deleted = admin_panel.delete_account(admin, user_id)
+        except admin_panel.OwnAccount:
+            raise PermissionDenied(OWN_ACCOUNT_REFUSAL)
+        if deleted is None:
+            raise NotFound(ACCOUNT_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class AdminAuditLogView(APIView):

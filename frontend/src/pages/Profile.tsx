@@ -241,9 +241,9 @@ function Profile() {
         </div>
       </section>
 
-      {/* A specialist's qualification, read-only: written once by the
-          colleague who created the account and approved on by the
-          administrator, so there is deliberately no form for it here. An
+      {/* A specialist's qualification, read-only: written by the colleague
+          who created the account and approved on by the administrator, who
+          alone may correct it — so there is deliberately no form for it here. An
           account created before it was asked for has none and gets no card. */}
       {user.specialistQualifications && qualificationLine(user.specialistQualifications) && (
         <section className="profile-card" aria-labelledby="profile-qualifications">

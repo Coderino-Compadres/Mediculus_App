@@ -1,8 +1,9 @@
 """A specialist's qualification: university, field of study, diploma number.
 
 Asked for by the colleagues form when an account is created and read by the
-administrator before approving it (core/admin_panel.py). Written once and never
-edited — a change after approval would bypass the check it was approved on.
+administrator before approving it (core/admin_panel.py). The specialist never
+edits it — a change after approval would bypass the check it was approved on;
+only an administrator may correct it.
 
 All three are nullable in the schema although the form requires them: every
 specialist that exists when this runs was created without being asked, and
