@@ -347,6 +347,8 @@ describe('specialist accounts', () => {
       surname: 'Terapeutka',
       email: 'anna@wp.pl',
       specialization: 'psychoterapia poznawczo-behawioralna',
+      // Absent from this payload, as from a backend a release behind.
+      qualifications: { university: null, fieldOfStudy: null, diplomaNumber: null },
       moduleLabel: 'Psychoterapia',
       createdAt: '2026-09-01T09:00:00+02:00',
       consentsActive: false,
@@ -381,6 +383,9 @@ describe('specialist accounts', () => {
       lastName: 'Terapeutka',
       dateOfBirth: '1985-02-01',
       specialization: 'psychoterapia poznawczo-behawioralna',
+      university: 'Uniwersytet Rzeszowski',
+      fieldOfStudy: 'Psychologia',
+      diplomaNumber: '1234/2015',
       module: 'psychotherapy',
     })
 
@@ -392,6 +397,9 @@ describe('specialist accounts', () => {
         surname: 'Terapeutka',
         date_of_birth: '1985-02-01',
         specialization: 'psychoterapia poznawczo-behawioralna',
+        university: 'Uniwersytet Rzeszowski',
+        field_of_study: 'Psychologia',
+        diploma_number: '1234/2015',
         module: 'psychotherapy',
       },
     })
@@ -410,6 +418,9 @@ describe('specialist accounts', () => {
       lastName: 'Terapeutka',
       dateOfBirth: '1985-02-01',
       specialization: 'psychoterapia poznawczo-behawioralna',
+      university: 'Uniwersytet Rzeszowski',
+      fieldOfStudy: 'Psychologia',
+      diplomaNumber: '1234/2015',
       module: 'psychotherapy',
     })
 
@@ -420,7 +431,35 @@ describe('specialist accounts', () => {
   it('maps every field the form can be refused on', async () => {
     // A field missing here means a Django error lands nowhere visible.
     expect(Object.keys(COLLEAGUE_FIELDS).sort()).toEqual([
-      'date_of_birth', 'email', 'module', 'name', 'specialization', 'surname',
+      'date_of_birth', 'diploma_number', 'email', 'field_of_study', 'module', 'name',
+      'specialization', 'surname', 'university',
     ])
+  })
+
+  it('reads the qualification off a roster row', async () => {
+    mockedRequest.mockResolvedValueOnce([{
+      ...COLLEAGUE_PAYLOAD,
+      university: 'Uniwersytet Rzeszowski',
+      field_of_study: 'Psychologia',
+      diploma_number: '1234/2015',
+    }])
+
+    const [row] = await fetchColleagues()
+
+    expect(row.qualifications).toEqual({
+      university: 'Uniwersytet Rzeszowski',
+      fieldOfStudy: 'Psychologia',
+      diplomaNumber: '1234/2015',
+    })
+  })
+
+  it('reads a row from a backend without the qualification as all null', async () => {
+    mockedRequest.mockResolvedValueOnce([COLLEAGUE_PAYLOAD])
+
+    const [row] = await fetchColleagues()
+
+    expect(row.qualifications).toEqual({
+      university: null, fieldOfStudy: null, diplomaNumber: null,
+    })
   })
 })

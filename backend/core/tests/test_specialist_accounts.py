@@ -54,6 +54,9 @@ NEW_COLLEAGUE = {
     'surname': 'Terapeutka',
     'date_of_birth': '1985-02-01',
     'specialization': 'psychoterapia poznawczo-behawioralna',
+    'university': 'Uniwersytet Rzeszowski',
+    'field_of_study': 'Psychologia',
+    'diploma_number': '1234/2015',
     'module': 'psychotherapy',
 }
 
@@ -444,6 +447,36 @@ class RefusalTests(ColleagueTestCase):
         self.assertIn('specialization', response.data)
         self.assertFalse(User.objects.filter(email='nowa.terapeutka@example.com').exists())
 
+    def test_the_qualification_is_stored_as_typed_trimmed(self):
+        response = self.create(
+            university='  Uniwersytet Rzeszowski ', field_of_study=' Psychologia',
+            diploma_number=' 1234/2015 ',
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        created = Specjalist.objects.get(user__email='nowa.terapeutka@example.com')
+        self.assertEqual(
+            (created.university, created.field_of_study, created.diploma_number),
+            ('Uniwersytet Rzeszowski', 'Psychologia', '1234/2015'),
+        )
+
+    def test_a_blank_qualification_is_refused_in_words(self):
+        """What the administrator approves the account on, so an empty one is
+        no qualification at all."""
+        response = self.create(university=' ', field_of_study='', diploma_number='')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['university'], ['Podaj uczelnię.'])
+        self.assertEqual(response.data['field_of_study'], ['Podaj kierunek studiów.'])
+        self.assertEqual(response.data['diploma_number'], ['Podaj numer dyplomu.'])
+        self.assertFalse(User.objects.filter(email='nowa.terapeutka@example.com').exists())
+
+    def test_an_overlong_diploma_number_is_refused(self):
+        response = self.create(diploma_number='1' * 51)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('diploma_number', response.data)
+
     def test_the_module_is_required(self):
         """It decides which panel the colleague lands on, so nobody gets one by
         default."""
@@ -534,6 +567,26 @@ class RosterTests(ColleagueTestCase):
         response = self.client.get(reverse('core:specialist-colleagues'))
 
         self.assertEqual(set(response.data[0]), {'id', *COLLEAGUE_SUMMARY_FIELDS})
+
+    def test_a_row_carries_the_qualification(self):
+        self.create()
+
+        response = self.client.get(reverse('core:specialist-colleagues'))
+
+        row = response.data[0]
+        self.assertEqual(row['university'], 'Uniwersytet Rzeszowski')
+        self.assertEqual(row['field_of_study'], 'Psychologia')
+        self.assertEqual(row['diploma_number'], '1234/2015')
+
+    def test_an_account_from_before_the_qualification_lists_it_as_null(self):
+        """Nobody asked the existing specialists, and a blank string would
+        read as somebody having typed nothing."""
+        response = self.client.get(reverse('core:specialist-colleagues'))
+
+        row = response.data[0]
+        self.assertIsNone(row['university'])
+        self.assertIsNone(row['field_of_study'])
+        self.assertIsNone(row['diploma_number'])
 
     def test_nothing_clinical_and_no_caseload_travels(self):
         """A colleague's patients agreed to *them*, not to every specialist in

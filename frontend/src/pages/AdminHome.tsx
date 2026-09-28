@@ -15,6 +15,7 @@ import {
 } from '../api/admin'
 import { useAuth } from '../auth/authContext'
 import { linkedSinceLabel } from '../utils/children'
+import { qualificationLine } from '../utils/qualifications'
 import { adminAccountPath, ROUTES, routeTitle } from '../routes'
 import '../styles/panel.css'
 import './home.css'
@@ -193,6 +194,12 @@ function AdminHome() {
                 <p className="specialist-list-meta">{specialist.email}</p>
                 <p className="specialist-list-meta">
                   {[specialist.specialization, specialist.moduleLabel].filter(Boolean).join(' · ')}
+                </p>
+                {/* What the approval is decided on, so it sits right under who
+                    the person is — and says so when an older account has none. */}
+                <p className="specialist-list-meta">
+                  {qualificationLine(specialist.qualifications)
+                    ?? 'Nie podano uczelni, kierunku ani numeru dyplomu'}
                 </p>
                 <p className="specialist-list-meta">
                   {specialist.createdBy

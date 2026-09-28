@@ -9,6 +9,7 @@ import ProfilePasswordForm from '../components/ProfilePasswordForm'
 import LoadError from '../components/LoadError'
 import ServicesConsentWithdrawal from '../components/ServicesConsentWithdrawal'
 import { hasPatientProfile } from '../api/auth'
+import { qualificationLine } from '../utils/qualifications'
 import { useAuth } from '../auth/authContext'
 import { useAccountProfile } from '../hooks/useAccountProfile'
 import { useSignOut } from '../hooks/useSignOut'
@@ -239,6 +240,29 @@ function Profile() {
           {user.role && <p className="profile-identity-role">{roleLabel(user.role)}</p>}
         </div>
       </section>
+
+      {/* A specialist's qualification, read-only: written by the colleague
+          who created the account and approved on by the administrator, who
+          alone may correct it — so there is deliberately no form for it here. An
+          account created before it was asked for has none and gets no card. */}
+      {user.specialistQualifications && qualificationLine(user.specialistQualifications) && (
+        <section className="profile-card" aria-labelledby="profile-qualifications">
+          <h2 id="profile-qualifications" className="profile-section-label">
+            KWALIFIKACJE
+          </h2>
+          <div className="profile-care-list">
+            <CareRow label="Uczelnia" value={user.specialistQualifications.university ?? '—'} />
+            <CareRow
+              label="Kierunek studiów"
+              value={user.specialistQualifications.fieldOfStudy ?? '—'}
+            />
+            <CareRow
+              label="Numer dyplomu"
+              value={user.specialistQualifications.diplomaNumber ?? '—'}
+            />
+          </div>
+        </section>
+      )}
 
       {/* Only for an account that is a clinical subject. `hasPatientProfile`
           mirrors `_require_patient` on the backend, which answers 403 for a

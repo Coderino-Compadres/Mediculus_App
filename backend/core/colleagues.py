@@ -107,8 +107,9 @@ PASSWORD_GROUP_LENGTH = 4
 #: not log in": a freshly created account has granted nothing yet (see the module
 #: header), and silence would read as the account never having been created.
 COLLEAGUE_SUMMARY_FIELDS = (
-    'name', 'surname', 'email', 'specialization', 'module', 'module_label',
-    'created_at', 'consents_active', 'approved',
+    'name', 'surname', 'email', 'specialization', 'university', 'field_of_study',
+    'diploma_number', 'module', 'module_label', 'created_at', 'consents_active',
+    'approved',
 )
 
 
@@ -127,7 +128,8 @@ def generate_password():
     return '-'.join(groups)
 
 
-def create_account(*, email, name, surname, date_of_birth, specialization, module,
+def create_account(*, email, name, surname, date_of_birth, specialization,
+                   university, field_of_study, diploma_number, module,
                    created_by=None):
     """Create a specialist account. Returns (specjalist row, plaintext password).
 
@@ -168,10 +170,27 @@ def create_account(*, email, name, surname, date_of_birth, specialization, modul
             must_change_password=True,
         )
         specjalist = Specjalist.objects.create(
-            user=user, specjalization=specialization, module=module,
+            user=user, specjalization=specialization,
+            university=university, field_of_study=field_of_study,
+            diploma_number=diploma_number, module=module,
             created_by=created_by,
         )
     return specjalist, password
+
+
+def qualifications(specjalist):
+    """University, field of study and diploma number, as every reader sends them.
+
+    One function because three screens show them — the colleagues roster, the
+    specialist's own profile and the administrator's approval — and all three
+    have to agree on the names. Each is None for an account created before
+    migration 0026.
+    """
+    return {
+        'university': specjalist.university,
+        'field_of_study': specjalist.field_of_study,
+        'diploma_number': specjalist.diploma_number,
+    }
 
 
 def serialize_colleague(specjalist):
@@ -190,6 +209,10 @@ def serialize_colleague(specjalist):
         # `specjalist.specjalization`: /api/account/profile/ already sends it as
         # `approach`, so the wire has never mirrored that typo.
         'specialization': specjalist.specjalization,
+        # Professional identity like the specialization, which is why the
+        # roster carries it: who this colleague is qualified as, never whom
+        # they treat.
+        **qualifications(specjalist),
         'module': specjalist.module,
         'module_label': module_label(specjalist.module),
         'created_at': user.created_at.isoformat() if user.created_at else None,

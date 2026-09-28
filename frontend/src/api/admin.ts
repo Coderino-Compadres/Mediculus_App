@@ -9,6 +9,12 @@
  */
 
 import { apiRequest } from './client'
+import { isAppModule, type AppModule } from '../utils/modules'
+import {
+  toQualifications,
+  type Qualifications,
+  type QualificationsPayload,
+} from '../utils/qualifications'
 
 // --- specialists waiting for a decision ------------------------------------
 
@@ -37,7 +43,7 @@ export function personLabel(person: Person): string {
   return name || person.email || 'Konto bez nazwy'
 }
 
-interface PendingSpecialistPayload extends PersonPayload {
+interface PendingSpecialistPayload extends PersonPayload, QualificationsPayload {
   specialization: string | null
   module: string
   module_label: string
@@ -49,6 +55,8 @@ interface PendingSpecialistPayload extends PersonPayload {
 
 export interface PendingSpecialist extends Person {
   specialization: string | null
+  /** What the approval is decided on; every value null on an older account. */
+  qualifications: Qualifications
   moduleLabel: string
   createdAt: string | null
   /** Who created the account from the colleagues screen; null for older ones. */
@@ -63,6 +71,7 @@ function toPendingSpecialist(payload: PendingSpecialistPayload): PendingSpeciali
   return {
     ...toPerson(payload),
     specialization: payload.specialization,
+    qualifications: toQualifications(payload),
     moduleLabel: payload.module_label,
     createdAt: payload.created_at,
     createdBy: payload.created_by ? toPerson(payload.created_by) : null,
@@ -219,49 +228,22 @@ function toLink(payload: LinkPayload): Link {
   }
 }
 
-/** A count and the date of the latest one ('YYYY-MM-DD'), or null if none. */
-export interface Tally {
-  count: number
-  last: string | null
-}
-
-export interface Activity {
-  diaryEntries: Tally
-  meals: Tally
-  hydrationEntries: Tally
-  activities: Tally
-  sleepNights: Tally
-  supplements: number
-  healthProfile: boolean
-}
-
-interface ActivityPayload {
-  diary_entries: Tally
-  meals: Tally
-  hydration_entries: Tally
-  activities: Tally
-  sleep_nights: Tally
-  supplements: number
-  health_profile: boolean
-}
-
 interface AccountDetailPayload extends AccountRowPayload {
   date_of_birth: string | null
   updated_at: string | null
-  specialist: {
+  specialist: (QualificationsPayload & {
     specialization: string | null
     module: string
     module_label: string
     approved_at: string | null
     created_by: PersonPayload | null
     patients: LinkPayload[]
-  } | null
+  }) | null
   patient: {
     is_child: boolean | null
     guardian_status: string | null
     guardians: LinkPayload[]
     specialists: LinkPayload[]
-    activity: ActivityPayload
   } | null
   guardian: { children: LinkPayload[] } | null
 }
@@ -271,6 +253,9 @@ export interface AccountDetail extends AccountRow {
   updatedAt: string | null
   specialist: {
     specialization: string | null
+    qualifications: Qualifications
+    /** The raw module, for the edit form's picker; null if the backend sent an unknown one. */
+    module: AppModule | null
     moduleLabel: string
     approvedAt: string | null
     createdBy: Person | null
@@ -282,7 +267,6 @@ export interface AccountDetail extends AccountRow {
     guardianStatus: string | null
     guardians: Link[]
     specialists: Link[]
-    activity: Activity
   } | null
   guardian: { children: Link[] } | null
 }
@@ -296,6 +280,8 @@ function toAccountDetail(payload: AccountDetailPayload): AccountDetail {
     specialist: specialist
       ? {
           specialization: specialist.specialization,
+          qualifications: toQualifications(specialist),
+          module: isAppModule(specialist.module) ? specialist.module : null,
           moduleLabel: specialist.module_label,
           approvedAt: specialist.approved_at,
           createdBy: specialist.created_by ? toPerson(specialist.created_by) : null,
@@ -308,15 +294,6 @@ function toAccountDetail(payload: AccountDetailPayload): AccountDetail {
           guardianStatus: patient.guardian_status,
           guardians: patient.guardians.map(toLink),
           specialists: patient.specialists.map(toLink),
-          activity: {
-            diaryEntries: patient.activity.diary_entries,
-            meals: patient.activity.meals,
-            hydrationEntries: patient.activity.hydration_entries,
-            activities: patient.activity.activities,
-            sleepNights: patient.activity.sleep_nights,
-            supplements: patient.activity.supplements,
-            healthProfile: patient.activity.health_profile,
-          },
         }
       : null,
     guardian: guardian ? { children: guardian.children.map(toLink) } : null,
@@ -326,6 +303,69 @@ function toAccountDetail(payload: AccountDetailPayload): AccountDetail {
 export async function fetchAccount(id: string): Promise<AccountDetail> {
   const payload = await apiRequest<AccountDetailPayload>(`/api/admin/accounts/${id}/`)
   return toAccountDetail(payload)
+}
+
+// --- correcting and deleting an account ------------------------------------
+
+/**
+ * What the edit form changed on a specialist's account — only the fields that
+ * differ from the account as loaded, so a correction to one field cannot
+ * overwrite another somebody fixed in the meantime.
+ */
+export interface AccountChanges {
+  firstName?: string
+  lastName?: string
+  email?: string
+  dateOfBirth?: string
+  specialization?: string
+  university?: string
+  fieldOfStudy?: string
+  diplomaNumber?: string
+  module?: AppModule
+}
+
+/** Form field -> API field. The inverse, for a 400, is ACCOUNT_EDIT_FIELDS. */
+const ACCOUNT_CHANGE_KEYS: Record<keyof AccountChanges, string> = {
+  firstName: 'name',
+  lastName: 'surname',
+  email: 'email',
+  dateOfBirth: 'date_of_birth',
+  specialization: 'specialization',
+  university: 'university',
+  fieldOfStudy: 'field_of_study',
+  diplomaNumber: 'diploma_number',
+  module: 'module',
+}
+
+/** API field name -> form field name, so a 400 lands under the right input. */
+export const ACCOUNT_EDIT_FIELDS: Record<string, string> = Object.fromEntries(
+  Object.entries(ACCOUNT_CHANGE_KEYS).map(([form, api]) => [api, form]),
+)
+
+/**
+ * Corrects a specialist's account; answers with the account as `fetchAccount`
+ * would. Any other kind of account is refused with a 403 — the panel edits
+ * only specialists (core/admin_panel.py `NotEditable`).
+ */
+export async function updateAccount(id: string, changes: AccountChanges): Promise<AccountDetail> {
+  const body: Record<string, string> = {}
+  for (const [key, value] of Object.entries(changes)) {
+    if (value !== undefined) body[ACCOUNT_CHANGE_KEYS[key as keyof AccountChanges]] = value
+  }
+  const payload = await apiRequest<AccountDetailPayload>(`/api/admin/accounts/${id}/`, {
+    method: 'PATCH',
+    body,
+  })
+  return toAccountDetail(payload)
+}
+
+/**
+ * Deletes any account for good, and everything only about it — for a patient,
+ * every record in medical_db. There is no undo on the backend either. The
+ * administrator's own account is refused with a 403 (`OwnAccount`).
+ */
+export async function deleteAccount(id: string): Promise<void> {
+  await apiRequest<void>(`/api/admin/accounts/${id}/`, { method: 'DELETE' })
 }
 
 // --- the audit log ----------------------------------------------------------
@@ -338,6 +378,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   view_pending_specialists: 'Przegląd kont do weryfikacji',
   approve_specialist: 'Zatwierdzenie konta specjalisty',
   reject_specialist: 'Odrzucenie i usunięcie konta specjalisty',
+  edit_account: 'Zmiana danych konta',
+  delete_account: 'Usunięcie konta',
 }
 
 /** An action the backend added after this list was written reads as its own

@@ -163,3 +163,12 @@
     margin-bottom: 8px;
   }
 }
+
+/* What an account deletion takes with it, listed before the confirmation. */
+.admin-consequences {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-graphite);
+}

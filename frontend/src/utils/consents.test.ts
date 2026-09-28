@@ -25,6 +25,7 @@ const USER: AuthUser = {
   mustChangePassword: false,
   specialistModule: null,
   specialistApproved: null,
+  specialistQualifications: null,
   isAdmin: false,
   consents: {
     active: true,

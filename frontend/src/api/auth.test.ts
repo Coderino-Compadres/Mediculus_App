@@ -108,6 +108,7 @@ describe('login', () => {
       specialistModule: null,
       // Neither a specialist waiting for approval nor an administrator.
       specialistApproved: null,
+      specialistQualifications: null,
       isAdmin: false,
       consents: {
         active: true,

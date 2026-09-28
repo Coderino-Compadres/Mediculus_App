@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders, TEST_USER } from '../test/render'
@@ -460,5 +460,74 @@ describe('inside the diet module', () => {
       'href', ROUTES.adminAuditLog,
     )
     expect(screen.getByText('Administrator')).toBeInTheDocument()
+  })
+})
+
+describe('HeaderMenu install entry', () => {
+  // The module keeps the browser's event across tests; `appinstalled` is the
+  // one thing that clears it, exactly as it would on a real device.
+  afterEach(() => window.dispatchEvent(new Event('appinstalled')))
+
+  function offerInstall() {
+    const event = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
+      prompt: vi.fn(() => Promise.resolve()),
+      userChoice: Promise.resolve({ outcome: 'accepted' as const }),
+    })
+    window.dispatchEvent(event)
+    return event
+  }
+
+  it('offers nothing when the browser has not said the app is installable', async () => {
+    renderWithProviders(<HeaderMenu />)
+    await openMenu()
+
+    expect(screen.queryByRole('button', { name: 'Zainstaluj aplikację' })).toBeNull()
+  })
+
+  it('opens the browser install dialog from the menu, once', async () => {
+    const event = offerInstall()
+    // Kept for the menu instead of Chrome's own infobar.
+    expect(event.defaultPrevented).toBe(true)
+
+    renderWithProviders(<HeaderMenu />)
+    await openMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Zainstaluj aplikację' }))
+
+    expect(event.prompt).toHaveBeenCalledTimes(1)
+    // The event is single-use, so the entry goes with it.
+    await openMenu()
+    expect(screen.queryByRole('button', { name: 'Zainstaluj aplikację' })).toBeNull()
+  })
+
+  it('stops offering once the app has been installed', async () => {
+    offerInstall()
+    renderWithProviders(<HeaderMenu />)
+    window.dispatchEvent(new Event('appinstalled'))
+    await openMenu()
+
+    expect(screen.queryByRole('button', { name: 'Zainstaluj aplikację' })).toBeNull()
+  })
+
+  it('explains the Share menu on iOS Safari, where nothing can open the dialog', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 '
+        + '(KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    )
+    renderWithProviders(<HeaderMenu />)
+    await openMenu()
+    await userEvent.click(screen.getByRole('button', { name: 'Zainstaluj aplikację' }))
+
+    expect(screen.getByText(/Do ekranu początkowego/)).toBeInTheDocument()
+  })
+
+  it('does not send Chrome on iOS to Safari’s Share menu', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 '
+        + '(KHTML, like Gecko) CriOS/126.0 Mobile/15E148 Safari/604.1',
+    )
+    renderWithProviders(<HeaderMenu />)
+    await openMenu()
+
+    expect(screen.queryByRole('button', { name: 'Zainstaluj aplikację' })).toBeNull()
   })
 })

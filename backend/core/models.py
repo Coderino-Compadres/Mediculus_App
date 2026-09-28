@@ -78,6 +78,15 @@ class Specjalist(models.Model):
         related_name='specjalist_profile',
     )
     specjalization = models.TextField(null=True, blank=True)
+    # The qualification behind the account, as the creating colleague typed it:
+    # what the administrator checks before approving (core/admin_panel.py).
+    # Required by the colleagues form; afterwards only an administrator can
+    # correct it (core/admin_panel.py `edit_account`) — never the specialist,
+    # whose own change would bypass the check it was approved on. NULL for every
+    # specialist created before migration 0026, which nobody asked for these.
+    university = models.TextField(null=True, blank=True)
+    field_of_study = models.TextField(null=True, blank=True)
+    diploma_number = models.TextField(null=True, blank=True)
     # Which module this account works in — one of core.modules.MODULES. It
     # shapes the specialist's own panel (a psychodietitian gets the diet
     # catalogue, not the DBT editor) and authorizes nothing about patients:

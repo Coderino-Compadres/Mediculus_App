@@ -38,6 +38,11 @@ const WAITING: PendingSpecialist = {
   surname: 'Terapeutka',
   email: 'nowa@wp.pl',
   specialization: 'DBT',
+  qualifications: {
+    university: 'Uniwersytet Jagielloński',
+    fieldOfStudy: 'Psychologia',
+    diplomaNumber: '987/2012',
+  },
   moduleLabel: 'Psychoterapia',
   createdAt: '2026-09-20T10:00:00+02:00',
   createdBy: { id: 'aaaa-1111', name: 'Anna', surname: 'Kowalska', email: 'anna@wp.pl' },
@@ -78,6 +83,28 @@ describe('AdminHome — the accounts waiting for a decision', () => {
     expect(within(card).getByText('nowa@wp.pl')).toBeInTheDocument()
     expect(within(card).getByText(/Konto założył\(a\): Anna Kowalska/)).toBeInTheDocument()
     expect(within(card).getByText(/udzielił zgód i ustawił własne hasło/)).toBeInTheDocument()
+  })
+
+  it('shows the qualification the approval is decided on', async () => {
+    renderScreen()
+
+    const card = await screen.findByRole('article', { name: 'Nowa Terapeutka' })
+    expect(
+      within(card).getByText('Psychologia, Uniwersytet Jagielloński · dyplom nr 987/2012'),
+    ).toBeInTheDocument()
+  })
+
+  it('says so when an account has no qualification recorded', async () => {
+    mockedPending.mockResolvedValue([{
+      ...WAITING,
+      qualifications: { university: null, fieldOfStudy: null, diplomaNumber: null },
+    }])
+    renderScreen()
+
+    const card = await screen.findByRole('article', { name: 'Nowa Terapeutka' })
+    expect(
+      within(card).getByText('Nie podano uczelni, kierunku ani numeru dyplomu'),
+    ).toBeInTheDocument()
   })
 
   it('approves with one click and says so', async () => {

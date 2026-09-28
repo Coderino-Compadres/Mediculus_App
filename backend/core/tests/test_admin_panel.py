@@ -6,8 +6,8 @@ Three things are under test, and each has its own class:
 * the specialist account's third gate — waiting for an administrator — and the
   two decisions that end the wait: approval opens the panel, rejection deletes
   the account;
-* the read-only view of the data, which must carry identity and counts and
-  never a single record's content, and the audit log that records every look.
+* the read-only view of the data, which must carry identity and app-wide
+  totals and never anything from medical_db about one patient, and the audit log that records every look.
 """
 
 import datetime
@@ -142,6 +142,8 @@ class AccessTests(AdminTestCase):
         self.assertIs(me['is_admin'], True)
         self.assertIs(me['is_specialist'], False)
         self.assertIsNone(me['specialist_approved'])
+        self.assertIsNone(me['specialist_qualifications'])
+        self.assertIsNone(me['specialist_qualifications'])
 
 
 class PendingSpecialistTests(AdminTestCase):
@@ -154,6 +156,8 @@ class PendingSpecialistTests(AdminTestCase):
         self.pending, _ = create_account(
             email='nowa@example.com', name='Nowa', surname='Terapeutka',
             date_of_birth='1985-02-01', specialization='DBT',
+            university='Uniwersytet Jagielloński', field_of_study='Psychologia',
+            diploma_number='987/2012',
             module=MODULE_PSYCHOTHERAPY, created_by=self.creator.user,
         )
         User.objects.filter(pk=self.pending.user_id).update(
@@ -190,6 +194,29 @@ class PendingSpecialistTests(AdminTestCase):
         self.assertIs(me['is_specialist'], True)
         self.assertIs(me['specialist_approved'], False)
 
+    def test_me_carries_the_qualification_for_the_profile(self):
+        self.sign_in(self.pending.user)
+
+        me = self.client.get(reverse('core:me')).data
+
+        self.assertEqual(me['specialist_qualifications'], {
+            'university': 'Uniwersytet Jagielloński',
+            'field_of_study': 'Psychologia',
+            'diploma_number': '987/2012',
+        })
+
+    def test_me_carries_the_specialists_own_qualification(self):
+        """For the profile screen, which shows it read-only."""
+        self.sign_in(self.pending.user)
+
+        me = self.client.get(reverse('core:me')).data
+
+        self.assertEqual(me['specialist_qualifications'], {
+            'university': 'Uniwersytet Jagielloński',
+            'field_of_study': 'Psychologia',
+            'diploma_number': '987/2012',
+        })
+
     def test_the_colleague_roster_shows_it_as_waiting(self):
         self.sign_in(self.creator.user)
 
@@ -205,6 +232,8 @@ class PendingSpecialistTests(AdminTestCase):
         response = self.client.post(reverse('core:specialist-colleagues'), {
             'email': 'trzecia@example.com', 'name': 'Trzecia', 'surname': 'Osoba',
             'date_of_birth': '1980-05-05', 'specialization': 'Dietetyka',
+            'university': 'Uniwersytet Rzeszowski', 'field_of_study': 'Dietetyka',
+            'diploma_number': '55/2020',
             'module': MODULE_DIET,
         }, format='json')
 
@@ -222,6 +251,31 @@ class PendingSpecialistTests(AdminTestCase):
         self.assertEqual(rows[0]['created_by']['email'], 'tworzy@example.com')
         self.assertIs(rows[0]['consents_active'], True)
         self.assertIs(rows[0]['password_set'], True)
+        # What the approval is decided on.
+        self.assertEqual(rows[0]['university'], 'Uniwersytet Jagielloński')
+        self.assertEqual(rows[0]['field_of_study'], 'Psychologia')
+        self.assertEqual(rows[0]['diploma_number'], '987/2012')
+
+    def test_the_account_detail_carries_the_qualification(self):
+        self.sign_in(self.admin)
+
+        detail = self.client.get(
+            reverse('core:admin-account', args=[self.pending.user_id])).data
+
+        self.assertEqual(detail['specialist']['diploma_number'], '987/2012')
+        self.assertEqual(detail['specialist']['university'], 'Uniwersytet Jagielloński')
+
+    def test_the_administrator_sees_the_qualification_to_check(self):
+        self.sign_in(self.admin)
+
+        row = self.client.get(reverse('core:admin-pending-specialists')).data[0]
+        detail = self.client.get(
+            reverse('core:admin-account', args=[self.pending.user_id])).data['specialist']
+
+        for payload in (row, detail):
+            self.assertEqual(payload['university'], 'Uniwersytet Jagielloński')
+            self.assertEqual(payload['field_of_study'], 'Psychologia')
+            self.assertEqual(payload['diploma_number'], '987/2012')
 
     def test_approving_opens_the_panel(self):
         self.sign_in(self.admin)
@@ -306,7 +360,7 @@ class PendingSpecialistTests(AdminTestCase):
 
 
 class DataViewTests(AdminTestCase):
-    """Identity from user_db, counts from medical_db, and nothing more."""
+    """Identity from user_db, app-wide totals from medical_db, nothing more."""
 
     def setUp(self):
         super().setUp()
@@ -362,7 +416,7 @@ class DataViewTests(AdminTestCase):
     def test_an_unknown_kind_is_a_400_not_an_empty_list(self):
         self.assertEqual(self.get('admin-accounts', kind='nikt').status_code, 400)
 
-    def test_a_patient_s_detail_has_links_and_counts(self):
+    def test_a_patient_s_detail_has_links_and_no_activity(self):
         data = self.get('admin-account', self.patient.user_id).data
 
         self.assertEqual(data['kind'], 'patient')
@@ -372,13 +426,14 @@ class DataViewTests(AdminTestCase):
         self.assertEqual(
             [row['email'] for row in data['patient']['specialists']],
             ['terapeutka@example.com'])
-        activity = data['patient']['activity']
-        self.assertEqual(activity['diary_entries']['count'], 1)
-        self.assertEqual(activity['meals'], {'count': 1, 'last': '2026-09-01'})
-        self.assertIs(activity['health_profile'], False)
+        # How active one named patient is would already be health data about
+        # them, so not even a count or a date crosses from medical_db.
+        self.assertNotIn('activity', data['patient'])
+        payload = json.dumps(data, default=str)
+        self.assertNotIn('2026-09-01', payload)
 
     def test_no_record_s_content_ever_reaches_the_panel(self):
-        """The pseudonymisation is the point: counts, never content."""
+        """The pseudonymisation is the point: nothing about one patient's records."""
         responses = [
             self.get('admin-overview'),
             self.get('admin-accounts'),

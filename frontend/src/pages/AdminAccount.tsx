@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import AdminAccountDelete from '../components/AdminAccountDelete'
+import AdminAccountEdit from '../components/AdminAccountEdit'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
 import { ApiError } from '../api/client'
@@ -10,8 +12,8 @@ import {
   type AccountDetail,
   type Link as AccountLink,
   type Person,
-  type Tally,
 } from '../api/admin'
+import { useAuth } from '../auth/authContext'
 import { roleLabel } from '../utils/roles'
 import { linkedSinceLabel } from '../utils/children'
 import { adminAccountPath, ROUTES } from '../routes'
@@ -42,12 +44,15 @@ function dayLabel(day: string | null): string | null {
 }
 
 /**
- * "Szczegóły konta" — one account and every link it is part of, read-only.
+ * "Szczegóły konta" — one account and every link it is part of, with the two
+ * things an administrator may do: correct a specialist's data
+ * (components/AdminAccountEdit.tsx) and delete any account but their own
+ * (components/AdminAccountDelete.tsx).
  *
- * What is here is user_db: identity, account state, who treats whom and who
- * vouches for whom. For a patient, medical_db contributes a count and a last
- * date per diary — `core.admin_panel._activity` asks each table for nothing
- * else, so no entry's content can reach this screen.
+ * What is here is user_db only: identity, account state, who treats whom and
+ * who vouches for whom. Nothing about a patient comes from medical_db — not
+ * even how many entries they wrote, which would already be health data about a
+ * named person.
  *
  * Opening it is written to the audit log with the account's name; the note at
  * the bottom says so. A 404 is its own message rather than the load error: an
@@ -67,6 +72,9 @@ function AccountScreen({ id }: { id: string }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  // Who was deleted, so the screen can say so instead of reloading into
+  // "nie ma takiego konta" as if something had gone wrong.
+  const [deleted, setDeleted] = useState<string | null>(null)
 
   function retry() {
     setLoading(true)
@@ -120,13 +128,36 @@ function AccountScreen({ id }: { id: string }) {
           onRetry={retry}
         />
       )}
-      {!loading && !notFound && !loadError && account && <AccountSections account={account} />}
+      {deleted && (
+        <p className="panel-success" role="status">
+          Usunięto konto: {deleted}. <Link to={ROUTES.adminAccounts}>Wróć do listy kont</Link>.
+        </p>
+      )}
+      {!deleted && !loading && !notFound && !loadError && account && (
+        <AccountSections
+          account={account}
+          onSaved={setAccount}
+          onDeleted={() => setDeleted(personLabel(account))}
+        />
+      )}
     </div>
   )
 }
 
-function AccountSections({ account }: { account: AccountDetail }) {
+interface AccountSectionsProps {
+  account: AccountDetail
+  onSaved: (account: AccountDetail) => void
+  onDeleted: () => void
+}
+
+function AccountSections({ account, onSaved, onDeleted }: AccountSectionsProps) {
   const { specialist, patient, guardian } = account
+  const { user } = useAuth()
+  // Only a specialist's data is corrected here: a patient's, a guardian's or an
+  // administrator's is the person's own to change. Any account may be deleted
+  // except the one signed in — see core/admin_panel.py.
+  const editable = account.kind === 'specialist'
+  const deletable = account.id !== user?.id
   return (
     <>
       <section className="panel-card" aria-labelledby="admin-account-heading">
@@ -155,6 +186,9 @@ function AccountSections({ account }: { account: AccountDetail }) {
           </h2>
           <dl className="admin-facts">
             <Fact term="Specjalizacja" value={specialist.specialization} />
+            <Fact term="Uczelnia" value={specialist.qualifications.university} />
+            <Fact term="Kierunek studiów" value={specialist.qualifications.fieldOfStudy} />
+            <Fact term="Numer dyplomu" value={specialist.qualifications.diplomaNumber} />
             <Fact term="Moduł" value={specialist.moduleLabel} />
             <Fact
               term="Weryfikacja"
@@ -211,21 +245,8 @@ function AccountSections({ account }: { account: AccountDetail }) {
             links={patient.guardians}
             empty="Pacjent nie jest powiązany z żadnym opiekunem."
           />
-          <h3 className="admin-subheading">Aktywność</h3>
-          <div className="panel-figures">
-            <TallyFigure tally={patient.activity.diaryEntries} label="wpisy w dzienniczku" />
-            <TallyFigure tally={patient.activity.meals} label="posiłki" />
-            <TallyFigure tally={patient.activity.hydrationEntries} label="nawodnienie" />
-            <TallyFigure tally={patient.activity.activities} label="aktywności" />
-            <TallyFigure tally={patient.activity.sleepNights} label="noce snu" />
-            <div className="panel-figure">
-              <span className="panel-figure-value">{patient.activity.supplements}</span>
-              <span className="panel-figure-label">suplementy i leki</span>
-            </div>
-          </div>
           <p className="panel-note admin-figures-note">
-            Profil zdrowotny: {patient.activity.healthProfile ? 'wypełniony' : 'niewypełniony'}.
-            Treść wpisów nie jest dostępna w panelu administratora.
+            Dane medyczne pacjenta nie są dostępne w panelu administratora.
           </p>
         </section>
       )}
@@ -243,7 +264,17 @@ function AccountSections({ account }: { account: AccountDetail }) {
         </section>
       )}
 
-      <p className="panel-note">To otwarcie konta zostało zapisane w dzienniku działań.</p>
+      {editable && <AdminAccountEdit account={account} onSaved={onSaved} />}
+      {deletable ? (
+        <AdminAccountDelete account={account} onDeleted={onDeleted} />
+      ) : (
+        <p className="panel-note">To Twoje konto — nie możesz usunąć go w panelu.</p>
+      )}
+
+      <p className="panel-note">
+        To otwarcie konta zostało zapisane w dzienniku działań — tak samo jak każda
+        zmiana danych i usunięcie konta.
+      </p>
     </>
   )
 }
@@ -286,17 +317,6 @@ function LinkList({ heading, links, empty }: { heading: string; links: AccountLi
         </ul>
       )}
     </>
-  )
-}
-
-function TallyFigure({ tally, label }: { tally: Tally; label: string }) {
-  const last = dayLabel(tally.last)
-  return (
-    <div className="panel-figure">
-      <span className="panel-figure-value">{tally.count}</span>
-      <span className="panel-figure-label">{label}</span>
-      {last && <span className="panel-figure-label">ostatni: {last}</span>}
-    </div>
   )
 }
 
