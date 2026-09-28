@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/authContext'
 import { useSignOut } from '../hooks/useSignOut'
+import { useInstallPrompt } from '../hooks/useInstallPrompt'
 import { ROUTES, routeTitle } from '../routes'
 import {
   isAdmin,
@@ -228,6 +229,8 @@ function HeaderMenu() {
   const signOutAndLeave = useSignOut()
   const { pathname } = useLocation()
   const toggle = useRef<HTMLButtonElement>(null)
+  const installOffer = useInstallPrompt()
+  const [iosHelpOpen, setIosHelpOpen] = useState(false)
 
   // Escape closes it and the focus goes back where it came from. Without the
   // second half a keyboard user lands at the top of the document and walks the
@@ -242,6 +245,12 @@ function HeaderMenu() {
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [open])
+
+  async function onInstall() {
+    if (installOffer.kind !== 'prompt') return
+    setOpen(false)
+    await installOffer.install()
+  }
 
   async function onSignOut() {
     setOpen(false)
@@ -305,6 +314,32 @@ function HeaderMenu() {
                 ) : null}
               </Link>
             ))}
+            {/* In the menu rather than a banner: the offer matters once, to
+                people who open the app often, and those are the people who
+                open the menu. A banner would sit on top of a diary every day. */}
+            {installOffer.kind === 'prompt' && (
+              <button type="button" className="home-menu-install" onClick={() => void onInstall()}>
+                Zainstaluj aplikację
+              </button>
+            )}
+            {installOffer.kind === 'ios' && (
+              <>
+                <button
+                  type="button"
+                  className="home-menu-install"
+                  aria-expanded={iosHelpOpen}
+                  onClick={() => setIosHelpOpen((value) => !value)}
+                >
+                  Zainstaluj aplikację
+                </button>
+                {iosHelpOpen && (
+                  <p className="home-menu-install-help">
+                    W Safari stuknij <strong>Udostępnij</strong> (kwadrat ze strzałką w górę),
+                    a potem <strong>Do ekranu początkowego</strong>.
+                  </p>
+                )}
+              </>
+            )}
             <button type="button" className="home-menu-signout" onClick={() => void onSignOut()}>
               Wyloguj
             </button>

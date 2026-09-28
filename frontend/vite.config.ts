@@ -35,13 +35,24 @@ export default defineConfig(({ mode }) => {
         // Precached with the app, so the tab icon survives offline too.
         includeAssets: ['favicon.ico', 'favicon-32x32.png', 'apple-touch-icon.png'],
         manifest: {
+          // A stable identity for the installed app, so moving start_url later
+          // updates the existing install instead of creating a second one.
+          id: '/',
           name: 'Mediculus',
           short_name: 'Mediculus',
-          description: 'Mediculus',
-          theme_color: '#4a90d9',
-          background_color: '#ffffff',
+          description: 'Dzienniczek emocji i żywienia, raporty tygodniowe i techniki terapeutyczne Fundacji Mediculus.',
+          lang: 'pl',
+          dir: 'ltr',
+          // --color-lavender, the background every screen is drawn on: the
+          // status bar and the launch splash then continue the page instead of
+          // framing it in a colour the app never uses. Mirrors the
+          // theme-color meta in index.html.
+          theme_color: '#f0edf6',
+          background_color: '#f0edf6',
           display: 'standalone',
+          scope: '/',
           start_url: '/',
+          categories: ['health', 'medical', 'lifestyle'],
           icons: [
             {
               src: 'pwa-192x192.png',
@@ -52,6 +63,16 @@ export default defineConfig(({ mode }) => {
               src: 'pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png',
+            },
+            // The same logo shrunk into the central 80% circle on its own
+            // background, because Android crops a launcher icon to whatever
+            // shape the phone uses. Given only the square one above, it either
+            // cuts off "Opieka i wiele więcej." or boxes the logo in white.
+            {
+              src: 'pwa-maskable-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable',
             },
           ],
         },

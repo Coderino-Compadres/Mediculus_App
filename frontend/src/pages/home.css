@@ -160,6 +160,7 @@
 }
 
 .home-menu-dropdown a,
+.home-menu-install,
 .home-menu-signout {
   font-family: var(--font-body);
   font-size: 15px;
@@ -174,6 +175,7 @@
 }
 
 .home-menu-dropdown a:hover,
+.home-menu-install:hover,
 .home-menu-signout:hover {
   background: var(--color-lavender);
 }
@@ -191,6 +193,26 @@
   margin-top: 4px;
   border-top: 1px solid rgba(var(--shadow-tint), 0.1);
   padding-top: 12px;
+}
+
+/* Offered by the browser rather than a screen of the app, so it reads as an
+   action like "Wyloguj" — separated from the screens above it — but in the
+   app's own colour, not the warning one. */
+.home-menu-install {
+  color: var(--color-sage-hover);
+  font-weight: var(--font-weight-semibold);
+  margin-top: 4px;
+  border-top: 1px solid rgba(var(--shadow-tint), 0.1);
+  padding-top: 12px;
+}
+
+.home-menu-install-help {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-graphite-muted);
+  margin: 0;
+  padding: 0 12px 8px;
 }
 
 /* Welcome */
