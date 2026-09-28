@@ -151,6 +151,7 @@ class UserSerializer(serializers.ModelSerializer):
     is_specialist = serializers.SerializerMethodField()
     specialist_module = serializers.SerializerMethodField()
     specialist_approved = serializers.SerializerMethodField()
+    specialist_qualifications = serializers.SerializerMethodField()
     is_admin = serializers.SerializerMethodField()
     consents = serializers.SerializerMethodField()
     is_child = serializers.SerializerMethodField()
@@ -171,6 +172,10 @@ class UserSerializer(serializers.ModelSerializer):
             # account on the waiting screen — `_require_specialist` refuses it
             # the panel regardless.
             'specialist_approved',
+            # University, field of study and diploma number, for the
+            # specialist's own profile to show read-only; None for everybody
+            # else. See colleagues.qualifications.
+            'specialist_qualifications',
             # Whether an `administrator` row exists — which panel this account
             # lands on. The row, not the role, like `is_specialist`.
             'is_admin',
@@ -280,6 +285,10 @@ class UserSerializer(serializers.ModelSerializer):
     def get_specialist_approved(self, user):
         specjalist = self._specjalist(user)
         return specjalist.approved_at is not None if specjalist is not None else None
+
+    def get_specialist_qualifications(self, user):
+        specjalist = self._specjalist(user)
+        return colleagues.qualifications(specjalist) if specjalist is not None else None
 
     def get_is_admin(self, user):
         return Administrator.objects.filter(user=user).exists()
@@ -1300,6 +1309,12 @@ class SpecialistColleagueCreateSerializer(serializers.Serializer):
       by a person with no stated role;
     * the person has to be an adult.
 
+    And one of its own: the qualification — university, field of study and
+    diploma number — is required. It is what the administrator checks before
+    approving the account (core/admin_panel.py), and it is asked here and only
+    here: nothing edits it afterwards, since a change after approval would
+    bypass the check it was approved on.
+
     The address is the one thing this form cannot keep quiet about (`EMAIL_TAKEN`
     — an account cannot be created on an address that has one), and it is worth
     being explicit that this is not the enumeration oracle the invitation forms
@@ -1338,6 +1353,21 @@ class SpecialistColleagueCreateSerializer(serializers.Serializer):
             'required': SPECIALIZATION_REQUIRED,
         },
     )
+    university = serializers.CharField(
+        max_length=200,
+        error_messages={'blank': 'Podaj uczelnię.', 'required': 'Podaj uczelnię.'},
+    )
+    field_of_study = serializers.CharField(
+        max_length=200,
+        error_messages={'blank': 'Podaj kierunek studiów.', 'required': 'Podaj kierunek studiów.'},
+    )
+    #: Free text rather than a pattern: diplomas from different universities and
+    #: years are numbered differently ("123/2019", "WL-4567/M"), and the
+    #: administrator reading it is the check, not a regular expression.
+    diploma_number = serializers.CharField(
+        max_length=50,
+        error_messages={'blank': 'Podaj numer dyplomu.', 'required': 'Podaj numer dyplomu.'},
+    )
     #: Which module the new account works in. Required rather than defaulted,
     #: for the invitation form's reason: a default is a choice nobody made, and
     #: it decides which panel the colleague lands on.
@@ -1367,6 +1397,9 @@ class SpecialistColleagueCreateSerializer(serializers.Serializer):
                 surname=validated_data['surname'].strip(),
                 date_of_birth=validated_data['date_of_birth'],
                 specialization=validated_data['specialization'].strip(),
+                university=validated_data['university'].strip(),
+                field_of_study=validated_data['field_of_study'].strip(),
+                diploma_number=validated_data['diploma_number'].strip(),
                 module=validated_data['module'],
                 created_by=self.context.get('created_by'),
             )

@@ -142,6 +142,8 @@ class AccessTests(AdminTestCase):
         self.assertIs(me['is_admin'], True)
         self.assertIs(me['is_specialist'], False)
         self.assertIsNone(me['specialist_approved'])
+        self.assertIsNone(me['specialist_qualifications'])
+        self.assertIsNone(me['specialist_qualifications'])
 
 
 class PendingSpecialistTests(AdminTestCase):
@@ -154,6 +156,8 @@ class PendingSpecialistTests(AdminTestCase):
         self.pending, _ = create_account(
             email='nowa@example.com', name='Nowa', surname='Terapeutka',
             date_of_birth='1985-02-01', specialization='DBT',
+            university='Uniwersytet Jagielloński', field_of_study='Psychologia',
+            diploma_number='987/2012',
             module=MODULE_PSYCHOTHERAPY, created_by=self.creator.user,
         )
         User.objects.filter(pk=self.pending.user_id).update(
@@ -190,6 +194,29 @@ class PendingSpecialistTests(AdminTestCase):
         self.assertIs(me['is_specialist'], True)
         self.assertIs(me['specialist_approved'], False)
 
+    def test_me_carries_the_qualification_for_the_profile(self):
+        self.sign_in(self.pending.user)
+
+        me = self.client.get(reverse('core:me')).data
+
+        self.assertEqual(me['specialist_qualifications'], {
+            'university': 'Uniwersytet Jagielloński',
+            'field_of_study': 'Psychologia',
+            'diploma_number': '987/2012',
+        })
+
+    def test_me_carries_the_specialists_own_qualification(self):
+        """For the profile screen, which shows it read-only."""
+        self.sign_in(self.pending.user)
+
+        me = self.client.get(reverse('core:me')).data
+
+        self.assertEqual(me['specialist_qualifications'], {
+            'university': 'Uniwersytet Jagielloński',
+            'field_of_study': 'Psychologia',
+            'diploma_number': '987/2012',
+        })
+
     def test_the_colleague_roster_shows_it_as_waiting(self):
         self.sign_in(self.creator.user)
 
@@ -205,6 +232,8 @@ class PendingSpecialistTests(AdminTestCase):
         response = self.client.post(reverse('core:specialist-colleagues'), {
             'email': 'trzecia@example.com', 'name': 'Trzecia', 'surname': 'Osoba',
             'date_of_birth': '1980-05-05', 'specialization': 'Dietetyka',
+            'university': 'Uniwersytet Rzeszowski', 'field_of_study': 'Dietetyka',
+            'diploma_number': '55/2020',
             'module': MODULE_DIET,
         }, format='json')
 
@@ -222,6 +251,31 @@ class PendingSpecialistTests(AdminTestCase):
         self.assertEqual(rows[0]['created_by']['email'], 'tworzy@example.com')
         self.assertIs(rows[0]['consents_active'], True)
         self.assertIs(rows[0]['password_set'], True)
+        # What the approval is decided on.
+        self.assertEqual(rows[0]['university'], 'Uniwersytet Jagielloński')
+        self.assertEqual(rows[0]['field_of_study'], 'Psychologia')
+        self.assertEqual(rows[0]['diploma_number'], '987/2012')
+
+    def test_the_account_detail_carries_the_qualification(self):
+        self.sign_in(self.admin)
+
+        detail = self.client.get(
+            reverse('core:admin-account', args=[self.pending.user_id])).data
+
+        self.assertEqual(detail['specialist']['diploma_number'], '987/2012')
+        self.assertEqual(detail['specialist']['university'], 'Uniwersytet Jagielloński')
+
+    def test_the_administrator_sees_the_qualification_to_check(self):
+        self.sign_in(self.admin)
+
+        row = self.client.get(reverse('core:admin-pending-specialists')).data[0]
+        detail = self.client.get(
+            reverse('core:admin-account', args=[self.pending.user_id])).data['specialist']
+
+        for payload in (row, detail):
+            self.assertEqual(payload['university'], 'Uniwersytet Jagielloński')
+            self.assertEqual(payload['field_of_study'], 'Psychologia')
+            self.assertEqual(payload['diploma_number'], '987/2012')
 
     def test_approving_opens_the_panel(self):
         self.sign_in(self.admin)

@@ -48,6 +48,7 @@ from django.db.models import Count, Max
 from django.utils import timezone
 
 from .authentication import end_all_sessions
+from .colleagues import qualifications
 from .consents import has_active_consents
 from .guardian import STATUS_ACCEPTED, STATUS_NONE, STATUS_PENDING
 from .models import (Administrator, AdminAuditLog, DietActivity, DietMeal,
@@ -182,6 +183,8 @@ def serialize_pending(specjalist):
     return {
         **_person(user),
         'specialization': specjalist.specjalization,
+        # What the administrator is actually checking before approving.
+        **qualifications(specjalist),
         'module': specjalist.module,
         'module_label': module_label(specjalist.module),
         'created_at': _iso(user.created_at),
@@ -439,6 +442,7 @@ def account_detail(user_id):
         )
         detail['specialist'] = {
             'specialization': specjalist.specjalization,
+            **qualifications(specjalist),
             'module': specjalist.module,
             'module_label': module_label(specjalist.module),
             'approved_at': _iso(specjalist.approved_at),

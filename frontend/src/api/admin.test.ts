@@ -47,6 +47,8 @@ describe('the specialist decisions', () => {
       surname: 'Terapeutka',
       email: 'nowa@wp.pl',
       specialization: 'DBT',
+      // Absent from this payload, as from a backend a release behind.
+      qualifications: { university: null, fieldOfStudy: null, diplomaNumber: null },
       moduleLabel: 'Psychoterapia',
       createdAt: '2026-09-20T10:00:00+02:00',
       createdBy: { id: 'aaaa-1111', name: 'Anna', surname: 'Kowalska', email: 'anna@wp.pl' },

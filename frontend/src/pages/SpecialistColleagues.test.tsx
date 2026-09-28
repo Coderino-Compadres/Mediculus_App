@@ -52,6 +52,8 @@ const ME = {
   surname: 'Testowy',
   email: 'test@wp.pl',
   specialization: 'DBT',
+  // An account from before the qualification was asked for.
+  qualifications: { university: null, fieldOfStudy: null, diplomaNumber: null },
   moduleLabel: 'Psychoterapia',
   createdAt: '2026-06-01T09:00:00+02:00',
   consentsActive: true,
@@ -64,6 +66,11 @@ const CREATED = {
   surname: 'Terapeutka',
   email: 'anna@wp.pl',
   specialization: 'psychoterapia poznawczo-behawioralna',
+  qualifications: {
+    university: 'Uniwersytet Rzeszowski',
+    fieldOfStudy: 'Psychologia',
+    diplomaNumber: '1234/2015',
+  },
   moduleLabel: 'Psychoterapia',
   createdAt: '2026-09-01T09:00:00+02:00',
   consentsActive: false,
@@ -88,6 +95,9 @@ async function fillForm() {
   await userEvent.type(screen.getByLabelText(/adres e-mail/i), 'anna@wp.pl')
   await userEvent.type(screen.getByLabelText(/data urodzenia/i), '1985-02-01')
   await userEvent.type(screen.getByLabelText(/specjalizacja/i), 'psychoterapia')
+  await userEvent.type(screen.getByLabelText('Uczelnia'), 'Uniwersytet Rzeszowski')
+  await userEvent.type(screen.getByLabelText('Kierunek studiów'), 'Psychologia')
+  await userEvent.type(screen.getByLabelText('Numer dyplomu'), '1234/2015')
   await userEvent.selectOptions(screen.getByLabelText('Moduł'), 'psychotherapy')
 }
 
@@ -100,12 +110,13 @@ describe('SpecialistColleagues — what the screen says before anything is typed
     ).toBeInTheDocument()
   })
 
-  it('asks for the six things the backend requires', async () => {
+  it('asks for the nine things the backend requires', async () => {
     renderScreen()
 
     await screen.findByLabelText('Imię')
     for (const label of [
-      'Imię', 'Nazwisko', /adres e-mail/i, /data urodzenia/i, /specjalizacja/i, 'Moduł',
+      'Imię', 'Nazwisko', /adres e-mail/i, /data urodzenia/i, /specjalizacja/i,
+      'Uczelnia', 'Kierunek studiów', 'Numer dyplomu', 'Moduł',
     ]) {
       expect(screen.getByLabelText(label)).toBeInTheDocument()
     }
@@ -161,6 +172,63 @@ describe('SpecialistColleagues — the module', () => {
     await userEvent.click(screen.getByRole('button', { name: /utwórz konto specjalisty/i }))
 
     expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ module: 'diet' }))
+  })
+
+  it('sends the qualification, trimmed', async () => {
+    mockedCreate.mockResolvedValue({ password: 'ABCD-EFGH-JKMN-PQRT', specialist: CREATED })
+    renderScreen()
+
+    await screen.findByLabelText('Imię')
+    await fillForm()
+    await userEvent.type(screen.getByLabelText('Numer dyplomu'), '  ')
+    await userEvent.click(screen.getByRole('button', { name: /utwórz konto specjalisty/i }))
+
+    expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({
+      university: 'Uniwersytet Rzeszowski',
+      fieldOfStudy: 'Psychologia',
+      diplomaNumber: '1234/2015',
+    }))
+  })
+
+  it('will not create an account without the diploma number', async () => {
+    // What the administrator approves the account on, so it is not optional.
+    renderScreen()
+
+    await screen.findByLabelText('Imię')
+    await fillForm()
+    await userEvent.clear(screen.getByLabelText('Numer dyplomu'))
+
+    expect(screen.getByRole('button', { name: /utwórz konto specjalisty/i })).toBeDisabled()
+  })
+
+  it('puts a refused diploma number under its own box', async () => {
+    mockedCreate.mockRejectedValue(
+      new ApiError(400, null, { diploma_number: 'Podaj numer dyplomu.' }),
+    )
+    renderScreen()
+
+    await screen.findByLabelText('Imię')
+    await fillForm()
+    await userEvent.click(screen.getByRole('button', { name: /utwórz konto specjalisty/i }))
+
+    expect(await screen.findByText('Podaj numer dyplomu.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Numer dyplomu')).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('names each account’s qualification on the roster', async () => {
+    mockedList.mockResolvedValue([CREATED, ME])
+    renderScreen()
+
+    expect(
+      await screen.findByText('Psychologia, Uniwersytet Rzeszowski · dyplom nr 1234/2015'),
+    ).toBeInTheDocument()
+  })
+
+  it('draws no qualification line for an account that has none', async () => {
+    renderScreen()
+
+    await screen.findByText('DBT · Psychoterapia')
+    expect(screen.queryByText(/dyplom nr/)).toBeNull()
   })
 
   it('names each account’s module on the roster', async () => {

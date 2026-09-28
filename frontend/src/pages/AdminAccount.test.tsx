@@ -70,6 +70,34 @@ function renderAt(id: string) {
 }
 
 describe('AdminAccount', () => {
+  it('lists a specialist’s university, field of study and diploma number', async () => {
+    mockedAccount.mockResolvedValue({
+      ...PATIENT,
+      kind: 'specialist',
+      role: 'specjalista',
+      isChild: null,
+      patient: null,
+      specialist: {
+        specialization: 'DBT',
+        qualifications: {
+          university: 'Uniwersytet Jagielloński',
+          fieldOfStudy: 'Psychologia',
+          diplomaNumber: '987/2012',
+        },
+        moduleLabel: 'Psychoterapia',
+        approvedAt: null,
+        createdBy: null,
+        patients: [],
+      },
+    })
+
+    renderAt('p1')
+
+    expect(await screen.findByText('Uniwersytet Jagielloński')).toBeInTheDocument()
+    expect(screen.getByText('Psychologia')).toBeInTheDocument()
+    expect(screen.getByText('987/2012')).toBeInTheDocument()
+  })
+
   it('shows the account, its links and its counts', async () => {
     mockedAccount.mockResolvedValue(PATIENT)
 

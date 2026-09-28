@@ -56,7 +56,9 @@ class PasswordGateTestCase(TestCase):
         UserRole.objects.get_or_create(name=SPECIALIST_ROLE)
         self.specjalist, self.given_password = create_account(
             email='nowa.terapeutka@example.com', name='Nowa', surname='Terapeutka',
-            date_of_birth='1985-02-01', specialization='DBT', module='psychotherapy',
+            date_of_birth='1985-02-01', specialization='DBT',
+            university='Uniwersytet Rzeszowski', field_of_study='Psychologia',
+            diploma_number='1/2010', module='psychotherapy',
         )
         # Approved up front: this file is about the password gate, and an account
         # still waiting for the administrator (core/admin_panel.py) would meet

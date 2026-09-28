@@ -433,6 +433,54 @@ describe('Profile — an account that is not a clinical subject', () => {
   })
 })
 
+describe('Profile — a specialist’s qualification', () => {
+  const SPECIALIST = {
+    ...TEST_USER,
+    role: 'specjalista',
+    isPatient: false,
+    isSpecialist: true,
+    isChild: null,
+    specialistQualifications: {
+      university: 'Uniwersytet Rzeszowski',
+      fieldOfStudy: 'Psychologia',
+      diplomaNumber: '1234/2015',
+    },
+  }
+
+  it('shows the university, field of study and diploma number', async () => {
+    await renderProfile({ user: SPECIALIST })
+
+    expect(screen.getByText('KWALIFIKACJE')).toBeInTheDocument()
+    expect(screen.getByText('Uniwersytet Rzeszowski')).toBeInTheDocument()
+    expect(screen.getByText('Psychologia')).toBeInTheDocument()
+    expect(screen.getByText('1234/2015')).toBeInTheDocument()
+  })
+
+  it('offers no way to change it', async () => {
+    // Approved on by the administrator, so an edit would bypass the check.
+    await renderProfile({ user: SPECIALIST })
+
+    expect(screen.queryByRole('textbox', { name: /dyplom|uczelni|kierunek/i })).toBeNull()
+  })
+
+  it('draws no card for a specialist created before it was asked for', async () => {
+    await renderProfile({
+      user: {
+        ...SPECIALIST,
+        specialistQualifications: { university: null, fieldOfStudy: null, diplomaNumber: null },
+      },
+    })
+
+    expect(screen.queryByText('KWALIFIKACJE')).toBeNull()
+  })
+
+  it('draws no card for a patient', async () => {
+    await renderProfile()
+
+    expect(screen.queryByText('KWALIFIKACJE')).toBeNull()
+  })
+})
+
 describe('Profile — the consent register', () => {
   it('shows the date this account actually consented, not one date for everybody', async () => {
     await renderProfile({

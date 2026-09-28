@@ -9,6 +9,11 @@
  */
 
 import { apiRequest } from './client'
+import {
+  toQualifications,
+  type Qualifications,
+  type QualificationsPayload,
+} from '../utils/qualifications'
 
 // --- specialists waiting for a decision ------------------------------------
 
@@ -37,7 +42,7 @@ export function personLabel(person: Person): string {
   return name || person.email || 'Konto bez nazwy'
 }
 
-interface PendingSpecialistPayload extends PersonPayload {
+interface PendingSpecialistPayload extends PersonPayload, QualificationsPayload {
   specialization: string | null
   module: string
   module_label: string
@@ -49,6 +54,8 @@ interface PendingSpecialistPayload extends PersonPayload {
 
 export interface PendingSpecialist extends Person {
   specialization: string | null
+  /** What the approval is decided on; every value null on an older account. */
+  qualifications: Qualifications
   moduleLabel: string
   createdAt: string | null
   /** Who created the account from the colleagues screen; null for older ones. */
@@ -63,6 +70,7 @@ function toPendingSpecialist(payload: PendingSpecialistPayload): PendingSpeciali
   return {
     ...toPerson(payload),
     specialization: payload.specialization,
+    qualifications: toQualifications(payload),
     moduleLabel: payload.module_label,
     createdAt: payload.created_at,
     createdBy: payload.created_by ? toPerson(payload.created_by) : null,
@@ -248,14 +256,14 @@ interface ActivityPayload {
 interface AccountDetailPayload extends AccountRowPayload {
   date_of_birth: string | null
   updated_at: string | null
-  specialist: {
+  specialist: (QualificationsPayload & {
     specialization: string | null
     module: string
     module_label: string
     approved_at: string | null
     created_by: PersonPayload | null
     patients: LinkPayload[]
-  } | null
+  }) | null
   patient: {
     is_child: boolean | null
     guardian_status: string | null
@@ -271,6 +279,7 @@ export interface AccountDetail extends AccountRow {
   updatedAt: string | null
   specialist: {
     specialization: string | null
+    qualifications: Qualifications
     moduleLabel: string
     approvedAt: string | null
     createdBy: Person | null
@@ -296,6 +305,7 @@ function toAccountDetail(payload: AccountDetailPayload): AccountDetail {
     specialist: specialist
       ? {
           specialization: specialist.specialization,
+          qualifications: toQualifications(specialist),
           moduleLabel: specialist.module_label,
           approvedAt: specialist.approved_at,
           createdBy: specialist.created_by ? toPerson(specialist.created_by) : null,

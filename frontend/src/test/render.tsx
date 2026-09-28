@@ -20,6 +20,7 @@ export const TEST_USER: AuthUser = {
   mustChangePassword: false,
   specialistModule: null,
   specialistApproved: null,
+  specialistQualifications: null,
   isAdmin: false,
   // Both granted, as registration writes them — the ordinary account. A screen
   // testing the "Nieudzielona" state overrides one with null.

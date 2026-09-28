@@ -155,6 +155,9 @@ function AccountSections({ account }: { account: AccountDetail }) {
           </h2>
           <dl className="admin-facts">
             <Fact term="Specjalizacja" value={specialist.specialization} />
+            <Fact term="Uczelnia" value={specialist.qualifications.university} />
+            <Fact term="Kierunek studiów" value={specialist.qualifications.fieldOfStudy} />
+            <Fact term="Numer dyplomu" value={specialist.qualifications.diplomaNumber} />
             <Fact term="Moduł" value={specialist.moduleLabel} />
             <Fact
               term="Weryfikacja"

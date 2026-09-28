@@ -15,6 +15,7 @@ import { apiDownload, apiRequest } from './client'
 import { toDietReport, type DietReportPayload } from './diet'
 import { toReport, type ReportPayload } from './reports'
 import { MODULE_PSYCHOTHERAPY, moduleLabel, type AppModule } from '../utils/modules'
+import { toQualifications, type Qualifications } from '../utils/qualifications'
 import type { DietWeeklyReport } from '../types/dietReport'
 import type { WeeklyReport } from '../types/report'
 
@@ -442,6 +443,10 @@ interface ColleaguePayload {
   surname: string | null
   email: string | null
   specialization: string | null
+  // Optional: a backend a release behind does not send them.
+  university?: string | null
+  field_of_study?: string | null
+  diploma_number?: string | null
   module?: string | null
   module_label?: string | null
   created_at: string | null
@@ -457,6 +462,11 @@ export interface Colleague {
   email: string | null
   /** `specjalist.specjalization` — what the patient reads next to their name. */
   specialization: string | null
+  /**
+   * University, field of study and diploma number, as the creating colleague
+   * typed them. Each null on an account created before they were asked for.
+   */
+  qualifications: Qualifications
   /** Which module the account works in, named in words; null on an older backend. */
   moduleLabel: string | null
   createdAt: string | null
@@ -483,6 +493,7 @@ function toColleague(payload: ColleaguePayload): Colleague {
     surname: payload.surname,
     email: payload.email,
     specialization: payload.specialization,
+    qualifications: toQualifications(payload),
     moduleLabel: payload.module_label ?? null,
     createdAt: payload.created_at,
     consentsActive: payload.consents_active,
@@ -508,6 +519,10 @@ export interface NewColleague {
   lastName: string
   dateOfBirth: string
   specialization: string
+  /** Required, like everything here: what the administrator approves the account on. */
+  university: string
+  fieldOfStudy: string
+  diplomaNumber: string
   /** Which panel the new account lands on; required, with no default. */
   module: AppModule
 }
@@ -545,6 +560,9 @@ export async function createColleague(input: NewColleague): Promise<CreatedColle
         surname: input.lastName,
         date_of_birth: input.dateOfBirth,
         specialization: input.specialization,
+        university: input.university,
+        field_of_study: input.fieldOfStudy,
+        diploma_number: input.diplomaNumber,
         module: input.module,
       },
     },
@@ -559,5 +577,8 @@ export const COLLEAGUE_FIELDS: Record<string, string> = {
   surname: 'lastName',
   date_of_birth: 'dateOfBirth',
   specialization: 'specialization',
+  university: 'university',
+  field_of_study: 'fieldOfStudy',
+  diploma_number: 'diplomaNumber',
   module: 'module',
 }

@@ -73,6 +73,12 @@ CREATE TABLE IF NOT EXISTS "user" (
 CREATE TABLE IF NOT EXISTS specjalist (
     id_user UUID PRIMARY KEY,
     specjalization TEXT,
+    -- The qualification the creating colleague typed, which the administrator
+    -- checks before approving. Required by the form, written once, never
+    -- edited; NULL for accounts created before migration 0026.
+    university TEXT,
+    field_of_study TEXT,
+    diploma_number TEXT,
     -- Which module the account works in (core/modules.py). Shapes the
     -- specialist's own panel only; access to patients is specjalist_patient's.
     module TEXT NOT NULL DEFAULT 'psychotherapy',

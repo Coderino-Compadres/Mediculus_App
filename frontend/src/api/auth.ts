@@ -5,6 +5,7 @@
 
 import { ApiError, apiRequest, type FieldErrors } from './client'
 import { isAppModule, MODULE_DIET, type AppModule } from '../utils/modules'
+import { toQualifications, type Qualifications, type QualificationsPayload } from '../utils/qualifications'
 
 /** As `core.serializers.UserSerializer` returns it. */
 export interface UserPayload {
@@ -22,6 +23,8 @@ export interface UserPayload {
   /** Whether an administrator has confirmed this specialist account; null for
    *  everybody else — see `needsSpecialistApproval`. */
   specialist_approved?: boolean | null
+  /** University, field of study, diploma number; null for everybody else. */
+  specialist_qualifications?: QualificationsPayload | null
   /** Whether an `administrator` row exists — see `isAdmin`. */
   is_admin?: boolean
   is_child: boolean | null
@@ -99,6 +102,12 @@ export interface AuthUser {
    * the waiting screen; `_require_specialist` refuses it the panel regardless.
    */
   specialistApproved: boolean | null
+  /**
+   * The specialist's university, field of study and diploma number, shown
+   * read-only on their own profile; null for every account that is not a
+   * specialist's. Nothing edits it after creation — see core/colleagues.py.
+   */
+  specialistQualifications: Qualifications | null
   /** Whether this account may open the administrator's panel. */
   isAdmin: boolean
   /**
@@ -195,6 +204,9 @@ export function toAuthUser(payload: UserPayload): AuthUser {
     // Null on a backend a release behind, which has no approval step: nothing
     // there is waiting, so a specialist is let into the panel as before.
     specialistApproved: payload.specialist_approved ?? null,
+    specialistQualifications: payload.specialist_qualifications
+      ? toQualifications(payload.specialist_qualifications)
+      : null,
     isAdmin: payload.is_admin ?? false,
     consents: payload.consents
       ? {

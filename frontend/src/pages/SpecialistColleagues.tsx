@@ -18,6 +18,7 @@ import { useAuth } from '../auth/authContext'
 import { usePagination } from '../hooks/usePagination'
 import { linkedSinceLabel } from '../utils/children'
 import { colleagueLabel } from '../utils/specialist'
+import { qualificationLine } from '../utils/qualifications'
 import { ROUTES } from '../routes'
 import { isAppModule, MODULE_LABELS, MODULES } from '../utils/modules'
 import './journals.css'
@@ -84,6 +85,9 @@ const EMPTY_FORM = {
   email: '',
   dateOfBirth: '',
   specialization: '',
+  university: '',
+  fieldOfStudy: '',
+  diplomaNumber: '',
   module: '',
 }
 
@@ -170,6 +174,9 @@ function SpecialistColleagues() {
         lastName: values.lastName.trim(),
         dateOfBirth: values.dateOfBirth,
         specialization: values.specialization.trim(),
+        university: values.university.trim(),
+        fieldOfStudy: values.fieldOfStudy.trim(),
+        diplomaNumber: values.diplomaNumber.trim(),
         module,
       })
       setCreated(result)
@@ -314,6 +321,43 @@ function SpecialistColleagues() {
               error={errors.specialization}
               disabled={saving}
             />
+            {/* The qualification: what the administrator checks before the
+                account may work. Asked here and nowhere else — nothing edits
+                it later, because a change after approval would bypass the
+                check it was approved on. */}
+            <FormField
+              id="university"
+              label="Uczelnia"
+              type="text"
+              autoComplete="off"
+              placeholder="np. Uniwersytet Rzeszowski"
+              value={values.university}
+              onChange={change}
+              error={errors.university}
+              disabled={saving}
+            />
+            <FormField
+              id="fieldOfStudy"
+              label="Kierunek studiów"
+              type="text"
+              autoComplete="off"
+              placeholder="np. psychologia"
+              value={values.fieldOfStudy}
+              onChange={change}
+              error={errors.fieldOfStudy}
+              disabled={saving}
+            />
+            <FormField
+              id="diplomaNumber"
+              label="Numer dyplomu"
+              type="text"
+              autoComplete="off"
+              maxLength={50}
+              value={values.diplomaNumber}
+              onChange={change}
+              error={errors.diplomaNumber}
+              disabled={saving}
+            />
             {/* Which panel the account opens onto — a psychodietitian's has the
                 diet catalogue where a psychotherapist's has the DBT editor.
                 Access to patients is not decided here: that is still one
@@ -361,6 +405,11 @@ function SpecialistColleagues() {
                         {[colleague.specialization, colleague.moduleLabel]
                           .filter(Boolean)
                           .join(' · ')}
+                      </p>
+                    )}
+                    {qualificationLine(colleague.qualifications) && (
+                      <p className="specialist-list-meta">
+                        {qualificationLine(colleague.qualifications)}
                       </p>
                     )}
                     <p className="specialist-list-meta">
