@@ -177,16 +177,16 @@ const SPECIALIST_ITEMS: MenuItem[] = [
 ]
 
 /**
- * A psychodietitian's menu: the same panel, with the diet module's catalogue
- * where the DBT editor and the DBT catalogue were. The DBT catalogue is the
- * psychotherapy module's to write (the backend refuses a psychodietitian there),
- * and the diet one has no editor at all — its content comes from the
- * foundation, see data/dietTechniques.ts.
+ * A psychodietitian's menu: the same panel, with the diet module's editor and
+ * catalogue where the DBT ones were. The DBT catalogue is the psychotherapy
+ * module's to write (the backend refuses a psychodietitian there), and the diet
+ * one is theirs — the foundation's techniques plus what they add.
  */
 const DIET_SPECIALIST_ITEMS: MenuItem[] = [
   { label: 'Strona główna', to: ROUTES.specialistHome },
   { label: routeTitle(ROUTES.specialistParentAccounts), to: ROUTES.specialistParentAccounts },
   { label: routeTitle(ROUTES.specialistColleagues), to: ROUTES.specialistColleagues },
+  { label: routeTitle(ROUTES.specialistDietTechniques), to: ROUTES.specialistDietTechniques },
   { label: 'Techniki psychodietetyczne', to: ROUTES.dietTechniques },
   { label: routeTitle(ROUTES.profile), to: ROUTES.profile },
 ]

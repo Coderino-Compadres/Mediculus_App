@@ -148,6 +148,11 @@ urlpatterns = [
     # hardcoded in the frontend, so this list is only what specialists wrote —
     # see core/techniques.py.
     path('techniques/', views.TechniqueCatalogueView.as_view(), name='technique-catalogue'),
+    # The same half of the diet module's catalogue — core/diet_techniques.py.
+    path(
+        'diet/techniques/',
+        views.DietTechniqueCatalogueView.as_view(), name='diet-technique-catalogue',
+    ),
     # The patient's side of a specialist's invitation. Under account/ rather than
     # specialist/ because it is a decision about their own account, and because
     # everything under specialist/ refuses an account that is not one.
@@ -245,6 +250,14 @@ urlpatterns = [
     path(
         'specialist/techniques/<int:id_technique>/',
         views.SpecialistTechniqueView.as_view(), name='specialist-technique',
+    ),
+    path(
+        'specialist/diet-techniques/',
+        views.SpecialistDietTechniquesView.as_view(), name='specialist-diet-techniques',
+    ),
+    path(
+        'specialist/diet-techniques/<int:id_technique>/',
+        views.SpecialistDietTechniqueView.as_view(), name='specialist-diet-technique',
     ),
     # The administrator's panel — core/admin_panel.py. Every route refuses an
     # account with no `administrator` row (`_require_admin`). Not under Django's

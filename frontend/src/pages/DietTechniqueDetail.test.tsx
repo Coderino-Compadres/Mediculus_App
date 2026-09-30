@@ -20,6 +20,18 @@ import type { DietTechnique } from '../types/dietTechnique'
 
 const data = vi.hoisted(() => ({ techniques: [] as DietTechnique[] }))
 const params = vi.hoisted(() => ({ current: { id: 'a' } as { id?: string } }))
+const stored = vi.hoisted(() => ({
+  techniques: [] as DietTechnique[],
+  fail: false,
+}))
+
+// The psychodietitians' half of the catalogue. Resolves to an empty list unless
+// a test puts something there, so every built-in fixture renders as before.
+vi.mock('../api/dietTechniques', () => ({
+  fetchStoredDietTechniques: vi.fn(() =>
+    stored.fail ? Promise.reject(new Error('offline')) : Promise.resolve(stored.techniques),
+  ),
+}))
 
 vi.mock('../data/dietTechniques', () => ({
   get DIET_TECHNIQUES() {
@@ -80,6 +92,8 @@ function renderTechnique(id: string) {
 
 beforeEach(() => {
   data.techniques = [technique({ id: 'a' })]
+  stored.techniques = []
+  stored.fail = false
 })
 
 describe('one technique', () => {
@@ -615,41 +629,94 @@ describe('a technique whose content is not written yet', () => {
 })
 
 describe('a technique that is not there', () => {
-  it('says so without implying it exists somewhere', () => {
+  it('says so without implying it exists somewhere', async () => {
     renderTechnique('nie-ma-takiej')
 
-    expect(screen.getByText(NOT_FOUND)).toBeInTheDocument()
+    expect(await screen.findByText(NOT_FOUND)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Wróć do technik/ })).toHaveAttribute(
       'href', ROUTES.dietTechniques,
     )
     expect(screen.queryByText(/wkrótce|w przygotowaniu|specjalist/i)).not.toBeInTheDocument()
   })
 
-  it('answers the same for a technique the catalogue withholds', () => {
+  it('answers the same for a technique the catalogue withholds', async () => {
     /** The gate is read in one place, so a URL cannot walk around it — and the
      *  screen must not hint at what it is hiding. */
     data.techniques = [technique({ id: 'dziennik', dostepnosc: 'wymagaSpecjalisty' })]
 
     renderTechnique('dziennik')
 
-    expect(screen.getByText(NOT_FOUND)).toBeInTheDocument()
+    expect(await screen.findByText(NOT_FOUND)).toBeInTheDocument()
     expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
   })
 
-  it('answers the same for a technique whose description has not arrived', () => {
+  it('answers the same for a technique whose description has not arrived', async () => {
     data.techniques = [technique({ id: 'a', opisGotowy: false })]
 
     renderTechnique('a')
 
-    expect(screen.getByText(NOT_FOUND)).toBeInTheDocument()
+    expect(await screen.findByText(NOT_FOUND)).toBeInTheDocument()
   })
 
-  it('waits for nothing — this catalogue ships with the app', () => {
-    /** No request, so no "Wczytywanie…" state: the psychotherapy detail has one
-     *  only because half of its catalogue comes from the database. */
+  it('waits for the specialists\' half before saying there is no such technique', async () => {
+    /** A shared link to a technique a psychodietitian wrote must not flash
+     *  "nie znaleziono" while the request is still out. */
     renderTechnique('nie-ma-takiej')
 
+    expect(screen.getByText(/Wczytywanie/i)).toBeInTheDocument()
+    expect(screen.queryByText(NOT_FOUND)).not.toBeInTheDocument()
+    expect(await screen.findByText(NOT_FOUND)).toBeInTheDocument()
+  })
+
+  it('does not wait for a built-in technique', () => {
+    data.techniques = [technique({ id: 'a' })]
+
+    renderTechnique('a')
+
     expect(screen.queryByText(/Wczytywanie/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+  })
+
+  it('says not found, rather than an error, when the specialists\' half fails to load', async () => {
+    stored.fail = true
+
+    renderTechnique('nie-ma-takiej')
+
+    expect(await screen.findByText(NOT_FOUND)).toBeInTheDocument()
+  })
+})
+
+describe('a technique a psychodietitian wrote', () => {
+  it('opens from its own URL, with its example and note', async () => {
+    stored.techniques = [
+      technique({
+        id: 'id-uwazne-zakupy',
+        nazwa: 'Uważne zakupy',
+        przyklad: 'Lista na lodówce.',
+        notka: 'Nie chodzi o kontrolę.',
+        czasTrwania: '5 min',
+        zastepczy: false,
+      }),
+    ]
+
+    renderTechnique('id-uwazne-zakupy')
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Uważne zakupy' }))
+      .toBeInTheDocument()
+    expect(screen.getByText('Lista na lodówce.')).toBeInTheDocument()
+    expect(screen.getByText('Nie chodzi o kontrolę.')).toBeInTheDocument()
+    expect(screen.getByText('5 min')).toBeInTheDocument()
+  })
+
+  it('never shadows a built-in technique with the same slug', async () => {
+    data.techniques = [technique({ id: 'a', nazwa: 'Wbudowana' })]
+    stored.techniques = [technique({ id: 'a', nazwa: 'Z bazy' })]
+
+    renderTechnique('a')
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Wbudowana' })).toBeInTheDocument()
+    await screen.findByRole('heading', { level: 1, name: 'Wbudowana' })
+    expect(screen.queryByText('Z bazy')).not.toBeInTheDocument()
   })
 })
 

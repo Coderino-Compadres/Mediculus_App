@@ -66,6 +66,7 @@ from .serializers import (EMAIL_TAKEN, AdminAccountEditSerializer,
                           SpecialistPatientInviteSerializer, UserSerializer)
 from . import specialist as specialist_rules
 from . import techniques as technique_rules
+from . import diet_techniques as diet_technique_rules
 from .throttling import (AuthThrottle, GuardianLinkThrottle,
                          LoginAccountThrottle, PasswordChangeThrottle,
                          PasswordResetAccountThrottle, ReportPdfThrottle,
@@ -1603,6 +1604,11 @@ TECHNIQUE_WRONG_MODULE = (
     'Katalog technik terapeutycznych prowadzą specjaliści modułu psychoterapii.'
 )
 
+#: And the other way round: the psychodietetic catalogue is the diet module's.
+DIET_TECHNIQUE_WRONG_MODULE = (
+    'Katalog technik psychodietetycznych prowadzą specjaliści modułu dietetyki.'
+)
+
 
 def _require_specialist(request):
     """The `specjalist` row behind the session, or a refusal.
@@ -1637,6 +1643,18 @@ def _require_technique_author(request):
     specjalist = _require_specialist(request)
     if specjalist.module != MODULE_PSYCHOTHERAPY:
         raise PermissionDenied(TECHNIQUE_WRONG_MODULE)
+    return specjalist
+
+
+def _require_diet_technique_author(request):
+    """A specialist who may write into the psychodietetic catalogue, or a refusal.
+
+    The mirror of `_require_technique_author`: each module's catalogue is written
+    by that module's specialists.
+    """
+    specjalist = _require_specialist(request)
+    if specjalist.module != MODULE_DIET:
+        raise PermissionDenied(DIET_TECHNIQUE_WRONG_MODULE)
     return specjalist
 
 
@@ -2098,6 +2116,77 @@ class TechniqueCatalogueView(APIView):
         return Response([
             technique_rules.serialize_technique(technique)
             for technique in technique_rules.published()
+        ])
+
+
+class SpecialistDietTechniquesView(APIView):
+    """GET/POST /api/specialist/diet-techniques/ — a psychodietitian's own techniques.
+
+    The diet module's `SpecialistTechniquesView`, with the same rules: what is
+    saved is published to every patient's /diet/techniques at once. See
+    core/diet_techniques.py.
+    """
+
+    def get(self, request):
+        specjalist = _require_diet_technique_author(request)
+        return Response([
+            diet_technique_rules.serialize_diet_technique(technique)
+            for technique in diet_technique_rules.for_specjalist(specjalist)
+        ])
+
+    def post(self, request):
+        specjalist = _require_diet_technique_author(request)
+        serializer = diet_technique_rules.DietTechniqueSerializer(
+            data=request.data, context={'specjalist': specjalist},
+        )
+        serializer.is_valid(raise_exception=True)
+        technique = serializer.save()
+        return Response(
+            diet_technique_rules.serialize_diet_technique(technique),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SpecialistDietTechniqueView(APIView):
+    """PUT/DELETE /api/specialist/diet-techniques/<id>/ — correct or withdraw one.
+
+    Only the author's own, and only diet rows: anything else answers 404.
+    """
+
+    def _own(self, request, id_technique):
+        specjalist = _require_diet_technique_author(request)
+        technique = diet_technique_rules.find_for_specjalist(specjalist, id_technique)
+        if technique is None:
+            raise NotFound(TECHNIQUE_NOT_FOUND)
+        return specjalist, technique
+
+    def put(self, request, id_technique):
+        specjalist, technique = self._own(request, id_technique)
+        serializer = diet_technique_rules.DietTechniqueSerializer(
+            technique, data=request.data, context={'specjalist': specjalist},
+        )
+        serializer.is_valid(raise_exception=True)
+        return Response(
+            diet_technique_rules.serialize_diet_technique(serializer.save()))
+
+    def delete(self, request, id_technique):
+        _, technique = self._own(request, id_technique)
+        technique.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DietTechniqueCatalogueView(APIView):
+    """GET /api/diet/techniques/ — the psychodietetic techniques specialists published.
+
+    The database half of /diet/techniques, merged with the built-in techniques
+    on the frontend. No `_require_patient`, for the reason `TechniqueCatalogueView`
+    gives: nothing here is about anybody.
+    """
+
+    def get(self, request):
+        return Response([
+            diet_technique_rules.serialize_diet_technique(technique)
+            for technique in diet_technique_rules.published()
         ])
 
 

@@ -104,15 +104,18 @@ function SpecialistHome() {
           </span>
         </Link>
 
-        {/* A psychodietitian gets the diet module's catalogue, read-only: the
-            DBT editor is the psychotherapy module's, and the diet techniques
-            have no editor — their content comes from the foundation. */}
+        {/* A psychodietitian writes into the diet module's catalogue, the way a
+            psychotherapist writes into the DBT one — each module's editor is
+            its own, and the backend refuses the other one's writes. */}
         {dietSpecialist ? (
-          <Link className="specialist-tool" to={ROUTES.dietTechniques}>
-            <span className="specialist-tool-title">Techniki psychodietetyczne</span>
+          <Link className="specialist-tool" to={ROUTES.specialistDietTechniques}>
+            <span className="specialist-tool-title">
+              {routeTitle(ROUTES.specialistDietTechniques)}
+            </span>
             <span className="specialist-tool-text">
-              Katalog technik modułu dietetycznego, tak jak widzą go pacjenci.
-              Treść technik przygotowuje fundacja.
+              Dodaj technikę do katalogu „Techniki psychodietetyczne”. Każda
+              dodana technika jest od razu widoczna dla wszystkich pacjentów
+              aplikacji.
             </span>
             <span className="specialist-tool-arrow" aria-hidden="true">
               →

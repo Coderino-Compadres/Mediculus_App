@@ -480,6 +480,14 @@ CREATE TABLE IF NOT EXISTS technique (
     -- queries one, and the list is written and read as a unit.
     steps JSONB NOT NULL DEFAULT '[]'::jsonb,
     duration_min INT,
+    -- 'psychotherapy' | 'diet': which catalogue the row belongs to, the
+    -- author's specjalist.module when it was written. Mirrors
+    -- core/migrations/0027_diet_techniques.py, as do the two below.
+    module TEXT NOT NULL DEFAULT 'psychotherapy',
+    -- The diet catalogue's "Przykład" card and the sentence closing its step
+    -- list. NULL on every psychotherapy row.
+    example TEXT,
+    note TEXT,
     -- Whether there is a description to open. FALSE by default, which is what
     -- keeps the seeded rows out of the patient's catalogue: they carry a name
     -- and a sentence, not the structure the detail screen renders.
@@ -1051,6 +1059,12 @@ ALTER TABLE technique
     ADD COLUMN IF NOT EXISTS author_id_specjalist UUID,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+
+-- And the diet catalogue's columns. Mirrors core/migrations/0027_diet_techniques.py.
+ALTER TABLE technique
+    ADD COLUMN IF NOT EXISTS module TEXT NOT NULL DEFAULT 'psychotherapy',
+    ADD COLUMN IF NOT EXISTS example TEXT,
+    ADD COLUMN IF NOT EXISTS note TEXT;
 
 -- Two rows claiming one slug would make which technique opens a matter of row
 -- order, so the database refuses it rather than the serializer alone. NULLs do

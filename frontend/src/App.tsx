@@ -31,6 +31,8 @@ import SpecialistParentAccounts from './pages/SpecialistParentAccounts'
 import SpecialistColleagues from './pages/SpecialistColleagues'
 import SpecialistTechniques from './pages/SpecialistTechniques'
 import SpecialistTechniqueForm from './pages/SpecialistTechniqueForm'
+import SpecialistDietTechniques from './pages/SpecialistDietTechniques'
+import SpecialistDietTechniqueForm from './pages/SpecialistDietTechniqueForm'
 import SpecialistPending from './pages/SpecialistPending'
 import AdminHome from './pages/AdminHome'
 import AdminAccounts from './pages/AdminAccounts'
@@ -258,6 +260,18 @@ function RequireAdmin({ children }: { children: ReactNode }) {
 function RequireTechniqueAuthor({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   if (user && isDietSpecialist(user)) return <Navigate to={ROUTES.dietTechniques} replace />
+  return <RequireSpecialist>{children}</RequireSpecialist>
+}
+
+/**
+ * The psychodietetic technique editor — the diet module's. A psychotherapist is
+ * sent to their own editor instead; the backend refuses them these writes too.
+ */
+function RequireDietTechniqueAuthor({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  if (user && !isDietSpecialist(user) && isSpecialist(user)) {
+    return <Navigate to={ROUTES.specialistTechniques} replace />
+  }
   return <RequireSpecialist>{children}</RequireSpecialist>
 }
 
@@ -510,6 +524,30 @@ function App() {
               <RequireTechniqueAuthor>
                 <SpecialistTechniqueForm />
               </RequireTechniqueAuthor>
+            }
+          />
+          <Route
+            path={ROUTES.specialistDietTechniques}
+            element={
+              <RequireDietTechniqueAuthor>
+                <SpecialistDietTechniques />
+              </RequireDietTechniqueAuthor>
+            }
+          />
+          <Route
+            path={ROUTES.specialistDietTechniqueNew}
+            element={
+              <RequireDietTechniqueAuthor>
+                <SpecialistDietTechniqueForm />
+              </RequireDietTechniqueAuthor>
+            }
+          />
+          <Route
+            path={ROUTES.specialistDietTechniqueEdit}
+            element={
+              <RequireDietTechniqueAuthor>
+                <SpecialistDietTechniqueForm />
+              </RequireDietTechniqueAuthor>
             }
           />
           <Route

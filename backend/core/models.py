@@ -3,7 +3,7 @@ import uuid
 from django.db import models
 
 from .drinks import DRINKS, WATER
-from .modules import MODULES
+from .modules import MODULE_PSYCHOTHERAPY, MODULES
 from .technique_vocabulary import AVAILABILITY_GENERAL
 from .time_of_day import TIME_OF_DAY_CHOICES
 
@@ -534,6 +534,18 @@ class Technique(models.Model):
     # written and read as a unit by the form that edits it.
     steps = models.JSONField(default=list, blank=True)
     duration_min = models.IntegerField(null=True, blank=True)
+    # Which catalogue the row belongs to: 'psychotherapy' (the DBT/CBT one,
+    # /techniques) or 'diet' (the psychodietetic one, /diet/techniques). The
+    # author's `specjalist.module` at the time of writing -- see
+    # core/diet_techniques.py. One table for both because everything around a
+    # technique (the author column, the slug's uniqueness, what deleting a
+    # specialist does to their rows) is the same rule twice otherwise.
+    module = models.TextField(default=MODULE_PSYCHOTHERAPY)
+    # The diet catalogue's "Przykład" card and the sentence closing its step
+    # list (`przyklad` / `notka` in frontend/src/types/dietTechnique.ts). NULL on
+    # every psychotherapy row: that catalogue has neither.
+    example = models.TextField(null=True, blank=True)
+    note = models.TextField(null=True, blank=True)
     # Whether there is a description to open. False is a technique whose name is
     # known before its content, which the catalogue must not offer as a row --
     # see `isPublished` in frontend/src/utils/techniques.ts. The seeded rows are

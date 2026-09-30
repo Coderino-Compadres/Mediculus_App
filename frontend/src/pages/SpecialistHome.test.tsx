@@ -93,12 +93,12 @@ describe('SpecialistHome', () => {
     expect(document.querySelector(`a[href="${ROUTES.dietTechniques}"]`)).toBeNull()
   })
 
-  it('offers a psychodietitian the diet catalogue instead of the DBT editor', async () => {
+  it('offers a psychodietitian the diet technique editor instead of the DBT one', async () => {
     renderScreen({ ...SPECIALIST, specialistModule: 'diet' })
 
     expect(
-      await screen.findByRole('link', { name: /techniki psychodietetyczne/i }),
-    ).toHaveAttribute('href', ROUTES.dietTechniques)
+      await screen.findByRole('link', { name: /moje techniki psychodietetyczne/i }),
+    ).toHaveAttribute('href', ROUTES.specialistDietTechniques)
     expect(document.querySelector(`a[href="${ROUTES.specialistTechniques}"]`)).toBeNull()
   })
 })

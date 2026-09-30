@@ -7,8 +7,8 @@ import type { DietTechnique } from '../types/dietTechnique'
  * They live here rather than in the screens for the reason the gate below
  * exists at all: the list and the detail have to agree about which techniques a
  * patient may read, and two copies of that rule are two things to correct. The
- * data module is imported once, here, so replacing it with a fetch later is a
- * change to this file and to nothing else.
+ * data module is imported once, here; the techniques psychodietitians wrote
+ * arrive as the `stored` argument (see `hooks/useStoredDietTechniques.ts`).
  */
 
 /**
@@ -33,19 +33,40 @@ function isPublished(technique: DietTechnique): boolean {
 }
 
 /**
- * Every published technique, in the order the data file lists them.
+ * The whole catalogue: the techniques the app ships with, then the ones
+ * psychodietitians wrote (`stored`, from `useStoredDietTechniques`).
+ *
+ * The client's own fifteen come first and in her order; a technique added from
+ * the panel follows, in the order the API sent them. A slug in both halves
+ * keeps the built-in one — the backend refuses that collision anyway, so this
+ * is a backstop that fails towards her text. `stored` defaults to empty, so a
+ * screen or test that does not load it behaves as before.
+ */
+function catalogue(stored: DietTechnique[] = []): DietTechnique[] {
+  const builtinIds = new Set(DIET_TECHNIQUES.map((technique) => technique.id))
+  return [
+    ...DIET_TECHNIQUES,
+    ...stored.filter((technique) => !builtinIds.has(technique.id)),
+  ]
+}
+
+/**
+ * Every published technique, in catalogue order.
  *
  * Nothing sorts and nothing counts: the array's order is the screen's order
  * (like `data/crisisLines.ts`), and how many there are is whatever the data
  * says. No screen, type or test in this module knows the number.
  */
-export function publishedDietTechniques(): DietTechnique[] {
-  return DIET_TECHNIQUES.filter(isPublished)
+export function publishedDietTechniques(stored: DietTechnique[] = []): DietTechnique[] {
+  return catalogue(stored).filter(isPublished)
 }
 
 /** One technique by id — the same gate as the list, so a URL cannot bypass it. */
-export function findDietTechnique(id: string | undefined): DietTechnique | undefined {
-  return DIET_TECHNIQUES.find((technique) => technique.id === id && isPublished(technique))
+export function findDietTechnique(
+  id: string | undefined,
+  stored: DietTechnique[] = [],
+): DietTechnique | undefined {
+  return catalogue(stored).find((technique) => technique.id === id && isPublished(technique))
 }
 
 /**
@@ -60,6 +81,7 @@ export function findDietTechnique(id: string | undefined): DietTechnique | undef
  * **Asks `publishedDietTechniques()`, not the raw data**: a placeholder that is
  * withheld (`opisGotowy: false`, or a technique a specialist has to introduce)
  * is on no screen, so it is not something the list should be apologising for.
+ * A stored technique is never a placeholder, so the built-in half is enough.
  */
 export function catalogueHasPlaceholders(): boolean {
   return publishedDietTechniques().some((technique) => technique.zastepczy)

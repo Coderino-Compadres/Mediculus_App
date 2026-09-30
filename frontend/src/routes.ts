@@ -56,6 +56,12 @@ export const ROUTES = {
   specialistTechniques: '/specialist/techniques',
   specialistTechniqueNew: '/specialist/techniques/new',
   specialistTechniqueEdit: '/specialist/techniques/:id/edit',
+  /** The same three for a psychodietitian, who writes into the diet module's
+   *  catalogue (/diet/techniques) instead — pages/SpecialistDietTechniques.tsx
+   *  and pages/SpecialistDietTechniqueForm.tsx. */
+  specialistDietTechniques: '/specialist/diet-techniques',
+  specialistDietTechniqueNew: '/specialist/diet-techniques/new',
+  specialistDietTechniqueEdit: '/specialist/diet-techniques/:id/edit',
   home: '/home',
   journals: '/journals',
   journalDetail: '/journals/:id',
@@ -125,7 +131,7 @@ export const ROUTES = {
    *  into three schools and four groups, this is nine-ish psychodietetic
    *  exercises on one flat list. They share a word and nothing else — no
    *  content, no type (`types/dietTechnique.ts` says why), no data file and no
-   *  backend. `/techniques` is also the one patient screen a specialist is let
+   *  endpoint (only the `technique` table, split by `module`). `/techniques` is also the one patient screen a specialist is let
    *  onto; these are ordinary /diet screens and let nobody extra in. */
   dietTechniques: '/diet/techniques',
   dietTechniqueDetail: '/diet/techniques/:id',
@@ -203,6 +209,10 @@ export function specialistTechniqueEditPath(id: number | string): string {
   return ROUTES.specialistTechniqueEdit.replace(':id', String(id))
 }
 
+export function specialistDietTechniqueEditPath(id: number | string): string {
+  return ROUTES.specialistDietTechniqueEdit.replace(':id', String(id))
+}
+
 /** The same for ROUTES.dietTechniqueDetail, whose `:id` is a technique slug
  *  ('technika-1'). Hand-written in `data/dietTechniques.ts`, same slug shape as
  *  the psychotherapy catalogue's. */
@@ -270,6 +280,9 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.specialistTechniques]: 'Moje techniki',
   [ROUTES.specialistTechniqueNew]: 'Nowa technika',
   [ROUTES.specialistTechniqueEdit]: 'Edycja techniki',
+  [ROUTES.specialistDietTechniques]: 'Moje techniki psychodietetyczne',
+  [ROUTES.specialistDietTechniqueNew]: 'Nowa technika psychodietetyczna',
+  [ROUTES.specialistDietTechniqueEdit]: 'Edycja techniki psychodietetycznej',
   [ROUTES.diet]: 'Dietetyka i psychodietetyka',
   [ROUTES.dietMeal]: 'Dodawanie posiłku',
   [ROUTES.dietMealEdit]: 'Edycja posiłku',
