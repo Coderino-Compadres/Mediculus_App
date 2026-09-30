@@ -58,6 +58,7 @@ from .reports import build_weekly_reports, find_report
 from .serializers import (EMAIL_TAKEN, AccountDeleteSerializer,
                           AdminAccountEditSerializer,
                           ConsentScopeSerializer,
+                          ConsentWithdrawSerializer,
                           EmailChangeConfirmSerializer,
                           EmailChangeRequestSerializer,
                           GuardianLinkSerializer,
@@ -68,6 +69,7 @@ from .serializers import (EMAIL_TAKEN, AccountDeleteSerializer,
                           SpecialistColleagueCreateSerializer,
                           SpecialistPatientInviteSerializer, UserSerializer)
 from . import account_deletion
+from . import safety_plan as safety_plan_rules
 from . import specialist as specialist_rules
 from . import techniques as technique_rules
 from . import diet_techniques as diet_technique_rules
@@ -361,6 +363,8 @@ PROFILE_REFUSAL = (
 # question: the counters above are "this part of the profile", while this is a
 # clinical record about a body. A guardian reaching it is not being told a
 # screen is unavailable, they are being told whose record it is.
+SAFETY_PLAN_REFUSAL = 'Plan bezpieczeństwa jest dostępny tylko dla konta pacjenta.'
+
 HEALTH_PROFILE_REFUSAL = (
     'Profil zdrowotny jest dostępny tylko dla konta pacjenta.'
 )
@@ -592,6 +596,32 @@ class HealthProfileView(APIView):
         return Response(health_profile_rules.serialize_profile(profile))
 
 
+class SafetyPlanView(APIView):
+    """GET/PUT /api/safety-plan/ — the patient's own safety plan.
+
+    Behind `_require_patient` on both verbs, like every clinical endpoint: a
+    guardian or a specialist has no `patient` row and is refused, and a minor
+    whose guardian has not accepted is refused by the same call. The patient is
+    the session, never the URL, so there is no version of this endpoint that
+    reads somebody else's plan. See core/safety_plan.py.
+
+    GET answers `null` for a plan nobody has written yet; PUT replaces the whole
+    plan and answers it as stored.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, SAFETY_PLAN_REFUSAL)
+        return Response(safety_plan_rules.serialize_plan(
+            safety_plan_rules.plan_for(patient.id_medical)))
+
+    def put(self, request):
+        patient = _require_patient(request, SAFETY_PLAN_REFUSAL)
+        serializer = safety_plan_rules.SafetyPlanSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        plan = serializer.save_plan(patient.id_medical)
+        return Response(safety_plan_rules.serialize_plan(plan))
+
+
 class PasswordChangeView(APIView):
     """POST /api/account/password/ — change the signed-in account's password.
 
@@ -705,9 +735,14 @@ class ConsentWithdrawView(APIView):
     """
 
     permission_classes = CONSENT_EXEMPT
+    # The password is checked (`ConsentWithdrawSerializer`), which makes this a
+    # password oracle like the password change — capped the same way.
+    throttle_classes = [PasswordChangeThrottle]
 
     def post(self, request):
-        serializer = ConsentScopeSerializer(data=request.data)
+        serializer = ConsentWithdrawSerializer(
+            data=request.data, context={'user': request.user},
+        )
         serializer.is_valid(raise_exception=True)
         withdraw(request.user, serializer.validated_data['scope'])
         return Response(UserSerializer(request.user).data)

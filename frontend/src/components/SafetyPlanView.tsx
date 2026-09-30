@@ -5,14 +5,12 @@ import type { CareDetails } from '../types/profile'
 import type { AlternativeContact, SafetyPlan, TrustedPerson } from '../types/safetyPlan'
 
 /**
- * The plan a specialist wrote, rendered read-only.
+ * The patient's plan, shown to them.
  *
- * READ-ONLY IS THE FEATURE, not a stage it will grow out of. The plan is
- * "przygotowany wspólnie z terapeutą" and composing it is an item on the
- * specialist panel; the patient app shows it and nothing else. There is
- * therefore no input, no save and no "edit" affordance anywhere below, and
- * adding one would move a clinical document's authorship without anybody
- * deciding to.
+ * WRITTEN BY THE PATIENT (components/SafetyPlanForm.tsx), shown here read-only;
+ * the "Edytuj plan" button that opens the form lives on the page, not in this
+ * view. It used to be a document "przygotowany wspólnie z terapeutą" with no
+ * write path at all, which is why every account was shown the same example.
  *
  * SECTION ORDER IS THE CLIENT'S. Warning signs come first because that is what
  * she said the feature is for when asked about it directly: "nie chodzi o numery
@@ -20,8 +18,8 @@ import type { AlternativeContact, SafetyPlan, TrustedPerson } from '../types/saf
  * coś wyświetlało, że już się zaczyna robić ryzyko". Everything else follows in
  * the order the requirements list it.
  *
- * A SECTION WITH NOTHING IN IT IS NOT RENDERED. A specialist filling in two
- * fields out of five is normal — a plan grows over several appointments — and a
+ * A SECTION WITH NOTHING IN IT IS NOT RENDERED. Filling in two fields out of
+ * five is normal — a plan grows over time — and a
  * half-filled plan should look like a short plan, not like a broken screen with
  * three empty headings in it.
  */
@@ -39,6 +37,11 @@ interface SafetyPlanViewProps {
    * terapeuty" section, rather than a heading with a blank under it.
    */
   care: CareDetails | null
+  /**
+   * Opens the patient's form. The button sits in the card's own header, next to
+   * the title and the date it changes, rather than floating under the card.
+   */
+  onEdit?: () => void
 }
 
 function PlanSection({ title, children }: { title: string; children: ReactNode }) {
@@ -55,7 +58,7 @@ function PlanList({ items }: { items: string[] }) {
   return (
     <ul className="safety-plan-list">
       {/* Keyed by position, not by the text. These are free-form lines a
-          specialist typed, and two identical ones are a thing that happens — a
+          patient typed, and two identical ones are a thing that happens — a
           line pasted twice during an appointment, or a backend returning a
           repeated row. Keyed by content, React would collide them and render one
           bullet where the plan has two, silently shortening a clinical list. The
@@ -110,7 +113,7 @@ function specialistContact(
   return null
 }
 
-function SafetyPlanView({ plan, care }: SafetyPlanViewProps) {
+function SafetyPlanView({ plan, care, onEdit }: SafetyPlanViewProps) {
   const specialist = specialistContact(care, plan.alternativeContact)
 
   return (
@@ -120,22 +123,46 @@ function SafetyPlanView({ plan, care }: SafetyPlanViewProps) {
     // not.
     <section className="safety-plan-card" aria-labelledby="safety-plan-heading">
       <div className="safety-plan-card-header">
-        <h2 id="safety-plan-heading">Twój plan bezpieczeństwa</h2>
-        {plan.updatedAt && (
-          <p className="safety-plan-updated">
-            Ostatnia aktualizacja:{' '}
-            {fromIsoDate(plan.updatedAt).toLocaleDateString('pl-PL', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
-            })}
-          </p>
+        <div className="safety-plan-card-titles">
+          <h2 id="safety-plan-heading">Twój plan bezpieczeństwa</h2>
+          {plan.updatedAt && (
+            <p className="safety-plan-updated">
+              Ostatnia aktualizacja:{' '}
+              {/* The API sends a full timestamp; a bare 'YYYY-MM-DD' goes through
+                  fromIsoDate so it is read as a local calendar day, not as UTC
+                  midnight. */}
+              {(plan.updatedAt.length === 10 ? fromIsoDate(plan.updatedAt) : new Date(plan.updatedAt)).toLocaleDateString('pl-PL', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}
+            </p>
+          )}
+        </div>
+        {/* Level with the title, where the eye already is when it wants to
+            change something — and quiet: a sage tint, not a filled button,
+            because editing is the secondary action on a screen for reading. */}
+        {onEdit && (
+          // "Edytuj" on screen, and only the pencil on a phone-width card
+          // (safetyPlan.css), so the title keeps its line; the full name is
+          // the aria-label either way.
+          <button
+            type="button"
+            className="safety-plan-edit-chip"
+            onClick={onEdit}
+            aria-label="Edytuj plan"
+          >
+            <span className="safety-plan-edit-chip-icon" aria-hidden="true">
+              ✎
+            </span>
+            <span className="safety-plan-edit-chip-label">Edytuj</span>
+          </button>
         )}
       </div>
 
       <p className="safety-plan-lead">
-        Ten plan powstał wspólnie ze specjalistą. Możesz do niego wracać, kiedy potrzebujesz —
-        zmiany wprowadza specjalista podczas wizyty.
+        To Twój plan, zapisany Twoimi słowami. Wracaj do niego, kiedy potrzebujesz, i zmieniaj go,
+        kiedy coś się zmieni — warto też omówić go ze specjalistą.
       </p>
 
       {/* First, and marked out from the rest. Ochre, which is the tone this app
@@ -178,11 +205,11 @@ function SafetyPlanView({ plan, care }: SafetyPlanViewProps) {
         </PlanSection>
       )}
 
-      {plan.recommendations && (
-        <PlanSection title="Indywidualne zalecenia">
-          {/* pre-wrap: this is free text a specialist typed, and the line breaks
+      {plan.notes && (
+        <PlanSection title="Co jeszcze warto pamiętać">
+          {/* pre-wrap: this is free text the patient typed, and the line breaks
               they put in it are part of what they wrote. */}
-          <p className="safety-plan-recommendations">{plan.recommendations}</p>
+          <p className="safety-plan-recommendations">{plan.notes}</p>
         </PlanSection>
       )}
     </section>

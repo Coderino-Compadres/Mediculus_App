@@ -994,6 +994,32 @@ CREATE TABLE IF NOT EXISTS health_condition (
 );
 
 -- ----------------------------
+-- SAFETY_PLAN
+-- The patient's own safety plan, one row per patient, written by the patient.
+-- Mirrors core/migrations/0028_safety_plan.py.
+--
+-- The lists are JSONB rather than child tables, like technique.steps: a line
+-- has no identity, nothing queries one, and the plan is written and read as a
+-- unit. Their shapes are enforced by core.safety_plan.SafetyPlanSerializer.
+-- No "means restriction" section, on purpose -- see core.models.SafetyPlan.
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS safety_plan (
+    id_safety_plan UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- safety_plan.id_medical -> user_db.patient.id_medical (logical only).
+    id_medical UUID UNIQUE NOT NULL,
+    -- ["...", ...]
+    warning_signs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    coping_strategies JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- [{"name": ..., "relation": ..., "phone": ...}, ...]
+    trusted_people JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- {"name": ..., "role": ..., "phone": ...} or NULL
+    professional_contact JSONB,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ----------------------------
 -- RAPORT
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS raport (

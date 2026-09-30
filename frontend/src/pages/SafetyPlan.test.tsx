@@ -1,16 +1,38 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
 import SafetyPlan from './SafetyPlan'
 import { ROUTES } from '../routes'
 import { CRISIS_LINES } from '../data/crisisLines'
-import { SAFETY_PLAN } from '../data/safetyPlan'
+import { ApiError } from '../api/client'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
 import type { AccountProfile } from '../types/profile'
+import type { SafetyPlan as Plan } from '../types/safetyPlan'
 
 vi.mock('../api/profile', () => ({ fetchAccountProfile: vi.fn() }))
 const { fetchAccountProfile } = await import('../api/profile')
 const mockedProfile = vi.mocked(fetchAccountProfile)
+
+vi.mock('../api/safetyPlan', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/safetyPlan')>()
+  return { ...actual, fetchSafetyPlan: vi.fn(), saveSafetyPlan: vi.fn() }
+})
+const { fetchSafetyPlan, saveSafetyPlan } = await import('../api/safetyPlan')
+const mockedFetchPlan = vi.mocked(fetchSafetyPlan)
+const mockedSavePlan = vi.mocked(saveSafetyPlan)
+
+/** A plan the patient wrote, as `fetchSafetyPlan` maps it. */
+const PLAN: Plan = {
+  warningSigns: ['Nie śpię dwie noce z rzędu'],
+  copingStrategies: ['Spacer'],
+  trustedPeople: [
+    { id: 'trusted-0', name: 'Ania', relation: 'siostra', phone: { dial: '600700800', display: '600 700 800' } },
+  ],
+  alternativeContact: null,
+  notes: null,
+  updatedAt: '2026-09-30T10:00:00Z',
+}
 
 /** The care relationship this screen names under "Kontakt do terapeuty". */
 const ACCOUNT_PROFILE: AccountProfile = {
@@ -21,16 +43,18 @@ const ACCOUNT_PROFILE: AccountProfile = {
 beforeEach(() => {
   mockedProfile.mockReset()
   mockedProfile.mockResolvedValue(ACCOUNT_PROFILE)
+  mockedFetchPlan.mockReset()
+  mockedFetchPlan.mockResolvedValue(PLAN)
+  mockedSavePlan.mockReset()
 })
 
 /**
  * The screen itself: what it is composed of and in what order.
  *
- * The two states of the plan are covered where they live —
- * components/SafetyPlanView.test.tsx renders both a filled plan and the empty
- * card directly. Here the plan comes from `data/safetyPlan.ts` as it actually
- * ships, so these tests also fail if that file is left switched to `null` by
- * mistake after a review with the client.
+ * The plan is the patient's own, loaded from and saved to /api/safety-plan/
+ * (mocked here). How a filled plan and the empty card look is covered in
+ * components/SafetyPlanView.test.tsx; this file covers the page: the order,
+ * the load states, and writing and editing a plan.
  */
 function renderScreen() {
   return renderWithProviders(<SafetyPlan />, { route: ROUTES.safetyPlan })
@@ -64,27 +88,6 @@ describe('SafetyPlan', () => {
     for (const line of CRISIS_LINES) {
       expect(screen.getByRole('link', { name: new RegExp(line.number.display) }))
         .toHaveAttribute('href', `tel:${line.number.dial}`)
-    }
-  })
-
-  it('renders whichever state data/safetyPlan.ts is switched to', () => {
-    /** `SAFETY_PLAN` is a deliberate one-line switch — filled for a walkthrough
-     *  with the client, `null` for the state most accounts will really be in —
-     *  so this asserts on both branches rather than pinning one. An earlier
-     *  version demanded `not.toBeNull()`, which made flipping the switch
-     *  documented at the top of that file fail the suite: a test enforcing the
-     *  opposite of what the file it covers tells you to do. Both states are
-     *  covered in full in components/SafetyPlanView.test.tsx; this only checks
-     *  the page picks the right one. */
-    renderScreen()
-
-    expect(screen.getByRole('heading', { level: 2, name: /twój plan bezpieczeństwa/i })).toBeInTheDocument()
-    if (SAFETY_PLAN) {
-      expect(screen.getByRole('heading', { level: 3, name: /sygnały ostrzegawcze/i })).toBeInTheDocument()
-      expect(screen.queryByText(/to zupełnie normalne/i)).not.toBeInTheDocument()
-    } else {
-      expect(screen.getByText(/to zupełnie normalne/i)).toBeInTheDocument()
-      expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument()
     }
   })
 
@@ -144,5 +147,120 @@ describe('SafetyPlan — the treating specialist', () => {
 
     await screen.findByText(/mgr Marta Zielińska/)
     expect(screen.getByText(/bez numeru w planie/i)).toBeInTheDocument()
+  })
+})
+
+describe('SafetyPlan — the patient writes it', () => {
+  it('shows the plan the patient wrote, with a way to edit it', async () => {
+    renderScreen()
+
+    expect(await screen.findByText('Nie śpię dwie noce z rzędu')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edytuj plan' })).toBeInTheDocument()
+  })
+
+  it('invites a patient with no plan to write one', async () => {
+    mockedFetchPlan.mockResolvedValue(null)
+    renderScreen()
+
+    expect(await screen.findByText(/to zupełnie normalne/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Utwórz swój plan' })).toBeInTheDocument()
+  })
+
+  it('creates a plan from the form and shows it as saved', async () => {
+    mockedFetchPlan.mockResolvedValue(null)
+    mockedSavePlan.mockImplementation(async (input) => ({
+      ...PLAN,
+      warningSigns: input.warningSigns.filter(Boolean),
+      copingStrategies: [],
+      trustedPeople: [],
+    }))
+    renderScreen()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Utwórz swój plan' }))
+    await userEvent.type(
+      screen.getByLabelText('Sygnały ostrzegawcze — pozycja 1'), 'Przestaję odpisywać',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz plan' }))
+
+    expect(mockedSavePlan).toHaveBeenCalledWith(
+      expect.objectContaining({ warningSigns: ['Przestaję odpisywać'] }),
+    )
+    expect(await screen.findByText('Przestaję odpisywać')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Zapisz plan' })).toBeNull()
+  })
+
+  it('opens the form filled with the stored plan', async () => {
+    renderScreen()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edytuj plan' }))
+
+    expect(screen.getByLabelText('Sygnały ostrzegawcze — pozycja 1')).toHaveValue('Nie śpię dwie noce z rzędu')
+    expect(screen.getByLabelText('Imię')).toHaveValue('Ania')
+    expect(screen.getByLabelText('Telefon', { selector: '#person-phone-0' })).toHaveValue('600 700 800')
+  })
+
+  it('cancelling leaves the plan as it was', async () => {
+    renderScreen()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edytuj plan' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Anuluj' }))
+
+    expect(screen.getByText('Nie śpię dwie noce z rzędu')).toBeInTheDocument()
+    expect(mockedSavePlan).not.toHaveBeenCalled()
+  })
+
+  it('keeps the form and says why when the server refuses the save', async () => {
+    mockedSavePlan.mockRejectedValue(
+      new ApiError(400, null, { trusted_people: 'Podaj numer telefonu — cyfry, spacje lub myślniki, np. 600 700 800.' }),
+    )
+    renderScreen()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edytuj plan' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz plan' }))
+
+    expect(await screen.findByText(/Podaj numer telefonu/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Zapisz plan' })).toBeInTheDocument()
+  })
+
+  it('saves once however quickly the button is pressed', async () => {
+    mockedSavePlan.mockReturnValue(new Promise(() => {}))
+    renderScreen()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edytuj plan' }))
+    const save = screen.getByRole('button', { name: 'Zapisz plan' })
+    save.click()
+    save.click()
+    save.click()
+
+    await waitFor(() => expect(mockedSavePlan).toHaveBeenCalledTimes(1))
+  })
+
+  it('never asks the patient to list ways of hurting themselves', async () => {
+    mockedFetchPlan.mockResolvedValue(null)
+    renderScreen()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Utwórz swój plan' }))
+
+    expect(screen.queryByText(/zabezpiecz|usuń z otoczenia|ukryj przedmioty|sposob.* zrobienia sobie/i))
+      .not.toBeInTheDocument()
+  })
+})
+
+describe('SafetyPlan — when the plan does not load', () => {
+  it('says so instead of showing an empty plan, and offers a retry', async () => {
+    /** "Nie masz jeszcze planu" over a plan that exists but did not arrive would
+     *  invite the person to write it again in a bad moment (CLAUDE.md §4). */
+    mockedFetchPlan.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(PLAN)
+    renderScreen()
+
+    expect(await screen.findByText(/Nie udało się wczytać Twojego planu/)).toBeInTheDocument()
+    expect(screen.queryByText(/to zupełnie normalne/i)).toBeNull()
+    for (const line of CRISIS_LINES) {
+      expect(screen.getByRole('link', { name: new RegExp(line.number.display) })).toBeInTheDocument()
+    }
+
+    await userEvent.click(screen.getByRole('button', { name: 'Spróbuj ponownie' }))
+
+    expect(await screen.findByText('Nie śpię dwie noce z rzędu')).toBeInTheDocument()
   })
 })

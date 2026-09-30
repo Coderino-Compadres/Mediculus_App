@@ -240,8 +240,12 @@ function AccountClosureConfirm({
           // `needsConsents` flips, and App.tsx's guard takes over from here to
           // pages/ConsentsRequired.tsx. No navigate() call, so the redirect
           // cannot disagree with the guard that would have done it anyway.
+          // The password travels and is checked on the server; a wrong one lands
+          // under the field (its API name is `password` on both endpoints).
           setUser(await withdrawConsent(
-            reason === 'withdraw-data-consent' ? 'data' : 'all'))
+            reason === 'withdraw-data-consent' ? 'data' : 'all',
+            currentValues.password,
+          ))
         }
       },
       fields: DELETE_ACCOUNT_FIELDS,

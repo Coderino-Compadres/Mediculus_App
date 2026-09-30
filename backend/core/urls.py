@@ -61,6 +61,8 @@ urlpatterns = [
     # unlike that one it *is* module-specific — it answers "who treats me here"
     # and "how much have I written here".
     path('diet/profile/', views.DietAccountProfileView.as_view(), name='diet-profile'),
+    # The patient's own safety plan — core/safety_plan.py.
+    path('safety-plan/', views.SafetyPlanView.as_view(), name='safety-plan'),
     path('account/password/', views.PasswordChangeView.as_view(), name='account-password'),
     path('account/email/', views.EmailChangeRequestView.as_view(), name='account-email'),
     path('account/delete/', views.AccountDeleteView.as_view(), name='account-delete'),

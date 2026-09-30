@@ -1,35 +1,31 @@
 /**
- * What the screen shows when no specialist has written a plan for this account.
+ * What the screen shows before the patient has written a plan.
  *
- * THIS IS THE DEFAULT STATE, not an error and not an edge case. A plan exists
- * only once a specialist has sat down and written one, so most accounts will
- * open this screen and see exactly this. It is designed accordingly: it explains
- * what the thing is, says who makes it, and suggests raising it at the next
- * appointment.
+ * AN INVITATION, NOT A TASK. Nothing here is red, nothing scolds and nothing
+ * implies the patient failed to do something: most accounts start here, and a
+ * plan is worth writing only when somebody wants one. It says what the plan is,
+ * that it is written in the patient's own words, and that a specialist can help
+ * with it — and offers the button that opens the form.
  *
- * WHAT IT DELIBERATELY IS NOT. Not a warning, not a nag and not a "you are
- * missing something" — nothing here is red, nothing scolds and nothing implies
- * the patient failed to do a task. It also offers no way to write a plan alone:
- * the whole point of the feature is that it is prepared with a therapist, and an
- * "utwórz plan" button here would quietly hand the authorship of a clinical
- * document to the person it is about.
- *
- * The support numbers above stay fully visible in this state, which is why the
- * screen is worth opening at all with no plan.
+ * The crisis numbers are above this on the page and work with no plan at all;
+ * the last line points at them.
  */
-function SafetyPlanEmpty() {
+function SafetyPlanEmpty({ onCreate }: { onCreate: () => void }) {
   return (
     <section className="safety-plan-card safety-plan-empty" aria-labelledby="safety-plan-heading">
       <h2 id="safety-plan-heading">Twój plan bezpieczeństwa</h2>
       <p>
-        Nie masz jeszcze ułożonego planu — i to zupełnie normalne. Plan bezpieczeństwa to krótka,
-        osobista notatka, którą przygotowuje się wspólnie ze specjalistą: co u Ciebie zapowiada
-        gorszy czas, co wtedy pomaga i do kogo możesz się odezwać.
+        Nie masz jeszcze swojego planu — i to zupełnie normalne. Plan bezpieczeństwa to krótka,
+        osobista notatka na trudniejsze chwile: co u Ciebie zapowiada gorszy czas, co wtedy pomaga
+        i do kogo możesz się odezwać.
       </p>
       <p>
-        Jeśli chcesz taki plan mieć, powiedz o tym na najbliższej wizycie. Kiedy specjalista go
-        przygotuje, pojawi się w tym miejscu.
+        Piszesz go własnymi słowami i możesz go zmieniać w każdej chwili. Jeśli chcesz, ułóż go
+        razem ze swoim specjalistą na wizycie.
       </p>
+      <button type="button" className="safety-plan-edit-button" onClick={onCreate}>
+        Utwórz swój plan
+      </button>
       <p className="safety-plan-empty-note">
         Numery powyżej działają niezależnie od planu — możesz z nich korzystać zawsze.
       </p>

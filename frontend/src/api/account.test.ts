@@ -50,17 +50,18 @@ const USER_PAYLOAD = {
 beforeEach(() => mockedRequest.mockReset())
 
 describe('withdrawConsent', () => {
-  it('posts the scope and hands back the updated account', async () => {
+  it('posts the scope with the password, and hands back the updated account', async () => {
     /** The updated user is what moves the app: the route guard reads
      *  `consents.active`, so the session gets the new one rather than the
      *  caller navigating by hand. */
     mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
 
-    const user = await withdrawConsent('data')
+    const user = await withdrawConsent('data', 'Haslo123!')
 
+    // The password travels because the server checks it.
     expect(mockedRequest).toHaveBeenCalledWith('/api/account/consents/withdraw/', {
       method: 'POST',
-      body: { scope: 'data' },
+      body: { scope: 'data', password: 'Haslo123!' },
     })
     expect(user.consents.active).toBe(false)
     expect(user.consents.data.active).toBe(false)
@@ -70,11 +71,11 @@ describe('withdrawConsent', () => {
     for (const scope of ['data', 'services', 'all'] as const) {
       mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
 
-      await withdrawConsent(scope)
+      await withdrawConsent(scope, 'x')
 
       expect(mockedRequest).toHaveBeenLastCalledWith('/api/account/consents/withdraw/', {
         method: 'POST',
-        body: { scope },
+        body: { scope, password: 'x' },
       })
     }
   })
@@ -84,7 +85,7 @@ describe('withdrawConsent', () => {
      *  consented" and "consented then withdrew" the same row (art. 7(1)). */
     mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
 
-    const user = await withdrawConsent('data')
+    const user = await withdrawConsent('data', 'x')
 
     expect(user.consents.data.grantedAt).toBe('2026-06-18T09:31:02Z')
     expect(user.consents.data.withdrawnAt).toBe('2026-09-01T08:00:00Z')
@@ -94,7 +95,7 @@ describe('withdrawConsent', () => {
     const refusal = new Error('403')
     mockedRequest.mockRejectedValueOnce(refusal)
 
-    await expect(withdrawConsent('all')).rejects.toBe(refusal)
+    await expect(withdrawConsent('all', 'x')).rejects.toBe(refusal)
   })
 })
 

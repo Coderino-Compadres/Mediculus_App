@@ -68,7 +68,13 @@
   font-size: 14px;
   color: var(--color-graphite-muted);
   margin: 0;
-  text-transform: capitalize;
+}
+
+/* The first letter only. `capitalize` upper-cased every word, which turned
+   "środa, 30 września" into "Środa, 30 Września" — Polish month and weekday
+   names are lowercase. */
+.diary-entry-date::first-letter {
+  text-transform: uppercase;
 }
 
 /* Midnight lock reminder — confirmed by the client as needing high visibility,

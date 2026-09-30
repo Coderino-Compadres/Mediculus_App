@@ -364,7 +364,7 @@ describe('Profile', () => {
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
     await open('Wycofaj zgody')
 
-    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('all'))
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('all', 'haslo1234'))
     expect(mockedDelete).not.toHaveBeenCalled()
   })
 
@@ -375,7 +375,7 @@ describe('Profile', () => {
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
     await open('Wycofaj zgodę')
 
-    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('data'))
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('data', 'haslo1234'))
   })
 
   it('withdrawing only the services consent sends scope "services"', async () => {
@@ -385,7 +385,7 @@ describe('Profile', () => {
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
     await open('Wycofaj zgodę na usługi')
 
-    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('services'))
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('services', 'haslo1234'))
   })
 
   /*
@@ -395,6 +395,22 @@ describe('Profile', () => {
    * stub's answer, a resolving endpoint made each of them say the opposite of the
    * truth.
    */
+  it('puts a wrong password under the field and withdraws nothing', async () => {
+    /** The password is checked on the server now — it used to be asked for
+     *  and never sent, so any password stopped the account. */
+    mockedWithdraw.mockRejectedValue(
+      new ApiError(400, null, { password: 'Hasło jest nieprawidłowe.' }),
+    )
+    await renderProfile()
+
+    await open('Wycofaj obie zgody naraz')
+    await userEvent.type(screen.getByLabelText('Hasło'), 'zle-haslo')
+    await open('Wycofaj zgody')
+
+    expect(await screen.findByText('Hasło jest nieprawidłowe.')).toBeInTheDocument()
+    expect(mockedWithdraw).toHaveBeenCalledWith('all', 'zle-haslo')
+  })
+
   it('signs out and leaves once the account is deleted', async () => {
     mockedDelete.mockResolvedValue(undefined)
     const signOut = vi.fn().mockResolvedValue(undefined)

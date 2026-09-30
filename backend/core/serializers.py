@@ -971,6 +971,33 @@ class ConsentScopeSerializer(serializers.Serializer):
     )
 
 
+class ConsentWithdrawSerializer(ConsentScopeSerializer):
+    """A withdrawal: the scope, and the owner's password re-typed.
+
+    The password is checked here, on the server. It used to be asked for by the
+    screen and never sent, which made "Potwierdź, że to Ty" a promise nothing
+    kept: anybody holding an unlocked phone could stop the account, and the
+    screen told them it was the owner's decision. The same field rules as
+    `AccountDeleteSerializer` — an old password that today's validators would
+    refuse must still be able to exercise the right.
+
+    Only the withdrawal asks. Restoring a consent is the direction that unblocks
+    an account (`ConsentRestoreView`), so friction there protects nobody.
+    """
+
+    password = serializers.CharField(
+        write_only=True, trim_whitespace=False,
+        error_messages={'blank': 'Podaj hasło.', 'required': 'Podaj hasło.'},
+    )
+
+    WRONG_PASSWORD = 'Hasło jest nieprawidłowe.'
+
+    def validate_password(self, value):
+        if not _password_matches(value, self.context['user'].password_hash):
+            raise serializers.ValidationError(self.WRONG_PASSWORD)
+        return value
+
+
 class GuardianLinkSerializer(serializers.Serializer):
     """Invites a guardian, named by e-mail, to vouch for the signed-in minor.
 

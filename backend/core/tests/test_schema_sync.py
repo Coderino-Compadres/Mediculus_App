@@ -141,6 +141,9 @@ class SchemaDriftTests(SimpleTestCase):
     def test_admin_audit_log_matches(self):
         self.assert_table_matches('admin_audit_log')
 
+    def test_safety_plan_matches(self):
+        self.assert_table_matches('safety_plan')
+
     def test_hydration_matches(self):
         self.assert_table_matches('hydration')
 

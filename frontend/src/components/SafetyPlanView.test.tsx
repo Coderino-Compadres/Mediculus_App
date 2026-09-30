@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import SafetyPlanView from './SafetyPlanView'
 import SafetyPlanEmpty from './SafetyPlanEmpty'
 import type { CareDetails } from '../types/profile'
@@ -13,7 +14,7 @@ function plan(overrides: Partial<SafetyPlan> = {}): SafetyPlan {
       { id: 't1', name: 'Ania', relation: 'siostra', phone: { dial: '000000000', display: '000 000 000' } },
     ],
     alternativeContact: null,
-    recommendations: 'Napisz do mnie przed wizytą.',
+    notes: 'W nocy dzwonię do Centrum Wsparcia.',
     updatedAt: '2026-08-11',
     ...overrides,
   }
@@ -45,7 +46,7 @@ function renderPlan(data: SafetyPlan, care: CareDetails | null = CARE) {
   return render(<SafetyPlanView plan={data} care={care} />)
 }
 
-describe('SafetyPlanView — what the specialist wrote', () => {
+describe('SafetyPlanView — the patient\'s own plan', () => {
   it('puts the warning signs first, ahead of every other section', () => {
     /** The client's stated priority for this whole feature: "nie chodzi o numery
      *  telefonów, ale chodzi mi nawet o sygnały ostrzegawcze […] żeby jednak mu
@@ -65,14 +66,14 @@ describe('SafetyPlanView — what the specialist wrote', () => {
       'Sposoby radzenia sobie',
       'Osoby, do których mogę się zwrócić',
       'Kontakt do terapeuty lub lekarza',
-      'Indywidualne zalecenia',
+      'Co jeszcze warto pamiętać',
     ])
   })
 
   it('leaves out a section the specialist has not filled in', () => {
     /** A plan grows over several appointments. Half-filled should look like a
      *  short plan, not like a screen with three empty headings in it. */
-    renderPlan(plan({ copingStrategies: [], trustedPeople: [], recommendations: null }))
+    renderPlan(plan({ copingStrategies: [], trustedPeople: [], notes: null }))
 
     expect(screen.getByText('Nie śpię dwie noce z rzędu')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /sposoby radzenia sobie/i })).not.toBeInTheDocument()
@@ -82,7 +83,7 @@ describe('SafetyPlanView — what the specialist wrote', () => {
 
   it('is still a plan when only the warning signs are filled in', () => {
     renderPlan(
-      plan({ copingStrategies: [], trustedPeople: [], recommendations: null, warningSigns: ['Przestaję odpisywać'] }),
+      plan({ copingStrategies: [], trustedPeople: [], notes: null, warningSigns: ['Przestaję odpisywać'] }),
     )
 
     expect(screen.getByRole('heading', { name: /twój plan bezpieczeństwa/i })).toBeInTheDocument()
@@ -174,12 +175,21 @@ describe('SafetyPlanView — what the specialist wrote', () => {
     expect(screen.getByText(/bez numeru w planie/i)).toBeInTheDocument()
   })
 
-  it('says when the specialist last revised the plan', () => {
-    /** A document somebody else wrote about you needs a date on it: without one
-     *  a plan from two years ago and one from last week read identically. */
+  it('says when the plan was last saved', () => {
+    /** Without a date a plan from two years ago and one from last week read
+     *  identically. */
     renderPlan(plan({ updatedAt: '2026-08-11' }))
 
     expect(screen.getByText(/11 sierpnia 2026/)).toBeInTheDocument()
+  })
+
+  it('reads the full timestamp the API actually sends', () => {
+    /** The first version parsed only 'YYYY-MM-DD' and printed "Invalid Date"
+     *  over every saved plan. */
+    renderPlan(plan({ updatedAt: '2026-09-30T11:52:07.123456+00:00' }))
+
+    expect(screen.getByText(/30 września 2026/)).toBeInTheDocument()
+    expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument()
   })
 
   it('says nothing about a date it does not have', () => {
@@ -194,14 +204,18 @@ describe('SafetyPlanView — what the specialist wrote', () => {
     expect(screen.queryByRole('heading', { name: /kontakt do terapeuty/i })).not.toBeInTheDocument()
   })
 
-  it('offers no way for the patient to write or edit any of it', () => {
-    /** Read-only is the feature, not a stage it grows out of: the plan is
-     *  prepared with a therapist and composing it belongs to the specialist
-     *  panel. */
+  it('says it is the patient\'s own plan, not one a specialist wrote', () => {
     renderPlan(plan())
 
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByText(/To Twój plan, zapisany Twoimi słowami/)).toBeInTheDocument()
+    expect(screen.queryByText(/zmiany wprowadza specjalista/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the patient\'s notes under their own heading', () => {
+    renderPlan(plan({ notes: 'W nocy dzwonię do Centrum Wsparcia.' }))
+
+    expect(screen.getByRole('heading', { name: 'Co jeszcze warto pamiętać' })).toBeInTheDocument()
+    expect(screen.getByText('W nocy dzwonię do Centrum Wsparcia.')).toBeInTheDocument()
   })
 
   it('never asks the patient to list ways of hurting themselves', () => {
@@ -222,33 +236,33 @@ describe('SafetyPlanView — what the specialist wrote', () => {
   })
 })
 
-describe('SafetyPlanEmpty — the state most accounts will be in', () => {
-  it('explains what a plan is and who prepares it', () => {
-    render(<SafetyPlanEmpty />)
+describe('SafetyPlanEmpty — the state most accounts start in', () => {
+  it('explains what a plan is and that the patient writes it', () => {
+    render(<SafetyPlanEmpty onCreate={() => {}} />)
 
-    expect(screen.getByText(/wspólnie ze specjalistą/i)).toBeInTheDocument()
-    expect(screen.getByText(/najbliższej wizycie/i)).toBeInTheDocument()
+    expect(screen.getByText(/własnymi słowami/i)).toBeInTheDocument()
+    expect(screen.getByText(/razem ze swoim specjalistą/i)).toBeInTheDocument()
   })
 
   it('does not read as an error, a warning or a task left undone', () => {
     /** This is the default state, not a failure. */
-    render(<SafetyPlanEmpty />)
+    render(<SafetyPlanEmpty onCreate={() => {}} />)
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByText(/to zupełnie normalne/i)).toBeInTheDocument()
   })
 
-  it('offers no way to write a plan alone', () => {
-    /** An "utwórz plan" button here would quietly hand the authorship of a
-     *  clinical document to the person it is about. */
-    render(<SafetyPlanEmpty />)
+  it('offers to create a plan', async () => {
+    const onCreate = vi.fn()
+    render(<SafetyPlanEmpty onCreate={onCreate} />)
 
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Utwórz swój plan' }))
+
+    expect(onCreate).toHaveBeenCalled()
   })
 
   it('points at the numbers above, which work with no plan at all', () => {
-    render(<SafetyPlanEmpty />)
+    render(<SafetyPlanEmpty onCreate={() => {}} />)
 
     expect(screen.getByText(/numery powyżej działają niezależnie od planu/i)).toBeInTheDocument()
   })

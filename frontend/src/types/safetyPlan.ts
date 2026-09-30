@@ -55,8 +55,8 @@ export interface TrustedPerson {
 }
 
 /**
- * A contact the specialist wrote in *instead of* themselves — a GP, a psychiatrist,
- * a clinic outside the foundation.
+ * A doctor or therapist the patient put on their plan themselves — a GP, a
+ * psychiatrist, a clinic outside the foundation.
  *
  * An override, not a second therapist: the treating specialist already reaches
  * this screen through `PROFILE_CARE` (see `src/types/profile.ts`), and giving the
@@ -71,7 +71,11 @@ export interface AlternativeContact {
   phone: PhoneNumber | null
 }
 
-/** The document a specialist prepared with this patient. */
+/**
+ * The patient's own safety plan — written by the patient, stored per patient
+ * (`core/safety_plan.py`, GET/PUT /api/safety-plan/). A specialist can help fill
+ * it in during a visit, but the only write path is the patient's own session.
+ */
 export interface SafetyPlan {
   /**
    * What tends to come before things get worse.
@@ -83,13 +87,13 @@ export interface SafetyPlan {
    * That makes this the section the feature exists for.
    */
   warningSigns: string[]
-  /** What helps in a hard moment — the patient's own list, written down with the specialist. */
+  /** What helps in a hard moment — the patient's own list. */
   copingStrategies: string[]
   trustedPeople: TrustedPerson[]
   /** null in the ordinary case: the treating specialist from `PROFILE_CARE` is the contact. */
   alternativeContact: AlternativeContact | null
-  /** Free text the specialist wrote for this patient; null when they wrote none. */
-  recommendations: string | null
-  /** 'YYYY-MM-DD' — when the specialist last revised it. null when unknown. */
+  /** Anything else worth remembering in a bad moment, in the patient's words. */
+  notes: string | null
+  /** ISO timestamp of the last save; null when unknown. */
   updatedAt: string | null
 }

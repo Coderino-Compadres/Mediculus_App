@@ -2,9 +2,8 @@ import type { FormEvent } from 'react'
 import FormField from './FormField'
 import ProfileConfirmLayout from './ProfileConfirmLayout'
 import { useAuth } from '../auth/authContext'
-import { withdrawConsent } from '../api/account'
+import { CONSENT_WITHDRAW_FIELDS, withdrawConsent } from '../api/account'
 import { useAuthForm } from '../hooks/useAuthForm'
-import { validatePassword } from '../utils/validation'
 import { CONSENT_IDS, consentById } from '../utils/consents'
 // `.profile-consent-quote` and `.profile-todo-box`, the card frame and the
 // password form — see the note in AccountClosureConfirm.
@@ -58,14 +57,17 @@ function ServicesConsentWithdrawal({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     void handleSubmit(event, {
+      // Present, and nothing more — the server checks it, and the length rule
+      // is for choosing a new password, not for typing the one you have.
       validate: (currentValues) => ({
-        password: validatePassword(currentValues.password),
+        password: currentValues.password ? null : 'Podaj hasło.',
       }),
-      submit: async () => {
+      submit: async (currentValues) => {
         // Handing the updated account to the session is what moves the app:
         // `needsConsents` flips and App.tsx's guard takes over from here.
-        setUser(await withdrawConsent('services'))
+        setUser(await withdrawConsent('services', currentValues.password))
       },
+      fields: CONSENT_WITHDRAW_FIELDS,
     })
   }
 

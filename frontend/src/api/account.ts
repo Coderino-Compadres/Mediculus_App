@@ -39,16 +39,28 @@ import type { ConsentWithdrawalScope } from '../types/profile'
  * 7(1) cuts both ways, and a cleared column would make "never consented" and
  * "consented then withdrew" the same row. See core/consents.py.
  *
+ * The password is re-typed on the confirmation screen and **checked on the
+ * server**; a wrong one answers 400 under `password` (see
+ * CONSENT_WITHDRAW_FIELDS). It used to be asked for and never sent.
+ *
  * Answers with the updated user, so the caller can hand it to the session and
  * let the route guard move the app — the same convention as `linkGuardian`.
  */
-export async function withdrawConsent(scope: ConsentWithdrawalScope): Promise<AuthUser> {
+export async function withdrawConsent(
+  scope: ConsentWithdrawalScope,
+  password: string,
+): Promise<AuthUser> {
   return toAuthUser(
     await apiRequest<UserPayload>('/api/account/consents/withdraw/', {
       method: 'POST',
-      body: { scope },
+      body: { scope, password },
     }),
   )
+}
+
+/** API field name -> form field name on both withdrawal screens. */
+export const CONSENT_WITHDRAW_FIELDS: Record<string, string> = {
+  password: 'password',
 }
 
 /**
