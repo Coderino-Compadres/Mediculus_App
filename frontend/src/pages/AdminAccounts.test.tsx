@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders, TEST_USER } from '../test/render'
 import AdminAccounts from './AdminAccounts'
@@ -82,8 +82,21 @@ describe('AdminAccounts', () => {
 
     await userEvent.type(await screen.findByLabelText(/Szukaj/), 'mama@')
 
+    // Debounced: the list narrows once typing stops, not on the first letter.
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Jan Kowal' })).toBeNull())
     expect(screen.getByRole('link', { name: 'Mama Zuzi' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Jan Kowal' })).toBeNull()
+  })
+
+  it('waits for typing to stop before it filters', async () => {
+    renderScreen()
+    const box = await screen.findByLabelText(/Szukaj/)
+
+    await userEvent.type(box, 'mama@')
+
+    // The box shows the letters at once; the list has not changed yet.
+    expect(box).toHaveValue('mama@')
+    expect(screen.getByRole('link', { name: 'Jan Kowal' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Jan Kowal' })).toBeNull())
   })
 
   it('says when nothing matches, rather than drawing nothing', async () => {
@@ -91,7 +104,7 @@ describe('AdminAccounts', () => {
 
     await userEvent.type(await screen.findByLabelText(/Szukaj/), 'nikogo-takiego')
 
-    expect(screen.getByText('Żadne konto nie pasuje do wybranych filtrów.')).toBeInTheDocument()
+    expect(await screen.findByText('Żadne konto nie pasuje do wybranych filtrów.')).toBeInTheDocument()
   })
 
   it('does not draw a failed load as an empty database', async () => {
