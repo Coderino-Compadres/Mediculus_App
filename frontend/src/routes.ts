@@ -19,6 +19,10 @@ export const ROUTES = {
    *  `core.password_reset.RESET_PATH` builds and what a mail client is least
    *  likely to mangle. See pages/PasswordResetConfirm.tsx. */
   passwordResetConfirm: '/password-reset/:token',
+  /** Where the link confirming a new e-mail address lands — the token in the
+   *  path, as `core.email_change.CONFIRM_PATH` builds it. See
+   *  pages/EmailChangeConfirm.tsx. */
+  emailChangeConfirm: '/email-change/:token',
   /** The guardian's own landing screen — see pages/ParentHome.tsx. */
   parentHome: '/parent',
   /** The specialist's landing screen — see pages/SpecialistHome.tsx. */
@@ -263,6 +267,7 @@ export const ROUTE_TITLES: Record<string, string> = {
   [ROUTES.passwordChange]: 'Ustaw własne hasło',
   [ROUTES.passwordReset]: 'Nie pamiętam hasła',
   [ROUTES.passwordResetConfirm]: 'Ustawienie nowego hasła',
+  [ROUTES.emailChangeConfirm]: 'Potwierdzenie nowego adresu',
   [ROUTES.modules]: 'Wybór modułu',
   [ROUTES.parentHome]: 'Panel rodzica',
   [ROUTES.specialistHome]: 'Panel specjalisty',

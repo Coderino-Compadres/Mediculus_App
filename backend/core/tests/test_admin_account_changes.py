@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from core import admin_panel
+from core import account_deletion, admin_panel
 from core.models import (AdminAuditLog, Diary, DietMeal, HealthProfile,
                          Hydration, MoodScale, ParentChild, Patient,
                          Specjalist, SpecjalistPatient, Supplement,
@@ -212,7 +212,7 @@ class DeleteTests(AccountChangesTestCase):
         self.assertFalse(Patient.objects.filter(pk=patient.pk).exists())
         # Every table that files rows under id_medical, found the way the
         # deletion finds them — a table added later is covered too.
-        for model in admin_panel._medical_models():
+        for model in account_deletion.medical_models():
             with self.subTest(table=model._meta.db_table):
                 self.assertFalse(model.objects.filter(id_medical=id_medical).exists())
         # And the rows hanging off them, which carry no id_medical of their own.

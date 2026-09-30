@@ -25,6 +25,13 @@ urlpatterns = [
         'auth/password-reset/confirm/',
         views.PasswordResetConfirmView.as_view(), name='password-reset-confirm',
     ),
+    # The second half of changing an address — the link mailed to the new one.
+    # Under auth/ for the reason the password reset's confirmation is: it is
+    # opened from a mailbox, with or without a session. See core/email_change.py.
+    path(
+        'auth/email-change/confirm/',
+        views.EmailChangeConfirmView.as_view(), name='email-change-confirm',
+    ),
     path('auth/me/', views.MeView.as_view(), name='me'),
     path('auth/guardian/', views.GuardianLinkView.as_view(), name='guardian-link'),
     path(
@@ -55,6 +62,8 @@ urlpatterns = [
     # and "how much have I written here".
     path('diet/profile/', views.DietAccountProfileView.as_view(), name='diet-profile'),
     path('account/password/', views.PasswordChangeView.as_view(), name='account-password'),
+    path('account/email/', views.EmailChangeRequestView.as_view(), name='account-email'),
+    path('account/delete/', views.AccountDeleteView.as_view(), name='account-delete'),
     path(
         'account/consents/withdraw/',
         views.ConsentWithdrawView.as_view(), name='account-consents-withdraw',

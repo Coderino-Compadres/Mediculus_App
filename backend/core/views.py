@@ -55,8 +55,11 @@ from .parent_invitations import (list_invitations, revoke,
 from .permissions import CONSENT_EXEMPT, PASSWORD_CHANGE_EXEMPT
 from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
-from .serializers import (EMAIL_TAKEN, AdminAccountEditSerializer,
+from .serializers import (EMAIL_TAKEN, AccountDeleteSerializer,
+                          AdminAccountEditSerializer,
                           ConsentScopeSerializer,
+                          EmailChangeConfirmSerializer,
+                          EmailChangeRequestSerializer,
                           GuardianLinkSerializer,
                           LoginSerializer, ParentInvitationCreateSerializer,
                           PasswordChangeSerializer,
@@ -64,6 +67,7 @@ from .serializers import (EMAIL_TAKEN, AdminAccountEditSerializer,
                           PasswordResetRequestSerializer, RegisterSerializer,
                           SpecialistColleagueCreateSerializer,
                           SpecialistPatientInviteSerializer, UserSerializer)
+from . import account_deletion
 from . import specialist as specialist_rules
 from . import techniques as technique_rules
 from . import diet_techniques as diet_technique_rules
@@ -224,6 +228,28 @@ class PasswordResetConfirmView(APIView):
 
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@method_decorator(csrf_protect, name='dispatch')
+class EmailChangeConfirmView(APIView):
+    """POST /api/auth/email-change/confirm/ — write the address the link carries.
+
+    Under auth/ and open to a caller with no session, like the password reset's
+    confirmation: the link is opened from a mailbox, often on another device.
+    Answers 204 and starts no session — every session of the account has just
+    been closed (core/email_change.py), and the frontend sends the person to
+    /login to sign in under the new address.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthThrottle]
+
+    def post(self, request):
+        serializer = EmailChangeConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -600,6 +626,67 @@ class PasswordChangeView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class EmailChangeRequestView(APIView):
+    """POST /api/account/email/ — mail a confirmation link to a new address.
+
+    The address does not change here; see core/email_change.py for the two
+    halves and why. The current password is checked server-side, and the
+    request is capped per account like the password change, because it is the
+    same kind of password oracle reachable from an open session.
+
+    Answers 202: the request was accepted and the rest happens in a mailbox.
+    """
+
+    throttle_classes = [PasswordChangeThrottle]
+
+    def post(self, request):
+        serializer = EmailChangeRequestSerializer(
+            data=request.data, context={'user': request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_202_ACCEPTED)
+
+
+#: An administrator's account is closed from the server (`manage.py`), never
+#: from its own profile — the same rule the panel applies to its own row.
+ADMIN_SELF_DELETE_REFUSAL = (
+    'Konto administratora usuwa się z serwera, nie z profilu.'
+)
+
+
+class AccountDeleteView(APIView):
+    """POST /api/account/delete/ — the owner deletes their own account, for good.
+
+    A hard delete, shared with the admin panel's: core/account_deletion.py says
+    what goes and in which order. The password is re-checked here.
+
+    Exempt from the consent gate, the guardian gate and the password gate —
+    `CONSENT_EXEMPT` is authentication and nothing else. Erasure is a right
+    (RODO art. 17) of exactly the accounts those gates stop: somebody who
+    withdrew their consents, a minor still waiting for a guardian, a colleague's
+    account nobody set a password for. None of them may use the app; all of them
+    may leave it.
+
+    Throttled like the password change: a correct password is what it asks for.
+    Answers 204, and the session behind the request is gone with the account.
+    """
+
+    permission_classes = CONSENT_EXEMPT
+    throttle_classes = [PasswordChangeThrottle]
+
+    def post(self, request):
+        if admin_panel.is_admin(request.user):
+            raise PermissionDenied(ADMIN_SELF_DELETE_REFUSAL)
+        serializer = AccountDeleteSerializer(
+            data=request.data, context={'user': request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        account_deletion.delete_account(request.user)
+        end_session(request)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

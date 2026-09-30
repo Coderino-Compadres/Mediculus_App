@@ -1,0 +1,14 @@
+Dzień dobry,
+
+ktoś poprosił o ustawienie tego adresu e-mail jako adresu konta Mediculus.
+Aby potwierdzić zmianę, otwórz poniższy link i naciśnij „Potwierdź nowy adres”:
+
+{{ confirm_url }}
+
+Link jest ważny przez {{ ttl_minutes }} minut i zadziała tylko raz. Po potwierdzeniu
+wszystkie sesje tego konta zostaną zamknięte — zaloguj się ponownie nowym adresem.
+
+Jeśli to nie Ty prosisz o zmianę, zignoruj tę wiadomość — adres konta pozostanie
+bez zmian.
+
+Ta wiadomość została wysłana automatycznie, prosimy na nią nie odpowiadać.

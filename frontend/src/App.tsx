@@ -21,6 +21,7 @@ import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
 import PasswordReset from './pages/PasswordReset'
 import PasswordResetConfirm from './pages/PasswordResetConfirm'
+import EmailChangeConfirm from './pages/EmailChangeConfirm'
 import ParentHome from './pages/ParentHome'
 import SpecialistHome from './pages/SpecialistHome'
 import SpecialistPatientReports from './pages/SpecialistPatientReports'
@@ -371,6 +372,9 @@ function App() {
               pages/PasswordResetConfirm.tsx. */}
           <Route path={ROUTES.passwordReset} element={<PasswordReset />} />
           <Route path={ROUTES.passwordResetConfirm} element={<PasswordResetConfirm />} />
+          {/* The same arrangement for the link that confirms a new address: no
+              session needed, none refused — see pages/EmailChangeConfirm.tsx. */}
+          <Route path={ROUTES.emailChangeConfirm} element={<EmailChangeConfirm />} />
           <Route
             path={ROUTES.consents}
             element={

@@ -1,6 +1,6 @@
 /**
- * The account-level actions the profile screen offers: consent withdrawal and
- * account deletion.
+ * The account-level actions the profile screen offers: consent withdrawal,
+ * account deletion, and changing the password or the address.
  *
  * Data export was here too and was removed from the profile on request. The stub
  * went with it rather than being left unreferenced — but the obligation did not
@@ -13,60 +13,17 @@
  * settled — PDF is what a person can open, JSON is what art. 20 portability is
  * actually about, and it may well be both.
  *
- * `changePassword` is real. The other two are **stubs that perform no request
- * and always reject**, and that is deliberate rather than unfinished:
- *
- * - the client gets to see and click the complete feature, which is what the
- *   "Bezpieczeństwo" requirements ask for;
- * - whoever implements the backend gets a named contract to fill in — the
- *   signatures below are the request bodies, and the doc comments say which
- *   endpoint each one is waiting for;
- * - and the user is never told their consent was withdrawn or their account
- *   deleted when nothing of the sort happened. A false success on *those two*
- *   actions is not a cosmetic lie: somebody could stop using the app believing
- *   their health data is gone.
- *
- * So each rejects with a `PendingBackendError`, and the screens render its
- * message as a plain notice rather than as an error — nothing failed, the half
- * that does the work simply does not exist yet.
- *
- * Neither is blocked on effort. Consent withdrawal needs the client to settle
- * what withdrawing the services consent *does* (see ServicesConsentWithdrawal)
- * and needs its own recorded moment in the schema, and deletion needs the legal
- * question about retaining clinical records answered first — building either on
- * a guess is worse than shipping the screen without it.
- *
- * Changing the e-mail address has no function here at all, for a third reason:
- * it is not one endpoint but two, since a new address has to be confirmed from
- * a message sent *to it*, and there is no mail out of this deployment. A bare
- * "set the address" would let a typo lock an account out of its own recovery.
- * ProfileEmailForm says "we will confirm it", which stays honest until it can be
- * built.
+ * All of them are real calls now. Deleting the account and changing its
+ * address were stubs that performed no request and always rejected, until the
+ * backend halves existed (core/account_deletion.py, core/email_change.py) —
+ * the reason for the stubs was that a false success on *those* actions is not
+ * cosmetic: somebody could stop using the app believing their health data was
+ * gone.
  */
 
 import { apiRequest } from './client'
 import { toAuthUser, type AuthUser, type UserPayload } from './auth'
-import type { AccountClosureReason, ConsentWithdrawalScope } from '../types/profile'
-
-export const PENDING_BACKEND_MESSAGE =
-  'Ta funkcja zostanie uruchomiona po podłączeniu backendu — na razie nic nie zostało zmienione.'
-
-/**
- * Not an error in the usual sense: the request was never made.
- *
- * Carries the endpoint it is waiting for, so a console line during a demo says
- * what is missing rather than just that something is.
- */
-export class PendingBackendError extends Error {
-  /** The endpoint this stub stands in for, e.g. 'POST /api/account/export/'. */
-  readonly endpoint: string
-
-  constructor(endpoint: string) {
-    super(PENDING_BACKEND_MESSAGE)
-    this.name = 'PendingBackendError'
-    this.endpoint = endpoint
-  }
-}
+import type { ConsentWithdrawalScope } from '../types/profile'
 
 /**
  * Withdraws one consent, or both at once.
@@ -117,31 +74,63 @@ export async function restoreConsent(scope: ConsentWithdrawalScope): Promise<Aut
 export interface DeleteAccountInput {
   /** Re-typed by the user on the confirmation screen, to prove it is them. */
   password: string
-  /** Deletion, or the consent withdrawal that leads to the same place. */
-  reason: AccountClosureReason
+}
+
+/** API field name -> form field name, for the confirmation screen's one input. */
+export const DELETE_ACCOUNT_FIELDS: Record<string, string> = {
+  password: 'password',
 }
 
 /**
- * Ends the account and removes its data.
+ * Deletes the signed-in account and everything that is only about it — for
+ * good, from both databases. See core/account_deletion.py for what goes.
  *
- * TODO(backend + prawnik): **do not implement this before the scope of deletion
- * is settled.** If the patient's diary entries and the reports shared with the
- * specialist count as medical records, the organization may be legally obliged
- * to keep them — in which case "delete everything" is not a promise this app can
- * make, and the answer is probably pseudonymization of the clinical rows
- * (medical_db already holds nothing but `id_medical`, which is most of the way
- * there) alongside real deletion of the identity rows in user_db. Building a
- * delete that quietly keeps some of it, or one that deletes what has to be kept,
- * are both worse than shipping the screen without the backend. Same open
- * question as the medical-device classification on the project's legal list.
- *
- * The password is re-checked server-side, not just here: this screen only
- * decides what to ask for.
+ * The password is checked on the server (a wrong one answers 400 under
+ * `password`); this function only carries it. On success the account's
+ * sessions are gone, so the caller signs out locally and leaves.
  */
-export function deleteAccount(input: DeleteAccountInput): Promise<void> {
-  return Promise.reject(
-    new PendingBackendError(`DELETE /api/account/ (reason: ${input.reason})`),
-  )
+export async function deleteAccount(input: DeleteAccountInput): Promise<void> {
+  await apiRequest<void>('/api/account/delete/', {
+    method: 'POST',
+    body: { password: input.password },
+  })
+}
+
+export interface RequestEmailChangeInput {
+  newEmail: string
+  currentPassword: string
+}
+
+/** API field name -> form field name, so a verdict lands on its own input. */
+export const EMAIL_CHANGE_FIELDS: Record<string, string> = {
+  new_email: 'newEmail',
+  // Not 'currentPassword': the password-change form sits on the same profile
+  // and already uses that id.
+  current_password: 'emailPassword',
+}
+
+/**
+ * Asks for a new address. **Nothing changes yet**: a link goes to the new
+ * address, and the address changes when that link is confirmed
+ * (`confirmEmailChange`). See core/email_change.py for why it takes two halves.
+ */
+export async function requestEmailChange(input: RequestEmailChangeInput): Promise<void> {
+  await apiRequest<void>('/api/account/email/', {
+    method: 'POST',
+    body: { new_email: input.newEmail.trim(), current_password: input.currentPassword },
+  })
+}
+
+/**
+ * The second half: the token from the link, sent from the page the link opens.
+ * Resolves with nothing; every session of the account has ended, so the person
+ * signs in again under the new address.
+ */
+export async function confirmEmailChange(token: string): Promise<void> {
+  await apiRequest<void>('/api/auth/email-change/confirm/', {
+    method: 'POST',
+    body: { token },
+  })
 }
 
 export interface ChangePasswordInput {

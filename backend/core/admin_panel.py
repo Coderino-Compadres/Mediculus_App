@@ -54,10 +54,10 @@ core/guardian.py and core/colleagues.py.
 
 import datetime
 
-from django.apps import apps
 from django.db import transaction
 from django.utils import timezone
 
+from . import account_deletion
 from .authentication import end_all_sessions
 from .colleagues import qualifications
 from .consents import has_active_consents
@@ -65,9 +65,8 @@ from .guardian import STATUS_ACCEPTED, STATUS_NONE, STATUS_PENDING
 from .models import (Administrator, AdminAuditLog, DietActivity, DietMeal,
                      DietSleep, Diary, HealthProfile, Hydration, ParentChild,
                      Patient, Specjalist, SpecjalistPatient, Supplement,
-                     Technique, User)
+                     User)
 from .modules import MODULE_DIET, MODULE_PSYCHOTHERAPY, module_label
-from .routers import MEDICAL_MODELS
 
 #: The role name an administrator account carries. Display only — see the
 #: module header.
@@ -584,20 +583,6 @@ def edit_account(admin_user, user_id, changes):
     return user
 
 
-def _medical_models():
-    """Every medical_db model that files rows under a patient's `id_medical`.
-
-    Found rather than listed, so a table added later is deleted with the rest
-    instead of silently surviving the account: a list here would be one more
-    place to forget.
-    """
-    return [
-        model for model in apps.get_app_config('core').get_models()
-        if model._meta.model_name in MEDICAL_MODELS
-        and any(field.name == 'id_medical' for field in model._meta.fields)
-    ]
-
-
 def delete_account(admin_user, user_id):
     """Delete one account, and everything that is only about it. Returns the
     kind of account deleted, or None if there was none.
@@ -635,19 +620,12 @@ def delete_account(admin_user, user_id):
     if user.pk == admin_user.pk:
         raise OwnAccount()
 
-    patient = Patient.objects.filter(user=user).first()
-    if patient is not None:
-        with transaction.atomic(using='medical'):
-            for model in _medical_models():
-                model.objects.filter(id_medical=patient.id_medical).delete()
-
-    if kind == KIND_SPECIALIST:
-        Technique.objects.filter(author_id_specjalist=user.pk).update(
-            author_id_specjalist=None,
-        )
-
-    with transaction.atomic(using='default'):
-        record(admin_user, ACTION_DELETE_ACCOUNT, user)
-        end_all_sessions(user)
-        user.delete()
+    # The deletion itself is shared with the owner's own "Usuń konto" — see
+    # core/account_deletion.py for what goes and why medical_db goes first. The
+    # audit entry is written inside the user_db transaction, with the row's
+    # removal.
+    account_deletion.delete_account(
+        user,
+        before_user_delete=lambda: record(admin_user, ACTION_DELETE_ACCOUNT, user),
+    )
     return kind

@@ -1,13 +1,13 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, type FormEvent } from 'react'
 import FormField from './FormField'
 import ProfileConfirmLayout from './ProfileConfirmLayout'
-import { PendingBackendError, deleteAccount, withdrawConsent } from '../api/account'
+import { DELETE_ACCOUNT_FIELDS, deleteAccount, withdrawConsent } from '../api/account'
+import { isGuardian, isSpecialist, type AuthUser } from '../api/auth'
 import { useAuth } from '../auth/authContext'
 import { useAuthForm } from '../hooks/useAuthForm'
 import { useSignOut } from '../hooks/useSignOut'
-import { validatePassword } from '../utils/validation'
 import type { AccountClosureReason } from '../types/profile'
-// The consequence lists, the pending notice and the filled confirming
+// The consequence lists and the filled confirming
 // button; `.journal-detail-card` for the sections; `auth-*` for the password
 // form. All three named here so this screen is dressed wherever it is opened
 // from.
@@ -115,6 +115,36 @@ const REMOVED_ITEMS = [
   'powiązanie ze specjalistą prowadzącym i jego wgląd w Twoje dane',
 ]
 
+/**
+ * The same list for the two kinds of account that keep no health data.
+ *
+ * THE LIST FOLLOWS THE ACCOUNT, NOT THE SCREEN. This screen is reached from
+ * /profile by every kind of account, and a specialist told that their "wpisy w
+ * dzienniczku" will go was being told something false about what they are
+ * agreeing to — the one thing this screen must not do. What goes is what
+ * core/account_deletion.py deletes for that kind.
+ */
+const REMOVED_ITEMS_SPECIALIST = [
+  'dane konta: imię, nazwisko, adres e-mail, data urodzenia, specjalizacja i wykształcenie',
+  'powiązania z pacjentami — Twoi pacjenci zachowują swoje dane i tracą tylko Twój wgląd w nie',
+  'kody wystawione opiekunom, które nie zostały jeszcze wykorzystane',
+]
+
+const REMOVED_ITEMS_GUARDIAN = [
+  'dane konta: imię, nazwisko, adres e-mail, data urodzenia',
+  'powiązania z kontami dzieci — jeśli byłaś lub byłeś jedynym opiekunem dziecka, jego konto zostanie zablokowane, dopóki inny opiekun nie zaakceptuje prośby',
+]
+
+/** What stays, where something does — said rather than left to be discovered. */
+const KEPT_NOTE_SPECIALIST =
+  'Techniki, które opublikowałaś lub opublikowałeś, zostają w katalogu — bez podpisu autora — bo pacjenci mogą właśnie z nich korzystać.'
+
+function removedItems(user: AuthUser | null): string[] {
+  if (user && isSpecialist(user)) return REMOVED_ITEMS_SPECIALIST
+  if (user && isGuardian(user)) return REMOVED_ITEMS_GUARDIAN
+  return REMOVED_ITEMS
+}
+
 //: What a withdrawal does instead, and the reason this list is separate from the
 //: one above rather than a softened version of it. Nothing here is removed, so
 //: reusing "Co zostanie usunięte" would have been a false statement on a screen
@@ -164,100 +194,58 @@ function AccountClosureConfirm({
   moduleLabel?: string
 }) {
   const copy = COPY[reason]
-  const { setUser } = useAuth()
+  const { user, setUser } = useAuth()
   const deletes = reason === 'delete-account'
-  // Set when the API stub tells us the backend is not there yet. Rendered as a
-  // notice, not as an error: nothing failed, and — crucially — nothing happened.
-  const [pendingNotice, setPendingNotice] = useState<string | null>(null)
   const signOutAndLeave = useSignOut()
   const { values, errors, formError, status, submitting, handleChange, handleSubmit } = useAuthForm({
     password: '',
   })
 
   /**
-   * The real outcome, once the endpoints exist: all three routes into this screen
-   * end the account, so the session behind it is gone and there is nothing left
-   * for the app to render. Signing out and leaving is the only honest next step —
-   * staying would show a logged-in shell over a deleted account until the first
-   * request failed.
-   *
-   * Keyed on the absence of `pendingNotice`, which is what separates "the stub
-   * answered" from "the work happened". Today it never runs.
+   * A deleted account has no session behind it and nothing left for the app to
+   * render. Signing out and leaving is the only honest next step — staying would
+   * show a logged-in shell over a deleted account until the first request
+   * failed.
    */
   //
   // Only for deletion. A withdrawal keeps the session — the account still
   // exists and its owner has to be able to reach the screen offering the
   // consents back, which signing them out would put behind a login they may no
   // longer want to perform.
-  const closed = deletes && status === 'success' && pendingNotice === null
+  const closed = deletes && status === 'success'
   useEffect(() => {
     if (closed) void signOutAndLeave()
   }, [closed, signOutAndLeave])
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     void handleSubmit(event, {
+      // Present, and nothing more: this is the password the account already
+      // has, and the length rule is for choosing a new one. An older password
+      // shorter than today's minimum must still be able to close its account —
+      // the server is what decides whether it is right.
       validate: (currentValues) => ({
-        password: validatePassword(currentValues.password),
+        password: currentValues.password ? null : 'Podaj hasło.',
       }),
       submit: async (currentValues) => {
-        try {
-          if (deletes) {
-            await deleteAccount({ password: currentValues.password, reason })
-          } else {
-            // The scope the backend needs is the one the entry point implies —
-            // 'data' alone, or both. Never inferred from a checkbox the user did
-            // not see.
-            //
-            // Handing the updated account to the session is what moves the app:
-            // `needsConsents` flips, and App.tsx's guard takes over from here to
-            // pages/ConsentsRequired.tsx. No navigate() call, so the redirect
-            // cannot disagree with the guard that would have done it anyway.
-            setUser(await withdrawConsent(
-              reason === 'withdraw-data-consent' ? 'data' : 'all'))
-          }
-        } catch (error) {
-          // The expected outcome today. Swallowed rather than rethrown so the
-          // user gets the honest notice instead of "Coś poszło nie tak" — this
-          // is not a failure, it is an unbuilt half.
-          if (error instanceof PendingBackendError) {
-            setPendingNotice(error.message)
-            return
-          }
-          throw error
+        if (deletes) {
+          // The password is checked on the server; a wrong one comes back as a
+          // field error and lands under the input via DELETE_ACCOUNT_FIELDS.
+          await deleteAccount({ password: currentValues.password })
+        } else {
+          // The scope the backend needs is the one the entry point implies —
+          // 'data' alone, or both. Never inferred from a checkbox the user did
+          // not see.
+          //
+          // Handing the updated account to the session is what moves the app:
+          // `needsConsents` flips, and App.tsx's guard takes over from here to
+          // pages/ConsentsRequired.tsx. No navigate() call, so the redirect
+          // cannot disagree with the guard that would have done it anyway.
+          setUser(await withdrawConsent(
+            reason === 'withdraw-data-consent' ? 'data' : 'all'))
         }
       },
+      fields: DELETE_ACCOUNT_FIELDS,
     })
-  }
-
-  // Gated on `pendingNotice` rather than on `status`, and the difference is the
-  // whole point of this screen: the sentence below asserts that nothing happened,
-  // and only the stub's own answer entitles us to say that. Keyed on `status`
-  // alone, the first working endpoint would tell somebody whose account had just
-  // been deleted that their data was untouched.
-  if (pendingNotice !== null) {
-    return (
-      <ProfileConfirmLayout
-        title={copy.title}
-        lead={copy.lead}
-        onBack={onBack}
-        moduleLabel={moduleLabel}
-      >
-        <section className="journal-detail-card">
-          <p className="profile-pending-notice" role="status">
-            {pendingNotice}
-          </p>
-          <p className="profile-confirm-note">
-            Twoje konto i dane są nietknięte. Kiedy backend będzie gotowy, to samo potwierdzenie
-            wykona operację naprawdę.
-          </p>
-          {/* Only deletion can reach this branch: `withdrawConsent` is a real
-              call now and never raises PendingBackendError. */}
-          <button type="button" className="auth-submit auth-submit-secondary" onClick={onBack}>
-            Wróć do profilu
-          </button>
-        </section>
-      </ProfileConfirmLayout>
-    )
   }
 
   // Sign-out is on its way (see `closed` above); render nothing rather than a
@@ -277,10 +265,13 @@ function AccountClosureConfirm({
       <section className="journal-detail-card">
         <h2>{deletes ? 'Co zostanie usunięte' : 'Co się stanie'}</h2>
         <ul className="profile-confirm-list">
-          {(deletes ? REMOVED_ITEMS : LOCKED_ITEMS).map((item) => (
+          {(deletes ? removedItems(user) : LOCKED_ITEMS).map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
+        {deletes && user && isSpecialist(user) && (
+          <p className="profile-confirm-note">{KEPT_NOTE_SPECIALIST}</p>
+        )}
       </section>
 
       <section className="journal-detail-card">
