@@ -13,6 +13,7 @@ import {
 } from '../api/techniques'
 import { DBT_GROUPS, DBT_MODULE_LABELS, SCHOOL_TABS } from '../utils/techniques'
 import { techniqueSlug } from '../utils/slug'
+import { durationError } from '../utils/duration'
 import type { TechniqueDbtModule, TechniqueGroup, TechniqueSchool } from '../types/technique'
 import { ROUTES } from '../routes'
 import './journals.css'
@@ -189,9 +190,13 @@ function SpecialistTechniqueForm() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
+    // Both checked before the request, and shown together, so a specialist
+    // fixes the form in one pass rather than learning of the second problem
+    // after correcting the first.
     const blank = emptyStep()
-    if (blank) {
-      setErrors({ steps: blank })
+    const duration = durationError(form.durationMin)
+    if (blank || duration) {
+      setErrors({ ...(blank ? { steps: blank } : {}), ...(duration ? { durationMin: duration } : {}) })
       setFormError(null)
       return
     }

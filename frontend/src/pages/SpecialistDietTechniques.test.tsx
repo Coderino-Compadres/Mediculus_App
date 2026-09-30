@@ -7,6 +7,7 @@ import SpecialistDietTechniques from './SpecialistDietTechniques'
 import SpecialistDietTechniqueForm from './SpecialistDietTechniqueForm'
 import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
+import { DURATION_TOO_LARGE } from '../utils/duration'
 import type { StoredDietTechnique } from '../api/dietTechniques'
 
 vi.mock('../api/dietTechniques', () => ({
@@ -141,6 +142,19 @@ describe('the form', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Dodaj technikę' }))
 
     expect(screen.getByText(/Krok 1 nie ma opisu/)).toBeInTheDocument()
+    expect(mockedCreate).not.toHaveBeenCalled()
+  })
+
+  it('refuses a duration that is not whole minutes, instead of dropping it', async () => {
+    renderPanel(ROUTES.specialistDietTechniqueNew)
+
+    await userEvent.type(screen.getByLabelText('Nazwa techniki'), 'Uważne zakupy')
+    await userEvent.type(screen.getByLabelText('Wprowadzenie'), 'O czym jest.')
+    await userEvent.type(screen.getByLabelText('Opis kroku'), 'Zrób listę.')
+    await userEvent.type(screen.getByLabelText('Czas trwania (minuty)'), '601')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj technikę' }))
+
+    expect(screen.getByText(DURATION_TOO_LARGE)).toBeInTheDocument()
     expect(mockedCreate).not.toHaveBeenCalled()
   })
 

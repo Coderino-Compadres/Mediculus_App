@@ -1096,7 +1096,9 @@ describe('the activity list is paginated', () => {
     await user.click(screen.getByRole('button', { name: 'Zapisz aktywność' }))
 
     // 21 entries is still three pages; what changed is which one is on screen.
-    expect(screen.getByText(/Strona 1 z 3/)).toBeInTheDocument()
+    // Awaited: the write is a request, and a synchronous read here only passed
+    // when the response happened to land inside the click.
+    expect(await screen.findByText(/Strona 1 z 3/)).toBeInTheDocument()
     expect(screen.getByText(/1–7 z 21 wpisów/)).toBeInTheDocument()
   })
 })

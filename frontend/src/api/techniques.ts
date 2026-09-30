@@ -151,6 +151,19 @@ export const TECHNIQUE_FIELDS: Record<string, string> = {
   duration_min: 'durationMin',
 }
 
+/**
+ * The minutes as the backend reads them. Not `Number(value)`: that turns "abc"
+ * into `NaN`, which JSON sends as `null` — "no duration" — so a typo was saved as
+ * a blank field. Anything that is not a whole number is sent as typed, and the
+ * backend's 400 lands under the field instead. The form checks first
+ * (`utils/duration.ts`); this is the backstop.
+ */
+function toMinutes(value: string): number | string | null {
+  const trimmed = value.trim()
+  if (trimmed === '') return null
+  return /^\d+$/.test(trimmed) ? Number(trimmed) : trimmed
+}
+
 function toPayload(input: TechniqueInput) {
   return {
     slug: input.slug.trim(),
@@ -162,7 +175,7 @@ function toPayload(input: TechniqueInput) {
     dbt_group: input.dbtGroup || null,
     dbt_module: input.dbtModule || null,
     intro: input.intro.trim(),
-    duration_min: input.durationMin.trim() === '' ? null : Number(input.durationMin),
+    duration_min: toMinutes(input.durationMin),
     steps: input.steps.map((step) => ({
       name: step.name.trim(),
       description: step.description.trim(),
