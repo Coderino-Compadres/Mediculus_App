@@ -22,3 +22,16 @@ export interface PhoneNumber {
 export function telHref(phone: PhoneNumber): string {
   return `tel:${phone.dial}`
 }
+
+/**
+ * A number as somebody typed it into their own safety plan, made dialable.
+ *
+ * The text is shown exactly as written ("600 700 800", "+48 12 345 67 89");
+ * what is dialled is the digits, with a leading plus kept. The backend has
+ * already refused anything that is not a phone number (core/safety_plan.py).
+ */
+export function phoneFromText(text: string): PhoneNumber {
+  const trimmed = text.trim()
+  const digits = trimmed.replace(/\D/g, '')
+  return { dial: trimmed.startsWith('+') ? `+${digits}` : digits, display: trimmed }
+}

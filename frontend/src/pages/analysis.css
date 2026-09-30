@@ -252,10 +252,13 @@
   padding: 18px;
 }
 
-/* Not enough history to state a pattern: lavender rather than the sage tint, so
-   a careful sentence does not carry the visual weight of a finding. */
+/* Not enough history to state a pattern: a plain white card rather than the sage
+   tint, so a careful sentence does not carry the visual weight of a finding.
+   Not lavender — that is the page's own background (.journals-page), and the
+   card vanished into it: no edge, no shadow, a label floating on the page. */
 .analysis-insight-tentative {
-  background: var(--color-lavender);
+  background: #fff;
+  box-shadow: var(--shadow-card);
 }
 
 .analysis-insight-label {

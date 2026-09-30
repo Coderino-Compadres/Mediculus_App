@@ -6,6 +6,7 @@ import { renderWithProviders, TEST_USER } from '../test/render'
 import SpecialistTechniqueForm from './SpecialistTechniqueForm'
 import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
+import { DURATION_NOT_A_NUMBER } from '../utils/duration'
 import type { StoredTechnique } from '../api/techniques'
 
 vi.mock('../api/techniques', () => ({
@@ -229,6 +230,34 @@ describe('a step with no description', () => {
 
     expect(screen.getByText(/Krok 1 nie ma opisu/)).toBeInTheDocument()
     expect(mockedCreate).not.toHaveBeenCalled()
+  })
+})
+
+describe('a duration that is not whole minutes', () => {
+  it('is refused under its own field, and nothing is sent', async () => {
+    /** It used to be sent as `Number('abc')` — NaN, i.e. null — and the
+     *  technique was saved with no duration and no word about it. */
+    renderForm()
+
+    await fillMinimum()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'DBT' }))
+    await userEvent.type(screen.getByLabelText('Czas trwania (minuty)'), 'abc')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj technikę' }))
+
+    expect(screen.getByText(DURATION_NOT_A_NUMBER)).toBeInTheDocument()
+    expect(screen.getByLabelText('Czas trwania (minuty)')).toHaveAttribute('aria-invalid', 'true')
+    expect(mockedCreate).not.toHaveBeenCalled()
+  })
+
+  it('is reported together with an empty step', async () => {
+    renderForm()
+
+    await userEvent.type(screen.getByLabelText('Nazwa techniki'), 'Uważny oddech')
+    await userEvent.type(screen.getByLabelText('Czas trwania (minuty)'), '5 min')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj technikę' }))
+
+    expect(screen.getByText(/Krok 1 nie ma opisu/)).toBeInTheDocument()
+    expect(screen.getByText(DURATION_NOT_A_NUMBER)).toBeInTheDocument()
   })
 })
 

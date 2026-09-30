@@ -59,7 +59,13 @@ function Login() {
           </button>
           {infoOpen && (
             <p className="auth-info-tile" id={INFO_TILE_ID} role="note">
-              Numer konta dla darowizn: 111111111111111111111111
+              Numer konta dla darowizn:
+              FUNDACJA MEDICULUS<br/>
+              Adres: UL. KOLEJOWA 27A<br/>
+              39-100<br/>
+              ROPCZYCE<br/>
+              Numer rachunku: 45124048071111001162800983<br/>
+              Nazwa banku: Bank Pekao S.A., O. w Dębicy ul. Kościuszki 6, Dębica
             </p>
           )}
         </div>

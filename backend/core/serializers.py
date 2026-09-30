@@ -19,6 +19,7 @@ from . import colleagues
 from . import guardian
 from .consents import SCOPES, consent_state, has_active_consents
 from . import parent_invitations
+from . import email_change
 from . import password_reset
 from .specialist import invite, treated_patient
 from .models import (Administrator, ParentChild, Patient, Specjalist,
@@ -970,6 +971,33 @@ class ConsentScopeSerializer(serializers.Serializer):
     )
 
 
+class ConsentWithdrawSerializer(ConsentScopeSerializer):
+    """A withdrawal: the scope, and the owner's password re-typed.
+
+    The password is checked here, on the server. It used to be asked for by the
+    screen and never sent, which made "Potwierdź, że to Ty" a promise nothing
+    kept: anybody holding an unlocked phone could stop the account, and the
+    screen told them it was the owner's decision. The same field rules as
+    `AccountDeleteSerializer` — an old password that today's validators would
+    refuse must still be able to exercise the right.
+
+    Only the withdrawal asks. Restoring a consent is the direction that unblocks
+    an account (`ConsentRestoreView`), so friction there protects nobody.
+    """
+
+    password = serializers.CharField(
+        write_only=True, trim_whitespace=False,
+        error_messages={'blank': 'Podaj hasło.', 'required': 'Podaj hasło.'},
+    )
+
+    WRONG_PASSWORD = 'Hasło jest nieprawidłowe.'
+
+    def validate_password(self, value):
+        if not _password_matches(value, self.context['user'].password_hash):
+            raise serializers.ValidationError(self.WRONG_PASSWORD)
+        return value
+
+
 class GuardianLinkSerializer(serializers.Serializer):
     """Invites a guardian, named by e-mail, to vouch for the signed-in minor.
 
@@ -1487,3 +1515,108 @@ class AdminAccountEditSerializer(serializers.Serializer):
                         {name: [self.fields[name].error_messages['blank']]},
                     )
         return attrs
+
+
+class AccountDeleteSerializer(serializers.Serializer):
+    """POST /api/account/delete/ — the owner's password, re-typed.
+
+    Checked here rather than trusted from the screen: a live session proves the
+    device, not the person holding it, and this is the one action in the app
+    that cannot be taken back. Same field rules as `PasswordChangeSerializer`'s
+    `current_password`, for the same reason — an old password that today's
+    validators would refuse must still be able to close its account.
+    """
+
+    password = serializers.CharField(
+        write_only=True, trim_whitespace=False,
+        error_messages={'blank': 'Podaj hasło.', 'required': 'Podaj hasło.'},
+    )
+
+    WRONG_PASSWORD = 'Hasło jest nieprawidłowe.'
+
+    def validate_password(self, value):
+        if not _password_matches(value, self.context['user'].password_hash):
+            raise serializers.ValidationError(self.WRONG_PASSWORD)
+        return value
+
+
+class EmailChangeRequestSerializer(serializers.Serializer):
+    """POST /api/account/email/ — ask for a new address, proving it is you.
+
+    Nothing changes here: `save()` only mails the confirmation link to the new
+    address (core/email_change.py). The address is refused when it is taken,
+    which tells a signed-in account that somebody else is registered there — the
+    same answer registration already gives, and `PasswordChangeThrottle` bounds
+    how often it can be asked.
+    """
+
+    new_email = serializers.EmailField(
+        max_length=255,
+        error_messages={
+            'blank': 'Podaj nowy adres e-mail.',
+            'required': 'Podaj nowy adres e-mail.',
+            'invalid': 'Podaj poprawny adres e-mail.',
+        },
+    )
+    current_password = serializers.CharField(
+        write_only=True, trim_whitespace=False,
+        error_messages={'blank': 'Podaj hasło.', 'required': 'Podaj hasło.'},
+    )
+
+    SAME_AS_CURRENT = 'To jest Twój obecny adres.'
+    WRONG_PASSWORD = 'Hasło jest nieprawidłowe.'
+    NOT_SENT = (
+        'Nie udało się wysłać wiadomości na nowy adres. Spróbuj ponownie za chwilę.'
+    )
+
+    @property
+    def user(self):
+        return self.context['user']
+
+    def validate_current_password(self, value):
+        if not _password_matches(value, self.user.password_hash):
+            raise serializers.ValidationError(self.WRONG_PASSWORD)
+        return value
+
+    def validate_new_email(self, value):
+        value = value.lower()
+        if value == (self.user.email or '').lower():
+            raise serializers.ValidationError(self.SAME_AS_CURRENT)
+        return free_email(value)
+
+    def save(self):
+        if not email_change.request_change(self.user, self.validated_data['new_email']):
+            raise serializers.ValidationError({'detail': self.NOT_SENT})
+
+
+class EmailChangeConfirmSerializer(serializers.Serializer):
+    """POST /api/auth/email-change/confirm/ — the link's token, from its page."""
+
+    token = serializers.CharField(
+        error_messages={'blank': 'Brak tokenu.', 'required': 'Brak tokenu.'},
+    )
+
+    INVALID_TOKEN = (
+        'Link do potwierdzenia adresu jest nieprawidłowy, wygasł albo został już '
+        'użyty. Poproś o zmianę adresu ponownie w swoim profilu.'
+    )
+    TAKEN_SINCE = (
+        'Na ten adres zarejestrowano w międzyczasie inne konto. '
+        'Wybierz inny adres w swoim profilu.'
+    )
+
+    def validate(self, attrs):
+        resolved = email_change.resolve_token(attrs['token'])
+        if resolved is None:
+            raise serializers.ValidationError({'detail': self.INVALID_TOKEN})
+        attrs['user'], attrs['new_email'] = resolved
+        return attrs
+
+    def save(self):
+        try:
+            email_change.confirm_change(
+                self.validated_data['user'], self.validated_data['new_email'],
+            )
+        except email_change.AddressTaken:
+            raise serializers.ValidationError({'detail': self.TAKEN_SINCE}) from None
+        return self.validated_data['new_email']

@@ -152,6 +152,17 @@ describe('writing one', () => {
     expect(body.duration_min).toBe(5)
   })
 
+  it('never turns a typo into "no duration"', async () => {
+    // `Number('abc')` is NaN, which JSON sends as null — a save that silently
+    // dropped what was typed. Sent as typed, the backend refuses it instead.
+    mockedRequest.mockResolvedValueOnce(PAYLOAD)
+
+    await createTechnique({ ...INPUT, durationMin: 'abc' })
+
+    const body = mockedRequest.mock.calls[0][1]?.body as { duration_min: unknown }
+    expect(body.duration_min).toBe('abc')
+  })
+
   it('replaces rather than merges on an edit', async () => {
     // PUT, like /api/diary/today/: the form submits its whole state, so a field
     // left out is an answer taken back rather than one left unchanged.

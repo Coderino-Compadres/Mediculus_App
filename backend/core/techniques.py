@@ -31,6 +31,7 @@ endpoints' serializers, and the rules below are about the catalogue.
 from rest_framework import serializers
 
 from .models import Technique
+from .modules import MODULE_PSYCHOTHERAPY
 from .technique_vocabulary import (AVAILABILITY_GENERAL, DBT_GROUPS,
                                    DBT_MODULES, SCHOOLS)
 
@@ -48,6 +49,19 @@ BUILTIN_SLUGS = frozenset({
     'accepts', 'samokojenie', 'improve', 'za-i-przeciw', 'tipp', 'abc-please',
     'please', 'dear-man', 'uprawomocnienie', 'samouprawomocnienie',
     'dobrowolnosc', 'miarowe-oddychanie', 'progresywna-relaksacja-miesni',
+})
+
+#: The same, for the diet catalogue's `frontend/src/data/dietTechniques.ts`.
+#: Here rather than in core/diet_techniques.py because the slug column is unique
+#: across both catalogues, so each serializer refuses both lists. Guarded against
+#: drift by `test_diet_techniques.py`.
+DIET_BUILTIN_SLUGS = frozenset({
+    'halt', 'stop', 'mindful-eating', 'skala-glodu-i-sytosci',
+    'dzienniczek-zywieniowy', 'dzienniczek-emocji',
+    'rozpoznawanie-jedzenia-emocjonalnego', 'technika-odraczania',
+    'technika-jesli-to', 'restrukturyzacja-poznawcza',
+    'praca-z-mysleniem-wszystko-albo-nic', 'samo-monitorowanie', 'male-cele',
+    'modyfikacja-srodowiska', 'samowspolczucie',
 })
 
 #: Longest a step's description may be. Not a schema limit (the column is TEXT) —
@@ -120,6 +134,7 @@ def published():
     return (
         Technique.objects
         .filter(
+            module=MODULE_PSYCHOTHERAPY,
             description_ready=True,
             availability=AVAILABILITY_GENERAL,
             slug__isnull=False,
@@ -139,7 +154,7 @@ def for_specjalist(specjalist):
     """
     return (
         Technique.objects
-        .filter(author_id_specjalist=specjalist.pk)
+        .filter(author_id_specjalist=specjalist.pk, module=MODULE_PSYCHOTHERAPY)
         .order_by('-created_at', '-id_technique')
     )
 
@@ -154,6 +169,7 @@ def find_for_specjalist(specjalist, id_technique):
     """
     return Technique.objects.filter(
         pk=id_technique, author_id_specjalist=specjalist.pk,
+        module=MODULE_PSYCHOTHERAPY,
     ).first()
 
 
@@ -267,7 +283,9 @@ class TechniqueSerializer(serializers.Serializer):
         return self.context['specjalist']
 
     def validate_slug(self, value):
-        if value in BUILTIN_SLUGS:
+        # Both catalogues' built-in slugs: the column is unique across the whole
+        # table, so a DBT row claiming a diet slug would block the diet one.
+        if value in BUILTIN_SLUGS or value in DIET_BUILTIN_SLUGS:
             raise serializers.ValidationError(self.SLUG_BUILTIN)
         taken = Technique.objects.filter(slug=value)
         # On an edit, the technique's own slug is not a collision with itself.
@@ -320,6 +338,7 @@ class TechniqueSerializer(serializers.Serializer):
     def create(self, validated_data):
         return Technique.objects.create(
             author_id_specjalist=self.specjalist.pk,
+            module=MODULE_PSYCHOTHERAPY,
             # The original column, kept in step rather than left behind: it is
             # what `raport.id_technique` joins to and what the home screen's
             # suggestion card reads, so a technique with a name here and nothing

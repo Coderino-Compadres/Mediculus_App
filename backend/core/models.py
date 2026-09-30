@@ -3,7 +3,7 @@ import uuid
 from django.db import models
 
 from .drinks import DRINKS, WATER
-from .modules import MODULES
+from .modules import MODULE_PSYCHOTHERAPY, MODULES
 from .technique_vocabulary import AVAILABILITY_GENERAL
 from .time_of_day import TIME_OF_DAY_CHOICES
 
@@ -534,6 +534,18 @@ class Technique(models.Model):
     # written and read as a unit by the form that edits it.
     steps = models.JSONField(default=list, blank=True)
     duration_min = models.IntegerField(null=True, blank=True)
+    # Which catalogue the row belongs to: 'psychotherapy' (the DBT/CBT one,
+    # /techniques) or 'diet' (the psychodietetic one, /diet/techniques). The
+    # author's `specjalist.module` at the time of writing -- see
+    # core/diet_techniques.py. One table for both because everything around a
+    # technique (the author column, the slug's uniqueness, what deleting a
+    # specialist does to their rows) is the same rule twice otherwise.
+    module = models.TextField(default=MODULE_PSYCHOTHERAPY)
+    # The diet catalogue's "Przykład" card and the sentence closing its step
+    # list (`przyklad` / `notka` in frontend/src/types/dietTechnique.ts). NULL on
+    # every psychotherapy row: that catalogue has neither.
+    example = models.TextField(null=True, blank=True)
+    note = models.TextField(null=True, blank=True)
     # Whether there is a description to open. False is a technique whose name is
     # known before its content, which the catalogue must not offer as a row --
     # see `isPublished` in frontend/src/utils/techniques.ts. The seeded rows are
@@ -1231,3 +1243,55 @@ class HealthCondition(models.Model):
 
     def __str__(self):
         return self.condition or self.own_label or str(self.id_health_condition)
+
+
+class SafetyPlan(models.Model):
+    """The patient's own safety plan — one row per patient, written by them.
+
+    WHO WRITES IT: THE PATIENT. The screen used to show a hardcoded example plan
+    to every account as "Twój plan bezpieczeństwa", and was designed around a
+    specialist writing it during a visit — a write path that never existed. A
+    plan is most useful when it is in the person's own words, and a specialist
+    can still help fill it in at a visit; nobody but the patient writes to it.
+    See core/safety_plan.py.
+
+    medical_db, under `id_medical`, for the reason `HealthProfile` is: what
+    makes somebody feel worse and who they would call in a crisis is clinical
+    content, and it does not belong next to a surname. It goes with the account
+    (core/account_deletion.py finds every model with `id_medical`).
+
+    ONE ROW, NO HISTORY — `UNIQUE (id_medical)`, and a save replaces it.
+
+    THE LISTS ARE JSON rather than child tables, like `technique.steps`: a line
+    has no identity of its own, nothing queries one, and the plan is written and
+    read as a unit by the one form that edits it. The shapes are enforced by
+    `SafetyPlanSerializer`.
+
+    DELIBERATELY NO "means restriction" section (asking the person to list the
+    ways they could hurt themselves), which a classic Stanley-Brown plan has.
+    That step belongs in a consulting room with a clinician present, not in a
+    self-service form used by minors — see frontend/src/types/safetyPlan.ts.
+    """
+
+    id_safety_plan = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False)
+    id_medical = models.UUIDField(unique=True)
+    # ["Nie śpię dłużej niż dwie noce z rzędu", ...]
+    warning_signs = models.JSONField(default=list, blank=True)
+    coping_strategies = models.JSONField(default=list, blank=True)
+    # [{"name": str, "relation": str|null, "phone": str|null}, ...]
+    trusted_people = models.JSONField(default=list, blank=True)
+    # {"name": str, "role": str|null, "phone": str|null} or null — a doctor or
+    # therapist the patient wants on the plan. When empty, the screen shows the
+    # treating specialist from the care relationship instead.
+    professional_contact = models.JSONField(null=True, blank=True)
+    # Anything else worth remembering in a bad moment, in their own words.
+    notes = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'safety_plan'
+
+    def __str__(self):
+        return str(self.id_medical)

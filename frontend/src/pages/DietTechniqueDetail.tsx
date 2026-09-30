@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
+import { useStoredDietTechniques } from '../hooks/useStoredDietTechniques'
 import { findDietTechnique } from '../utils/dietTechniques'
 import { PLACEHOLDER_NOTICE_TECHNIQUE } from '../data/dietTechniques'
 import type { DietTechniqueLink, DietTechniqueStep } from '../types/dietTechnique'
@@ -118,10 +119,22 @@ function StepList({ steps }: { steps: DietTechniqueStep[] }) {
 
 function DietTechniqueDetail() {
   const { id } = useParams<{ id: string }>()
-  // No request and no loading state: this catalogue ships with the app. The
-  // psychotherapy screen waits for the specialists' half of its catalogue
-  // before saying "nie znaleziono"; there is no second half here to wait for.
-  const technique = findDietTechnique(id)
+  // The psychodietitians' half of the catalogue, so a technique written from
+  // the panel opens from its own URL too. A built-in one is found on the first
+  // render regardless; `loading` only keeps a shared link to a stored one from
+  // flashing "nie znaleziono" before the request lands.
+  const { techniques: stored, loading: storedLoading } = useStoredDietTechniques()
+  const technique = findDietTechnique(id, stored)
+
+  if (!technique && storedLoading) {
+    return (
+      <div className="diet-techniques-page">
+        <p className="diet-techniques-not-found" role="status" aria-busy="true">
+          Wczytywanie techniki…
+        </p>
+      </div>
+    )
+  }
 
   if (!technique) {
     /* The same answer the rest of the module gives: a typed-in address and a

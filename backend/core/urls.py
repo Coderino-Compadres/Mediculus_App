@@ -25,6 +25,13 @@ urlpatterns = [
         'auth/password-reset/confirm/',
         views.PasswordResetConfirmView.as_view(), name='password-reset-confirm',
     ),
+    # The second half of changing an address — the link mailed to the new one.
+    # Under auth/ for the reason the password reset's confirmation is: it is
+    # opened from a mailbox, with or without a session. See core/email_change.py.
+    path(
+        'auth/email-change/confirm/',
+        views.EmailChangeConfirmView.as_view(), name='email-change-confirm',
+    ),
     path('auth/me/', views.MeView.as_view(), name='me'),
     path('auth/guardian/', views.GuardianLinkView.as_view(), name='guardian-link'),
     path(
@@ -54,7 +61,11 @@ urlpatterns = [
     # unlike that one it *is* module-specific — it answers "who treats me here"
     # and "how much have I written here".
     path('diet/profile/', views.DietAccountProfileView.as_view(), name='diet-profile'),
+    # The patient's own safety plan — core/safety_plan.py.
+    path('safety-plan/', views.SafetyPlanView.as_view(), name='safety-plan'),
     path('account/password/', views.PasswordChangeView.as_view(), name='account-password'),
+    path('account/email/', views.EmailChangeRequestView.as_view(), name='account-email'),
+    path('account/delete/', views.AccountDeleteView.as_view(), name='account-delete'),
     path(
         'account/consents/withdraw/',
         views.ConsentWithdrawView.as_view(), name='account-consents-withdraw',
@@ -148,6 +159,11 @@ urlpatterns = [
     # hardcoded in the frontend, so this list is only what specialists wrote —
     # see core/techniques.py.
     path('techniques/', views.TechniqueCatalogueView.as_view(), name='technique-catalogue'),
+    # The same half of the diet module's catalogue — core/diet_techniques.py.
+    path(
+        'diet/techniques/',
+        views.DietTechniqueCatalogueView.as_view(), name='diet-technique-catalogue',
+    ),
     # The patient's side of a specialist's invitation. Under account/ rather than
     # specialist/ because it is a decision about their own account, and because
     # everything under specialist/ refuses an account that is not one.
@@ -245,6 +261,14 @@ urlpatterns = [
     path(
         'specialist/techniques/<int:id_technique>/',
         views.SpecialistTechniqueView.as_view(), name='specialist-technique',
+    ),
+    path(
+        'specialist/diet-techniques/',
+        views.SpecialistDietTechniquesView.as_view(), name='specialist-diet-techniques',
+    ),
+    path(
+        'specialist/diet-techniques/<int:id_technique>/',
+        views.SpecialistDietTechniqueView.as_view(), name='specialist-diet-technique',
     ),
     # The administrator's panel — core/admin_panel.py. Every route refuses an
     # account with no `administrator` row (`_require_admin`). Not under Django's

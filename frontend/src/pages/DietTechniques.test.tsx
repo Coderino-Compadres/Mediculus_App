@@ -3,7 +3,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithProviders } from '../test/render'
 import HeaderMenu from '../components/HeaderMenu'
-import DietTechniques, { EMPTY, INTRO } from './DietTechniques'
+import DietTechniques, { EMPTY, INTRO, STORED_FAILED } from './DietTechniques'
 import { ROUTES } from '../routes'
 import type { DietTechnique } from '../types/dietTechnique'
 
@@ -23,6 +23,14 @@ import type { DietTechnique } from '../types/dietTechnique'
  */
 
 const data = vi.hoisted(() => ({ techniques: [] as DietTechnique[] }))
+const stored = vi.hoisted(() => ({ techniques: [] as DietTechnique[], fail: false }))
+
+// The psychodietitians' half of the catalogue — empty unless a test fills it.
+vi.mock('../api/dietTechniques', () => ({
+  fetchStoredDietTechniques: vi.fn(() =>
+    stored.fail ? Promise.reject(new Error('offline')) : Promise.resolve(stored.techniques),
+  ),
+}))
 
 /** The notice is no longer a flag on the module — it follows the entries, so
  *  these tests turn it on and off by writing `zastepczy` on a fixture. */
@@ -62,6 +70,8 @@ const rows = () => screen.queryAllByRole('listitem')
 
 beforeEach(() => {
   data.techniques = [technique({ id: 'a' }), technique({ id: 'b' }), technique({ id: 'c' })]
+  stored.techniques = []
+  stored.fail = false
 })
 
 describe('the list', () => {
@@ -231,6 +241,31 @@ describe('the list', () => {
 
     expect(rows()).toHaveLength(0)
     expect(screen.getByText(EMPTY)).toBeInTheDocument()
+  })
+})
+
+describe('techniques psychodietitians wrote', () => {
+  it('are listed after the built-in ones', async () => {
+    data.techniques = [technique({ id: 'wbudowana', nazwa: 'Wbudowana' })]
+    stored.techniques = [technique({ id: 'id-z-panelu', nazwa: 'Z panelu', zastepczy: false })]
+
+    renderList()
+
+    const link = await screen.findByRole('link', { name: /Z panelu/ })
+    expect(link).toHaveAttribute('href', '/diet/techniques/id-z-panelu')
+    const names = screen.getAllByRole('listitem').map((item) => item.textContent)
+    expect(names.findIndex((name) => name?.includes('Wbudowana')))
+      .toBeLessThan(names.findIndex((name) => name?.includes('Z panelu')))
+  })
+
+  it('a failed request keeps the built-in ones and says what is missing', async () => {
+    data.techniques = [technique({ id: 'wbudowana', nazwa: 'Wbudowana' })]
+    stored.fail = true
+
+    renderList()
+
+    expect(await screen.findByText(STORED_FAILED)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Wbudowana/ })).toBeInTheDocument()
   })
 })
 

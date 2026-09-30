@@ -296,9 +296,36 @@ class WithdrawAndRestoreTests(ConsentTestCase):
         self.user = self.patient.user
         self.sign_in(self.user)
 
-    def withdraw(self, scope):
+    def withdraw(self, scope, password=PASSWORD):
         return self.client.post(
-            reverse('core:account-consents-withdraw'), {'scope': scope}, format='json')
+            reverse('core:account-consents-withdraw'),
+            {'scope': scope, 'password': password}, format='json')
+
+    def test_withdrawing_checks_the_password_on_the_server(self):
+        """The screen used to ask for it and never send it, so any password —
+        or none — withdrew the consent of whoever held the phone."""
+        response = self.withdraw('services', password='zle-haslo')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('password', response.data)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.services_consent_withdrawn_at)
+
+    def test_withdrawing_without_a_password_is_refused(self):
+        response = self.client.post(
+            reverse('core:account-consents-withdraw'), {'scope': 'all'}, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('password', response.data)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.data_consent_withdrawn_at)
+
+    def test_restoring_still_asks_for_no_password(self):
+        self.withdraw('all')
+
+        response = self.restore('all')
+
+        self.assertEqual(response.status_code, 200)
 
     def restore(self, scope):
         return self.client.post(

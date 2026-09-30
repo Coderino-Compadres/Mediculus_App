@@ -36,6 +36,7 @@ DIAGRAMMED_MODELS = [
     models.DietActivity, models.DietActivityDay, models.DietSleep,
     models.Administrator, models.AdminAuditLog,
     models.DietMealEmotion, models.HealthProfile, models.HealthCondition,
+    models.SafetyPlan,
 ]
 
 #: Columns the diagram is known to be missing, as of the last time this test was

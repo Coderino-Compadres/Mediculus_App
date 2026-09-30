@@ -38,13 +38,14 @@ import { ROUTES } from '../routes'
  * notice comes back on its own.
  *
  * ── WHY IT IS HARDCODED ─────────────────────────────────────────────────────
- * There is no backend for this catalogue and none is planned in this change.
- * It lives in its own module rather than inside the screen so that moving the
- * source to a database later is **one import swap, not a rewrite of the
- * screen**: `import { DIET_TECHNIQUES } from '../data/dietTechniques'` becomes
- * a fetch, and `utils/dietTechniques.ts` keeps answering the same two questions
- * ("which ones are published", "which one is this id"). Nothing here is fetched,
- * so no screen in this module needs a loading or an error state for it.
+ * This is the client's reviewed text, and it stays here rather than in the
+ * database for the reason `data/techniques.ts` gives. The catalogue does have a
+ * database half now — what psychodietitians write from their panel
+ * (core/diet_techniques.py, `api/dietTechniques.ts`) — and
+ * `utils/dietTechniques.ts` merges the two by slug, this file first. The
+ * backend's `DIET_BUILTIN_SLUGS` is a copy of the ids below, checked by
+ * `test_diet_techniques.py`: **adding a technique here means adding its id
+ * there.**
  *
  * ── HOW TO EDIT IT ──────────────────────────────────────────────────────────
  * 1. Every field is a literal on purpose — there are no shared constants

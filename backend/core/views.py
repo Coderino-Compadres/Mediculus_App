@@ -55,8 +55,12 @@ from .parent_invitations import (list_invitations, revoke,
 from .permissions import CONSENT_EXEMPT, PASSWORD_CHANGE_EXEMPT
 from .report_pdf import pdf_file_name, render_report_pdf
 from .reports import build_weekly_reports, find_report
-from .serializers import (EMAIL_TAKEN, AdminAccountEditSerializer,
+from .serializers import (EMAIL_TAKEN, AccountDeleteSerializer,
+                          AdminAccountEditSerializer,
                           ConsentScopeSerializer,
+                          ConsentWithdrawSerializer,
+                          EmailChangeConfirmSerializer,
+                          EmailChangeRequestSerializer,
                           GuardianLinkSerializer,
                           LoginSerializer, ParentInvitationCreateSerializer,
                           PasswordChangeSerializer,
@@ -64,8 +68,11 @@ from .serializers import (EMAIL_TAKEN, AdminAccountEditSerializer,
                           PasswordResetRequestSerializer, RegisterSerializer,
                           SpecialistColleagueCreateSerializer,
                           SpecialistPatientInviteSerializer, UserSerializer)
+from . import account_deletion
+from . import safety_plan as safety_plan_rules
 from . import specialist as specialist_rules
 from . import techniques as technique_rules
+from . import diet_techniques as diet_technique_rules
 from .throttling import (AuthThrottle, GuardianLinkThrottle,
                          LoginAccountThrottle, PasswordChangeThrottle,
                          PasswordResetAccountThrottle, ReportPdfThrottle,
@@ -228,6 +235,28 @@ class PasswordResetConfirmView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@method_decorator(csrf_protect, name='dispatch')
+class EmailChangeConfirmView(APIView):
+    """POST /api/auth/email-change/confirm/ — write the address the link carries.
+
+    Under auth/ and open to a caller with no session, like the password reset's
+    confirmation: the link is opened from a mailbox, often on another device.
+    Answers 204 and starts no session — every session of the account has just
+    been closed (core/email_change.py), and the frontend sends the person to
+    /login to sign in under the new address.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthThrottle]
+
+    def post(self, request):
+        serializer = EmailChangeConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class LogoutView(APIView):
     """POST /api/auth/logout/ — drop the session server-side, not just the cookie."""
 
@@ -334,6 +363,8 @@ PROFILE_REFUSAL = (
 # question: the counters above are "this part of the profile", while this is a
 # clinical record about a body. A guardian reaching it is not being told a
 # screen is unavailable, they are being told whose record it is.
+SAFETY_PLAN_REFUSAL = 'Plan bezpieczeństwa jest dostępny tylko dla konta pacjenta.'
+
 HEALTH_PROFILE_REFUSAL = (
     'Profil zdrowotny jest dostępny tylko dla konta pacjenta.'
 )
@@ -565,6 +596,32 @@ class HealthProfileView(APIView):
         return Response(health_profile_rules.serialize_profile(profile))
 
 
+class SafetyPlanView(APIView):
+    """GET/PUT /api/safety-plan/ — the patient's own safety plan.
+
+    Behind `_require_patient` on both verbs, like every clinical endpoint: a
+    guardian or a specialist has no `patient` row and is refused, and a minor
+    whose guardian has not accepted is refused by the same call. The patient is
+    the session, never the URL, so there is no version of this endpoint that
+    reads somebody else's plan. See core/safety_plan.py.
+
+    GET answers `null` for a plan nobody has written yet; PUT replaces the whole
+    plan and answers it as stored.
+    """
+
+    def get(self, request):
+        patient = _require_patient(request, SAFETY_PLAN_REFUSAL)
+        return Response(safety_plan_rules.serialize_plan(
+            safety_plan_rules.plan_for(patient.id_medical)))
+
+    def put(self, request):
+        patient = _require_patient(request, SAFETY_PLAN_REFUSAL)
+        serializer = safety_plan_rules.SafetyPlanSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        plan = serializer.save_plan(patient.id_medical)
+        return Response(safety_plan_rules.serialize_plan(plan))
+
+
 class PasswordChangeView(APIView):
     """POST /api/account/password/ — change the signed-in account's password.
 
@@ -602,6 +659,67 @@ class PasswordChangeView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class EmailChangeRequestView(APIView):
+    """POST /api/account/email/ — mail a confirmation link to a new address.
+
+    The address does not change here; see core/email_change.py for the two
+    halves and why. The current password is checked server-side, and the
+    request is capped per account like the password change, because it is the
+    same kind of password oracle reachable from an open session.
+
+    Answers 202: the request was accepted and the rest happens in a mailbox.
+    """
+
+    throttle_classes = [PasswordChangeThrottle]
+
+    def post(self, request):
+        serializer = EmailChangeRequestSerializer(
+            data=request.data, context={'user': request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_202_ACCEPTED)
+
+
+#: An administrator's account is closed from the server (`manage.py`), never
+#: from its own profile — the same rule the panel applies to its own row.
+ADMIN_SELF_DELETE_REFUSAL = (
+    'Konto administratora usuwa się z serwera, nie z profilu.'
+)
+
+
+class AccountDeleteView(APIView):
+    """POST /api/account/delete/ — the owner deletes their own account, for good.
+
+    A hard delete, shared with the admin panel's: core/account_deletion.py says
+    what goes and in which order. The password is re-checked here.
+
+    Exempt from the consent gate, the guardian gate and the password gate —
+    `CONSENT_EXEMPT` is authentication and nothing else. Erasure is a right
+    (RODO art. 17) of exactly the accounts those gates stop: somebody who
+    withdrew their consents, a minor still waiting for a guardian, a colleague's
+    account nobody set a password for. None of them may use the app; all of them
+    may leave it.
+
+    Throttled like the password change: a correct password is what it asks for.
+    Answers 204, and the session behind the request is gone with the account.
+    """
+
+    permission_classes = CONSENT_EXEMPT
+    throttle_classes = [PasswordChangeThrottle]
+
+    def post(self, request):
+        if admin_panel.is_admin(request.user):
+            raise PermissionDenied(ADMIN_SELF_DELETE_REFUSAL)
+        serializer = AccountDeleteSerializer(
+            data=request.data, context={'user': request.user},
+        )
+        serializer.is_valid(raise_exception=True)
+        account_deletion.delete_account(request.user)
+        end_session(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class ConsentWithdrawView(APIView):
     """POST /api/account/consents/withdraw/ — stop the app processing anything.
 
@@ -617,9 +735,14 @@ class ConsentWithdrawView(APIView):
     """
 
     permission_classes = CONSENT_EXEMPT
+    # The password is checked (`ConsentWithdrawSerializer`), which makes this a
+    # password oracle like the password change — capped the same way.
+    throttle_classes = [PasswordChangeThrottle]
 
     def post(self, request):
-        serializer = ConsentScopeSerializer(data=request.data)
+        serializer = ConsentWithdrawSerializer(
+            data=request.data, context={'user': request.user},
+        )
         serializer.is_valid(raise_exception=True)
         withdraw(request.user, serializer.validated_data['scope'])
         return Response(UserSerializer(request.user).data)
@@ -1603,6 +1726,11 @@ TECHNIQUE_WRONG_MODULE = (
     'Katalog technik terapeutycznych prowadzą specjaliści modułu psychoterapii.'
 )
 
+#: And the other way round: the psychodietetic catalogue is the diet module's.
+DIET_TECHNIQUE_WRONG_MODULE = (
+    'Katalog technik psychodietetycznych prowadzą specjaliści modułu dietetyki.'
+)
+
 
 def _require_specialist(request):
     """The `specjalist` row behind the session, or a refusal.
@@ -1637,6 +1765,18 @@ def _require_technique_author(request):
     specjalist = _require_specialist(request)
     if specjalist.module != MODULE_PSYCHOTHERAPY:
         raise PermissionDenied(TECHNIQUE_WRONG_MODULE)
+    return specjalist
+
+
+def _require_diet_technique_author(request):
+    """A specialist who may write into the psychodietetic catalogue, or a refusal.
+
+    The mirror of `_require_technique_author`: each module's catalogue is written
+    by that module's specialists.
+    """
+    specjalist = _require_specialist(request)
+    if specjalist.module != MODULE_DIET:
+        raise PermissionDenied(DIET_TECHNIQUE_WRONG_MODULE)
     return specjalist
 
 
@@ -2098,6 +2238,77 @@ class TechniqueCatalogueView(APIView):
         return Response([
             technique_rules.serialize_technique(technique)
             for technique in technique_rules.published()
+        ])
+
+
+class SpecialistDietTechniquesView(APIView):
+    """GET/POST /api/specialist/diet-techniques/ — a psychodietitian's own techniques.
+
+    The diet module's `SpecialistTechniquesView`, with the same rules: what is
+    saved is published to every patient's /diet/techniques at once. See
+    core/diet_techniques.py.
+    """
+
+    def get(self, request):
+        specjalist = _require_diet_technique_author(request)
+        return Response([
+            diet_technique_rules.serialize_diet_technique(technique)
+            for technique in diet_technique_rules.for_specjalist(specjalist)
+        ])
+
+    def post(self, request):
+        specjalist = _require_diet_technique_author(request)
+        serializer = diet_technique_rules.DietTechniqueSerializer(
+            data=request.data, context={'specjalist': specjalist},
+        )
+        serializer.is_valid(raise_exception=True)
+        technique = serializer.save()
+        return Response(
+            diet_technique_rules.serialize_diet_technique(technique),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class SpecialistDietTechniqueView(APIView):
+    """PUT/DELETE /api/specialist/diet-techniques/<id>/ — correct or withdraw one.
+
+    Only the author's own, and only diet rows: anything else answers 404.
+    """
+
+    def _own(self, request, id_technique):
+        specjalist = _require_diet_technique_author(request)
+        technique = diet_technique_rules.find_for_specjalist(specjalist, id_technique)
+        if technique is None:
+            raise NotFound(TECHNIQUE_NOT_FOUND)
+        return specjalist, technique
+
+    def put(self, request, id_technique):
+        specjalist, technique = self._own(request, id_technique)
+        serializer = diet_technique_rules.DietTechniqueSerializer(
+            technique, data=request.data, context={'specjalist': specjalist},
+        )
+        serializer.is_valid(raise_exception=True)
+        return Response(
+            diet_technique_rules.serialize_diet_technique(serializer.save()))
+
+    def delete(self, request, id_technique):
+        _, technique = self._own(request, id_technique)
+        technique.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DietTechniqueCatalogueView(APIView):
+    """GET /api/diet/techniques/ — the psychodietetic techniques specialists published.
+
+    The database half of /diet/techniques, merged with the built-in techniques
+    on the frontend. No `_require_patient`, for the reason `TechniqueCatalogueView`
+    gives: nothing here is about anybody.
+    """
+
+    def get(self, request):
+        return Response([
+            diet_technique_rules.serialize_diet_technique(technique)
+            for technique in diet_technique_rules.published()
         ])
 
 

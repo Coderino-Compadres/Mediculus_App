@@ -5,7 +5,6 @@ import { renderWithProviders, TEST_USER } from '../test/render'
 import Profile from './Profile'
 import { ROUTES } from '../routes'
 import { ApiError } from '../api/client'
-import { PENDING_BACKEND_MESSAGE, PendingBackendError } from '../api/account'
 import { CONSENTS } from '../utils/consents'
 import type { AccountProfile } from '../types/profile'
 
@@ -20,9 +19,12 @@ vi.mock('../api/account', async (importOriginal) => {
     deleteAccount: vi.fn(actual.deleteAccount),
     withdrawConsent: vi.fn(actual.withdrawConsent),
     changePassword: vi.fn(),
+    requestEmailChange: vi.fn(),
   }
 })
-const { changePassword, deleteAccount, withdrawConsent } = await import('../api/account')
+const { changePassword, deleteAccount, requestEmailChange, withdrawConsent } =
+  await import('../api/account')
+const mockedRequestEmail = vi.mocked(requestEmailChange)
 const mockedChangePassword = vi.mocked(changePassword)
 const mockedDelete = vi.mocked(deleteAccount)
 const mockedWithdraw = vi.mocked(withdrawConsent)
@@ -55,16 +57,15 @@ beforeEach(() => {
   mockedProfile.mockReset()
   mockedProfile.mockResolvedValue(accountProfile())
   mockedChangePassword.mockReset()
+  mockedRequestEmail.mockReset()
   mockedChangePassword.mockResolvedValue(undefined)
   // mockImplementation does not clear call history, and these assertions care
   // about who was *not* called.
   mockedDelete.mockReset()
   mockedWithdraw.mockReset()
-  // Deletion is still a stub that rejects; withdrawal is real and answers with
-  // the now-locked account, which is what moves the app to /consents.
-  mockedDelete.mockImplementation(() =>
-    Promise.reject(new PendingBackendError('DELETE /api/account/')),
-  )
+  // Both are real calls: deletion resolves with nothing, withdrawal answers
+  // with the now-locked account, which is what moves the app to /consents.
+  mockedDelete.mockImplementation(() => Promise.resolve())
   mockedWithdraw.mockImplementation(() => Promise.resolve(LOCKED_USER))
 })
 
@@ -220,15 +221,31 @@ describe('Profile', () => {
     expect(screen.queryByText(/Co zostanie usunięte/)).toBeNull()
   })
 
-  it('never tells the user the account was deleted, because nothing was', async () => {
+  it('puts a wrong password under the field and deletes nothing', async () => {
+    /** The server is what checks it; the screen must stay, say why, and not
+     *  sign anybody out of an account that still exists. */
+    mockedDelete.mockRejectedValue(
+      new ApiError(400, null, { password: 'Hasło jest nieprawidłowe.' }),
+    )
+    const signOut = vi.fn().mockResolvedValue(undefined)
+    await renderProfile({ signOut })
+
+    await open('Usuń konto')
+    await userEvent.type(screen.getByLabelText('Hasło'), 'zle-haslo')
+    await open('Usuń konto na stałe')
+
+    expect(await screen.findByText('Hasło jest nieprawidłowe.')).toBeInTheDocument()
+    expect(signOut).not.toHaveBeenCalled()
+  })
+
+  it('accepts an old password shorter than today\'s minimum — the server decides', async () => {
     await renderProfile()
 
     await open('Usuń konto')
-    await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
+    await userEvent.type(screen.getByLabelText('Hasło'), 'krotkie')
     await open('Usuń konto na stałe')
 
-    expect(await screen.findByText(PENDING_BACKEND_MESSAGE)).toBeInTheDocument()
-    expect(screen.getByText(/Twoje konto i dane są nietknięte/)).toBeInTheDocument()
+    await vi.waitFor(() => expect(mockedDelete).toHaveBeenCalledWith({ password: 'krotkie' }))
   })
 
   it('asks for the password before confirming a closure', async () => {
@@ -238,7 +255,7 @@ describe('Profile', () => {
     await open('Usuń konto na stałe')
 
     expect(await screen.findByText('Podaj hasło.')).toBeInTheDocument()
-    expect(screen.queryByText(PENDING_BACKEND_MESSAGE)).toBeNull()
+    expect(mockedDelete).not.toHaveBeenCalled()
   })
 
   it('offers no data export — it was removed from this screen', async () => {
@@ -253,9 +270,55 @@ describe('Profile', () => {
 
     await open('Zmień adres e-mail')
     await userEvent.type(screen.getByLabelText('Nowy adres e-mail'), 'nie-adres')
-    await open('Zapisz nowy e-mail')
+    await open('Wyślij link na nowy adres')
 
     expect(await screen.findByText('Podaj poprawny adres e-mail.')).toBeInTheDocument()
+    expect(mockedRequestEmail).not.toHaveBeenCalled()
+  })
+
+  it('sends the new address with the password, and says a link is on its way', async () => {
+    /** Nothing changes yet — the address moves when the link is confirmed —
+     *  so the screen must not say it has changed. */
+    mockedRequestEmail.mockResolvedValue(undefined)
+    await renderProfile()
+
+    await open('Zmień adres e-mail')
+    await userEvent.type(screen.getByLabelText('Nowy adres e-mail'), 'nowy@example.com')
+    await userEvent.type(screen.getByLabelText('Obecne hasło'), 'Haslo123!')
+    await open('Wyślij link na nowy adres')
+
+    expect(await screen.findByText(/Wysłaliśmy link na adres nowy@example.com/)).toBeInTheDocument()
+    expect(mockedRequestEmail).toHaveBeenCalledWith({
+      newEmail: 'nowy@example.com', currentPassword: 'Haslo123!',
+    })
+    expect(screen.queryByText(/zmieniony|zmieniono/i)).toBeNull()
+  })
+
+  it('asks for the password before sending anything', async () => {
+    await renderProfile()
+
+    await open('Zmień adres e-mail')
+    await userEvent.type(screen.getByLabelText('Nowy adres e-mail'), 'nowy@example.com')
+    await open('Wyślij link na nowy adres')
+
+    expect(await screen.findByText('Podaj hasło.')).toBeInTheDocument()
+    expect(mockedRequestEmail).not.toHaveBeenCalled()
+  })
+
+  it('puts a taken address and a wrong password under their own inputs', async () => {
+    mockedRequestEmail.mockRejectedValue(new ApiError(400, null, {
+      new_email: 'Konto z tym adresem e-mail już istnieje.',
+      current_password: 'Hasło jest nieprawidłowe.',
+    }))
+    await renderProfile()
+
+    await open('Zmień adres e-mail')
+    await userEvent.type(screen.getByLabelText('Nowy adres e-mail'), 'zajety@example.com')
+    await userEvent.type(screen.getByLabelText('Obecne hasło'), 'zle')
+    await open('Wyślij link na nowy adres')
+
+    expect(await screen.findByText('Konto z tym adresem e-mail już istnieje.')).toBeInTheDocument()
+    expect(screen.getByText('Hasło jest nieprawidłowe.')).toBeInTheDocument()
   })
 
   it('will not accept a new password shorter than the registration minimum', async () => {
@@ -301,7 +364,7 @@ describe('Profile', () => {
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
     await open('Wycofaj zgody')
 
-    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('all'))
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('all', 'haslo1234'))
     expect(mockedDelete).not.toHaveBeenCalled()
   })
 
@@ -312,7 +375,7 @@ describe('Profile', () => {
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
     await open('Wycofaj zgodę')
 
-    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('data'))
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('data', 'haslo1234'))
   })
 
   it('withdrawing only the services consent sends scope "services"', async () => {
@@ -322,7 +385,7 @@ describe('Profile', () => {
     await userEvent.type(screen.getByLabelText('Hasło'), 'haslo1234')
     await open('Wycofaj zgodę na usługi')
 
-    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('services'))
+    await waitFor(() => expect(mockedWithdraw).toHaveBeenCalledWith('services', 'haslo1234'))
   })
 
   /*
@@ -332,7 +395,23 @@ describe('Profile', () => {
    * stub's answer, a resolving endpoint made each of them say the opposite of the
    * truth.
    */
-  it('does not claim the data is untouched once the deletion actually succeeds', async () => {
+  it('puts a wrong password under the field and withdraws nothing', async () => {
+    /** The password is checked on the server now — it used to be asked for
+     *  and never sent, so any password stopped the account. */
+    mockedWithdraw.mockRejectedValue(
+      new ApiError(400, null, { password: 'Hasło jest nieprawidłowe.' }),
+    )
+    await renderProfile()
+
+    await open('Wycofaj obie zgody naraz')
+    await userEvent.type(screen.getByLabelText('Hasło'), 'zle-haslo')
+    await open('Wycofaj zgody')
+
+    expect(await screen.findByText('Hasło jest nieprawidłowe.')).toBeInTheDocument()
+    expect(mockedWithdraw).toHaveBeenCalledWith('all', 'zle-haslo')
+  })
+
+  it('signs out and leaves once the account is deleted', async () => {
     mockedDelete.mockResolvedValue(undefined)
     const signOut = vi.fn().mockResolvedValue(undefined)
     await renderProfile({ signOut })
@@ -344,8 +423,7 @@ describe('Profile', () => {
     // The account is gone, so the only correct next step is to leave.
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith(ROUTES.login, { replace: true }))
     expect(signOut).toHaveBeenCalled()
-    expect(screen.queryByText(/nietknięte/)).toBeNull()
-    expect(screen.queryByText(PENDING_BACKEND_MESSAGE)).toBeNull()
+    expect(mockedDelete).toHaveBeenCalledWith({ password: 'haslo1234' })
   })
 
   it('hands the locked account to the session, which is what moves the app', async () => {

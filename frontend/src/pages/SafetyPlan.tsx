@@ -1,10 +1,15 @@
+import { useEffect, useState } from 'react'
 import HeaderMenu from '../components/HeaderMenu'
 import CrisisLines from '../components/CrisisLines'
+import LoadError from '../components/LoadError'
 import SafetyPlanEmpty from '../components/SafetyPlanEmpty'
+import SafetyPlanForm from '../components/SafetyPlanForm'
 import SafetyPlanView from '../components/SafetyPlanView'
+import { ApiError } from '../api/client'
+import { fetchSafetyPlan } from '../api/safetyPlan'
 import { useAccountProfile } from '../hooks/useAccountProfile'
-import { SAFETY_PLAN } from '../data/safetyPlan'
 import { APP_DISCLAIMER } from '../utils/disclaimer'
+import type { SafetyPlan as Plan } from '../types/safetyPlan'
 // journals.css is the page frame (.journals-page / .journals-header), reused
 // rather than redrawn. home.css is here for two things this screen shares with
 // /home and must not redraw: .home-disclaimer (the ochre note, which has to be
@@ -17,65 +22,67 @@ import './home.css'
 import './safetyPlan.css'
 
 /**
- * "Plan bezpieczeństwa" — the support numbers, and the plan a specialist wrote.
+ * "Plan bezpieczeństwa" — the support numbers, and the patient's own plan.
  *
- * NOT IN THE MOCKUP. The mockup covers login, module select, home, the entry
- * form, the diary archive, reports, analysis, techniques and the profile; this
- * screen is in none of them. Everything below is built from the client's
- * requirements plus what already exists in the code, which is why it borrows the
- * archive's page frame instead of inventing a layout.
- *
- * THE PATIENT DOES NOT WRITE THIS SCREEN. The plan is prepared with a therapist
- * — the specialist panel lists "przygotowywać indywidualny plan bezpieczeństwa"
- * as its own job — so here it is read-only, in both states. No form, no save, no
- * API call.
+ * THE PATIENT WRITES THE PLAN. It is stored per patient (GET/PUT
+ * /api/safety-plan/, core/safety_plan.py) and edited with
+ * components/SafetyPlanForm.tsx. It used to be a hardcoded example shown to
+ * every account as "Twój plan", with no write path at all.
  *
  * WHAT ORDER THE SCREEN IS IN, AND WHY:
- *   1. the support numbers, always, before anything conditional. They are the one
- *      part that works today and the one part that is true for every account,
- *      including the majority who have no plan.
- *   2. the plan, or the explanation of what a plan is.
+ *   1. the support numbers, always, before anything conditional — including
+ *      while the plan loads and when it fails to. They are local, true for
+ *      every account, and the one part of this screen that must never wait.
+ *   2. the plan, the form, or the invitation to write one.
  *   3. the same disclaimer the home screen carries, from one shared constant.
  *
- * THE PLAN ITSELF IS STILL HARDCODED; THE THERAPIST IS NOT. `data/crisisLines.ts`
- * is permanent (public numbers, no endpoint wanted — see the note there) and
- * `data/safetyPlan.ts` is a stand-in whose header says how to flip it to the
- * empty state for a review with the client. The care relationship, though, is
- * real: it comes from `useAccountProfile`, the same request the profile's
- * "OPIEKA" card reads, which is the whole reason `CareDetails` has one source —
- * the two screens must not be able to name different therapists.
+ * A FAILED LOAD IS NOT AN EMPTY PLAN (CLAUDE.md §4): "Nie masz jeszcze planu"
+ * over a plan that exists but did not arrive would invite the person to write
+ * it again from scratch in a bad moment. The error says so and offers a retry.
  *
- * While it loads, and for an account it does not apply to, `care` is null and
- * the "Kontakt do terapeuty" section is simply absent — the same state as a
- * patient with nobody assigned, which `SafetyPlanView` already renders. The
- * crisis lines above it never depend on any of that, which is the point of
- * their being first on the page.
- *
- * TODO(ostrzeganie na podstawie zachowań ryzykownych): asked what this feature is
- * for, the client answered that it is not the phone numbers — it is that a
- * patient accumulating risky situations should be told, before a crisis, that
- * things are heading that way and that it is worth contacting their therapist
- * now. That detection is NOT on this screen and should not move here: it watches
- * diary data, so it belongs next to the logic that already reads it — the home
- * screen's banner at average stress >= 6 (US-PT-13, pages/Home.tsx) is the first
- * piece of it. This screen is where somebody lands once that fires. Recorded here
- * because it is the main value the client attached to the feature, and the code
- * that will carry it is somewhere else entirely.
- *
- * TODO(udostępnianie planu specjaliście): the requirements say the plan matters
- * "jeżeli użytkownik udostępni tę funkcję", and what that sharing covers was
- * never pinned down — who sees the plan, whether the patient can stop it, and how
- * it interacts with the rule that reports are visible to the treating specialist
- * and the patient cannot cut that off (see pages/Reports.tsx). Nothing here
- * shares anything; guessing at the scope of a consent is not something to do in
- * markup.
+ * The treating specialist comes from `useAccountProfile`, the same request the
+ * profile's "OPIEKA" card reads, and is shown as the professional contact when
+ * the plan names none of its own.
  */
+
+const LOAD_ERROR = 'Nie udało się wczytać Twojego planu. Numery powyżej działają — spróbuj ponownie za chwilę.'
+
 function SafetyPlan() {
   // Failure is not surfaced here on purpose: this screen's one indispensable
   // half — the crisis lines — is local, and an error box above them would push
   // the numbers down the page to report that a name is missing. A missing
   // therapist already looks like a missing therapist.
   const { data: profile } = useAccountProfile()
+  const [plan, setPlan] = useState<Plan | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const [editing, setEditing] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSafetyPlan()
+      .then((loaded) => {
+        if (cancelled) return
+        setPlan(loaded)
+        setLoadError(null)
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return
+        setLoadError((cause instanceof ApiError && cause.formMessage) || LOAD_ERROR)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [attempt])
+
+  function retry() {
+    setLoading(true)
+    setAttempt((value) => value + 1)
+  }
 
   return (
     <div className="journals-page safety-plan-page">
@@ -91,10 +98,29 @@ function SafetyPlan() {
           without scrolling whether or not a plan exists. */}
       <CrisisLines />
 
-      {SAFETY_PLAN ? (
-        <SafetyPlanView plan={SAFETY_PLAN} care={profile?.care ?? null} />
+      {loading ? (
+        <p className="safety-plan-card" role="status" aria-busy="true">
+          Wczytywanie planu…
+        </p>
+      ) : loadError ? (
+        <LoadError className="safety-plan-card" message={loadError} onRetry={retry} />
+      ) : editing ? (
+        <SafetyPlanForm
+          plan={plan}
+          onSaved={(saved) => {
+            setPlan(saved)
+            setEditing(false)
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : plan ? (
+        <SafetyPlanView
+          plan={plan}
+          care={profile?.care ?? null}
+          onEdit={() => setEditing(true)}
+        />
       ) : (
-        <SafetyPlanEmpty />
+        <SafetyPlanEmpty onCreate={() => setEditing(true)} />
       )}
 
       {/* Word for word what /home says, from one constant — see utils/disclaimer.ts.

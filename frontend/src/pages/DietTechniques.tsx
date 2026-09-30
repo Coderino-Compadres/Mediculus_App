@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import { useAuth } from '../auth/authContext'
 import { isSpecialist } from '../api/auth'
+import { useStoredDietTechniques } from '../hooks/useStoredDietTechniques'
 import { catalogueHasPlaceholders, publishedDietTechniques } from '../utils/dietTechniques'
 import { PLACEHOLDER_NOTICE_LIST } from '../data/dietTechniques'
 import type { DietTechnique } from '../types/dietTechnique'
@@ -71,6 +72,14 @@ export const INTRO =
  * nothing a patient could do about an empty catalogue, so a button here would
  * suggest otherwise.
  */
+/**
+ * The psychodietitians' half of the catalogue did not load. Everything built in
+ * is still listed — see `useStoredDietTechniques` — so this says only what is
+ * missing, the same way the psychotherapy catalogue does.
+ */
+export const STORED_FAILED =
+  'Nie udało się wczytać technik dodanych przez specjalistów. Pokazujemy te, które są wbudowane w aplikację.'
+
 export const EMPTY =
   'Nie ma tu jeszcze żadnej techniki. Pojawią się, kiedy fundacja przygotuje opisy.'
 
@@ -105,8 +114,10 @@ function TechniqueRow({ technique }: { technique: DietTechnique }) {
 }
 
 function DietTechniques() {
-  // Order is the data file's order; nothing sorts it and nothing counts it.
-  const techniques = publishedDietTechniques()
+  // The built-in techniques in the data file's order, then the ones
+  // psychodietitians wrote; nothing sorts it and nothing counts it.
+  const { techniques: stored, failed: storedFailed } = useStoredDietTechniques()
+  const techniques = publishedDietTechniques(stored)
   const { user } = useAuth()
   const specialist = user !== null && isSpecialist(user)
 
@@ -147,6 +158,12 @@ function DietTechniques() {
           note is the other case — it appears when a request fails. */}
       {catalogueHasPlaceholders() && (
         <p className="diet-techniques-pending">{PLACEHOLDER_NOTICE_LIST}</p>
+      )}
+
+      {storedFailed && (
+        <p className="diet-techniques-pending" role="status">
+          {STORED_FAILED}
+        </p>
       )}
 
       {techniques.length === 0 ? (

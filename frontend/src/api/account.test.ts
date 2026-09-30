@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  DELETE_ACCOUNT_FIELDS,
+  EMAIL_CHANGE_FIELDS,
   PASSWORD_FIELDS,
-  PENDING_BACKEND_MESSAGE,
-  PendingBackendError,
   changePassword,
+  confirmEmailChange,
   deleteAccount,
+  requestEmailChange,
   restoreConsent,
   withdrawConsent,
 } from './account'
@@ -17,11 +19,9 @@ const { apiRequest } = await import('./client')
 const mockedRequest = vi.mocked(apiRequest)
 
 /**
- * The account-level actions. Two of them are real and one is a stub, and the
- * split is what this file is about: `deleteAccount` performs **no request** and
- * always rejects, because telling somebody their health data is gone when
- * nothing happened is not a cosmetic lie — they may stop using the app on the
- * strength of it.
+ * The account-level actions: what each one sends, and to which endpoint. The
+ * password on the destructive ones travels because the server checks it — the
+ * screens only decide what to ask for.
  */
 
 const USER_PAYLOAD = {
@@ -50,17 +50,18 @@ const USER_PAYLOAD = {
 beforeEach(() => mockedRequest.mockReset())
 
 describe('withdrawConsent', () => {
-  it('posts the scope and hands back the updated account', async () => {
+  it('posts the scope with the password, and hands back the updated account', async () => {
     /** The updated user is what moves the app: the route guard reads
      *  `consents.active`, so the session gets the new one rather than the
      *  caller navigating by hand. */
     mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
 
-    const user = await withdrawConsent('data')
+    const user = await withdrawConsent('data', 'Haslo123!')
 
+    // The password travels because the server checks it.
     expect(mockedRequest).toHaveBeenCalledWith('/api/account/consents/withdraw/', {
       method: 'POST',
-      body: { scope: 'data' },
+      body: { scope: 'data', password: 'Haslo123!' },
     })
     expect(user.consents.active).toBe(false)
     expect(user.consents.data.active).toBe(false)
@@ -70,11 +71,11 @@ describe('withdrawConsent', () => {
     for (const scope of ['data', 'services', 'all'] as const) {
       mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
 
-      await withdrawConsent(scope)
+      await withdrawConsent(scope, 'x')
 
       expect(mockedRequest).toHaveBeenLastCalledWith('/api/account/consents/withdraw/', {
         method: 'POST',
-        body: { scope },
+        body: { scope, password: 'x' },
       })
     }
   })
@@ -84,7 +85,7 @@ describe('withdrawConsent', () => {
      *  consented" and "consented then withdrew" the same row (art. 7(1)). */
     mockedRequest.mockResolvedValueOnce(USER_PAYLOAD)
 
-    const user = await withdrawConsent('data')
+    const user = await withdrawConsent('data', 'x')
 
     expect(user.consents.data.grantedAt).toBe('2026-06-18T09:31:02Z')
     expect(user.consents.data.withdrawnAt).toBe('2026-09-01T08:00:00Z')
@@ -94,7 +95,7 @@ describe('withdrawConsent', () => {
     const refusal = new Error('403')
     mockedRequest.mockRejectedValueOnce(refusal)
 
-    await expect(withdrawConsent('all')).rejects.toBe(refusal)
+    await expect(withdrawConsent('all', 'x')).rejects.toBe(refusal)
   })
 })
 
@@ -136,52 +137,55 @@ describe('restoreConsent', () => {
 })
 
 describe('deleteAccount', () => {
-  it('makes no request at all', async () => {
-    await expect(
-      deleteAccount({ password: 'Haslo123!', reason: 'delete-account' }),
-    ).rejects.toBeInstanceOf(PendingBackendError)
+  it('posts the password to the deletion endpoint, and nothing else', async () => {
+    mockedRequest.mockResolvedValueOnce(undefined)
 
-    expect(mockedRequest).not.toHaveBeenCalled()
-  })
+    await deleteAccount({ password: 'Haslo123!' })
 
-  it('never resolves, so no screen can report a deletion that did not happen', async () => {
-    /** The one failure mode worth a test of its own: a false success here could
-     *  leave somebody believing their health data is gone. */
-    const reasons = [
-      'delete-account', 'withdraw-data-consent', 'withdraw-all-consents',
-    ] as const
-
-    for (const reason of reasons) {
-      await expect(deleteAccount({ password: 'x', reason })).rejects.toThrow()
-    }
-  })
-
-  it('rejects with the notice the screens render, not with an error message', async () => {
-    await expect(
-      deleteAccount({ password: 'x', reason: 'delete-account' }),
-    ).rejects.toThrow(PENDING_BACKEND_MESSAGE)
-  })
-
-  it('names the endpoint it is waiting for, and which reason it was called with', async () => {
-    /** So a console line during a demo says what is missing rather than just
-     *  that something is. */
-    await expect(
-      deleteAccount({ password: 'x', reason: 'withdraw-all-consents' }),
-    ).rejects.toMatchObject({
-      name: 'PendingBackendError',
-      endpoint: 'DELETE /api/account/ (reason: withdraw-all-consents)',
+    expect(mockedRequest).toHaveBeenCalledWith('/api/account/delete/', {
+      method: 'POST',
+      body: { password: 'Haslo123!' },
     })
   })
 
-  it('does not put the password in the error it rejects with', async () => {
-    const error: unknown = await deleteAccount({
-      password: 'Haslo123!', reason: 'delete-account',
-    }).then(() => null, (cause: unknown) => cause)
+  it('passes a refusal through, so a wrong password is not reported as a deletion', async () => {
+    mockedRequest.mockRejectedValueOnce(new Error('400'))
 
-    const pending = error as PendingBackendError
+    await expect(deleteAccount({ password: 'zle' })).rejects.toThrow('400')
+  })
 
-    expect(JSON.stringify({ message: pending.message, endpoint: pending.endpoint }))
-      .not.toContain('Haslo123!')
+  it('maps the server field onto the form field', () => {
+    expect(DELETE_ACCOUNT_FIELDS).toEqual({ password: 'password' })
+  })
+})
+
+describe('requestEmailChange', () => {
+  it('sends the new address, trimmed, and the current password', async () => {
+    mockedRequest.mockResolvedValueOnce(undefined)
+
+    await requestEmailChange({ newEmail: '  nowy@example.com ', currentPassword: 'Haslo123!' })
+
+    expect(mockedRequest).toHaveBeenCalledWith('/api/account/email/', {
+      method: 'POST',
+      body: { new_email: 'nowy@example.com', current_password: 'Haslo123!' },
+    })
+  })
+
+  it('keeps the password field apart from the password-change form on the same page', () => {
+    expect(EMAIL_CHANGE_FIELDS.current_password).not.toBe(PASSWORD_FIELDS.current_password)
+  })
+})
+
+describe('confirmEmailChange', () => {
+  it('sends the token from the link', async () => {
+    mockedRequest.mockResolvedValueOnce(undefined)
+
+    await confirmEmailChange('abc:def')
+
+    expect(mockedRequest).toHaveBeenCalledWith('/api/auth/email-change/confirm/', {
+      method: 'POST',
+      body: { token: 'abc:def' },
+    })
   })
 })
 

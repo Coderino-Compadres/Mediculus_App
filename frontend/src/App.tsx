@@ -21,6 +21,7 @@ import ConsentsRequired from './pages/ConsentsRequired'
 import PasswordChangeRequired from './pages/PasswordChangeRequired'
 import PasswordReset from './pages/PasswordReset'
 import PasswordResetConfirm from './pages/PasswordResetConfirm'
+import EmailChangeConfirm from './pages/EmailChangeConfirm'
 import ParentHome from './pages/ParentHome'
 import SpecialistHome from './pages/SpecialistHome'
 import SpecialistPatientReports from './pages/SpecialistPatientReports'
@@ -31,6 +32,8 @@ import SpecialistParentAccounts from './pages/SpecialistParentAccounts'
 import SpecialistColleagues from './pages/SpecialistColleagues'
 import SpecialistTechniques from './pages/SpecialistTechniques'
 import SpecialistTechniqueForm from './pages/SpecialistTechniqueForm'
+import SpecialistDietTechniques from './pages/SpecialistDietTechniques'
+import SpecialistDietTechniqueForm from './pages/SpecialistDietTechniqueForm'
 import SpecialistPending from './pages/SpecialistPending'
 import AdminHome from './pages/AdminHome'
 import AdminAccounts from './pages/AdminAccounts'
@@ -262,6 +265,18 @@ function RequireTechniqueAuthor({ children }: { children: ReactNode }) {
 }
 
 /**
+ * The psychodietetic technique editor — the diet module's. A psychotherapist is
+ * sent to their own editor instead; the backend refuses them these writes too.
+ */
+function RequireDietTechniqueAuthor({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  if (user && !isDietSpecialist(user) && isSpecialist(user)) {
+    return <Navigate to={ROUTES.specialistTechniques} replace />
+  }
+  return <RequireSpecialist>{children}</RequireSpecialist>
+}
+
+/**
  * The consent screen, and only for an account that needs it.
  *
  * The mirror of the redirect above, for the same reason `RequireGuardianLink`
@@ -357,6 +372,9 @@ function App() {
               pages/PasswordResetConfirm.tsx. */}
           <Route path={ROUTES.passwordReset} element={<PasswordReset />} />
           <Route path={ROUTES.passwordResetConfirm} element={<PasswordResetConfirm />} />
+          {/* The same arrangement for the link that confirms a new address: no
+              session needed, none refused — see pages/EmailChangeConfirm.tsx. */}
+          <Route path={ROUTES.emailChangeConfirm} element={<EmailChangeConfirm />} />
           <Route
             path={ROUTES.consents}
             element={
@@ -510,6 +528,30 @@ function App() {
               <RequireTechniqueAuthor>
                 <SpecialistTechniqueForm />
               </RequireTechniqueAuthor>
+            }
+          />
+          <Route
+            path={ROUTES.specialistDietTechniques}
+            element={
+              <RequireDietTechniqueAuthor>
+                <SpecialistDietTechniques />
+              </RequireDietTechniqueAuthor>
+            }
+          />
+          <Route
+            path={ROUTES.specialistDietTechniqueNew}
+            element={
+              <RequireDietTechniqueAuthor>
+                <SpecialistDietTechniqueForm />
+              </RequireDietTechniqueAuthor>
+            }
+          />
+          <Route
+            path={ROUTES.specialistDietTechniqueEdit}
+            element={
+              <RequireDietTechniqueAuthor>
+                <SpecialistDietTechniqueForm />
+              </RequireDietTechniqueAuthor>
             }
           />
           <Route

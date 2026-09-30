@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
@@ -15,6 +15,7 @@ import {
   type AccountRow,
 } from '../api/admin'
 import { usePagination } from '../hooks/usePagination'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { linkedSinceLabel } from '../utils/children'
 import { adminAccountPath, ROUTES } from '../routes'
 import './journals.css'
@@ -33,6 +34,9 @@ const LOAD_ERROR = 'Nie udało się wczytać listy kont. Spróbuj ponownie.'
  * Paginated like every other list (hooks/usePagination.ts); changing a filter
  * sends the list back to page one, where the first match is.
  *
+ * The search waits for typing to stop (`SEARCH_DEBOUNCE_MS`) before it filters:
+ * the box shows every letter at once, the list and the page number change once.
+ *
  * Nothing on this screen changes anything. An account's detail is one click
  * further in, and opening it is what the audit log records by name.
  */
@@ -43,6 +47,7 @@ function AdminAccounts() {
   const [attempt, setAttempt] = useState(0)
   const [kind, setKind] = useState<AccountKind | null>(null)
   const [query, setQuery] = useState('')
+  const searched = useDebouncedValue(query)
 
   useEffect(() => {
     let cancelled = false
@@ -65,7 +70,7 @@ function AdminAccounts() {
   }, [attempt])
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase('pl-PL')
+    const needle = searched.trim().toLocaleLowerCase('pl-PL')
     return accounts.filter((row) => {
       if (kind && row.kind !== kind) return false
       if (!needle) return true
@@ -73,9 +78,21 @@ function AdminAccounts() {
         .filter(Boolean)
         .some((value) => (value as string).toLocaleLowerCase('pl-PL').includes(needle))
     })
-  }, [accounts, kind, query])
+  }, [accounts, kind, searched])
 
   const pages = usePagination(filtered)
+  const { reset: resetPage } = pages
+
+  // Back to page one when the search actually applies, not on every keystroke —
+  // otherwise the page number would jump half a second before the rows do.
+  // Compared with the previous value rather than run on mount, so reloading
+  // "?page=2" keeps the reader on page two.
+  const lastSearched = useRef(searched)
+  useEffect(() => {
+    if (lastSearched.current === searched) return
+    lastSearched.current = searched
+    resetPage()
+  }, [searched, resetPage])
   // Only the kinds that exist, so there is no chip leading to an empty list.
   const presentKinds = ACCOUNT_KINDS.filter((value) => accounts.some((row) => row.kind === value))
 
@@ -143,10 +160,7 @@ function AdminAccounts() {
               type="search"
               autoComplete="off"
               value={query}
-              onChange={(event) => {
-                setQuery(event.target.value)
-                pages.reset()
-              }}
+              onChange={(event) => setQuery(event.target.value)}
             />
           </div>
 
