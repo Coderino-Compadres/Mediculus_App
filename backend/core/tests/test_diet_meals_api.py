@@ -354,6 +354,12 @@ class WriteTests(DietTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(DietMeal.objects.get().entry_date, self.today)
 
+    def test_seconds_in_the_hour_are_dropped(self):
+        """The hour is shown and edited as 'HH:MM'; a second is never seen."""
+        self.post(time='08:10:45')
+
+        self.assertEqual(DietMeal.objects.get().eaten_at, datetime.time(8, 10))
+
     def test_the_answer_carries_the_meal_and_the_rebuilt_day(self):
         """Both, because the two screens reading this table draw different things.
 
@@ -1073,7 +1079,8 @@ class JournalDayTests(DietTestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_a_malformed_date_is_a_404_rather_than_a_500(self):
-        for bad in ('wczoraj', '2026-13-45', '2026-09', ''):
+        for bad in ('wczoraj', '2026-13-45', '2026-09', '', '20261001',
+                    '2026-W40-4'):
             with self.subTest(bad=bad):
                 response = self.client.get(f'/api/diet/days/{bad}/')
                 self.assertIn(response.status_code, (404,))

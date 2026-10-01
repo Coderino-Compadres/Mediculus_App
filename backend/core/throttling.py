@@ -10,6 +10,8 @@ rather than a routing one — see `HashedIdent`.
 """
 
 from django.utils.crypto import salted_hmac
+from rest_framework.exceptions import Throttled
+from rest_framework.views import exception_handler as drf_exception_handler
 from rest_framework.throttling import (AnonRateThrottle, SimpleRateThrottle,
                                        UserRateThrottle)
 
@@ -239,6 +241,47 @@ class PasswordChangeThrottle(UserRateThrottle):
     """
 
     scope = 'password_change'
+
+
+class AccountRightsThrottle(UserRateThrottle):
+    """Per-account cap on consent withdrawal and account deletion.
+
+    Both check the password, so both are oracles like the password change and
+    are capped for the same reason. Their own scope rather than
+    'password_change', though: sharing one budget meant that an hour of typos
+    on the password or e-mail form also took away the RODO rights (art. 7(3),
+    art. 17) for the rest of that hour — the one outcome a cap on these two
+    must not produce. Two budgets of the same size still bound the guessing.
+    """
+
+    scope = 'account_rights'
+
+
+def _wait_phrase(wait):
+    """'za 40 s' / 'za 12 min' — abbreviations, so no Polish plural to get wrong."""
+    seconds = max(1, int(round(wait)))
+    if seconds < 60:
+        return f'za {seconds} s'
+    return f'za {-(-seconds // 60)} min'
+
+
+def exception_handler(exc, context):
+    """DRF's handler, with the 429 detail said in Polish from start to end.
+
+    DRF's own text is half-translated under LANGUAGE_CODE 'pl' ("Żądanie
+    zostało zdławione. Expected available in 125 seconds."). The frontend shows
+    its own message for every 429 (src/api/client.ts), so this is for anything
+    else that reads the body.
+    """
+    response = drf_exception_handler(exc, context)
+    if response is not None and isinstance(exc, Throttled):
+        detail = 'Zbyt wiele prób.'
+        if exc.wait is not None:
+            detail += f' Spróbuj ponownie {_wait_phrase(exc.wait)}.'
+        else:
+            detail += ' Spróbuj ponownie później.'
+        response.data = {'detail': detail}
+    return response
 
 
 # How many attempts have to be left before the response starts saying so. Below

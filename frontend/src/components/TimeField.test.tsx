@@ -23,6 +23,7 @@ function Harness({
   onChange?: (value: string) => void
 }) {
   const [value, setValue] = useState(initial)
+  const [valid, setValid] = useState(true)
   return (
     <>
       <label htmlFor="t">Godzina</label>
@@ -33,8 +34,10 @@ function Harness({
           setValue(next)
           onChange?.(next)
         }}
+        onValidityChange={setValid}
       />
       <output data-testid="reported">{value}</output>
+      <output data-testid="valid">{String(valid)}</output>
     </>
   )
 }
@@ -121,14 +124,25 @@ describe('typing', () => {
     expect(field).toHaveValue('14:46')
   })
 
-  it('pads a colon typed by hand once the field is left', async () => {
+  it('pads a one-digit hour typed by hand once the field is left', async () => {
     render(<Harness />)
     const field = screen.getByLabelText('Godzina')
 
-    await userEvent.type(field, '9:5')
+    await userEvent.type(field, '9:05')
     await userEvent.tab()
 
     expect(field).toHaveValue('09:05')
+  })
+
+  /** '12:3' is somebody on the way to '12:35'. Reading it as 12:03 saved an
+   *  hour nobody typed. */
+  it('does not take a single minute digit as a whole time', async () => {
+    render(<Harness />)
+    const field = screen.getByLabelText('Godzina')
+
+    await userEvent.type(field, '123')
+    expect(field).toHaveValue('12:3')
+    expect(screen.getByTestId('reported')).toHaveTextContent('')
   })
 })
 
@@ -182,6 +196,39 @@ describe('a time that is not a time', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('names an unfinished time once the field is left', async () => {
+    render(<Harness />)
+    const field = screen.getByLabelText('Godzina')
+
+    await userEvent.type(field, '123')
+    expect(screen.queryByRole('alert')).toBeNull()
+
+    await userEvent.tab()
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('alert')).toHaveTextContent(/pełną godzinę/)
+  })
+
+  /** '' upwards cannot tell "no hour" from "not an hour", so the parent is
+   *  told separately — that is what stops a form saving no hour while
+   *  '25:00' is still on screen. */
+  it('reports itself invalid while it holds something that is not a time', async () => {
+    render(<Harness />)
+    const field = screen.getByLabelText('Godzina')
+    expect(screen.getByTestId('valid')).toHaveTextContent('true')
+
+    await userEvent.type(field, '2500')
+    expect(screen.getByTestId('valid')).toHaveTextContent('false')
+
+    await userEvent.clear(field)
+    expect(screen.getByTestId('valid')).toHaveTextContent('true')
+
+    await userEvent.type(field, '14')
+    expect(screen.getByTestId('valid')).toHaveTextContent('false')
+
+    await userEvent.type(field, '46')
+    expect(screen.getByTestId('valid')).toHaveTextContent('true')
+  })
+
   it('takes the message away once the time is right', async () => {
     render(<Harness />)
     const field = screen.getByLabelText('Godzina')
@@ -201,7 +248,7 @@ describe('parseTime', () => {
   it('accepts every hour of the day', () => {
     expect(parseTime('00:00')).toBe('00:00')
     expect(parseTime('23:59')).toBe('23:59')
-    expect(parseTime('9:5')).toBe('09:05')
+    expect(parseTime('9:05')).toBe('09:05')
   })
 
   it('refuses what a clock cannot show', () => {
@@ -210,6 +257,8 @@ describe('parseTime', () => {
     expect(parseTime('25:70')).toBeNull()
     expect(parseTime('14')).toBeNull()
     expect(parseTime('14:')).toBeNull()
+    expect(parseTime('12:3')).toBeNull()
+    expect(parseTime('9:5')).toBeNull()
     expect(parseTime('')).toBeNull()
     expect(parseTime('2:30 pm')).toBeNull()
   })

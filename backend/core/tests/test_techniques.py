@@ -17,6 +17,7 @@ Two kinds of test here, and the second kind is the one that catches real bugs:
 
 import pathlib
 import re
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -29,7 +30,7 @@ from core.authentication import SESSION_USER_KEY
 from core.models import Patient, Specjalist, Technique, User, UserRole
 from core.technique_vocabulary import (AVAILABILITIES, DBT_GROUPS, DBT_MODULES,
                                        SCHOOLS)
-from core.techniques import BUILTIN_SLUGS
+from core.techniques import BUILTIN_SLUGS, MAX_EXAMPLES, TechniqueSerializer
 
 PASSWORD = 'TajneHaslo123'
 
@@ -290,6 +291,32 @@ class WritingTests(TechniqueTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('slug', response.data)
         self.assertEqual(Technique.objects.count(), 1)
+
+    def test_a_slug_lost_to_a_concurrent_save_is_a_400_not_a_500(self):
+        """Two saves of one name can both pass `validate_slug` before either
+        inserts; the unique index refuses the second, and that must read as
+        the same sentence rather than an IntegrityError."""
+        self.create()
+        with mock.patch.object(TechniqueSerializer, 'validate_slug', lambda self, value: value):
+            response = self.create(name='Inna nazwa')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['slug'], [TechniqueSerializer.SLUG_TAKEN])
+        self.assertEqual(Technique.objects.count(), 1)
+
+    def test_too_many_examples_are_refused_in_polish(self):
+        response = self.create(steps=[{
+            'description': 'Opis.', 'examples': ['x'] * (MAX_EXAMPLES + 1),
+        }])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(f'najwyżej {MAX_EXAMPLES} przykładów', str(response.data['steps']))
+
+    def test_a_school_listed_twice_is_stored_once(self):
+        response = self.create(schools=['dbt', 'dbt', 'cbt', 'dbt'])
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(Technique.objects.get().schools, ['dbt', 'cbt'])
 
     def test_a_colleague_cannot_reuse_a_slug_either(self):
         self.create()

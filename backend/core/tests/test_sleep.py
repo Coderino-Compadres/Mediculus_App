@@ -159,3 +159,10 @@ class BackstopTests(SimpleTestCase):
         """A held stepper must not write a figure into a clinical record."""
         self.assertGreaterEqual(MAX_AWAKENINGS, 10)
         self.assertLessEqual(MAX_AWAKENINGS, 100)
+
+    def test_the_panel_stops_its_stepper_at_the_same_count(self):
+        """Past it the plus would build a night the server refuses."""
+        panel = SLEEP_TS.parent.parent / 'components' / 'DietSleepPanel.tsx'
+        match = re.search(r'const MAX_AWAKENINGS = (\d+)', panel.read_text(encoding='utf-8'))
+        self.assertIsNotNone(match)
+        self.assertEqual(int(match.group(1)), MAX_AWAKENINGS)

@@ -74,7 +74,12 @@ function AdminAccounts() {
     return accounts.filter((row) => {
       if (kind && row.kind !== kind) return false
       if (!needle) return true
-      return [row.name, row.surname, row.email]
+      // The full name both ways round as well, so "Marta Zielińska" (or
+      // "Zielińska Marta") finds the row its two halves are stored on.
+      const fullName = row.name && row.surname
+        ? [`${row.name} ${row.surname}`, `${row.surname} ${row.name}`]
+        : []
+      return [row.name, row.surname, row.email, ...fullName]
         .filter(Boolean)
         .some((value) => (value as string).toLocaleLowerCase('pl-PL').includes(needle))
     })

@@ -394,12 +394,31 @@ describe('millilitres for a drink that is not water', () => {
 
     await userEvent.type(screen.getByLabelText(AMOUNT), '9000')
 
-    /** The bounds are enforced and, since 02659e6, no longer stated: the hint
-     *  that spelled them out was emptied. The refusal is still marked on the
-     *  field itself, which is the part a reader can act on. */
+    /** The standing hint was taken off in 02659e6; the bounds are named
+     *  only while they are broken, because the chips go disabled then and a
+     *  disabled row needs a reason beside it. */
     expect(screen.getByRole('button', { name: 'Herbata' })).toBeDisabled()
     expect(screen.getByLabelText(AMOUNT)).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText(AMOUNT)).toHaveAccessibleDescription(/od 10 do 2000 ml/)
     expect(recordDrink).not.toHaveBeenCalled()
+  })
+
+  it('takes whole millilitres only, like "Własna ilość"', async () => {
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.type(screen.getByLabelText(AMOUNT), '12.5')
+
+    expect(screen.getByRole('button', { name: 'Herbata' })).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/od 10 do 2000 ml/)
+  })
+
+  it('names no bounds while the amount is fine', async () => {
+    renderWithProviders(<DietHydration />)
+    await screen.findByText('4')
+
+    await userEvent.type(screen.getByLabelText(AMOUNT), '300')
+    expect(screen.queryByText(/od 10 do 2000 ml/)).toBeNull()
   })
 
   it('reads its bounds off the payload rather than spelling them in', async () => {

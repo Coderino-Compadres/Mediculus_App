@@ -16,8 +16,9 @@ Its sibling flow — a specialist's invitation for a guardian
   `django.core.signing` proves the payload came from us and how old it is, so
   the "does this token exist" question needs no row to answer.
 * **single use is cryptographic rather than a column.** The payload carries a
-  fingerprint of the account's *current* `password_hash`, so the moment the
-  password changes every token issued against the old one stops verifying. A
+  fingerprint of the account's *current* `password_hash` and e-mail address, so
+  the moment the password (or the address the link went to) changes every token
+  issued against the old one stops verifying. A
   `used_at` that somebody forgets to set is a token that works twice; there is
   nothing here to forget.
 * nothing about "who asked to reset their password, and when" lands in
@@ -80,7 +81,7 @@ SUBJECT = 'Mediculus — ustawienie nowego hasła'
 
 
 def _fingerprint(user):
-    """A short digest of the account's current password hash.
+    """A short digest of the account's current password hash and address.
 
     Of the **hash**, not the password: this value goes inside a token that
     travels by e-mail, and a digest of a password would be a guessable one. A
@@ -96,8 +97,16 @@ def _fingerprint(user):
     deliberate rather than an oversight: such a row has no password to reset
     *back to*, and refusing it here would leave a seeded account with no way in
     at all.
+
+    THE ADDRESS IS PART OF IT TOO. The link was mailed to one address; once the
+    account has moved to another (core/email_change.py), a link still sitting
+    in the old mailbox — one the owner may have given up precisely because they
+    lost control of it — must stop working. Lowercased, because that is how the
+    column is compared everywhere else. The NUL separator keeps the two parts
+    from running into each other.
     """
-    return hashlib.sha256((user.password_hash or '').encode()).hexdigest()[:16]
+    material = '\0'.join((user.password_hash or '', (user.email or '').lower()))
+    return hashlib.sha256(material.encode()).hexdigest()[:16]
 
 
 def issue_token(user):
@@ -133,7 +142,7 @@ def resolve_token(token):
     if user is None:
         return None
 
-    # The password has changed since this link was sent — most often because the
+    # The password (or the address) has changed since this link was sent — most often because the
     # link itself was already used. See the module header: this is what makes a
     # token single-use without a `used_at` column.
     if payload.get('p') != _fingerprint(user):

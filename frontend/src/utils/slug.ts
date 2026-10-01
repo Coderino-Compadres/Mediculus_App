@@ -25,15 +25,33 @@
  * originally suggested because the regex above rejects an underscore.
  *
  * What it does NOT prevent is two techniques with the same name: `slug` is
- * unique across the whole table (no author filter in `validate_slug`), so the
- * second one is refused with `SLUG_TAKEN`. The form shows that under "Nazwa
- * techniki", which is now the input that actually produced it.
+ * unique across the whole table — both modules, every author (no filter in
+ * `validate_slug`) — so the second one is refused with `SLUG_TAKEN`. The form
+ * shows that under "Nazwa techniki", as `NAME_TAKEN` below, worded so it does
+ * not claim the clash is in the specialist's own catalogue: it may be a
+ * technique of the other module they never see.
+ *
+ * A NAME WITH NO LATIN LETTER OR DIGIT ('🙂', 'Дыхание', '!!!') has nothing to
+ * derive from, and used to become the bare stem 'id' — one slot for every such
+ * name in the app, so the second was refused as taken. The forms now refuse it
+ * before the request (`hasSlugBody`, `NAME_NEEDS_LATIN`); `techniqueSlug`
+ * itself still returns 'id' there, so it keeps its never-invalid contract.
  */
 
 /** Matches `max_length` on TechniqueSerializer.slug. */
 const MAX_LENGTH = 64
 
 const PREFIX = 'id-'
+
+/** Shown under "Nazwa techniki" when the backend answers `SLUG_TAKEN`. */
+export const NAME_TAKEN =
+  'Ta nazwa jest już zajęta przez inną technikę w aplikacji — nazwy nie mogą '
+  + 'się powtarzać, bo z nazwy powstaje adres techniki. Zmień ją nieco.'
+
+/** Shown under "Nazwa techniki" when `hasSlugBody` is false. */
+export const NAME_NEEDS_LATIN =
+  'Nazwa musi zawierać co najmniej jedną literę alfabetu łacińskiego lub cyfrę '
+  + '— z nich powstaje adres techniki.'
 
 /**
  * Polish letters, mapped before NFKD rather than by it.
@@ -60,17 +78,9 @@ const POLISH: Record<string, string> = {
   ż: 'z',
 }
 
-/**
- * A technique's catalogue address, from the name the specialist typed.
- *
- * Never returns an invalid slug: a name with nothing usable in it ('!!!', '###')
- * yields the bare prefix stem 'id', which matches the regex on its own. That is
- * a value the backend can refuse as taken — a clear message — rather than one it
- * refuses as malformed, which would be a message about a field that is not on
- * the screen.
- */
-export function techniqueSlug(name: string): string {
-  const body = name
+/** The part after `id-`: '' when the name has nothing usable in it. */
+function slugBody(name: string): string {
+  return name
     .toLowerCase()
     // Before NFKD, for 'ł' — see POLISH above.
     .replace(/[ąćęłńóśźż]/g, (letter) => POLISH[letter])
@@ -87,6 +97,26 @@ export function techniqueSlug(name: string): string {
     // The slice can cut immediately after a hyphen, which would leave a
     // trailing one.
     .replace(/-+$/, '')
+}
 
+/**
+ * Whether `name` holds anything a slug can be derived from — at least one
+ * Latin letter (Polish ones included) or digit. A blank name answers false
+ * too; the forms leave that one to the backend's "Podaj nazwę techniki."
+ */
+export function hasSlugBody(name: string): boolean {
+  return slugBody(name) !== ''
+}
+
+/**
+ * A technique's catalogue address, from the name the specialist typed.
+ *
+ * Never returns an invalid slug: a name with nothing usable in it ('!!!', '###')
+ * yields the bare prefix stem 'id', which matches the regex on its own. That is
+ * a value the backend could only refuse as taken, never as malformed — and the
+ * forms do not send it at all, see `hasSlugBody`.
+ */
+export function techniqueSlug(name: string): string {
+  const body = slugBody(name)
   return body ? PREFIX + body : PREFIX.replace(/-+$/, '')
 }

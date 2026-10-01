@@ -9,6 +9,7 @@ import {
   validateDateOfBirth,
   validateEmail,
   validateInvitationCode,
+  validateLoginPassword,
   validateName,
   validatePassword,
 } from './validation'
@@ -46,8 +47,20 @@ describe('validatePassword', () => {
     expect(validatePassword('Haslo123')).toBeNull()
   })
 
-  it('does not trim — a password of spaces is still eight characters', () => {
-    expect(validatePassword('        ')).toBeNull()
+  it('refuses a password of spaces alone, as the backend does', () => {
+    expect(validatePassword('        ')).toBe('Hasło nie może składać się wyłącznie ze spacji.')
+    expect(validatePassword(' ')).toBe('Hasło nie może składać się wyłącznie ze spacji.')
+  })
+
+  it('does not trim — spaces inside a password are characters like any other', () => {
+    expect(validatePassword(' moje hasło ')).toBeNull()
+  })
+})
+
+describe('validateLoginPassword', () => {
+  it('only asks for something to be typed', () => {
+    expect(validateLoginPassword('')).toBe('Podaj hasło.')
+    expect(validateLoginPassword('krotkie')).toBeNull()
   })
 })
 

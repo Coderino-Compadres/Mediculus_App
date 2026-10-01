@@ -153,6 +153,32 @@ describe('the form', () => {
     expect(createMeal.mock.calls[0][0].time).toBe('09:15')
   })
 
+  it('bounds the description at the column\'s own limit', () => {
+    render()
+    expect(screen.getByLabelText('Opis posiłku')).toHaveAttribute('maxLength', '2000')
+  })
+
+  /** An empty hour is an answer; '25:00' or '14:3' on screen is not, and
+   *  saving it as "no hour" dropped what was typed without a word. */
+  it('refuses to save while the hour is not a time, and says why', async () => {
+    render()
+    const hour = screen.getByLabelText('Godzina posiłku')
+
+    for (const typed of ['2500', '143']) {
+      await userEvent.clear(hour)
+      await userEvent.type(hour, typed)
+      await userEvent.click(screen.getByRole('button', { name: 'Zapisz posiłek' }))
+
+      expect(createMeal).not.toHaveBeenCalled()
+      expect(screen.getByText(/Popraw godzinę albo wyczyść pole/)).toBeInTheDocument()
+    }
+
+    await userEvent.clear(hour)
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz posiłek' }))
+    await waitFor(() => expect(createMeal).toHaveBeenCalled())
+    expect(createMeal.mock.calls[0][0].time).toBeNull()
+  })
+
   it('never sends a date, because the server stamps the day', async () => {
     render()
 
@@ -192,6 +218,21 @@ describe('when the write fails', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Poczekaj na zgodę opiekuna.')
     expect(navigate).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Zapisz posiłek' })).toBeEnabled()
+  })
+
+  it('draws a refused description under its own box', async () => {
+    createMeal.mockRejectedValue(
+      new ApiError(400, null, { description: 'Upewnij się, że to pole ma nie więcej niż 2000 znaków.' }),
+    )
+    render()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz posiłek' }))
+
+    const message = await screen.findByText(/nie więcej niż 2000 znaków/)
+    expect(message).toHaveAttribute('id', 'meal-description-error')
+    expect(screen.getByLabelText('Opis posiłku')).toHaveAttribute('aria-invalid', 'true')
+    // Not the generic line `ApiError.message` falls back to.
+    expect(screen.queryByText(/Coś poszło nie tak/)).toBeNull()
   })
 
   it('falls back to its own sentence when there was none', async () => {

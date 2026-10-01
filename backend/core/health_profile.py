@@ -46,6 +46,7 @@ that was stored under it.
 
 from decimal import Decimal
 
+from django.db import transaction
 from rest_framework import serializers
 
 from .models import HealthCondition, HealthProfile
@@ -123,6 +124,10 @@ MAX_OWN_CONDITION = 120
 #: form meets it, low enough that the list stays a list.
 MAX_OWN_CONDITIONS = 30
 
+TOO_MANY_OWN_CONDITIONS = (
+    f'Można dopisać najwyżej {MAX_OWN_CONDITIONS} własnych jednostek chorobowych.'
+)
+
 
 class HealthProfileSerializer(serializers.Serializer):
     """What §13's "Zapisz" sends.
@@ -188,7 +193,10 @@ class HealthProfileSerializer(serializers.Serializer):
         # whole profile over an entry that says nothing.
         child=serializers.CharField(
             max_length=MAX_OWN_CONDITION, allow_blank=True),
-        required=False, allow_empty=True, max_length=MAX_OWN_CONDITIONS,
+        # No `max_length` on the list itself: it would count the blanks that
+        # `validate_own_conditions` drops, refusing 30 entries plus one empty
+        # box. The limit is applied there, to what is actually kept.
+        required=False, allow_empty=True,
     )
 
     def validate_conditions(self, value):
@@ -214,8 +222,21 @@ class HealthProfileSerializer(serializers.Serializer):
         Dropped rather than refused, for the reason `allow_blank` is set above:
         §05's rule is that nothing blocks a save, and a 400 over an entry that
         says nothing would lose the entries beside it that say something.
+
+        De-duplicated ignoring case, keeping the first spelling: 'Migrena' and
+        'migrena' are one answer typed twice, not two conditions. Counted only
+        after both steps, so the limit is on entries that will be stored.
         """
-        return [entry.strip() for entry in value if entry.strip()]
+        kept = []
+        seen = set()
+        for entry in value:
+            label = entry.strip()
+            if label and label.casefold() not in seen:
+                seen.add(label.casefold())
+                kept.append(label)
+        if len(kept) > MAX_OWN_CONDITIONS:
+            raise serializers.ValidationError(TOO_MANY_OWN_CONDITIONS)
+        return kept
 
     def save_profile(self, id_medical):
         """Write the profile, replacing whatever was there.
@@ -229,8 +250,15 @@ class HealthProfileSerializer(serializers.Serializer):
         the body is one the patient un-picked on the form, and the only way to
         tell that from one they never picked would be to diff the two — which
         for a form that submits its whole state is arithmetic in aid of nothing.
+
+        One transaction around both writes, so a failure between the delete
+        and the insert cannot leave a profile whose conditions are gone.
         """
         data = self.validated_data
+        with transaction.atomic(using='medical'):
+            return self._write(id_medical, data)
+
+    def _write(self, id_medical, data):
         profile, _ = HealthProfile.objects.update_or_create(
             id_medical=id_medical,
             defaults={

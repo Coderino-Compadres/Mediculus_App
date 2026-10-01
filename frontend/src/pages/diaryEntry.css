@@ -474,3 +474,20 @@
 }
 
 
+
+.level-slider-value-unrated {
+  color: var(--color-graphite-muted);
+  font-weight: var(--font-weight-regular, 400);
+}
+
+.level-slider-clear {
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--color-sage-hover);
+  text-decoration: underline;
+  cursor: pointer;
+}

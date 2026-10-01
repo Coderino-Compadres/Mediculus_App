@@ -52,6 +52,10 @@
 
 body {
   margin: 0;
+  /* Patients type whatever they like — a pasted link or 300 characters with no
+     space — and every card that shows it back would otherwise run off a phone
+     screen. Inherited; break-word only breaks a word that cannot fit at all. */
+  overflow-wrap: break-word;
 }
 
 #root {

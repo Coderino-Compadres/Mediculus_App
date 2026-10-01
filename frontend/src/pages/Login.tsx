@@ -6,7 +6,7 @@ import { useAuthForm } from '../hooks/useAuthForm'
 import { useAuth } from '../auth/authContext'
 import { LOGIN_FIELDS, login } from '../api/auth'
 import { ROUTES } from '../routes'
-import { validateEmail, validatePassword } from '../utils/validation'
+import { validateEmail, validateLoginPassword } from '../utils/validation'
 
 const INFO_TILE_ID = 'login-info-tile'
 
@@ -23,7 +23,7 @@ function Login() {
     void handleSubmit(event, {
       validate: (currentValues) => ({
         email: validateEmail(currentValues.email),
-        password: validatePassword(currentValues.password),
+        password: validateLoginPassword(currentValues.password),
       }),
       submit: async (currentValues) => {
         const user = await login(currentValues)

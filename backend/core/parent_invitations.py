@@ -65,7 +65,7 @@ INVITATION_TTL_DAYS = 14
 #: read wrong off a handwritten card (O/0, I/1, L, S/5, Z/2). This code is
 #: dictated and copied by hand, so ambiguity here becomes a support call rather
 #: than a typo.
-CODE_ALPHABET = 'ABCDEFGHJKMNPQRTUVWXY3467889'
+CODE_ALPHABET = 'ABCDEFGHJKMNPQRTUVWXY346789'
 
 #: 12 characters in three groups of four. ~57 bits over that alphabet, which is
 #: far past guessable given that a guess also has to name the right address.

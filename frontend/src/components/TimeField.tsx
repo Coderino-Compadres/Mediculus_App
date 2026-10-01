@@ -23,6 +23,12 @@ import './timeField.css'
  * with '' while it is not. A half-typed "14:" is not a time, exactly as the
  * native control reports nothing for one.
  *
+ * BUT '' ALONE CANNOT TELL "NO HOUR" FROM "NOT AN HOUR". A parent that saves on
+ * '' would write a meal with no hour while '25:00' or '14:3' is still on screen
+ * — silently dropping what somebody typed. So `onValidityChange` reports
+ * whether the box is empty-or-complete, and every form that renders this field
+ * refuses to save while it is not.
+ *
  * WHAT IT DOES NOT DO is throw away what somebody typed. An hour of 99 stays on
  * screen, marked invalid and explained, rather than being silently erased or
  * silently corrected — the same rule the rest of the app follows about never
@@ -61,9 +67,12 @@ function mask(digits: string, trailingColon = true): string {
   return `${digits.slice(0, 2)}:${digits.slice(2)}`
 }
 
-/** 'HH:MM' when the string names a real time of day, else null. */
+/** 'HH:MM' when the string names a real time of day, else null.
+ *
+ *  The minutes take two digits: '14:3' is somebody halfway through '14:35',
+ *  not 14:03, and reading it as the latter saved an hour nobody typed. */
 export function parseTime(text: string): string | null {
-  const match = /^(\d{1,2}):(\d{1,2})$/.exec(text.trim())
+  const match = /^(\d{1,2}):(\d{2})$/.exec(text.trim())
   if (!match) return null
   const hours = Number(match[1])
   const minutes = Number(match[2])
@@ -82,6 +91,7 @@ export default function TimeField({
   onChange,
   className,
   readOnly = false,
+  onValidityChange,
   'aria-describedby': describedBy,
 }: {
   id: string
@@ -91,6 +101,9 @@ export default function TimeField({
   onChange: (value: string) => void
   className?: string
   readOnly?: boolean
+  /** Called with false while the box holds something that is not a complete
+   *  time ('25:00', '14:3'), true when it is empty or complete. */
+  onValidityChange?: (valid: boolean) => void
   'aria-describedby'?: string
 }) {
   const [text, setText] = useState(() => display(value))
@@ -105,13 +118,24 @@ export default function TimeField({
     setText(display(value))
   }, [value])
 
+  /** Set once the field is left, so an unfinished time is named only when
+   *  nobody is still typing it. */
+  const [left, setLeft] = useState(false)
+
   const complete = parseTime(text)
+  const unfinished = text !== '' && complete === null
   /** Wrong rather than unfinished: '25:00' is a mistake worth naming, '14:' is
-   *  just somebody mid-keystroke and gets no red ink. */
-  const invalid = text !== '' && complete === null && toDigits(text).length === 4
+   *  just somebody mid-keystroke and gets no red ink — until they leave it. */
+  const wrong = unfinished && toDigits(text).length === 4
+  const invalid = wrong || (unfinished && left)
   const errorId = `${id}-time-error`
 
+  useEffect(() => {
+    onValidityChange?.(!unfinished)
+  }, [unfinished, onValidityChange])
+
   function edit(next: string, deleting: boolean) {
+    setLeft(false)
     const shown = mask(toDigits(next), !deleting)
     setText(shown)
     const parsed = parseTime(shown) ?? ''
@@ -122,6 +146,7 @@ export default function TimeField({
   /** Pads on the way out — '9:5' typed with a colon becomes '09:05'. Only ever
    *  formats what is already a valid time; it never guesses a missing half. */
   function normalize() {
+    setLeft(true)
     const parsed = parseTime(text)
     if (parsed && parsed !== text) setText(parsed)
   }
@@ -153,7 +178,9 @@ export default function TimeField({
       />
       {invalid && (
         <p className="time-field-error" id={errorId} role="alert">
-          Godzina zapisywana jest w formacie 24-godzinnym, od 00:00 do 23:59.
+          {wrong
+            ? 'Godzina zapisywana jest w formacie 24-godzinnym, od 00:00 do 23:59.'
+            : 'Wpisz pełną godzinę, np. 07:30, albo wyczyść pole.'}
         </p>
       )}
     </>

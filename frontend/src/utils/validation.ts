@@ -11,10 +11,26 @@ export function validateEmail(value: string): string | null {
   return null
 }
 
+/**
+ * A password being *set* — registration, the profile form, the reset link.
+ * Mirrors the backend's validators: eight spaces are long enough and still no
+ * password (`core.password_validation.NotBlankPasswordValidator`). Not for the
+ * login form — see `validateLoginPassword`.
+ */
 export function validatePassword(value: string): string | null {
   if (!value) return 'Podaj hasło.'
+  if (!value.trim()) return 'Hasło nie może składać się wyłącznie ze spacji.'
   if (value.length < 8) return 'Hasło musi mieć co najmniej 8 znaków.'
   return null
+}
+
+/**
+ * A password being *checked* at login: present, nothing more. Today's rules
+ * describe new passwords only, and seeded or older accounts can hold a shorter
+ * one — refusing it here would lock them out before the server is even asked.
+ */
+export function validateLoginPassword(value: string): string | null {
+  return value ? null : 'Podaj hasło.'
 }
 
 export function validateName(value: string, fieldLabel: string): string | null {

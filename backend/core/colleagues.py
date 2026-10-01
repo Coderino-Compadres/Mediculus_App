@@ -88,7 +88,7 @@ SPECIALIST_ROLE = 'specjalista'
 #: that turn a working password into a support call.
 PASSWORD_ALPHABET = CODE_ALPHABET
 
-#: 16 characters in four groups of four — ~77 bits over that alphabet. The
+#: 16 characters in four groups of four — ~76 bits over that alphabet. The
 #: dashes are for the eye only; nothing strips them, so they are part of the
 #: password and the person typing it has to include them.
 PASSWORD_GROUPS = 4

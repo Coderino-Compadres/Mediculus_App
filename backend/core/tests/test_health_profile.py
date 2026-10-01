@@ -408,8 +408,24 @@ class ValidationTests(HealthProfileTestCase):
 
     def test_more_hand_written_conditions_than_a_list_can_be_is_refused(self):
         self.assertEqual(
-            self.save(own_conditions=['x'] * (MAX_OWN_CONDITIONS + 1)).status_code,
+            self.save(own_conditions=[
+                f'Choroba {n}' for n in range(MAX_OWN_CONDITIONS + 1)
+            ]).status_code,
             400,
+        )
+
+    def test_blank_entries_do_not_count_towards_the_limit(self):
+        """A full list plus the empty box the form still shows is not too many."""
+        full = [f'Choroba {n}' for n in range(MAX_OWN_CONDITIONS)]
+        response = self.save(own_conditions=full + ['', '   '])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['own_conditions'], full)
+
+    def test_the_same_hand_written_condition_twice_is_one(self):
+        """Case aside, 'Migrena' twice is one answer — the first spelling kept."""
+        self.assertEqual(
+            self.save(own_conditions=['Migrena', 'migrena ', 'Astma']).json()['own_conditions'],
+            ['Migrena', 'Astma'],
         )
 
     def test_a_refused_save_changes_nothing(self):

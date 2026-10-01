@@ -24,9 +24,10 @@ from core.authentication import SESSION_USER_KEY
 from core.models import (ParentChild, ParentInvitation, Patient, Specjalist,
                          SpecjalistPatient, User, UserRole)
 from core.modules import MODULE_PSYCHOTHERAPY
-from core.parent_invitations import (INVITATION_TTL_DAYS, generate_code,
-                                     normalize_code)
-from core.serializers import ACCOUNT_TYPE_PARENT
+from core.parent_invitations import (CODE_ALPHABET, INVITATION_TTL_DAYS,
+                                     generate_code, normalize_code)
+from core.serializers import (ACCOUNT_TYPE_PARENT,
+                              ParentInvitationCreateSerializer)
 
 PASSWORD = 'TajneHaslo123'
 
@@ -117,6 +118,12 @@ class CodeTests(ParentInvitationTestCase):
             code = generate_code()
             for character in ('O', '0', 'I', '1', 'L', 'S', '5', 'Z', '2'):
                 self.assertNotIn(character, code, code)
+
+    def test_the_alphabet_has_no_character_twice(self):
+        """A repeated character is drawn twice as often, and it had pushed '9'
+        out: 'ABCDEFGHJKMNPQRTUVWXY3467889' carried '8' twice."""
+        self.assertEqual(len(CODE_ALPHABET), len(set(CODE_ALPHABET)), CODE_ALPHABET)
+        self.assertIn('9', CODE_ALPHABET)
 
     def test_a_typed_code_survives_punctuation_and_case(self):
         code = self.issue().data['code']
@@ -372,6 +379,33 @@ class IssueRulesTests(ParentInvitationTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('parent_email', response.data)
         self.assertEqual(ParentInvitation.objects.count(), 1)
+
+    def test_another_specialist_s_live_code_is_not_one_to_cancel(self):
+        """Revoking only reaches one's own invitations, so the refusal must not
+        tell this specialist to cancel a code somebody else issued."""
+        colleague = self.make_specialist(email='kolega@example.com')
+        theirs = self.assign(colleague, self.make_patient(email='ich-dziecko@example.com'))
+        self.sign_in(colleague.user)
+        self.issue(patient=theirs)
+        self.sign_in(self.specjalist.user)
+
+        response = self.issue()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data['parent_email'],
+            [ParentInvitationCreateSerializer.ALREADY_INVITED_ELSEWHERE],
+        )
+
+    def test_one_s_own_live_code_is_one_to_cancel(self):
+        self.issue()
+
+        response = self.issue()
+
+        self.assertEqual(
+            response.data['parent_email'],
+            [ParentInvitationCreateSerializer.ALREADY_INVITED],
+        )
 
     def test_a_revoked_code_frees_the_address_again(self):
         first = self.issue().data['invitation']['id']

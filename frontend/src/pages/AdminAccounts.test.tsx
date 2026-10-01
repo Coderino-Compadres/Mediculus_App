@@ -87,6 +87,19 @@ describe('AdminAccounts', () => {
     expect(screen.getByRole('link', { name: 'Mama Zuzi' })).toBeInTheDocument()
   })
 
+  it('finds a person by their full name, in either order', async () => {
+    renderScreen()
+    const box = await screen.findByLabelText(/Szukaj/)
+
+    for (const typed of ['Jan Kowal', 'kowal jan']) {
+      await userEvent.clear(box)
+      await userEvent.type(box, typed)
+
+      await waitFor(() => expect(screen.queryByRole('link', { name: 'Mama Zuzi' })).toBeNull())
+      expect(screen.getByRole('link', { name: 'Jan Kowal' })).toBeInTheDocument()
+    }
+  })
+
   it('waits for typing to stop before it filters', async () => {
     renderScreen()
     const box = await screen.findByLabelText(/Szukaj/)

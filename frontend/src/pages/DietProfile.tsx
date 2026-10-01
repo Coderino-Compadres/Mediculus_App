@@ -164,6 +164,22 @@ const HEALTH_SAVE_ERROR =
   'Nie udało się zapisać profilu. Twoje odpowiedzi zostały tutaj — spróbuj ' +
   'zapisać jeszcze raz.'
 
+/** Under the button when the refusal is already drawn under its own field —
+ *  far up the page, so the button still has to say where to look. */
+const HEALTH_FIELD_ERROR = 'Nie udało się zapisać profilu — popraw pole oznaczone wyżej.'
+
+/** `core.health_profile`'s limits: MAX_TEXT, MAX_OWN_CONDITION and
+ *  MAX_OWN_CONDITIONS. */
+const MAX_TEXT = 2000
+const MAX_OWN_CONDITION = 120
+const MAX_OWN_CONDITIONS = 30
+
+/** The fields whose refusal is drawn under the field itself. */
+const FIELD_ERROR_COLUMNS = [
+  'allergies', 'intolerances', 'dietary_preferences', 'own_conditions',
+] as const
+type FieldErrorColumn = (typeof FIELD_ERROR_COLUMNS)[number]
+
 /**
  * What the screen has to say about the last submit — one state, never two.
  *
@@ -180,7 +196,12 @@ type SaveState =
    *  wrote down an allergy and expects their dietitian to read it. */
   | { kind: 'saved' }
   /** Sent and lost. Ochre and role="alert" — see dietProfile.css. */
-  | { kind: 'failed'; message: string }
+  | {
+      kind: 'failed'
+      message: string
+      /** The server's sentences for the fields that draw their own. */
+      fields: Partial<Record<FieldErrorColumn, string>>
+    }
 
 /**
  * Which of the profile's screens is on show.
@@ -262,10 +283,13 @@ function DescriptiveField({
   label,
   hint,
   value,
+  error,
   onChange,
 }: {
   id: string
   label: string
+  /** The server's refusal of this field, drawn under it. */
+  error?: string
   /**
    * Optional, and drawn only when it says something.
    *
@@ -279,20 +303,30 @@ function DescriptiveField({
   onChange: (next: string) => void
 }) {
   const hintId = `${id}-hint`
+  const errorId = `${id}-error`
+  const describedBy = [hint ? hintId : null, error ? errorId : null]
+    .filter(Boolean).join(' ')
   return (
     <div className="diet-profile-field">
       <label htmlFor={id}>{label}</label>
       <textarea
         id={id}
         rows={2}
+        maxLength={MAX_TEXT}
         value={value}
-        aria-describedby={hint ? hintId : undefined}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy || undefined}
         onChange={(event) => onChange(event.target.value)}
       />
       {hint && (
         <p className="diet-profile-hint" id={hintId}>
           {hint}
         </p>
+      )}
+      {error && (
+        <span className="diet-profile-field-notice" id={errorId}>
+          {error}
+        </span>
       )}
     </div>
   )
@@ -544,9 +578,11 @@ function DietProfile() {
     set('activityLevel', draft.activityLevel === level ? null : level)
   }
 
+  const ownConditionsFull = draft.ownConditions.length >= MAX_OWN_CONDITIONS
+
   function addOwnCondition() {
     const entry = ownCondition.trim()
-    if (entry === '') return
+    if (entry === '' || ownConditionsFull) return
     setDraft((current) => ({
       ...current,
       ownConditions: [...current.ownConditions, entry],
@@ -596,11 +632,30 @@ function DietProfile() {
         setSave({ kind: 'saved' })
       })
       .catch((cause: unknown) => {
+        // A refused field is said under that field, and the button's sentence
+        // points at it — `ApiError.formMessage` is null for a field error, and
+        // falling back to "nie udało się" left a refusal with no reason.
+        const errors = cause instanceof ApiError ? cause.fieldErrors : {}
+        const fields: Partial<Record<FieldErrorColumn, string>> = {}
+        for (const column of FIELD_ERROR_COLUMNS) {
+          if (errors[column]) fields[column] = errors[column]
+        }
+        const elsewhere = Object.entries(errors)
+          .find(([column]) => !(FIELD_ERROR_COLUMNS as readonly string[]).includes(column))?.[1]
         setSave({
           kind: 'failed',
-          message: (cause instanceof ApiError && cause.formMessage) || HEALTH_SAVE_ERROR,
+          message:
+            (cause instanceof ApiError && cause.formMessage) ||
+            elsewhere ||
+            (Object.keys(fields).length > 0 ? HEALTH_FIELD_ERROR : HEALTH_SAVE_ERROR),
+          fields,
         })
       })
+  }
+
+  /** The server's refusal of one field, while the last save is the failed one. */
+  function fieldError(column: FieldErrorColumn): string | undefined {
+    return save.kind === 'failed' ? save.fields[column] : undefined
   }
 
   const name = fullName(user.firstName, user.lastName)
@@ -783,18 +838,21 @@ function DietProfile() {
                 id="diet-profile-allergies"
                 label="Alergie pokarmowe"
                 value={draft.allergies}
+                error={fieldError('allergies')}
                 onChange={(next) => set('allergies', next)}
               />
               <DescriptiveField
                 id="diet-profile-intolerances"
                 label="Nietolerancje"
                 value={draft.intolerances}
+                error={fieldError('intolerances')}
                 onChange={(next) => set('intolerances', next)}
               />
               <DescriptiveField
                 id="diet-profile-preferences"
                 label="Preferencje żywieniowe"
                 value={draft.dietaryPreferences}
+                error={fieldError('dietary_preferences')}
                 onChange={(next) => set('dietaryPreferences', next)}
               />
             </div>
@@ -850,7 +908,15 @@ function DietProfile() {
                   <input
                     id="diet-profile-own-condition"
                     type="text"
+                    maxLength={MAX_OWN_CONDITION}
                     value={ownCondition}
+                    aria-invalid={fieldError('own_conditions') ? true : undefined}
+                    aria-describedby={
+                      [
+                        ownConditionsFull ? 'diet-profile-own-full' : null,
+                        fieldError('own_conditions') ? 'diet-profile-own-error' : null,
+                      ].filter(Boolean).join(' ') || undefined
+                    }
                     onChange={(event) => setOwnCondition(event.target.value)}
                     onKeyDown={(event) => {
                       // Enter adds the entry instead of submitting the whole form,
@@ -866,12 +932,25 @@ function DietProfile() {
                 <button
                   type="button"
                   className="diet-profile-own-button"
-                  disabled={ownCondition.trim() === ''}
+                  disabled={ownCondition.trim() === '' || ownConditionsFull}
                   onClick={addOwnCondition}
                 >
                   + Dodaj własną
                 </button>
               </div>
+              {/* Said rather than only enforced: a button that stops working
+                  with no reason beside it reads as a fault. */}
+              {ownConditionsFull && (
+                <p className="diet-profile-hint" id="diet-profile-own-full">
+                  Dopisano już {MAX_OWN_CONDITIONS} własnych jednostek — tyle mieści
+                  lista. Usuń którąś, żeby dodać nową.
+                </p>
+              )}
+              {fieldError('own_conditions') && (
+                <span className="diet-profile-field-notice" id="diet-profile-own-error">
+                  {fieldError('own_conditions')}
+                </span>
+              )}
             </div>
           </section>
 

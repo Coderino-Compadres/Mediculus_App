@@ -38,6 +38,11 @@ import type { DietSleepNight } from '../types/diet'
 
 const LOAD_ERROR = 'Nie udało się wczytać wpisu o nocy.'
 const SAVE_ERROR = 'Nie udało się zapisać wpisu o nocy.'
+const TIME_INVALID_ERROR = 'Popraw godzinę albo wyczyść pole, żeby zapisać sen.'
+
+/** `core.sleep.MAX_AWAKENINGS` — a held plus must not run past what the
+ *  server stores. */
+const MAX_AWAKENINGS = 50
 
 function DietSleepPanel({ today }: { today: Date }) {
   /**
@@ -58,6 +63,11 @@ function DietSleepPanel({ today }: { today: Date }) {
    *  form still holds what was typed, and only the save did not happen. */
   const [saveError, setSaveError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  /** False while an hour box holds something that is not a time. That box
+   *  reports '' — "unanswered" — so saving then would write no hour while
+   *  '25:00' is still on screen. */
+  const [fellAsleepValid, setFellAsleepValid] = useState(true)
+  const [wokeUpValid, setWokeUpValid] = useState(true)
 
   // The house pattern: a promise chain with a `cancelled` flag rather than an
   // `async` effect body. The server answers an empty shape for a morning nobody
@@ -131,6 +141,10 @@ function DietSleepPanel({ today }: { today: Date }) {
    * the server's own, so nothing here sends one.
    */
   function saveNight() {
+    if (!fellAsleepValid || !wokeUpValid) {
+      setSaveError(TIME_INVALID_ERROR)
+      return
+    }
     setSaveError(null)
     saveSleepNight(draft)
       .then((written) => {
@@ -141,8 +155,12 @@ function DietSleepPanel({ today }: { today: Date }) {
       .catch((cause: unknown) => {
         /* The form keeps what was typed — losing a night somebody just
            described because the network dropped would be the worse failure. */
+        // A refused field says its own sentence too: without it, a field
+        // error had no form-level message and fell to the generic line.
         setSaveError(
-          (cause instanceof ApiError && cause.formMessage) || SAVE_ERROR,
+          (cause instanceof ApiError &&
+            (cause.formMessage ?? Object.values(cause.fieldErrors)[0])) ||
+            SAVE_ERROR,
         )
       })
   }
@@ -203,6 +221,7 @@ function DietSleepPanel({ today }: { today: Date }) {
               value={draft.fellAsleepAt ?? ''}
               readOnly={!editable}
               onChange={(next) => editTime('fellAsleepAt', next)}
+              onValidityChange={setFellAsleepValid}
             />
           </div>
           <div className="diet-as-field">
@@ -213,6 +232,7 @@ function DietSleepPanel({ today }: { today: Date }) {
               value={draft.wokeUpAt ?? ''}
               readOnly={!editable}
               onChange={(next) => editTime('wokeUpAt', next)}
+              onValidityChange={setWokeUpValid}
             />
           </div>
         </div>
@@ -285,6 +305,7 @@ function DietSleepPanel({ today }: { today: Date }) {
           value={draft.awakenings}
           onChange={(awakenings) => edit({ awakenings })}
           min={0}
+          max={MAX_AWAKENINGS}
           disabled={!editable}
         />
 

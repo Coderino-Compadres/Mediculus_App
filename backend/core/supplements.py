@@ -81,6 +81,13 @@ NO_HOURS = 'Ta pozycja nie ma ustalonej godziny.'
 #: as an opinion about a regimen — the same care `meals.DAY_IS_FULL` takes.
 MAX_HOURS_PER_SUPPLEMENT = 12
 
+#: The years a start or end date may fall in. Not a clinical rule: a regimen
+#: begun in 0201 or ending in 20261 is a slip of the keyboard, and storing it
+#: would put a row on the list that no date picker can show or correct.
+MIN_YEAR = 1900
+MAX_YEAR = 2100
+DATE_OUT_OF_RANGE = f'Podaj datę z lat {MIN_YEAR}–{MAX_YEAR}.'
+
 TOO_MANY_HOURS = (
     'To bardzo dużo godzin dla jednej pozycji. '
     'Jeśli potrzebujesz więcej, dopisz ją jako osobną pozycję.'
@@ -136,8 +143,24 @@ class SupplementSerializer(serializers.Serializer):
         a 400 would make an ordinary slip an error. Sorting here rather than on
         the way out means the stored rows are in the order the form meant them,
         and the screen never has to.
+
+        Seconds are dropped first: the list shows and ticks 'HH:MM', so
+        '07:00' and '07:00:30' are one badge — kept apart they were two rows
+        drawn as the same hour, and only one of them could ever be ticked.
         """
-        return sorted(set(value))
+        return sorted({hour.replace(second=0, microsecond=0) for hour in value})
+
+    @staticmethod
+    def _sane_date(value):
+        if value is not None and not MIN_YEAR <= value.year <= MAX_YEAR:
+            raise serializers.ValidationError(DATE_OUT_OF_RANGE)
+        return value
+
+    def validate_start_date(self, value):
+        return self._sane_date(value)
+
+    def validate_end_date(self, value):
+        return self._sane_date(value)
 
     def validate(self, attrs):
         start = attrs.get('start_date')
@@ -337,6 +360,9 @@ class IntakeSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         hour = attrs.get('hour')
+        # Minutes, like the hours it is checked against (`validate_hours`).
+        if hour is not None:
+            hour = hour.replace(second=0, microsecond=0)
         hours = {h.hour for h in self.context['supplement'].hours.all()}
         if hours and hour not in hours:
             raise serializers.ValidationError({'hour': UNKNOWN_HOUR})

@@ -369,6 +369,15 @@ class SleepTests(DietNineTestCase):
             'awakenings': 1, 'wake_feeling': 'heavy',
         })
 
+    def test_seconds_in_the_hours_are_dropped(self):
+        self.client.put(self.sleep_url(), {
+            'fell_asleep_at': '23:40:59', 'woke_up_at': '06:50:01',
+        }, format='json')
+
+        night = DietSleep.objects.get()
+        self.assertEqual(night.fell_asleep_at, datetime.time(23, 40))
+        self.assertEqual(night.woke_up_at, datetime.time(6, 50))
+
     def test_waking_before_falling_asleep_is_the_ordinary_case(self):
         """The night crosses midnight; nothing refuses it."""
         response = self.client.put(self.sleep_url(), {

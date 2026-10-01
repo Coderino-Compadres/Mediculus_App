@@ -8,6 +8,7 @@ import { nightLabel } from '../utils/sleep'
 import { ROUTES } from '../routes'
 import { toIsoDate } from '../utils/days'
 import type { DietActivityDay, DietSleepNight } from '../types/diet'
+import { ApiError } from '../api/client'
 
 vi.mock('../api/diet', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/diet')>()
@@ -432,10 +433,21 @@ describe('the activity form', () => {
     const user = userEvent.setup()
     renderWithProviders(<DietActivitySleep />)
 
-    expect(screen.getByRole('status')).toHaveTextContent('30 min')
+    // Unanswered reads as unanswered — a "30 min" here was saved as null.
+    expect(screen.getByRole('status')).toHaveTextContent('nie podano')
 
     await user.click(screen.getByRole('button', { name: 'Czas trwania: więcej' }))
+    expect(screen.getByRole('status')).toHaveTextContent('30 min')
+    await user.click(screen.getByRole('button', { name: 'Czas trwania: więcej' }))
     expect(screen.getByRole('status')).toHaveTextContent('35 min')
+  })
+
+  it('starts at the default from either button', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<DietActivitySleep />)
+
+    await user.click(screen.getByRole('button', { name: 'Czas trwania: mniej' }))
+    expect(screen.getByRole('status')).toHaveTextContent('30 min')
   })
 
   it('saves whatever was answered and nothing else', async () => {
@@ -444,12 +456,38 @@ describe('the activity form', () => {
 
     await user.click(screen.getByRole('button', { name: 'Spacer' }))
     await user.click(screen.getByRole('button', { name: 'Czas trwania: więcej' }))
+    await user.click(screen.getByRole('button', { name: 'Czas trwania: więcej' }))
     await user.click(screen.getByRole('button', { name: 'Lepsze' }))
     await user.click(screen.getByRole('button', { name: 'Zapisz aktywność' }))
 
     const list = screen.getByRole('list')
     expect(within(list).getByText('Spacer · 35 min')).toBeInTheDocument()
     expect(within(list).getByText('Samopoczucie po: lepsze')).toBeInTheDocument()
+  })
+
+  it('bounds the "Inne" text at the server\'s limit', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<DietActivitySleep />)
+
+    await user.click(screen.getByRole('button', { name: 'Inne' }))
+    expect(screen.getByLabelText('Jaka aktywność?')).toHaveAttribute('maxLength', '60')
+  })
+
+  it('draws a refused "Inne" text under its own box', async () => {
+    const user = userEvent.setup()
+    mockedCreate.mockRejectedValueOnce(
+      new ApiError(400, null, { kind_other: 'Upewnij się, że to pole ma nie więcej niż 60 znaków.' }),
+    )
+    renderWithProviders(<DietActivitySleep />)
+
+    await user.click(screen.getByRole('button', { name: 'Inne' }))
+    await user.type(screen.getByLabelText('Jaka aktywność?'), 'Wspinaczka')
+    await user.click(screen.getByRole('button', { name: 'Zapisz aktywność' }))
+
+    const field = screen.getByLabelText('Jaka aktywność?')
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).toHaveAccessibleDescription(/nie więcej niż 60 znaków/)
+    expect(screen.queryByText(/Nie udało się zapisać aktywności/)).toBeNull()
   })
 
   it('shows the free text in the row, never the word "Inne"', async () => {
@@ -476,7 +514,7 @@ describe('the activity form', () => {
       'aria-pressed',
       'false',
     )
-    expect(screen.getByRole('status')).toHaveTextContent('30 min')
+    expect(screen.getByRole('status')).toHaveTextContent('nie podano')
   })
 
   it('takes several activities in one day', async () => {
@@ -505,11 +543,10 @@ describe('the activity form', () => {
   /**
    * The edge the "untouched control is not an answer" rule leaves behind.
    *
-   * The stepper renders 30, but an untouched stepper has not answered — the same
-   * lesson pages/DiaryEntry.tsx learned when sliders starting at 0 wrote "no
-   * energy, no tension" for every patient who only answered the mood tile. The
-   * cost is that recording exactly 30 minutes takes moving the control off 30
-   * and back, which is pinned rather than hidden.
+   * An untouched stepper has not answered — the same lesson
+   * pages/DiaryEntry.tsx learned when sliders starting at 0 wrote "no energy,
+   * no tension" for every patient who only answered the mood tile. It reads
+   * "nie podano" until it is pressed, so what it shows is what is saved.
    */
   it('does not record a duration nobody set', async () => {
     const user = userEvent.setup()
@@ -561,12 +598,11 @@ describe('the activity form', () => {
        budget moves instead of the test. */
   }, 20_000)
 
-  it('records a deliberate 30 once the control has been moved off it and back', async () => {
+  it('records a deliberate 30 with one press', async () => {
     const user = userEvent.setup()
     renderWithProviders(<DietActivitySleep />)
 
     await user.click(screen.getByRole('button', { name: 'Czas trwania: więcej' }))
-    await user.click(screen.getByRole('button', { name: 'Czas trwania: mniej' }))
     await user.click(screen.getByRole('button', { name: 'Zapisz aktywność' }))
 
     expect(within(screen.getByRole('list')).getByText('30 min')).toBeInTheDocument()
@@ -818,6 +854,44 @@ describe('the sleep form', () => {
 
     await user.click(screen.getByRole('button', { name: 'Przebudzenia w nocy: więcej' }))
     expect(awakenings()).toHaveTextContent('1')
+  })
+
+  it('stops counting awakenings where the server does', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<DietActivitySleep />)
+
+    await goToSleep(user)
+    const plus = screen.getByRole('button', { name: 'Przebudzenia w nocy: więcej' })
+    for (let tap = 0; tap < 55; tap += 1) await user.click(plus)
+
+    expect(
+      within(screen.getByRole('group', { name: 'Przebudzenia w nocy' })).getByRole('status'),
+    ).toHaveTextContent('50')
+    expect(plus).toHaveAttribute('aria-disabled', 'true')
+  }, 20_000)
+
+  /** A box that is not a time reports "unanswered"; saving then would write
+   *  no hour while '25:00' is still on screen. */
+  it('refuses to save while an hour is not a time, and says why', async () => {
+    const user = userEvent.setup()
+    // Calls are not cleared between tests in this file.
+    mockedSaveNight.mockClear()
+    renderWithProviders(<DietActivitySleep />)
+
+    await goToSleep(user)
+    await user.type(screen.getByLabelText('Zaśnięcie'), '2540')
+    await user.click(screen.getByRole('button', { name: 'Zapisz sen' }))
+
+    expect(mockedSaveNight).not.toHaveBeenCalled()
+    expect(screen.getByText(/Popraw godzinę albo wyczyść pole/)).toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Zaśnięcie'))
+    await user.type(screen.getByLabelText('Zaśnięcie'), '2340')
+    await user.click(screen.getByRole('button', { name: 'Zapisz sen' }))
+
+    expect(mockedSaveNight).toHaveBeenCalledWith(
+      expect.objectContaining({ fellAsleepAt: '23:40' }),
+    )
   })
 
   it('names the morning feelings as nouns', async () => {

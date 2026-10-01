@@ -56,6 +56,7 @@ import datetime
 
 from django.db import transaction
 from django.utils import timezone
+from rest_framework import serializers
 
 from . import account_deletion
 from .authentication import end_all_sessions
@@ -65,7 +66,7 @@ from .guardian import STATUS_ACCEPTED, STATUS_NONE, STATUS_PENDING
 from .models import (Administrator, AdminAuditLog, DietActivity, DietMeal,
                      DietSleep, Diary, HealthProfile, Hydration, ParentChild,
                      Patient, Specjalist, SpecjalistPatient, Supplement,
-                     User)
+                     Technique, User)
 from .modules import MODULE_DIET, MODULE_PSYCHOTHERAPY, module_label
 
 #: The role name an administrator account carries. Display only — see the
@@ -522,6 +523,12 @@ EDITABLE_SPECIALIST_FIELDS = {
     'module': 'module',
 }
 
+#: The 400 on `module` while the specialist authors techniques in the old one.
+MODULE_HAS_TECHNIQUES = (
+    'Ten specjalista ma opublikowane techniki w obecnym module. Po zmianie '
+    'modułu nikt nie mógłby ich edytować, więc moduł zostaje bez zmian.'
+)
+
 
 def _target(user_id):
     """(user, kind) for an account, or None if there is no such account."""
@@ -554,28 +561,50 @@ def edit_account(admin_user, user_id, changes):
     A changed address signs the account out everywhere. The address is the
     login and where a password-reset link goes, so a session opened under the
     old one should not outlive the correction.
+
+    Nothing that differs from the stored values means nothing is saved and
+    nothing is recorded. A module change raises ValidationError (a 400 on
+    `module`) while the specialist authors techniques in the current module.
     """
     user = editable_specialist(user_id)
     if user is None:
         return None
+    specjalist = Specjalist.objects.get(user=user)
 
-    user_fields = [name for name in EDITABLE_USER_FIELDS if name in changes]
-    email_changed = 'email' in changes and changes['email'] != user.email
+    # Only what actually differs. A PATCH repeating the stored values (or one
+    # the serializer normalized back to them, e.g. an address's case) changes
+    # nothing and is not an edit for the audit log to report.
+    user_fields = [
+        name for name in EDITABLE_USER_FIELDS
+        if name in changes and changes[name] != getattr(user, name)
+    ]
+    specialist_fields = [
+        column for key, column in EDITABLE_SPECIALIST_FIELDS.items()
+        if key in changes and changes[key] != getattr(specjalist, column)
+    ]
+    if not user_fields and not specialist_fields:
+        return user
+
+    # A technique is edited only from its own module's panel, by its author
+    # (`_require_technique_author`, core/diet_techniques.py) — moved to the
+    # other module, the specialist's techniques would be published with nobody
+    # able to correct them. Refused while any exist rather than orphaned.
+    if 'module' in specialist_fields and Technique.objects.filter(
+        author_id_specjalist=specjalist.pk, module=specjalist.module,
+    ).exists():
+        raise serializers.ValidationError({'module': [MODULE_HAS_TECHNIQUES]})
+
+    email_changed = 'email' in user_fields
     for name in user_fields:
         setattr(user, name, changes[name])
-
-    specialist_fields = [
-        column for key, column in EDITABLE_SPECIALIST_FIELDS.items() if key in changes
-    ]
+    for key, column in EDITABLE_SPECIALIST_FIELDS.items():
+        if column in specialist_fields:
+            setattr(specjalist, column, changes[key])
 
     with transaction.atomic(using='default'):
         if user_fields:
             user.save(update_fields=[*user_fields, 'updated_at'])
         if specialist_fields:
-            specjalist = Specjalist.objects.get(user=user)
-            for key, column in EDITABLE_SPECIALIST_FIELDS.items():
-                if key in changes:
-                    setattr(specjalist, column, changes[key])
             specjalist.save(update_fields=specialist_fields)
         if email_changed:
             end_all_sessions(user)

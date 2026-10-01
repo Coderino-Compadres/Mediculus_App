@@ -99,7 +99,13 @@ function SpecialistParentAccounts() {
     Promise.all([fetchCaseload(), fetchParentInvitations()])
       .then(([caseload, issuedInvitations]) => {
         if (cancelled) return
-        setMinors(caseload.patients.filter((patient) => patient.isChild === true))
+        // One option per child: the caseload has a row per (patient, module),
+        // so a minor treated in both modules would otherwise be listed twice —
+        // and the guardian invitation is about the child, not the module.
+        const children = caseload.patients.filter((patient) => patient.isChild === true)
+        setMinors(children.filter(
+          (patient, index) => children.findIndex((other) => other.id === patient.id) === index,
+        ))
         setInvitations(issuedInvitations)
         setLoadError(null)
       })

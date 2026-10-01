@@ -28,6 +28,7 @@ is a question for the client rather than something to answer in a payload.
 endpoints' serializers, and the rules below are about the catalogue.
 """
 
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from .models import Technique
@@ -173,6 +174,23 @@ def find_for_specjalist(specjalist, id_technique):
     ).first()
 
 
+def create_technique(**fields):
+    """Insert one `technique` row, turning a lost slug race into a 400.
+
+    `validate_slug` checks the slug is free, but two saves of the same name can
+    both pass that check before either inserts; the unique index then refuses
+    the second. Its own savepoint, so the failed insert does not poison an
+    outer transaction, and the same sentence `validate_slug` would have given.
+    """
+    try:
+        with transaction.atomic(using='medical'):
+            return Technique.objects.create(**fields)
+    except IntegrityError:
+        raise serializers.ValidationError(
+            {'slug': [TechniqueSerializer.SLUG_TAKEN]},
+        ) from None
+
+
 class TechniqueStepSerializer(serializers.Serializer):
     """One component skill of a technique."""
 
@@ -189,6 +207,9 @@ class TechniqueStepSerializer(serializers.Serializer):
     examples = serializers.ListField(
         child=serializers.CharField(max_length=500),
         required=False, max_length=MAX_EXAMPLES,
+        error_messages={
+            'max_length': f'Krok może mieć najwyżej {MAX_EXAMPLES} przykładów.',
+        },
     )
 
 
@@ -295,6 +316,11 @@ class TechniqueSerializer(serializers.Serializer):
             raise serializers.ValidationError(self.SLUG_TAKEN)
         return value
 
+    def validate_schools(self, value):
+        # A tab listed twice is one tab: deduplicated in order, so the first
+        # entry (which `type` mirrors) stays first.
+        return list(dict.fromkeys(value))
+
     def validate_steps(self, value):
         if not value:
             raise serializers.ValidationError(self.NO_STEPS)
@@ -336,7 +362,7 @@ class TechniqueSerializer(serializers.Serializer):
         return fields
 
     def create(self, validated_data):
-        return Technique.objects.create(
+        return create_technique(
             author_id_specjalist=self.specjalist.pk,
             module=MODULE_PSYCHOTHERAPY,
             # The original column, kept in step rather than left behind: it is

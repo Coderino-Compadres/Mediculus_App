@@ -279,8 +279,10 @@ function SpecialistPatients() {
       // away from /home, and answers on /link-guardian instead. Naming a screen
       // the patient may never see would send the specialist looking for it.
       setInvited(
-        `Zaproszenie do modułu ${moduleLabel(module)} wysłane na ${email.trim()}. ` +
-          'Pacjent zobaczy je po zalogowaniu i sam decyduje.',
+        // "czeka na koncie", not "wysłane na": no mail goes out — the
+        // invitation is a row the patient finds in the app.
+        `Zaproszenie do modułu ${moduleLabel(module)} czeka na koncie ${email.trim()}. ` +
+          'Pacjent zobaczy je po zalogowaniu i sam zdecyduje.',
       )
       setEmail('')
     } catch (cause: unknown) {
@@ -447,7 +449,7 @@ function SpecialistPatients() {
             className="panel-button"
             disabled={inviting || email.trim() === '' || module === ''}
           >
-            {inviting ? 'Wysyłanie…' : 'Zaproś'}
+            {inviting ? 'Zapraszanie…' : 'Zaproś'}
           </button>
         </div>
         {inviteError && (

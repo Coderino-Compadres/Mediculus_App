@@ -99,6 +99,15 @@ class RequestTests(EmailChangeTestCase):
         self.assertEqual(response.data['new_email'], [EMAIL_TAKEN])
         self.assertEqual(mail.outbox, [])
 
+    def test_a_taken_address_is_not_revealed_without_the_password(self):
+        """Without the password the answer is about the password, and only it."""
+        create_user(email='zajety@example.com')
+
+        response = self.ask(new_email='zajety@example.com', password='zle-haslo')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(set(response.data), {'current_password'})
+
     def test_the_current_address_is_refused(self):
         response = self.ask(new_email='ANNA@example.com')
 

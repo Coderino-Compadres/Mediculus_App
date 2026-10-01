@@ -296,7 +296,7 @@ describe('inviting a patient', () => {
 
     expect(mockedInvite).toHaveBeenCalledWith('jan@wp.pl', MODULE_PSYCHOTHERAPY)
     expect(
-      await screen.findByText(/Zaproszenie do modułu Psychoterapia wysłane na jan@wp.pl/),
+      await screen.findByText(/Zaproszenie do modułu Psychoterapia czeka na koncie jan@wp.pl/),
     ).toBeInTheDocument()
   })
 

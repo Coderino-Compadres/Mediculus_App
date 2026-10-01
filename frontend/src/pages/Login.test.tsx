@@ -146,6 +146,21 @@ describe('Login — checks before anything is sent', () => {
     expect(screen.getByText(/podaj hasło/i)).toBeInTheDocument()
   })
 
+  it('lets a password shorter than today\'s minimum through to the server', async () => {
+    // Seeded and older accounts can hold one; the length rule is for new
+    // passwords, and refusing here would lock those accounts out.
+    mockedLogin.mockResolvedValue(TEST_USER)
+    renderScreen()
+
+    await fillIn('anna@example.com', 'krotkie')
+    await userEvent.click(submitButton())
+
+    await waitFor(() => expect(mockedLogin).toHaveBeenCalledWith({
+      email: 'anna@example.com', password: 'krotkie',
+    }))
+    expect(screen.queryByText(/co najmniej 8 znaków/i)).not.toBeInTheDocument()
+  })
+
   it('marks the input that failed, not the form', async () => {
     renderScreen()
 
