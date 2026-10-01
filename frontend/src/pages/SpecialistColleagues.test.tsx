@@ -6,6 +6,7 @@ import { PAGE_SIZE } from '../hooks/usePagination'
 import SpecialistColleagues from './SpecialistColleagues'
 import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
+import { toIsoDate } from '../utils/days'
 
 /**
  * "Konta specjalistów" — the screen that replaced "konto specjalisty" in the
@@ -120,6 +121,17 @@ describe('SpecialistColleagues — what the screen says before anything is typed
     ]) {
       expect(screen.getByLabelText(label)).toBeInTheDocument()
     }
+  })
+
+  it('offers no date of birth later than the local day eighteen years ago', async () => {
+    /** Local, not UTC: `toISOString()` is still yesterday after midnight in
+     *  Warsaw. */
+    renderScreen()
+    const today = new Date()
+    const limit = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate())
+    if (limit.getMonth() !== today.getMonth()) limit.setDate(0)
+
+    expect(await screen.findByLabelText(/data urodzenia/i)).toHaveAttribute('max', toIsoDate(limit))
   })
 
   it('does not ask for a password — the account gets a generated one', async () => {

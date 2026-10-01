@@ -314,6 +314,55 @@ class UngatedAccountTests(GateTestCase):
         self.assertNotEqual(str(response.data['detail']), GUARDIAN_GATE_REFUSAL)
 
 
+class MinorComesOfAgeTests(GateTestCase):
+    """`is_child` is written at registration; the gate must not outlive it.
+
+    A minor registered at 15 with no guardian would otherwise be locked out for
+    good on their 18th birthday and every day after it.
+    """
+
+    def make_minor_born(self, date_of_birth, email='dziecko@example.com'):
+        child = self.make_patient(email)
+        User.objects.filter(pk=child.user.pk).update(date_of_birth=date_of_birth)
+        child.user.refresh_from_db()
+        return child
+
+    def years_ago(self, years, days=0):
+        today = self.today
+        return today.replace(year=today.year - years) - datetime.timedelta(days=days)
+
+    def test_an_eighteen_year_old_is_let_through(self):
+        child = self.make_minor_born(self.years_ago(18))
+        self.sign_in(child.user)
+
+        self.assertEqual(self.client.get(reverse('core:diary-history')).status_code, 200)
+        child.refresh_from_db()
+        self.assertIs(child.is_child, False)
+
+    def test_me_stops_calling_them_a_minor(self):
+        child = self.make_minor_born(self.years_ago(19))
+        self.sign_in(child.user)
+
+        data = self.client.get(reverse('core:me')).data
+
+        self.assertIs(data['is_child'], False)
+        self.assertIsNone(data['guardian_status'])
+
+    def test_the_day_before_the_birthday_the_gate_still_holds(self):
+        child = self.make_minor_born(self.years_ago(18, days=-1))
+        self.sign_in(child.user)
+
+        self.assertEqual(self.client.get(reverse('core:diary-history')).status_code, 403)
+        child.refresh_from_db()
+        self.assertIs(child.is_child, True)
+
+    def test_a_minor_without_a_date_of_birth_stays_gated(self):
+        child = self.make_patient()
+        self.sign_in(child.user)
+
+        self.assertEqual(self.client.get(reverse('core:diary-history')).status_code, 403)
+
+
 class GateDoesNotTrapTheChildTests(GateTestCase):
     """The ways out of the gate stay reachable from inside it.
 

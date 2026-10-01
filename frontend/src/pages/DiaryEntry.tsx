@@ -27,6 +27,9 @@ const SAVE_ERROR = 'Nie udało się zapisać wpisu. Spróbuj ponownie.'
 const LEAVE_CONFIRM =
   'Masz niezapisane zmiany w dzisiejszym wpisie. Jeśli wyjdziesz teraz, przepadną.'
 
+/** Mirror `MAX_SHORT_TEXT` / `MAX_LONG_TEXT` in core/diary.py. */
+const MAX_SHORT_TEXT = 200
+const MAX_LONG_TEXT = 2000
 const RISKY_NOTE_REQUIRED = 'Opisz krótko, co się wydarzyło — inaczej nie zapiszemy oznaczenia.'
 
 function emptyDraft(isoDate: string): DiaryEntryDraft {
@@ -42,8 +45,8 @@ function emptyDraft(isoDate: string): DiaryEntryDraft {
     // as far as they were concerned — was recorded as having *no* energy and
     // *no* tension at all: "Średnia energia" on /home dropped from 5,0 to 2,5
     // after one such entry, and the same zeros feed the weekly report a
-    // therapist reads. The sliders still *render* at 0 (`draft.energyLevel ?? 0`
-    // below); what changed is that not touching one no longer answers it.
+    // therapist reads. The sliders render at 0 but read "nie podano" until touched, and
+    // "Wyczyść odpowiedź" takes an answer back to null.
     energyLevel: null,
     tensionLevel: null,
     situationReaction: {
@@ -211,7 +214,10 @@ function DiaryEntry() {
       // navigation, and a message shown here would flash for one frame.
       navigate(ROUTES.home, { state: { savedEntry: true } })
     } catch (cause: unknown) {
-      setSaveError((cause instanceof ApiError && cause.formMessage) || SAVE_ERROR)
+      // A field error is the one message that says what to change: without it a
+      // too-long note answered "spróbuj ponownie", and retrying could never work.
+      const fieldMessage = cause instanceof ApiError ? Object.values(cause.fieldErrors)[0] : undefined
+      setSaveError((cause instanceof ApiError && cause.formMessage) || fieldMessage || SAVE_ERROR)
       setSaving(false)
     }
   }
@@ -293,16 +299,18 @@ function DiaryEntry() {
                     label="Poziom energii"
                     lowLabel="wyczerpanie"
                     highLabel="pełnia energii"
-                    value={draft.energyLevel ?? 0}
+                    value={draft.energyLevel}
                     onChange={(energyLevel) => setDraft((current) => ({ ...current, energyLevel }))}
+                    onClear={() => setDraft((current) => ({ ...current, energyLevel: null }))}
                   />
                   <LevelSlider
                     id="tension-level"
                     label="Poziom napięcia"
                     lowLabel="rozluźnienie"
                     highLabel="skrajne napięcie"
-                    value={draft.tensionLevel ?? 0}
+                    value={draft.tensionLevel}
                     onChange={(tensionLevel) => setDraft((current) => ({ ...current, tensionLevel }))}
+                    onClear={() => setDraft((current) => ({ ...current, tensionLevel: null }))}
                   />
                 </div>
 
@@ -362,6 +370,7 @@ function DiaryEntry() {
                     <input
                       type="text"
                       className="diary-entry-trigger-other"
+                      maxLength={MAX_SHORT_TEXT}
                       placeholder="Wpisz własną sytuację/miejsce"
                       value={draft.situationReaction.triggerOther}
                       onChange={(event) => updateSituationReaction('triggerOther', event.target.value)}
@@ -371,6 +380,7 @@ function DiaryEntry() {
                   <div className="diary-entry-field">
                     <label htmlFor="situation">Sytuacja</label>
                     <textarea
+                      maxLength={MAX_LONG_TEXT}
                       id="situation"
                       rows={2}
                       value={draft.situationReaction.situation}
@@ -381,6 +391,7 @@ function DiaryEntry() {
                   <div className="diary-entry-field">
                     <label htmlFor="emotion-note">Emocja</label>
                     <textarea
+                      maxLength={MAX_LONG_TEXT}
                       id="emotion-note"
                       rows={2}
                       value={draft.situationReaction.emotionNote}
@@ -391,6 +402,7 @@ function DiaryEntry() {
                   <div className="diary-entry-field">
                     <label htmlFor="thought">Myśl</label>
                     <textarea
+                      maxLength={MAX_LONG_TEXT}
                       id="thought"
                       rows={2}
                       value={draft.situationReaction.thought}
@@ -401,6 +413,7 @@ function DiaryEntry() {
                   <div className="diary-entry-field">
                     <label htmlFor="behavior">Zachowanie</label>
                     <textarea
+                      maxLength={MAX_LONG_TEXT}
                       id="behavior"
                       rows={2}
                       value={draft.situationReaction.behavior}
@@ -414,6 +427,7 @@ function DiaryEntry() {
                   <h3>Własne notatki</h3>
                   <div className="diary-entry-field">
                     <textarea
+                      maxLength={MAX_LONG_TEXT}
                       id="notes"
                       rows={4}
                       value={draft.notes}
@@ -451,6 +465,7 @@ function DiaryEntry() {
                         jazda samochodem
                       </label>
                       <textarea
+                      maxLength={MAX_LONG_TEXT}
                         id="risky-behavior-note"
                         rows={3}
                         value={draft.riskyBehaviorNote}

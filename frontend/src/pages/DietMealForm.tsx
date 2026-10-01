@@ -49,8 +49,11 @@ import './dietMealForm.css'
  * here: the button is never disabled, and a meal answering none of the three
  * questions is written. It records that a meal happened, which is itself what
  * this diary is for — `pages/DietJournals.tsx` already renders such a row as an
- * ordinary one. So there is no required-field marker anywhere on the screen and
- * no validation of its own; the only refusals it can show come from the server.
+ * ordinary one. So there is no required-field marker anywhere on the screen,
+ * and its one validation of its own is the hour: an empty box is an answer,
+ * but '25:00' or '14:3' still on screen is not, and saving it as "no hour"
+ * would drop what was typed without a word. Every other refusal comes from the
+ * server.
  *
  * ONE SCREEN RATHER THAN §04's TWO STEPS. The mockup splits it because the
  * second step is the photo; with the photo out, a two-step form would be one
@@ -90,6 +93,10 @@ const DESCRIPTION_HINT =
 const NOTHING_REQUIRED = 'Nic tu nie jest wymagane. Niepełny wpis jest lepszy niż żaden.'
 
 const SAVE_ERROR = 'Nie udało się zapisać posiłku.'
+const TIME_INVALID_ERROR = 'Popraw godzinę albo wyczyść pole, żeby zapisać posiłek.'
+
+/** The column's own limit (`MealSerializer.description`). */
+const MAX_DESCRIPTION = 2000
 const LOAD_ERROR = 'Nie udało się wczytać posiłku.'
 
 /**
@@ -121,6 +128,8 @@ function DietMealForm() {
   // Pre-filled with now when adding, and with the meal's own hour when
   // editing — where an unanswered hour is an empty box, not this moment.
   const [time, setTime] = useState(() => (id === undefined ? nowHour() : ''))
+  /** False while the hour box holds something that is not a time. */
+  const [timeValid, setTimeValid] = useState(true)
   const [description, setDescription] = useState('')
   /** The chips picked, each with its slider value or `null` for untouched.
    *  Order is the order they were tapped in; the server sorts by the
@@ -129,6 +138,8 @@ function DietMealForm() {
   const [emotions, setEmotions] = useState<EmotionEntry[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** The server's refusal of the description, drawn under the textarea. */
+  const [descriptionError, setDescriptionError] = useState<string | null>(null)
   const [loading, setLoading] = useState(editing)
   /** Set when there is nothing to edit, which hides the form: a form over a
    *  meal that cannot be saved is a form that can only fail. */
@@ -210,8 +221,13 @@ function DietMealForm() {
 
   async function save() {
     if (saving) return
+    if (!timeValid) {
+      setError(TIME_INVALID_ERROR)
+      return
+    }
     setSaving(true)
     setError(null)
+    setDescriptionError(null)
     const input: DietMealInput = {
       kind, time: time || null, description, emotions,
     }
@@ -231,10 +247,19 @@ function DietMealForm() {
         navigate(ROUTES.diet, { state: { savedMeal: true } })
       }
     } catch (cause) {
-      // The server's own sentence when it has one: every refusal a patient can
-      // actually reach here is a gate (an unlinked minor, withdrawn consents),
-      // and each arrives with a message saying what to do about it.
-      setError(cause instanceof ApiError ? cause.message : SAVE_ERROR)
+      // The server's own sentence when it has one. A gate (an unlinked minor,
+      // withdrawn consents) arrives as a form-level message; a refused field
+      // arrives as a field error — the description is drawn under its own
+      // box, and any other field's sentence goes above the button rather than
+      // the generic "something went wrong" `ApiError.message` falls back to.
+      if (cause instanceof ApiError) {
+        const { description: refused, ...others } = cause.fieldErrors
+        setDescriptionError(refused ?? null)
+        const other = Object.values(others)[0]
+        setError(cause.formMessage ?? other ?? (refused ? null : cause.message))
+      } else {
+        setError(SAVE_ERROR)
+      }
       setSaving(false)
     }
   }
@@ -312,6 +337,7 @@ function DietMealForm() {
             className="diet-meal-time-input"
             value={time}
             onChange={setTime}
+            onValidityChange={setTimeValid}
           />
         </div>
         <p className="diet-meal-hint">
@@ -334,11 +360,22 @@ function DietMealForm() {
             id="meal-description"
             className="diet-meal-textarea"
             rows={5}
+            maxLength={MAX_DESCRIPTION}
             value={description}
-            aria-describedby="meal-description-hint"
+            aria-invalid={descriptionError !== null}
+            aria-describedby={
+              descriptionError !== null
+                ? 'meal-description-hint meal-description-error'
+                : 'meal-description-hint'
+            }
             onChange={(event) => setDescription(event.target.value)}
           />
         </div>
+        {descriptionError !== null && (
+          <p className="diet-meal-error" id="meal-description-error" role="alert">
+            {descriptionError}
+          </p>
+        )}
         <p className="diet-meal-hint" id="meal-description-hint">
           {DESCRIPTION_HINT}
         </p>
@@ -374,9 +411,10 @@ function DietMealForm() {
         <button
           type="button"
           className="diet-meal-submit"
-          // Never disabled by the form's own state — nothing is required. It is
-          // disabled only while a request is in flight, so a double tap is one
-          // meal rather than two.
+          // Never disabled by the form's own state — nothing is required, and
+          // an unfinished hour is explained on press rather than by a button
+          // that silently does nothing. It is disabled only while a request is
+          // in flight, so a double tap is one meal rather than two.
           disabled={saving}
           onClick={() => void save()}
         >

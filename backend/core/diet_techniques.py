@@ -29,7 +29,7 @@ from .models import Technique
 from .modules import MODULE_DIET
 from .technique_vocabulary import AVAILABILITY_GENERAL
 from .techniques import (BUILTIN_SLUGS, DIET_BUILTIN_SLUGS, MAX_STEP_DESCRIPTION,
-                         MAX_STEPS)
+                         MAX_STEPS, create_technique)
 
 
 def _step(raw):
@@ -210,7 +210,8 @@ class DietTechniqueSerializer(serializers.Serializer):
         }
 
     def create(self, validated_data):
-        return Technique.objects.create(
+        # The slug race is caught there — see `create_technique`.
+        return create_technique(
             author_id_specjalist=self.specjalist.pk,
             module=MODULE_DIET,
             schools=[],

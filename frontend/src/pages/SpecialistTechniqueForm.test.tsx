@@ -7,6 +7,7 @@ import SpecialistTechniqueForm from './SpecialistTechniqueForm'
 import { ApiError } from '../api/client'
 import { ROUTES } from '../routes'
 import { DURATION_NOT_A_NUMBER } from '../utils/duration'
+import { NAME_NEEDS_LATIN, NAME_TAKEN } from '../utils/slug'
 import type { StoredTechnique } from '../api/techniques'
 
 vi.mock('../api/techniques', () => ({
@@ -233,6 +234,43 @@ describe('a step with no description', () => {
   })
 })
 
+describe('the limits the backend holds', () => {
+  it('caps the text inputs at the serializer\'s lengths', () => {
+    renderForm()
+
+    expect(screen.getByLabelText('Nazwa techniki')).toHaveAttribute('maxLength', '200')
+    expect(screen.getByLabelText('Podtytuł')).toHaveAttribute('maxLength', '300')
+    expect(screen.getByLabelText('Nazwa kroku')).toHaveAttribute('maxLength', '200')
+  })
+
+  it('refuses a name with no Latin letter or digit, before sending it', async () => {
+    /** It would become the bare slug 'id' — one slot for every such name. */
+    renderForm()
+
+    await userEvent.type(screen.getByLabelText('Nazwa techniki'), 'Дыхание 🙂')
+    await userEvent.type(screen.getByLabelText('Wprowadzenie'), 'Kiedy trudno.')
+    await userEvent.type(screen.getByLabelText('Opis kroku'), 'Wdech.')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj technikę' }))
+
+    expect(await screen.findByText(NAME_NEEDS_LATIN)).toBeInTheDocument()
+    expect(mockedCreate).not.toHaveBeenCalled()
+  })
+
+  it('names the step with too many examples, and mentions the limit', async () => {
+    renderForm()
+
+    expect(screen.getByText(/najwyżej 10/)).toBeInTheDocument()
+    await fillMinimum()
+    const examples = screen.getByLabelText('Przykłady')
+    await userEvent.click(examples)
+    await userEvent.paste(Array.from({ length: 11 }, (_, i) => `przykład ${i + 1}`).join('\n'))
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj technikę' }))
+
+    expect(await screen.findByText(/Krok 1 ma za dużo przykładów/)).toBeInTheDocument()
+    expect(mockedCreate).not.toHaveBeenCalled()
+  })
+})
+
 describe('a duration that is not whole minutes', () => {
   it('is refused under its own field, and nothing is sent', async () => {
     /** It used to be sent as `Number('abc')` — NaN, i.e. null — and the
@@ -271,8 +309,28 @@ describe('when the server refuses the technique', () => {
     await fillMinimum()
     await userEvent.click(screen.getByRole('button', { name: 'Dodaj technikę' }))
 
-    expect(await screen.findByText(/nazwy nie mogą się powtarzać/)).toBeInTheDocument()
+    expect(await screen.findByText(NAME_TAKEN)).toBeInTheDocument()
     expect(screen.getByLabelText('Nazwa techniki')).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('does not claim the clash is in the specialist\'s own catalogue', async () => {
+    /** The slug is unique across both modules, so the technique holding the
+     *  name may be one this specialist never sees. */
+    expect(NAME_TAKEN).toMatch(/inną technikę w aplikacji/)
+    expect(NAME_TAKEN).not.toMatch(/w katalogu/)
+  })
+
+  it('shows a subtitle verdict under the subtitle', async () => {
+    mockedCreate.mockRejectedValueOnce(
+      new ApiError(400, null, { subtitle: 'Upewnij się, że pole ma nie więcej niż 300 znaków.' }),
+    )
+    renderForm()
+
+    await fillMinimum()
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj technikę' }))
+
+    expect(await screen.findByText(/nie więcej niż 300 znaków/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Podtytuł')).toHaveAttribute('aria-invalid', 'true')
   })
 
   it('places a field verdict on its own input', async () => {

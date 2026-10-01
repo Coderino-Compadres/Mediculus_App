@@ -342,6 +342,61 @@ describe('adding one', () => {
   })
 })
 
+describe('refusals on the other fields', () => {
+  /** Mapped and never drawn, these made a save fail with no word at all. */
+  it.each([
+    ['dose', 'Dawka'],
+    ['frequency', 'Częstotliwość'],
+    ['start_date', 'Od kiedy'],
+  ])('draws a refused %s under its own input', async (column, label) => {
+    createSupplement.mockRejectedValue(
+      new ApiError(400, null, { [column]: 'Podaj datę z lat 1900–2100.' }),
+    )
+
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Magnez')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    const field = await screen.findByLabelText(label)
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).toHaveAccessibleDescription(/1900–2100/)
+  })
+
+  it('draws a refused hour under the hours', async () => {
+    createSupplement.mockRejectedValue(
+      new ApiError(400, null, { hours: 'Zły format godziny.' }),
+    )
+
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Magnez')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    expect(await screen.findByText('Zły format godziny.')).toBeInTheDocument()
+  })
+
+  it('says a refused field it has no input for, rather than a generic line', async () => {
+    createSupplement.mockRejectedValue(new ApiError(400, null, { unknown: 'Coś konkretnego.' }))
+
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Magnez')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Coś konkretnego.')
+  })
+
+  it('bounds the text fields at the server\'s own limit', async () => {
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+
+    for (const label of ['Nazwa', 'Dawka', 'Częstotliwość']) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('maxLength', '120')
+    }
+  })
+})
+
 describe('editing one', () => {
   it('opens the form with the stored values', async () => {
     fetchSupplements.mockResolvedValue([supplement()])
@@ -681,6 +736,47 @@ describe('several hours for one preparation', () => {
 
     expect(createSupplement).toHaveBeenCalledWith(
       expect.objectContaining({ hours: ['06:45'] }),
+    )
+  })
+
+  /** A box that is not a time reports '' — saving then would quietly write
+   *  "no hour" over what is still on screen. */
+  it('refuses to save while an hour is not a time, and says why', async () => {
+    createSupplement.mockResolvedValue([])
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Magnez')
+    await userEvent.type(screen.getByLabelText('Godzina 1'), '083')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    expect(createSupplement).not.toHaveBeenCalled()
+    expect(screen.getByText(/Popraw godzinę albo ją usuń/)).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Godzina 1'), '0')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    expect(createSupplement).toHaveBeenCalledWith(
+      expect.objectContaining({ hours: ['08:30'] }),
+    )
+  })
+
+  it('forgets an unfinished hour once its row is removed', async () => {
+    createSupplement.mockResolvedValue([])
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj suplement lub lek' }))
+    await userEvent.type(screen.getByLabelText('Nazwa'), 'Probiotyk')
+    await userEvent.type(screen.getByLabelText('Godzina 1'), '25')
+    await userEvent.click(screen.getByRole('button', { name: '+ Dodaj godzinę' }))
+    await userEvent.type(screen.getByLabelText('Godzina 2'), '12:00')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Usuń godzinę 1' }))
+    // The row that moved up keeps its own time, not the removed row's typing.
+    expect(screen.getByLabelText('Godzina 1')).toHaveValue('12:00')
+    await userEvent.click(screen.getByRole('button', { name: 'Dodaj do listy' }))
+
+    expect(createSupplement).toHaveBeenCalledWith(
+      expect.objectContaining({ hours: ['12:00'] }),
     )
   })
 

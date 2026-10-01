@@ -228,6 +228,8 @@ REST_FRAMEWORK = {
     # own address and its own 'auth' budget, but they all land on the same
     # account counter. 15/hour leaves room for a person who genuinely cannot
     # remember which password they used, while making guessing pointless.
+    # Puts the 429 detail in Polish; DRF's own is half English.
+    'EXCEPTION_HANDLER': 'core.throttling.exception_handler',
     'DEFAULT_THROTTLE_RATES': {
         'auth': '10/min',
         'login_account': '15/hour',
@@ -240,6 +242,11 @@ REST_FRAMEWORK = {
         # 'auth': changing what bounds login guessing must not quietly change
         # what bounds this.
         'password_change': '10/hour',
+        # Consent withdrawal and account deletion (core.throttling.
+        # AccountRightsThrottle): password-checked like the above, but their
+        # own budget, so typos on the password form never hold back a RODO
+        # right for an hour.
+        'account_rights': '10/hour',
         # POST /api/auth/password-reset/ answers 204 whether or not the address
         # has an account, so it is not an enumeration oracle by itself — but
         # asked ten thousand times it becomes one anyway, through the mail it
@@ -272,6 +279,13 @@ REST_FRAMEWORK = {
     # it to 0 while one is there: 0 means "trust REMOTE_ADDR", which behind a
     # proxy is the proxy, i.e. one budget shared by every client on the internet.
     'NUM_PROXIES': 1,
+    # DRF's defaults with the JSON one swapped for a parser that refuses lone
+    # surrogates — see core/parsers.py for the 500 it prevents.
+    'DEFAULT_PARSER_CLASSES': [
+        'core.parsers.StrictJSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser',
+    ],
 }
 
 if not DEBUG:
@@ -287,7 +301,13 @@ if not DEBUG:
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        # Eight spaces pass every validator below; see core/password_validation.py.
+        'NAME': 'core.password_validation.NotBlankPasswordValidator',
+    },
+    {
+        # Django's own, naming the matched attribute in Polish ("do imienia")
+        # rather than by column name ("do name").
+        'NAME': 'core.password_validation.PolishUserAttributeSimilarityValidator',
         # Django's default list is ('username', 'first_name', 'last_name',
         # 'email') — three of which core.User does not have, since it is a plain
         # domain model rather than an auth user. Without naming the real columns

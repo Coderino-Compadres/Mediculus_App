@@ -25,6 +25,7 @@ from rest_framework.test import APIClient
 from core import password_reset
 from core.authentication import SESSION_USER_KEY
 from core.models import User, UserRole
+from core.serializers import PasswordResetConfirmSerializer
 
 VALID_PASSWORD = 'TajneHaslo123'
 NEW_PASSWORD = 'ZupelnieInne456'
@@ -250,6 +251,39 @@ class ConfirmTests(PasswordResetTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('new_password', response.data)
 
+    def test_a_password_of_spaces_alone_is_refused(self):
+        self.request_reset()
+
+        response = self.confirm(self.token_from_mail(), password='          ')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'Hasło nie może składać się wyłącznie ze spacji.',
+            response.data['new_password'],
+        )
+
+    def test_the_similarity_refusal_names_the_attribute_in_polish(self):
+        self.request_reset()
+
+        response = self.confirm(self.token_from_mail(), password='anna@example.com')
+
+        self.assertIn(
+            'Hasło jest zbyt podobne do adresu e-mail.', response.data['new_password'],
+        )
+
+    def test_a_token_that_is_not_a_string_is_refused_under_detail(self):
+        self.request_reset()
+        token = self.token_from_mail()
+
+        response = self.confirm([token])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(set(response.data), {'detail'})
+        self.assertEqual(
+            str(response.data['detail']),
+            PasswordResetConfirmSerializer.INVALID_TOKEN,
+        )
+
     def test_a_mistyped_confirmation_is_refused(self):
         self.request_reset()
 
@@ -338,6 +372,21 @@ class TokenUnitTests(TestCase):
         self.user.save(update_fields=['password_hash'])
 
         self.assertIsNone(password_reset.resolve_token(token))
+
+    def test_a_token_dies_with_the_address_it_was_mailed_to(self):
+        """A link left in the old mailbox must not outlive an e-mail change."""
+        token = password_reset.issue_token(self.user)
+        self.user.email = 'nowy@example.com'
+        self.user.save(update_fields=['email'])
+
+        self.assertIsNone(password_reset.resolve_token(token))
+
+    def test_the_address_is_fingerprinted_regardless_of_case(self):
+        token = password_reset.issue_token(self.user)
+        self.user.email = 'Anna@Example.com'
+        self.user.save(update_fields=['email'])
+
+        self.assertEqual(password_reset.resolve_token(token).pk, self.user.pk)
 
     def test_a_token_for_a_deleted_account_resolves_to_nothing(self):
         token = password_reset.issue_token(self.user)

@@ -466,6 +466,31 @@ describe('a save that failed is not silence', () => {
     )
   })
 
+  it('draws a refused field under that field, not as "nie udało się"', async () => {
+    saveHealthProfile.mockRejectedValue(
+      new ApiError(400, null, { allergies: 'Upewnij się, że to pole ma nie więcej niż 2000 znaków.' }),
+    )
+
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/popraw pole oznaczone wyżej/)
+    const field = screen.getByLabelText('Alergie pokarmowe')
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).toHaveAccessibleDescription(/nie więcej niż 2000 znaków/)
+  })
+
+  it('says a refused field that draws no sentence of its own at the button', async () => {
+    saveHealthProfile.mockRejectedValue(
+      new ApiError(400, null, { height_cm: 'Upewnij się, że ta wartość jest mniejsza lub równa 999.9.' }),
+    )
+
+    await renderScreen()
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz profil' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/mniejsza lub równa 999.9/)
+  })
+
   it('stops describing the last submit the moment anything changes', async () => {
     saveHealthProfile.mockRejectedValue(new Error('network'))
 
@@ -786,6 +811,29 @@ describe('the conditions', () => {
     ).toBeInTheDocument()
     // The box is ready for the next one.
     expect(screen.getByLabelText('Własna jednostka chorobowa')).toHaveValue('')
+  })
+
+  it('bounds the descriptive fields and the own-condition box at the server\'s limits', async () => {
+    await renderScreen()
+
+    for (const label of ['Alergie pokarmowe', 'Nietolerancje', 'Preferencje żywieniowe']) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('maxLength', '2000')
+    }
+    expect(screen.getByLabelText('Własna jednostka chorobowa')).toHaveAttribute('maxLength', '120')
+  })
+
+  it('stops adding once the list holds as many as the server keeps, and says so', async () => {
+    fetchHealthProfile.mockResolvedValue({
+      ...emptyHealthProfile(),
+      ownConditions: Array.from({ length: 30 }, (_, n) => `Choroba ${n}`),
+    })
+    await renderScreen()
+
+    await userEvent.type(screen.getByLabelText('Własna jednostka chorobowa'), 'Jeszcze jedna')
+
+    expect(screen.getByRole('button', { name: '+ Dodaj własną' })).toBeDisabled()
+    expect(screen.getByLabelText('Własna jednostka chorobowa'))
+      .toHaveAccessibleDescription(/Dopisano już 30/)
   })
 
   it('labels the own-condition box visibly rather than with a placeholder', async () => {

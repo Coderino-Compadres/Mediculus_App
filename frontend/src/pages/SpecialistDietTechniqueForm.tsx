@@ -10,7 +10,7 @@ import {
   type DietTechniqueInput,
   type StoredDietTechnique,
 } from '../api/dietTechniques'
-import { techniqueSlug } from '../utils/slug'
+import { hasSlugBody, NAME_NEEDS_LATIN, NAME_TAKEN, techniqueSlug } from '../utils/slug'
 import { durationError } from '../utils/duration'
 import { ROUTES } from '../routes'
 import './journals.css'
@@ -37,9 +37,9 @@ import './specialist.css'
 const LOAD_ERROR = 'Nie udało się wczytać techniki. Spróbuj ponownie.'
 const SAVE_ERROR = 'Nie udało się zapisać techniki. Spróbuj ponownie.'
 const NOT_FOUND = 'Nie znaleziono tej techniki wśród Twoich technik.'
-const NAME_TAKEN =
-  'Technika o tej nazwie już jest w katalogu — nazwy nie mogą się powtarzać, '
-  + 'bo z nazwy powstaje adres techniki. Zmień nazwę.'
+/** Mirrors `max_length` on DietTechniqueSerializer.name / .moment. */
+const MAX_NAME = 200
+const MAX_MOMENT = 300
 
 const EMPTY_STEP = { name: '', description: '' }
 
@@ -142,8 +142,16 @@ function SpecialistDietTechniqueForm() {
     // after correcting the first.
     const blank = emptyStep()
     const duration = durationError(form.durationMin)
-    if (blank || duration) {
-      setErrors({ ...(blank ? { steps: blank } : {}), ...(duration ? { durationMin: duration } : {}) })
+    // Only on a create — an edit sends the stored slug back (see the DBT form).
+    const name = !editing && form.name.trim() !== '' && !hasSlugBody(form.name)
+      ? NAME_NEEDS_LATIN
+      : null
+    if (blank || duration || name) {
+      setErrors({
+        ...(name ? { name } : {}),
+        ...(blank ? { steps: blank } : {}),
+        ...(duration ? { durationMin: duration } : {}),
+      })
       setFormError(null)
       return
     }
@@ -228,6 +236,7 @@ function SpecialistDietTechniqueForm() {
           <label htmlFor="name">Nazwa techniki</label>
           <input
             id="name"
+            maxLength={MAX_NAME}
             value={form.name}
             onChange={(event) => set('name', event.target.value)}
             aria-invalid={Boolean(errors.name)}
@@ -254,6 +263,7 @@ function SpecialistDietTechniqueForm() {
           <label htmlFor="moment">Kiedy po nią sięgnąć</label>
           <input
             id="moment"
+            maxLength={MAX_MOMENT}
             value={form.moment}
             onChange={(event) => set('moment', event.target.value)}
             aria-invalid={Boolean(errors.moment)}
@@ -305,6 +315,7 @@ function SpecialistDietTechniqueForm() {
                 <label htmlFor={`step-name-${index}`}>Nazwa kroku</label>
                 <input
                   id={`step-name-${index}`}
+                  maxLength={MAX_NAME}
                   value={step.name}
                   onChange={(event) => setStep(index, 'name', event.target.value)}
                 />

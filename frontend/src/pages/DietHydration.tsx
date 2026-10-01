@@ -295,12 +295,14 @@ function OtherDrinksCard({
   const nameValid = name.trim().length > 0
 
   /** '' is "not saying", which is a valid serving. A number outside the bounds
-   *  is not sent at all, so the button says why rather than the server. */
+   *  is not sent at all, so the screen says why rather than the server.
+   *  Whole millilitres, like "Własna ilość" above: '12.5' passed a finiteness
+   *  check here and was then refused by the server's integer field. */
   const typed = Number(amount)
   const amountGiven = amount.trim() !== ''
   const amountValid =
     !amountGiven ||
-    (Number.isFinite(typed) && typed >= minAmountMl && typed <= maxAmountMl)
+    (Number.isInteger(typed) && typed >= minAmountMl && typed <= maxAmountMl)
   const servingMl = amountGiven && amountValid ? typed : null
 
   /** Record `drink`, with whatever is in the amount box, and empty the box.
@@ -347,9 +349,19 @@ function OtherDrinksCard({
           step={10}
           value={amount}
           aria-invalid={amountValid ? undefined : true}
+          aria-describedby={amountValid ? undefined : 'hydration-drink-amount-error'}
           onChange={(event) => setAmount(event.target.value)}
         />
       </div>
+      {/* The bounds named only while they are broken — the standing hint was
+          taken off this card on purpose (02659e6) — but then named: the chips
+          go disabled while the amount is out of bounds, and a disabled row
+          with no reason beside it is a screen that silently stopped working. */}
+      {!amountValid && (
+        <p className="hydration-custom-error" id="hydration-drink-amount-error" role="alert">
+          Wpisz liczbę od {minAmountMl} do {maxAmountMl} ml albo wyczyść pole.
+        </p>
+      )}
       <div className="hydration-chips">
         {OTHER_DRINKS.map((drink) => (
           <button

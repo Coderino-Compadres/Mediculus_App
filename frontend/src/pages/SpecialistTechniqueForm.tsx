@@ -12,7 +12,7 @@ import {
   type TechniqueInput,
 } from '../api/techniques'
 import { DBT_GROUPS, DBT_MODULE_LABELS, SCHOOL_TABS } from '../utils/techniques'
-import { techniqueSlug } from '../utils/slug'
+import { hasSlugBody, NAME_NEEDS_LATIN, NAME_TAKEN, techniqueSlug } from '../utils/slug'
 import { durationError } from '../utils/duration'
 import type { TechniqueDbtModule, TechniqueGroup, TechniqueSchool } from '../types/technique'
 import { ROUTES } from '../routes'
@@ -64,9 +64,12 @@ import './specialist.css'
 const LOAD_ERROR = 'Nie udało się wczytać techniki. Spróbuj ponownie.'
 const SAVE_ERROR = 'Nie udało się zapisać techniki. Spróbuj ponownie.'
 const NOT_FOUND = 'Nie znaleziono tej techniki wśród Twoich technik.'
-const NAME_TAKEN =
-  'Technika o tej nazwie już jest w katalogu — nazwy nie mogą się powtarzać, '
-  + 'bo z nazwy powstaje adres techniki. Zmień nazwę.'
+
+/** Mirrors `max_length` on TechniqueSerializer.name / .subtitle. */
+const MAX_NAME = 200
+const MAX_SUBTITLE = 300
+/** Mirrors MAX_EXAMPLES in core/techniques.py. */
+const MAX_EXAMPLES = 10
 
 const EMPTY_STEP = { name: '', description: '', examples: '' }
 
@@ -188,15 +191,38 @@ function SpecialistTechniqueForm() {
     return `Krok ${index + 1} nie ma opisu. Opis kroku jest tym, co czyta pacjent.`
   }
 
+  /** The same positional problem for the backend's MAX_EXAMPLES limit. */
+  function tooManyExamples(): string | null {
+    const index = form.steps.findIndex(
+      (step) => step.examples.split('\n').filter((line) => line.trim() !== '').length > MAX_EXAMPLES,
+    )
+    if (index === -1) return null
+    return `Krok ${index + 1} ma za dużo przykładów — najwyżej ${MAX_EXAMPLES}.`
+  }
+
+  /**
+   * A new technique's name must give its address something to be made of. Only
+   * on a create: an edit sends the stored slug back and never re-derives it.
+   */
+  function nameWithoutSlug(): string | null {
+    if (editing || form.name.trim() === '' || hasSlugBody(form.name)) return null
+    return NAME_NEEDS_LATIN
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     // Both checked before the request, and shown together, so a specialist
     // fixes the form in one pass rather than learning of the second problem
     // after correcting the first.
-    const blank = emptyStep()
+    const steps = emptyStep() ?? tooManyExamples()
     const duration = durationError(form.durationMin)
-    if (blank || duration) {
-      setErrors({ ...(blank ? { steps: blank } : {}), ...(duration ? { durationMin: duration } : {}) })
+    const name = nameWithoutSlug()
+    if (steps || duration || name) {
+      setErrors({
+        ...(name ? { name } : {}),
+        ...(steps ? { steps } : {}),
+        ...(duration ? { durationMin: duration } : {}),
+      })
       setFormError(null)
       return
     }
@@ -221,6 +247,7 @@ function SpecialistTechniqueForm() {
           // accepts, and the `id-` prefix rules out a collision with a
           // built-in technique — so a slug error means the name is taken.
           name: cause.fieldErrors.name || (cause.fieldErrors.slug ? NAME_TAKEN : ''),
+          subtitle: cause.fieldErrors.subtitle ?? '',
           schools: cause.fieldErrors.schools ?? '',
           intro: cause.fieldErrors.intro ?? '',
           // The backend reports a per-step problem under `steps`; the form shows
@@ -287,6 +314,7 @@ function SpecialistTechniqueForm() {
           <label htmlFor="name">Nazwa techniki</label>
           <input
             id="name"
+            maxLength={MAX_NAME}
             value={form.name}
             onChange={(event) => set('name', event.target.value)}
             aria-invalid={Boolean(errors.name)}
@@ -298,12 +326,15 @@ function SpecialistTechniqueForm() {
           <label htmlFor="subtitle">Podtytuł</label>
           <input
             id="subtitle"
+            maxLength={MAX_SUBTITLE}
             value={form.subtitle}
             onChange={(event) => set('subtitle', event.target.value)}
+            aria-invalid={Boolean(errors.subtitle)}
           />
           <span className="specialist-form-hint">
             Jedno zdanie: po co jest ta technika. Pacjent widzi je na liście.
           </span>
+          {errors.subtitle && <span className="auth-field-error">{errors.subtitle}</span>}
         </div>
 
         <fieldset className="specialist-fieldset">
@@ -405,6 +436,7 @@ function SpecialistTechniqueForm() {
                 <label htmlFor={`step-name-${index}`}>Nazwa kroku</label>
                 <input
                   id={`step-name-${index}`}
+                  maxLength={MAX_NAME}
                   value={step.name}
                   onChange={(event) => setStep(index, 'name', event.target.value)}
                 />
@@ -429,7 +461,9 @@ function SpecialistTechniqueForm() {
                   value={step.examples}
                   onChange={(event) => setStep(index, 'examples', event.target.value)}
                 />
-                <span className="specialist-form-hint">Po jednym w wierszu.</span>
+                <span className="specialist-form-hint">
+                  Po jednym w wierszu, najwyżej {MAX_EXAMPLES}.
+                </span>
               </div>
             </div>
           ))}

@@ -257,6 +257,23 @@ describe('AdminAccount — correcting a specialist’s account', () => {
     expect(mockedUpdate).toHaveBeenCalledWith('s9', { diplomaNumber: '988/2012', module: 'diet' })
   })
 
+  it('shows a refused module change under the module', async () => {
+    /** core/admin_panel.py refuses it while the specialist has techniques in
+     *  the current module — they would be left with nobody able to edit them. */
+    mockedAccount.mockResolvedValue(SPECIALIST)
+    mockedUpdate.mockRejectedValue(
+      new ApiError(400, null, { module: 'Ten specjalista ma opublikowane techniki w obecnym module.' }),
+    )
+    renderAt('s9')
+
+    await openForm()
+    await userEvent.selectOptions(screen.getByLabelText('Moduł'), 'diet')
+    await userEvent.click(screen.getByRole('button', { name: 'Zapisz zmiany' }))
+
+    expect(await screen.findByText(/opublikowane techniki w obecnym module/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Moduł')).toHaveAttribute('aria-invalid', 'true')
+  })
+
   it('offers no editing on a patient’s, a guardian’s or an administrator’s account', async () => {
     for (const account of [PATIENT, { ...PATIENT, kind: 'guardian' as const, patient: null }, ANOTHER_ADMIN]) {
       mockedAccount.mockResolvedValue(account)

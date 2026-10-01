@@ -5,7 +5,7 @@ import { renderWithProviders, TEST_USER } from '../test/render'
 import { PAGE_SIZE } from '../hooks/usePagination'
 import SpecialistParentAccounts from './SpecialistParentAccounts'
 import { ApiError } from '../api/client'
-import { MODULE_PSYCHOTHERAPY } from '../utils/modules'
+import { MODULE_DIET, MODULE_PSYCHOTHERAPY } from '../utils/modules'
 import type {
   ParentInvitation,
   SpecialistCaseload,
@@ -124,6 +124,22 @@ describe('the screen', () => {
 
     expect(options.map((option) => option.textContent)).toEqual(['Wybierz pacjenta', 'Ola Testowa'])
     expect(screen.queryByLabelText(/id pacjenta/i)).toBeNull()
+  })
+
+  it('lists a minor treated in both modules once', async () => {
+    /** The caseload has a row per (patient, module); the code is about the
+     *  child, and two options with one id would be two React rows with one key. */
+    await render({
+      caseload: {
+        patients: [patient(), patient({ module: MODULE_DIET, moduleLabel: 'Dietetyka i psychodietetyka' })],
+        pending: [],
+      },
+      invitations: [],
+    })
+
+    const options = within(screen.getByLabelText('Pacjent')).getAllByRole('option')
+
+    expect(options.map((option) => option.textContent)).toEqual(['Wybierz pacjenta', 'Ola Testowa'])
   })
 
   it('explains why there is no form when no minor has accepted', async () => {

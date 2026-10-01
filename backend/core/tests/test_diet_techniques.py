@@ -6,10 +6,12 @@ never show up in each other's lists.
 """
 
 import re
+from unittest import mock
 
 from django.test import SimpleTestCase
 from django.urls import reverse
 
+from core.diet_techniques import DietTechniqueSerializer
 from core.models import Technique
 from core.techniques import DIET_BUILTIN_SLUGS
 
@@ -70,6 +72,17 @@ class DietWritingTests(DietTechniqueTestCase):
         self.assertEqual(technique.note, 'Nie chodzi o kontrolę.')
         self.assertEqual(technique.schools, [])
         self.assertEqual(technique.steps[1], {'name': None, 'description': 'Trzymaj się jej.'})
+
+    def test_a_slug_lost_to_a_concurrent_save_is_a_400_not_a_500(self):
+        self.create_diet()
+        with mock.patch.object(
+            DietTechniqueSerializer, 'validate_slug', lambda self, value: value,
+        ):
+            response = self.create_diet(name='Inna nazwa')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['slug'], [DietTechniqueSerializer.SLUG_TAKEN])
+        self.assertEqual(Technique.objects.count(), 1)
 
     def test_it_is_in_the_diet_catalogue_at_once_and_not_in_the_dbt_one(self):
         self.create_diet()

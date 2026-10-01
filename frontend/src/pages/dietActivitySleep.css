@@ -573,3 +573,15 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* A save that failed, or a field the server refused. Was unstyled, so the
+   message sat in body text where it read like a hint rather than a refusal. */
+.diet-as-status {
+  margin: 8px 0 0;
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.diet-as-status-error {
+  color: var(--color-error);
+}

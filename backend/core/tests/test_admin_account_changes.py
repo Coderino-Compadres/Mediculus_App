@@ -176,6 +176,45 @@ class EditTests(AccountChangesTestCase):
         self.assertEqual(entry.admin_id, self.admin.pk)
         self.assertEqual(entry.target_id, self.specialist.user_id)
 
+    def test_a_patch_that_changes_nothing_is_not_recorded(self):
+        """The stored values sent back (the address in another case, too) are
+        not an edit, and the audit log should not report one."""
+        response = self.patch(self.specialist.user, {
+            'name': 'Anna', 'email': 'Terapeutka@example.com', 'module': MODULE_PSYCHOTHERAPY,
+        })
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(AdminAuditLog.objects.filter(
+            action=admin_panel.ACTION_EDIT_ACCOUNT).exists())
+
+    def test_the_module_stays_while_the_specialist_has_techniques_in_it(self):
+        """Each module's techniques are edited only from that module's panel, so
+        moving their author would leave them with nobody able to correct them."""
+        Technique.objects.create(
+            name='Oddech', type='DBT', module=MODULE_PSYCHOTHERAPY,
+            author_id_specjalist=self.specialist.pk,
+        )
+
+        response = self.patch(self.specialist.user, {'module': MODULE_DIET, 'name': 'Anka'})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['module'], [admin_panel.MODULE_HAS_TECHNIQUES])
+        row = Specjalist.objects.select_related('user').get(pk=self.specialist.pk)
+        self.assertEqual((row.module, row.user.name), (MODULE_PSYCHOTHERAPY, 'Anna'))
+        self.assertFalse(AdminAuditLog.objects.filter(
+            action=admin_panel.ACTION_EDIT_ACCOUNT).exists())
+
+    def test_techniques_in_the_other_module_do_not_hold_the_module(self):
+        Technique.objects.create(
+            name='HALT', type='diet', module=MODULE_DIET,
+            author_id_specjalist=self.specialist.pk,
+        )
+
+        response = self.patch(self.specialist.user, {'module': MODULE_DIET})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(Specjalist.objects.get(pk=self.specialist.pk).module, MODULE_DIET)
+
     def test_nobody_but_an_administrator_may_edit(self):
         colleague = self.make_specialist('kolega@example.com')
         self.sign_in(colleague.user)

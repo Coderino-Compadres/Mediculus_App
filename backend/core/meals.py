@@ -179,6 +179,11 @@ class MealSerializer(serializers.Serializer):
     # also how every emotion is taken back — see `update`.
     emotions = MealEmotionSerializer(many=True, required=False)
 
+    def validate_time(self, value):
+        """Minutes, not seconds: the hour is shown and edited as 'HH:MM', so a
+        '07:00:30' sent by hand would store a second nobody can see or change."""
+        return value.replace(second=0, microsecond=0) if value is not None else None
+
     def validate_emotions(self, value):
         """One rating per emotion — two rows for 'Lęk' would have no meaning.
 

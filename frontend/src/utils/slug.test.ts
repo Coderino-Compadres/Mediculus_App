@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { techniqueSlug } from './slug'
+import { hasSlugBody, techniqueSlug } from './slug'
 
 /**
  * The contract this file exists to pin is a single regex on the backend:
@@ -97,6 +97,22 @@ describe('techniqueSlug', () => {
       const slug = techniqueSlug(name)
       expect(slug, `name: ${JSON.stringify(name)}`).toMatch(BACKEND_REGEX)
       expect(slug.length, `name: ${JSON.stringify(name)}`).toBeLessThanOrEqual(MAX_LENGTH)
+    }
+  })
+})
+
+describe('hasSlugBody', () => {
+  it('is true when the name holds a Latin letter or a digit, Polish ones included', () => {
+    expect(hasSlugBody('Oddech')).toBe(true)
+    expect(hasSlugBody('ż')).toBe(true)
+    expect(hasSlugBody('🙂 4-7-8')).toBe(true)
+  })
+
+  it('is false for a name the slug could only be the bare stem of', () => {
+    // Each of these would be 'id', and only one technique can ever hold it.
+    for (const name of ['🙂', 'Дыхание', '!!!', '—', '   ', '']) {
+      expect(hasSlugBody(name), JSON.stringify(name)).toBe(false)
+      expect(techniqueSlug(name)).toBe('id')
     }
   })
 })

@@ -515,6 +515,45 @@ class PasswordChangeTests(AccountTestCase):
                 response = getattr(self.client, method)(self.url, {}, format='json')
                 self.assertEqual(response.status_code, 405)
 
+    def test_a_new_password_of_spaces_alone_is_refused(self):
+        self.sign_in(self.patient.user)
+
+        response = self.change(new_password=' ' * 12, new_password_confirm=' ' * 12)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'Hasło nie może składać się wyłącznie ze spacji.',
+            response.data['new_password'],
+        )
+        self.assertTrue(check_password(PASSWORD, self.stored_hash()))
+
+    def test_the_throttle_refusal_is_polish(self):
+        self.sign_in(self.patient.user)
+
+        for _ in range(12):
+            response = self.change(current_password='NieToHaslo123')
+            if response.status_code == 429:
+                break
+
+        self.assertEqual(response.status_code, 429)
+        self.assertTrue(str(response.data['detail']).startswith('Zbyt wiele prób.'))
+        self.assertNotIn('Expected', str(response.data['detail']))
+
+    def test_password_typos_do_not_block_the_rodo_rights(self):
+        """Withdrawal and deletion have their own budget: an hour of typos on
+        the password form must not hold back art. 7(3) or art. 17."""
+        self.sign_in(self.patient.user)
+        for _ in range(12):
+            self.change(current_password='NieToHaslo123')
+        self.assertEqual(self.change().status_code, 429)
+
+        response = self.client.post(
+            reverse('core:account-consents-withdraw'),
+            {'scope': 'all', 'password': PASSWORD}, format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+
     def test_guessing_the_current_password_is_capped(self):
         """The endpoint verifies a password, so it is a second oracle for one —
         reachable from a session left open on a borrowed phone. The login cap

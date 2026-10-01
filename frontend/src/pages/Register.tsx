@@ -20,6 +20,7 @@ import {
   ageFromDateOfBirth,
   ADULT_AGE,
 } from '../utils/validation'
+import { toIsoDate } from '../utils/days'
 
 const INITIAL_VALUES = {
   accountType: '',
@@ -36,9 +37,6 @@ const INITIAL_VALUES = {
 
 // A guardian's account is not a patient account: it gets no diary of its own,
 // which is why this choice cannot be inferred from the date of birth.
-// Keeps the native picker from offering a future date at all; the client-side
-// check and the backend both still verify it.
-const TODAY = new Date().toISOString().slice(0, 10)
 
 // THERE IS NO "konto specjalisty" HERE, and that is the feature rather than an
 // oversight. A specialist used to register from this form, which was safe as far
@@ -115,6 +113,12 @@ function Register() {
     setFormError,
   } = useAuthForm(INITIAL_VALUES)
   const [consents, setConsents] = useState(INITIAL_CONSENTS)
+  // Keeps the native picker from offering a future date at all; the client-side
+  // check and the backend both still verify it. The local calendar day, worked
+  // out per render: `toISOString()` is UTC, which in Poland is still yesterday
+  // until 01:00/02:00, and a module-level constant would go stale in a tab left
+  // open past midnight.
+  const today = toIsoDate(new Date())
 
   function handleConsentChange(event: ChangeEvent<HTMLInputElement>) {
     const { name, checked } = event.target as { name: ConsentId; checked: boolean }
@@ -244,7 +248,7 @@ function Register() {
           label="Data urodzenia"
           type="date"
           autoComplete="bday"
-          max={TODAY}
+          max={today}
           value={values.dateOfBirth}
           onChange={handleChange}
           error={errors.dateOfBirth}

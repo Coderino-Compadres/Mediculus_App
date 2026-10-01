@@ -36,8 +36,9 @@ from core.authentication import SESSION_USER_KEY
 from core.models import (Patient, Specjalist, Supplement, SupplementHour,
                          SupplementIntake,
                          User, UserRole)
-from core.supplements import (END_BEFORE_START, LIST_IS_FULL,
-                              MAX_HOURS_PER_SUPPLEMENT, MAX_SUPPLEMENTS)
+from core.supplements import (DATE_OUT_OF_RANGE, END_BEFORE_START,
+                              LIST_IS_FULL, MAX_HOURS_PER_SUPPLEMENT,
+                              MAX_SUPPLEMENTS)
 
 PASSWORD = 'TajneHaslo123'
 
@@ -211,6 +212,15 @@ class CreateTests(SupplementTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['end_date'], [END_BEFORE_START])
+        self.assertFalse(Supplement.objects.exists())
+
+    def test_a_year_no_calendar_can_show_is_refused(self):
+        """'0201' or '20261' is a slip of the keyboard, not a regimen."""
+        for field, value in (('start_date', '0201-03-12'), ('end_date', '2999-01-01')):
+            with self.subTest(field=field):
+                response = self.add(**{field: value})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json()[field], [DATE_OUT_OF_RANGE])
         self.assertFalse(Supplement.objects.exists())
 
     def test_either_date_alone_is_fine(self):
@@ -518,6 +528,23 @@ class HoursTests(SupplementTestCase):
         row = self.client.get(self.url()).json()[0]
 
         self.assertEqual(row['hours'], ['08:00', '14:00', '20:00'])
+
+    def test_seconds_are_dropped_before_the_hours_are_merged(self):
+        """'07:00' and '07:00:30' are one badge on the list; stored apart they
+        were two rows drawn as the same hour, one of them never tickable."""
+        response = self.add(name='Magnez', hours=['07:00', '07:00:30'])
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(SupplementHour.objects.get().hour, datetime.time(7, 0))
+
+    def test_a_tick_with_seconds_lands_on_the_minute(self):
+        row = self.row(hour='07:00')
+
+        response = self.client.post(
+            self.intake_url(row.pk), {'hour': '07:00:30'}, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(SupplementIntake.objects.get().hour, datetime.time(7, 0))
 
     def test_the_same_hour_twice_is_one_hour_rather_than_an_error(self):
         """A double-submitted form, not a second dose — the same choice

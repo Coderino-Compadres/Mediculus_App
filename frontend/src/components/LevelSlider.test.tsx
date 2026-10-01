@@ -66,4 +66,33 @@ describe('LevelSlider', () => {
 
     expect(screen.getByText('5/10')).not.toHaveClass('level-slider-value-alert')
   })
+  it('says an unanswered slider is unanswered instead of showing 0/10', () => {
+    renderSlider({ value: null })
+
+    expect(screen.getByText('nie podano')).toBeInTheDocument()
+    expect(screen.queryByText('0/10')).not.toBeInTheDocument()
+  })
+
+  it('records a 0 tapped on an unanswered slider', () => {
+    const { onChange } = renderSlider({ value: null })
+
+    fireEvent.click(screen.getByLabelText('Poziom energii'))
+
+    expect(onChange).toHaveBeenCalledWith(0)
+  })
+
+  it('offers to clear an answer only when there is one and a handler', () => {
+    const onClear = vi.fn()
+    renderSlider({ value: 4, onClear })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Wyczyść odpowiedź' }))
+
+    expect(onClear).toHaveBeenCalled()
+  })
+
+  it('has nothing to clear while unanswered', () => {
+    renderSlider({ value: null, onClear: vi.fn() })
+
+    expect(screen.queryByRole('button', { name: 'Wyczyść odpowiedź' })).not.toBeInTheDocument()
+  })
 })

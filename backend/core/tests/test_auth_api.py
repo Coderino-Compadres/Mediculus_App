@@ -1129,6 +1129,45 @@ class PasswordPolicyTests(AuthTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('password', response.data)
 
+    def test_a_password_of_spaces_alone_is_refused(self):
+        """Long enough, not common, not numeric — and still no password at all.
+        The field keeps `trim_whitespace=False`, so only a validator sees it."""
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'password': ' ' * 10, 'password_confirm': ' ' * 10},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'Hasło nie może składać się wyłącznie ze spacji.', response.data['password'])
+
+    def test_spaces_inside_a_password_are_still_allowed(self):
+        password = 'moje tajne zdanie 7'
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {'password': password, 'password_confirm': password},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+
+    def test_the_similarity_refusal_names_the_attribute_in_polish(self):
+        # The address is set apart from the surname here, or the e-mail
+        # ('jan.testowy@…') would be the attribute that matched first.
+        password = 'Kowalczykowa24'
+
+        response = self.client.post(
+            reverse('core:register'),
+            REGISTRATION | {
+                'surname': 'Kowalczykowa', 'password': password,
+                'password_confirm': password,
+            },
+            format='json',
+        )
+
+        self.assertIn('Hasło jest zbyt podobne do nazwiska.', response.data['password'])
+
     def test_a_password_built_from_the_surname_is_refused(self):
         """The same validator, from the angle a real person walks into it.
 

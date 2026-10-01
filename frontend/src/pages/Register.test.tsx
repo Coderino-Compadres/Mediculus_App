@@ -6,6 +6,7 @@ import Register from './Register'
 import { ROUTES } from '../routes'
 import { ApiError } from '../api/client'
 import { ACCOUNT_TYPES } from '../api/auth'
+import { toIsoDate } from '../utils/days'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -123,7 +124,20 @@ describe('Register — what the form asks for', () => {
   it('will not let the date picker offer a day that has not happened', () => {
     renderScreen()
 
-    expect(dateOfBirth()).toHaveAttribute('max', new Date().toISOString().slice(0, 10))
+    expect(dateOfBirth()).toHaveAttribute('max', toIsoDate(new Date()))
+  })
+
+  it('takes "today" from the local calendar, not from UTC', () => {
+    // 00:30 local time: east of Greenwich, UTC is still on the previous day,
+    // which is what `toISOString()` used to put in `max`.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 1, 0, 30))
+    try {
+      renderScreen()
+      expect(dateOfBirth()).toHaveAttribute('max', '2026-10-01')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('asks the browser for a new password rather than the saved one', () => {

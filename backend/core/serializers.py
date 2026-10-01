@@ -105,6 +105,31 @@ def age_on(date_of_birth, today):
     return today.year - date_of_birth.year - (0 if had_birthday_this_year else 1)
 
 
+def settle_minor_status(patient, user):
+    """`patient.is_child`, flipped to False once the account holder is an adult.
+
+    The column is written once, at registration, and a minor registered at 15
+    would otherwise stay behind the guardian gate for life. Rather than derive
+    minority from `date_of_birth` at every reader (the specialist roster, the
+    admin panel, the guardian-invitation form all read the column), the column
+    is corrected lazily here, on the account's own requests: `_require_patient`
+    and /api/auth/me/ are the two doors every gated request goes through, so the
+    first request after the 18th birthday settles it for every other reader too.
+
+    One direction only. An adult account never becomes a minor, and a missing
+    date of birth (mock_data.sql rows) leaves the column as it is.
+    """
+    if (
+        patient.is_child is True
+        and user.date_of_birth is not None
+        and age_on(user.date_of_birth, timezone.localdate()) >= ADULT_AGE
+    ):
+        # Conditional update, so two concurrent requests flipping it agree.
+        Patient.objects.filter(pk=patient.pk, is_child=True).update(is_child=False)
+        patient.is_child = False
+    return patient.is_child
+
+
 #: One message for an address that is taken, wherever the account is being
 #: created from. Both forms have to say it: an account cannot be created on an
 #: address that already has one, so silence would be a form that fails with no
@@ -306,9 +331,10 @@ class UserSerializer(serializers.ModelSerializer):
     def get_is_child(self, user):
         # None means either "not a patient at all" (a guardian) or a patient row
         # that never answered — `is_patient` above is what tells the two apart.
-        # Read off the patient row rather than derived from date_of_birth.
+        # Read off the patient row, settled first so a minor who has turned 18
+        # stops being one here and at `_require_patient` alike.
         patient = self._patient(user)
-        return patient.is_child if patient else None
+        return settle_minor_status(patient, user) if patient else None
 
     def get_guardian_status(self, user):
         """'none', 'pending' or 'accepted' — where this account's link stands.
@@ -902,6 +928,15 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         'Poproś o nowy link i otwórz go w ciągu godziny.'
     )
 
+    def to_internal_value(self, data):
+        # A token that is not a string at all (a list, a number) would fail the
+        # CharField and be reported under 'token' — the key the paragraph above
+        # the field keeps it out of. Same refusal, same key, as any bad token.
+        token = data.get('token') if hasattr(data, 'get') else None
+        if token is not None and not isinstance(token, str):
+            raise serializers.ValidationError({'detail': self.INVALID_TOKEN})
+        return super().to_internal_value(data)
+
     def validate(self, attrs):
         # The token first: a 400 about password strength on a dead link would
         # send somebody off to think up a better password for a form that was
@@ -1271,6 +1306,13 @@ class ParentInvitationCreateSerializer(serializers.Serializer):
         'Zaproszenie na ten adres już czeka na wykorzystanie. Anuluj je, jeśli '
         'chcesz wystawić nowy kod.'
     )
+    # Not "anuluj je": `revoke` only withdraws the specialist's own invitations,
+    # and the list on this screen does not show anybody else's.
+    ALREADY_INVITED_ELSEWHERE = (
+        'Na ten adres czeka już zaproszenie, którego nie możesz anulować — '
+        'prawdopodobnie wystawił je inny specjalista. Opiekun może z niego '
+        'skorzystać, a gdy wygaśnie, wystawisz nowe.'
+    )
 
     @property
     def specjalist(self):
@@ -1299,8 +1341,12 @@ class ParentInvitationCreateSerializer(serializers.Serializer):
             )
         if User.objects.filter(email=email).exists():
             raise serializers.ValidationError({'parent_email': self.EMAIL_TAKEN})
-        if parent_invitations.live_for(email).exists():
-            raise serializers.ValidationError({'parent_email': self.ALREADY_INVITED})
+        live = parent_invitations.live_for(email)
+        if live.exists():
+            mine = live.filter(specjalist=self.specjalist).exists()
+            raise serializers.ValidationError({
+                'parent_email': self.ALREADY_INVITED if mine else self.ALREADY_INVITED_ELSEWHERE,
+            })
 
         attrs['patient'] = patient
         return attrs
@@ -1582,7 +1628,17 @@ class EmailChangeRequestSerializer(serializers.Serializer):
         value = value.lower()
         if value == (self.user.email or '').lower():
             raise serializers.ValidationError(self.SAME_AS_CURRENT)
-        return free_email(value)
+        return value
+
+    def validate(self, attrs):
+        # Whether the address is taken is asked only once the password is
+        # right: `validate()` runs only when every field passed, so a session
+        # without the password learns nothing about who is registered where.
+        try:
+            free_email(attrs['new_email'])
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({'new_email': exc.detail}) from exc
+        return attrs
 
     def save(self):
         if not email_change.request_change(self.user, self.validated_data['new_email']):

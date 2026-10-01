@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import HeaderMenu from '../components/HeaderMenu'
 import LoadError from '../components/LoadError'
@@ -126,6 +126,17 @@ function toInput(supplement: Supplement): SupplementInput {
   }
 }
 
+/** `SupplementSerializer`'s own limit on name, dose and frequency. */
+const MAX_TEXT = 120
+
+/** The years `core.supplements` accepts for either date — a hint to the date
+ *  picker; the server is what refuses. */
+const MIN_DATE = '1900-01-01'
+const MAX_DATE = '2100-12-31'
+
+const HOURS_INVALID =
+  'Popraw godzinę albo ją usuń, żeby zapisać pozycję. Pustą możesz zostawić.'
+
 /** Which field a server refusal belongs under, by the API's own column names. */
 type FieldErrors = Partial<Record<keyof SupplementInput, string>>
 
@@ -142,9 +153,12 @@ const FIELD_BY_COLUMN: Record<string, keyof SupplementInput> = {
 /**
  * A server verdict lands under the input that produced it.
  *
- * The one refusal this form can get is "end before start", which the backend
- * raises under `end_date` — so it has to reach the date input rather than the
- * top of the screen, the failure `Register.tsx` had with `invitation_code`.
+ * The one refusal the form itself can provoke is "end before start", which the
+ * backend raises under `end_date` — so it has to reach the date input rather
+ * than the top of the screen, the failure `Register.tsx` had with
+ * `invitation_code`. The rest (a length, a year out of range, a malformed
+ * hour) land under their own inputs the same way; each one is rendered below,
+ * because a mapped error that is never drawn is a save failing in silence.
  */
 function fieldErrors(error: unknown): FieldErrors {
   if (!(error instanceof ApiError)) return {}
@@ -340,6 +354,28 @@ function SupplementForm({
   const [input, setInput] = useState(initial)
   const nameMissing = input.name.trim() === ''
 
+  /** A stable key per hour row, so an hour field keeps its own typing (and
+   *  its own validity) when a row above it is removed — keyed by position, the
+   *  field under a removed row inherited the removed row's half-typed text. */
+  const nextHourKey = useRef(initial.hours.length)
+  const [hourKeys, setHourKeys] = useState(() => initial.hours.map((_, at) => at))
+  /** Rows whose box holds something that is not a time ('25:00', '8:3'). Such
+   *  a row reports '' upwards, so without this it would be saved as "no
+   *  hour" while the typing is still on screen. */
+  const [badHours, setBadHours] = useState<ReadonlySet<number>>(() => new Set())
+  const [triedBadHours, setTriedBadHours] = useState(false)
+  const hoursBlocked = triedBadHours && badHours.size > 0
+
+  function setHourValid(key: number, valid: boolean) {
+    setBadHours((current) => {
+      if (valid !== current.has(key)) return current
+      const next = new Set(current)
+      if (valid) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   function set<K extends keyof SupplementInput>(key: K, value: SupplementInput[K]) {
     setInput((current) => ({ ...current, [key]: value }))
   }
@@ -353,6 +389,8 @@ function SupplementForm({
   }
 
   function addHour() {
+    const key = nextHourKey.current++
+    setHourKeys((current) => [...current, key])
     setInput((current) => ({ ...current, hours: [...current.hours, ''] }))
   }
 
@@ -364,6 +402,13 @@ function SupplementForm({
    * the way to say it has to stay visible. Blanks are dropped on the way out.
    */
   function removeHour(index: number) {
+    const removed = hourKeys[index]
+    const fresh = nextHourKey.current++
+    setHourKeys((current) => {
+      const left = current.filter((_, at) => at !== index)
+      return left.length > 0 ? left : [fresh]
+    })
+    setHourValid(removed, true)
     setInput((current) => {
       const left = current.hours.filter((_, at) => at !== index)
       return { ...current, hours: left.length > 0 ? left : [''] }
@@ -375,6 +420,10 @@ function SupplementForm({
       className="supplement-card supplement-form"
       onSubmit={(event) => {
         event.preventDefault()
+        if (badHours.size > 0) {
+          setTriedBadHours(true)
+          return
+        }
         if (!nameMissing) onSubmit(input)
       }}
     >
@@ -385,6 +434,7 @@ function SupplementForm({
         <input
           id="supplement-name"
           value={input.name}
+          maxLength={MAX_TEXT}
           autoFocus
           aria-invalid={Boolean(errors.name)}
           aria-describedby={errors.name ? 'supplement-name-error' : undefined}
@@ -403,18 +453,34 @@ function SupplementForm({
           <input
             id="supplement-dose"
             value={input.dose ?? ''}
+            maxLength={MAX_TEXT}
             placeholder="np. 2000 IU"
+            aria-invalid={Boolean(errors.dose)}
+            aria-describedby={errors.dose ? 'supplement-dose-error' : undefined}
             onChange={(event) => set('dose', event.target.value)}
           />
+          {errors.dose && (
+            <span id="supplement-dose-error" className="supplement-field-error">
+              {errors.dose}
+            </span>
+          )}
         </div>
         <div className="supplement-field">
           <label htmlFor="supplement-frequency">Częstotliwość</label>
           <input
             id="supplement-frequency"
             value={input.frequency ?? ''}
+            maxLength={MAX_TEXT}
             placeholder="np. raz dziennie"
+            aria-invalid={Boolean(errors.frequency)}
+            aria-describedby={errors.frequency ? 'supplement-frequency-error' : undefined}
             onChange={(event) => set('frequency', event.target.value)}
           />
+          {errors.frequency && (
+            <span id="supplement-frequency-error" className="supplement-field-error">
+              {errors.frequency}
+            </span>
+          )}
         </div>
       </div>
 
@@ -429,7 +495,7 @@ function SupplementForm({
       <fieldset className="supplement-field supplement-hours-field">
         <legend>Godziny</legend>
         {input.hours.map((hour, index) => (
-          <div className="supplement-hour-row" key={index}>
+          <div className="supplement-hour-row" key={hourKeys[index]}>
             <label
               className="visually-hidden"
               htmlFor={`supplement-hour-${index}`}
@@ -440,6 +506,7 @@ function SupplementForm({
               id={`supplement-hour-${index}`}
               value={hour}
               onChange={(next) => setHour(index, next)}
+              onValidityChange={(valid) => setHourValid(hourKeys[index], valid)}
             />
             <button
               type="button"
@@ -465,6 +532,14 @@ function SupplementForm({
           Jeśli bierzesz coś kilka razy dziennie, dodaj kolejne godziny.
           Możesz też nie podawać żadnej.
         </span>
+        {hoursBlocked && (
+          <span className="supplement-field-error" role="alert">
+            {HOURS_INVALID}
+          </span>
+        )}
+        {errors.hours && (
+          <span className="supplement-field-error">{errors.hours}</span>
+        )}
       </fieldset>
 
       <div className="supplement-field-row">
@@ -473,15 +548,26 @@ function SupplementForm({
           <input
             id="supplement-start"
             type="date"
+            min={MIN_DATE}
+            max={MAX_DATE}
             value={input.startDate ?? ''}
+            aria-invalid={Boolean(errors.startDate)}
+            aria-describedby={errors.startDate ? 'supplement-start-error' : undefined}
             onChange={(event) => set('startDate', event.target.value)}
           />
+          {errors.startDate && (
+            <span id="supplement-start-error" className="supplement-field-error">
+              {errors.startDate}
+            </span>
+          )}
         </div>
         <div className="supplement-field">
           <label htmlFor="supplement-end">Do kiedy</label>
           <input
             id="supplement-end"
             type="date"
+            min={MIN_DATE}
+            max={MAX_DATE}
             value={input.endDate ?? ''}
             aria-invalid={Boolean(errors.endDate)}
             aria-describedby={errors.endDate ? 'supplement-end-error' : undefined}
@@ -509,6 +595,9 @@ function SupplementForm({
         />
         <span>Chcę ciche przypomnienie o tej godzinie</span>
       </label>
+      {errors.reminderEnabled && (
+        <span className="supplement-field-error">{errors.reminderEnabled}</span>
+      )}
       <p className="supplement-note">{REMINDER_NOTE}</p>
 
       {/* Why `aria-disabled` and not `disabled` for the missing name, the same
@@ -648,9 +737,15 @@ function DietSupplements() {
       const found = fieldErrors(error)
       setErrors(found)
       // Only shown at the top when it did not land on a field — otherwise the
-      // same sentence would appear twice.
+      // same sentence would appear twice. A field this form has no input for
+      // still says its own sentence rather than the generic one
+      // `ApiError.message` falls back to when there is no form-level message.
       if (Object.keys(found).length === 0) {
-        setActionError(error instanceof ApiError ? error.message : fallback)
+        setActionError(
+          error instanceof ApiError
+            ? error.formMessage ?? Object.values(error.fieldErrors)[0] ?? error.message
+            : fallback,
+        )
       }
     } finally {
       setBusy(false)

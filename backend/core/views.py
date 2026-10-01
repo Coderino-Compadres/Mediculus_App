@@ -67,13 +67,15 @@ from .serializers import (EMAIL_TAKEN, AccountDeleteSerializer,
                           PasswordResetConfirmSerializer,
                           PasswordResetRequestSerializer, RegisterSerializer,
                           SpecialistColleagueCreateSerializer,
-                          SpecialistPatientInviteSerializer, UserSerializer)
+                          SpecialistPatientInviteSerializer, UserSerializer,
+                          settle_minor_status)
 from . import account_deletion
 from . import safety_plan as safety_plan_rules
 from . import specialist as specialist_rules
 from . import techniques as technique_rules
 from . import diet_techniques as diet_technique_rules
-from .throttling import (AuthThrottle, GuardianLinkThrottle,
+from .throttling import (AccountRightsThrottle, AuthThrottle,
+                         GuardianLinkThrottle,
                          LoginAccountThrottle, PasswordChangeThrottle,
                          PasswordResetAccountThrottle, ReportPdfThrottle,
                          SpecialistAccountThrottle, SpecialistInviteThrottle,
@@ -329,10 +331,12 @@ def _require_patient(
     if patient is None:
         raise PermissionDenied(refusal)
     # Only a minor is asked the question, so an adult patient costs no extra
-    # query — `is_child` came back with the row above.
+    # query — `is_child` came back with the row above. Settled against today's
+    # date first: the column is written at registration, and a minor who has
+    # turned 18 since must not stay behind the gate.
     if (
         require_guardian_link
-        and patient.is_child is True
+        and settle_minor_status(patient, request.user) is True
         and guardian_status(request.user) != STATUS_ACCEPTED
     ):
         raise PermissionDenied(GUARDIAN_GATE_REFUSAL)
@@ -417,6 +421,7 @@ class GuardianLinkView(APIView):
         patient = _require_patient(
             request, GUARDIAN_LINK_REFUSAL, require_guardian_link=False,
         )
+        settle_minor_status(patient, request.user)
         # An adult patient is not stuck and has nothing to link; refusing keeps
         # `parent_child` meaning what it says rather than becoming a general
         # "these two accounts know each other" table.
@@ -701,12 +706,14 @@ class AccountDeleteView(APIView):
     account nobody set a password for. None of them may use the app; all of them
     may leave it.
 
-    Throttled like the password change: a correct password is what it asks for.
+    Throttled like the password change — a correct password is what it asks
+    for — but on its own budget (`AccountRightsThrottle`), so typos on the
+    password form cannot hold this right back for an hour.
     Answers 204, and the session behind the request is gone with the account.
     """
 
     permission_classes = CONSENT_EXEMPT
-    throttle_classes = [PasswordChangeThrottle]
+    throttle_classes = [AccountRightsThrottle]
 
     def post(self, request):
         if admin_panel.is_admin(request.user):
@@ -736,8 +743,9 @@ class ConsentWithdrawView(APIView):
 
     permission_classes = CONSENT_EXEMPT
     # The password is checked (`ConsentWithdrawSerializer`), which makes this a
-    # password oracle like the password change — capped the same way.
-    throttle_classes = [PasswordChangeThrottle]
+    # password oracle like the password change — capped the same way, on the
+    # budget it shares with account deletion rather than the password form's.
+    throttle_classes = [AccountRightsThrottle]
 
     def post(self, request):
         serializer = ConsentWithdrawSerializer(
@@ -1233,6 +1241,10 @@ class DietJournalDayView(APIView):
     A malformed date is a 404 as well rather than a 400. It cannot come from
     the app (the only links are built by `dietJournalDayPath`), so it is a
     typed URL, and "there is nothing here" is the true answer to one.
+
+    ONLY YYYY-MM-DD NAMES A DAY. `fromisoformat` also reads '20261001' and
+    '2026-W40-4', so the parsed date must print back as exactly the string in
+    the URL — otherwise one day would answer at several addresses.
     """
 
     def get(self, request, entry_date):
@@ -1240,6 +1252,8 @@ class DietJournalDayView(APIView):
         try:
             day = datetime.date.fromisoformat(entry_date)
         except ValueError:
+            raise NotFound()
+        if day.isoformat() != entry_date:
             raise NotFound()
         found = meal_rules.load_day(patient.id_medical, day)
         if found is None:

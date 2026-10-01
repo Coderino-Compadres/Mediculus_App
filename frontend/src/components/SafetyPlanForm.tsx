@@ -39,6 +39,10 @@ export const HINTS = {
   notes: 'Wszystko inne, o czym chcesz pamiętać w trudnej chwili.',
 }
 
+/** Mirror `MAX_LINES` / `MAX_PEOPLE` in core/safety_plan.py. */
+const MAX_LINES = 20
+const MAX_PEOPLE = 10
+
 function LinesEditor({
   id,
   label,
@@ -86,9 +90,13 @@ function LinesEditor({
           )}
         </div>
       ))}
-      <button type="button" className="safety-plan-form-add" onClick={() => onChange([...lines, ''])}>
-        + {addLabel}
-      </button>
+      {lines.length < MAX_LINES ? (
+        <button type="button" className="safety-plan-form-add" onClick={() => onChange([...lines, ''])}>
+          + {addLabel}
+        </button>
+      ) : (
+        <p className="safety-plan-form-hint">Ta lista może mieć najwyżej {MAX_LINES} pozycji.</p>
+      )}
     </fieldset>
   )
 }
@@ -217,13 +225,17 @@ function SafetyPlanForm({
             </button>
           </div>
         ))}
-        <button
-          type="button"
-          className="safety-plan-form-add"
-          onClick={() => set('trustedPeople', [...form.trustedPeople, { name: '', relation: '', phone: '' }])}
-        >
-          + Dodaj osobę
-        </button>
+        {form.trustedPeople.length < MAX_PEOPLE ? (
+          <button
+            type="button"
+            className="safety-plan-form-add"
+            onClick={() => set('trustedPeople', [...form.trustedPeople, { name: '', relation: '', phone: '' }])}
+          >
+            + Dodaj osobę
+          </button>
+        ) : (
+          <p className="safety-plan-form-hint">Możesz dodać najwyżej {MAX_PEOPLE} osób.</p>
+        )}
       </fieldset>
 
       <fieldset className="safety-plan-form-group">

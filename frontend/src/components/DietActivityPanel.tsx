@@ -62,9 +62,9 @@ interface ActivityDraft {
    * The stepper *renders* `ACTIVITY_DURATION_DEFAULT`, but an untouched control
    * is not an answer — the same rule `emptyDraft` in pages/DiaryEntry.tsx
    * learned the hard way, where sliders starting at 0 wrote "no energy, no
-   * tension" for every patient who only answered the mood tile. The edge it
-   * leaves behind is real and pinned by a test: recording exactly 30 minutes
-   * takes moving the control off 30 and back.
+   * tension" for every patient who only answered the mood tile. So while it is
+   * null the stepper reads "nie podano" rather than a "30 min" that would not
+   * be saved, and the first press of either button is what puts 30 there.
    */
   durationMinutes: number | null
   feelingAfter: FeelingAfter | null
@@ -84,6 +84,9 @@ const MAX_STEP_DIGITS = 6
 
 const LOAD_ERROR = 'Nie udało się wczytać aktywności.'
 const SAVE_ERROR = 'Nie udało się zapisać aktywności.'
+
+/** `core.activity.MAX_KIND_OTHER`. */
+const MAX_KIND_OTHER = 60
 const STEPS_ERROR = 'Nie udało się zapisać liczby kroków.'
 
 function ActivityRow({ entry, editable }: { entry: DietActivityEntry; editable: boolean }) {
@@ -123,6 +126,8 @@ function DietActivityPanel({ today }: { today: Date }) {
   /** A failed *write*, which is a different statement from a failed load: the
    *  panel still has its data, and only the last act did not happen. */
   const [saveError, setSaveError] = useState<string | null>(null)
+  /** The server's refusal of the "Inne" text, drawn under that box. */
+  const [kindOtherError, setKindOtherError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   /** What is typed in the step field, or null while it shows the saved count.
    *  Separate from `day`, so saving an activity (which answers with the whole
@@ -221,6 +226,7 @@ function DietActivityPanel({ today }: { today: Date }) {
    */
   function saveActivity() {
     setSaveError(null)
+    setKindOtherError(null)
     createActivity(draft)
       .then((written) => {
         setDay(written)
@@ -232,10 +238,16 @@ function DietActivityPanel({ today }: { today: Date }) {
         /* The form is left as it was, so nothing typed is lost — and the
            server's own sentence is preferred to ours, because every refusal a
            patient can actually reach here is a gate arriving with a message
-           saying what to do about it. */
-        setSaveError(
-          (cause instanceof ApiError && cause.formMessage) || SAVE_ERROR,
-        )
+           saying what to do about it. A refused "Inne" text lands under
+           its own box; any other field still says its own sentence. */
+        if (cause instanceof ApiError) {
+          const { kind_other: refused, ...others } = cause.fieldErrors
+          setKindOtherError(refused ?? null)
+          const message = cause.formMessage ?? Object.values(others)[0]
+          if (message || !refused) setSaveError(message || SAVE_ERROR)
+        } else {
+          setSaveError(SAVE_ERROR)
+        }
       })
   }
 
@@ -357,12 +369,24 @@ function DietActivityPanel({ today }: { today: Date }) {
             <input
               id="activity-kind-other"
               type="text"
+              maxLength={MAX_KIND_OTHER}
               value={draft.kindOther}
               readOnly={!editable}
+              aria-invalid={kindOtherError !== null}
+              aria-describedby={kindOtherError !== null ? 'activity-kind-other-error' : undefined}
               onChange={(event) =>
                 setDraft((current) => ({ ...current, kindOther: event.target.value }))
               }
             />
+            {kindOtherError !== null && (
+              <p
+                className="diet-as-status diet-as-status-error"
+                id="activity-kind-other-error"
+                role="alert"
+              >
+                {kindOtherError}
+              </p>
+            )}
           </div>
         )}
 
@@ -371,11 +395,23 @@ function DietActivityPanel({ today }: { today: Date }) {
             id="activity-duration"
             label="Czas trwania"
             value={draft.durationMinutes ?? ACTIVITY_DURATION_DEFAULT}
-            onChange={(durationMinutes) => setDraft((current) => ({ ...current, durationMinutes }))}
+            // The first press of either button starts at the default rather
+            // than one step off it: what was on screen was "nie podano", so
+            // the answer begins where the control will be read from.
+            onChange={(next) =>
+              setDraft((current) => ({
+                ...current,
+                durationMinutes:
+                  current.durationMinutes === null ? ACTIVITY_DURATION_DEFAULT : next,
+              }))
+            }
             step={ACTIVITY_DURATION_STEP}
             min={ACTIVITY_DURATION_STEP}
             max={ACTIVITY_DURATION_MAX}
-            formatValue={formatDurationMinutes}
+            // Unanswered reads as unanswered: "30 min" here was saved as null.
+            formatValue={(minutes) =>
+              draft.durationMinutes === null ? 'nie podano' : formatDurationMinutes(minutes)
+            }
             disabled={!editable}
           />
           {/* The way back to "unanswered", which every other control on this

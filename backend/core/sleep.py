@@ -100,6 +100,18 @@ class SleepSerializer(serializers.Serializer):
         choices=WAKE_FEELINGS, required=False, allow_null=True, allow_blank=True,
     )
 
+    @staticmethod
+    def _to_minute(value):
+        # 'HH:MM' on the way out, so a second sent by hand would be stored
+        # and counted in the night's length without ever being shown.
+        return value.replace(second=0, microsecond=0) if value is not None else None
+
+    def validate_fell_asleep_at(self, value):
+        return self._to_minute(value)
+
+    def validate_woke_up_at(self, value):
+        return self._to_minute(value)
+
     def save_night(self, id_medical, day):
         """Write this night, replacing whatever was there.
 

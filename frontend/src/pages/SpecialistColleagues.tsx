@@ -17,6 +17,8 @@ import { toFormErrors } from '../api/auth'
 import { useAuth } from '../auth/authContext'
 import { usePagination } from '../hooks/usePagination'
 import { linkedSinceLabel } from '../utils/children'
+import { toIsoDate } from '../utils/days'
+import { ADULT_AGE } from '../utils/validation'
 import { colleagueLabel } from '../utils/specialist'
 import { qualificationLine } from '../utils/qualifications'
 import { ROUTES } from '../routes'
@@ -96,9 +98,20 @@ const EMPTY_FORM = {
 // makes rather than one a default makes for them.
 const MODULE_OPTIONS = MODULES.map((module) => ({ value: module, label: MODULE_LABELS[module] }))
 
-// Keeps the native picker from offering a future date at all; the backend still
-// checks it, and also refuses a date that makes the person a minor.
-const TODAY = new Date().toISOString().slice(0, 10)
+/**
+ * The latest date of birth of somebody who is an adult today, as the picker's
+ * `max` — so it offers neither a future date nor a minor's. The backend still
+ * checks both. Local, not `toISOString()`: that is the UTC day, which between
+ * midnight and 2:00 in Warsaw is still yesterday. On 29 February, 28 February:
+ * the year it names has no 29th, and rolling over to 1 March would offer a
+ * date one day short of eighteen.
+ */
+function latestAdultBirthDate(): string {
+  const today = new Date()
+  const date = new Date(today.getFullYear() - ADULT_AGE, today.getMonth(), today.getDate())
+  if (date.getMonth() !== today.getMonth()) date.setDate(0)
+  return toIsoDate(date)
+}
 
 /**
  * Where the account stands, in the order it gets there: its owner's first
@@ -301,7 +314,7 @@ function SpecialistColleagues() {
               label="Data urodzenia"
               type="date"
               autoComplete="off"
-              max={TODAY}
+              max={latestAdultBirthDate()}
               value={values.dateOfBirth}
               onChange={change}
               error={errors.dateOfBirth}

@@ -122,8 +122,10 @@ function toPayload(input: SafetyPlanInput) {
         relation: person.relation.trim(),
         phone: person.phone.trim(),
       })),
-    // No name means no contact: the screen then shows the treating specialist.
-    professional_contact: contactName || input.contact.phone.trim()
+    // Nothing typed means no contact: the screen then shows the treating
+    // specialist. Anything typed — a role alone included — is sent, so a missing
+    // name is refused with a message instead of the answer vanishing on save.
+    professional_contact: contactName || input.contact.phone.trim() || input.contact.role.trim()
       ? {
           name: contactName,
           role: input.contact.role.trim(),
